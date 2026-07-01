@@ -1,5 +1,7 @@
-// Forge shell styles — token-only (D-04). Every colour/space/radius/type value
-// here is a `--cae-*` variable; a literal hex or px would be a defect (Book 04 §3.6).
+// Forge shell styles — token-driven (D-04). Every colour, space, and radius resolves to
+// a `--cae-*` variable; the only literals are hairline `1px` borders and relative `em`
+// sizing (no width/relative-type token exists). A literal *colour* would be a defect
+// (Book 04 §3.6).
 
 :host {
   display: block;
@@ -79,15 +81,39 @@
   font-weight: var(--cae-weight-medium);
 }
 
-.forge-actions {
+.forge-form-card {
+  display: block;
+  margin-block-end: var(--cae-space-6);
+}
+
+.forge-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cae-space-2);
+  padding-block-start: var(--cae-space-2);
+}
+
+.forge-form__actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--cae-space-3);
-  margin-block-end: var(--cae-space-5);
+  margin-block-start: var(--cae-space-3);
 }
 
-.forge-card {
+.forge-form__status {
+  margin: 0;
+  color: var(--cae-color-success);
+  font-weight: var(--cae-weight-medium);
+}
+
+.forge-form__status--shown {
   margin-block-end: var(--cae-space-4);
+}
+
+.forge-form__status:focus-visible {
+  outline: var(--cae-focus-ring);
+  outline-offset: var(--cae-focus-ring-offset);
+  border-radius: var(--cae-radius-sm);
 }
 
 code {

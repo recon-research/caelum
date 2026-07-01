@@ -1,9 +1,10 @@
 <!--
-  Forge — the Caelum demo console. This screen is deliberately token-driven: every
-  colour, space, and radius below resolves to a `--cae-*` variable (no literals),
-  and the Material components (`matButton`, `mat-card`) resolve the SAME values
-  through the bridge (`--mat-sys-*` ← `--cae-*`). Toggling the theme flips only the
-  token layer — nothing here knows which scheme it is in.
+  Forge — the Caelum demo console. This screen is built entirely from `cae-*` components
+  (issue #5, Direct batch 1): the form below is a real reactive form whose every control
+  is a Caelum wrapper over Material. Every colour, space, and radius resolves to a
+  `--cae-*` token (no literals), and the wrapped Material controls resolve the SAME values
+  through the bridge (`--mat-sys-*` ← `--cae-*`). Toggling the theme flips only the token
+  layer — nothing here knows which scheme it is in.
 -->
 <header class="forge-bar">
   <div class="forge-bar__brand">
@@ -11,45 +12,89 @@
     <span class="forge-bar__title">{{ title() }}</span>
     <span class="forge-bar__sub">on Caelum</span>
   </div>
-  <button matButton="outlined" type="button" (click)="cycleTheme()">
+  <cae-button variant="outlined" ariaLabel="Switch colour theme" (click)="cycleTheme()">
     Theme: {{ themeMode() }} → {{ nextLabel() }}
-  </button>
+  </cae-button>
 </header>
 
 <main class="forge-main">
-  <section class="forge-panel" aria-labelledby="bridge-heading">
-    <h1 id="bridge-heading" class="forge-panel__heading">The theming token bridge is live</h1>
+  <section class="forge-panel" aria-labelledby="screen-heading">
+    <h1 id="screen-heading" class="forge-panel__heading">
+      Direct components, themed through Caelum
+    </h1>
     <p class="forge-panel__lead">
-      One CSS-custom-property token set is the single source of design truth. Material's system
-      tokens are bound from it, so native Material controls and future <code>cae-*</code>
-      components render from the same values — in light and dark.
+      Batch 1 of the PrimeNG→Caelum <code>cae-*</code> surface — <code>cae-input</code>,
+      <code>cae-checkbox</code>, <code>cae-button</code>, and <code>cae-card</code> — each a thin
+      wrapper over Material. The form is a real reactive form bound straight through the Caelum
+      controls, in light and dark.
     </p>
 
-    <div class="forge-actions">
-      <button matButton="filled" type="button">Filled</button>
-      <button matButton="tonal" type="button">Tonal</button>
-      <button matButton="outlined" type="button">Outlined</button>
-      <button matButton type="button">Text</button>
-    </div>
+    <cae-card
+      class="forge-form-card"
+      title="Create workspace"
+      subtitle="A reactive form built only from cae-* components"
+    >
+      <!-- Persistent polite live region + focus target: announces the result reliably and
+           keeps keyboard/SR focus from being lost when the form is swapped out. -->
+      <p
+        #statusRegion
+        class="forge-form__status"
+        [class.forge-form__status--shown]="created()"
+        role="status"
+        aria-live="polite"
+        tabindex="-1"
+      >
+        @if (created(); as name) {
+          Workspace “{{ name }}” created — the whole form round-tripped through the
+          <code>cae-*</code> ControlValueAccessors.
+        }
+      </p>
 
-    <mat-card appearance="outlined" class="forge-card">
-      <mat-card-header>
-        <mat-card-title>Material, themed through Caelum</mat-card-title>
-        <mat-card-subtitle>&lt;mat-card&gt; reading --mat-sys-* ← --cae-*</mat-card-subtitle>
-      </mat-card-header>
-      <mat-card-content>
-        <p>
-          This card's surface, text, and outline come from the bridge — edit
-          <code>--cae-surface-raised</code> once and this card plus every built component moves with
-          it.
-        </p>
-      </mat-card-content>
-      <mat-card-actions>
-        <button matButton type="button">Action</button>
-      </mat-card-actions>
-    </mat-card>
+      @if (created()) {
+        <cae-button variant="tonal" (click)="reset()">Create another</cae-button>
+      } @else {
+        <form [formGroup]="form" (ngSubmit)="submit()" class="forge-form">
+          <cae-input
+            formControlName="name"
+            label="Workspace name"
+            name="workspaceName"
+            autocomplete="off"
+            hint="Shown across Forge"
+            required
+          />
+          <cae-input
+            formControlName="email"
+            type="email"
+            label="Owner email"
+            name="email"
+            autocomplete="email"
+            required
+          />
+          <cae-input
+            formControlName="password"
+            type="password"
+            label="Password"
+            name="password"
+            autocomplete="new-password"
+            hint="At least 8 characters"
+            required
+          />
+          <cae-checkbox formControlName="agree" required>
+            I accept the terms of service
+          </cae-checkbox>
+          <div class="forge-form__actions">
+            <cae-button type="submit" variant="filled">Create workspace</cae-button>
+            <cae-button type="button" variant="text" (click)="reset()">Reset</cae-button>
+          </div>
+        </form>
+      }
+    </cae-card>
 
     <h2 class="forge-panel__subheading">Semantic tokens</h2>
+    <p class="forge-panel__lead">
+      The same token set drives every component above — edit one <code>--cae-*</code> value and the
+      form, the card, and these swatches move together.
+    </p>
     <ul class="forge-swatches" role="list">
       @for (s of swatches; track s.token) {
         <li class="forge-swatch">
