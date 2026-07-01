@@ -1,0 +1,218 @@
+{
+  "$comment": "Caelum dependency-provenance allowlist — the machine-readable, checked-in source of truth the provenance gate (scripts/check_provenance.py) reconciles the resolved dependency tree against, and the US-origin attestation emitter (scripts/emit-us-origin-attestation.mjs) emits from. Derived from the M0-2 transitive provenance scan (docs/provenance/M0-2-transitive-provenance-scan.md) and ratified under D-11 (docs/ARCHITECTURE.md Appendix A). Adding a runtime dependency REQUIRES a row here or the gate fails — that is the forward-only ratchet (Book 03 §3.4, Book 12 §3.3). See provenance/README.md.",
+  "schemaVersion": "1.0",
+  "policy": {
+    "decision": "D-11",
+    "ref": "docs/ARCHITECTURE.md#appendix-a",
+    "scope": "shipped-runtime",
+    "license": {
+      "rule": "Permissive + royalty-free, absolute, on every surface. Copyleft is rejected by default on BOTH the runtime and dev surfaces; a weak/file-level copyleft (MPL-2.0 / LGPL-*) is admissible ONLY as a never-shipped dev tool via an explicit devCopyleftExceptions row (Book 03 §3.1/§3.3, Book 16 §3.2). Strong copyleft (GPL) only by explicit human override; AGPL never; source-available (BUSL/SSPL/Elastic/PolyForm) never.",
+      "runtimePermissive": [
+        "MIT",
+        "MIT-0",
+        "ISC",
+        "BSD-2-Clause",
+        "BSD-3-Clause",
+        "Apache-2.0",
+        "0BSD",
+        "Unlicense",
+        "BlueOak-1.0.0",
+        "CC0-1.0"
+      ],
+      "devAdditionalPermissive": ["CC-BY-3.0", "CC-BY-4.0", "Python-2.0"],
+      "weakCopyleftDevOnly": [
+        "MPL-2.0",
+        "LGPL-3.0-only",
+        "LGPL-3.0-or-later",
+        "LGPL-2.1-only",
+        "LGPL-2.1-or-later"
+      ],
+      "hardRejectAlways": [
+        "GPL-2.0-only",
+        "GPL-2.0-or-later",
+        "GPL-3.0-only",
+        "GPL-3.0-or-later",
+        "AGPL-3.0-only",
+        "AGPL-3.0-or-later",
+        "BUSL-1.1",
+        "SSPL-1.0",
+        "Elastic-2.0",
+        "CC-BY-SA-4.0",
+        "UNLICENSED"
+      ]
+    },
+    "origin": {
+      "rule": "US-preferred; non-US avoided when a need can be met US-origin or self-built. Where it genuinely cannot, permissive-licensed deps from allied nations are acceptable. Angular's own transitive closure is accepted wholesale. Origin is by maintaining entity HQ, or — for individually-maintained permissive packages — maintainer residence (an individual US/allied resident under a permissive license satisfies origin; no US legal entity required).",
+      "preferred": "US",
+      "alliedNations": [
+        "US",
+        "GB",
+        "DE",
+        "NL",
+        "FR",
+        "IE",
+        "BE",
+        "IT",
+        "ES",
+        "PT",
+        "SE",
+        "NO",
+        "DK",
+        "FI",
+        "CH",
+        "AT",
+        "CA",
+        "AU",
+        "NZ",
+        "JP",
+        "KR"
+      ],
+      "angularClosureAcceptedWholesale": true
+    },
+    "ssrStandingCondition": "M0 posture is pinned to the zoneless browser client; SSR is out of scope. `entities` (GB) is the one non-US package that can reach a shipped bundle, and only on the SSR/server path. Adopting SSR is a POLICY TRIGGER requiring a human re-scan — NOT currently code-enforced (the gate has no SSR-path awareness; `entities` is already a vetted allied row, so an SSR build passes silently today): re-run the scan and either explicitly carve out `entities` or eliminate the parse5 SSR path before shipping an SSR build. A future gate enhancement could key off an `@angular/ssr` presence."
+  },
+  "runtime": {
+    "@angular/core": {
+      "version": "22.0.4",
+      "license": "MIT",
+      "origin": "US",
+      "maintainer": "Angular team / Google LLC",
+      "shipped": "yes",
+      "note": "root dep; peer of all @angular/*"
+    },
+    "@angular/common": {
+      "version": "22.0.4",
+      "license": "MIT",
+      "origin": "US",
+      "maintainer": "Angular team / Google LLC",
+      "shipped": "yes",
+      "note": "root dep"
+    },
+    "@angular/compiler": {
+      "version": "22.0.4",
+      "license": "MIT",
+      "origin": "US",
+      "maintainer": "Angular team / Google LLC",
+      "shipped": "conditional",
+      "note": "JIT only; AOT tree-shakes it out"
+    },
+    "@angular/forms": {
+      "version": "22.0.4",
+      "license": "MIT",
+      "origin": "US",
+      "maintainer": "Angular team / Google LLC",
+      "shipped": "yes",
+      "note": "root dep; pulls zod + @standard-schema/spec (Angular's own closure — D-11)"
+    },
+    "@angular/router": {
+      "version": "22.0.4",
+      "license": "MIT",
+      "origin": "US",
+      "maintainer": "Angular team / Google LLC",
+      "shipped": "yes",
+      "note": "Forge app dep"
+    },
+    "@angular/platform-browser": {
+      "version": "22.0.4",
+      "license": "MIT",
+      "origin": "US",
+      "maintainer": "Angular team / Google LLC",
+      "shipped": "yes",
+      "note": "root dep"
+    },
+    "@angular/cdk": {
+      "version": "22.0.3",
+      "license": "MIT",
+      "origin": "US",
+      "maintainer": "Angular Components / Google LLC",
+      "shipped": "yes",
+      "note": "root dep; per-entry-point; pulls parse5 on the schematics path"
+    },
+    "@angular/material": {
+      "version": "22.0.3",
+      "license": "MIT",
+      "origin": "US",
+      "maintainer": "Angular Components / Google LLC",
+      "shipped": "yes",
+      "note": "root dep; per-component"
+    },
+    "@angular/aria": {
+      "version": "22.0.3",
+      "license": "MIT",
+      "origin": "US",
+      "maintainer": "Angular Components / Google LLC",
+      "shipped": "yes",
+      "note": "root dep; per-primitive"
+    },
+    "rxjs": {
+      "version": "7.8.2",
+      "license": "Apache-2.0",
+      "origin": "US",
+      "maintainer": "Ben Lesh / ReactiveX (Austin, TX — individual maintainer)",
+      "shipped": "yes",
+      "note": "peer of @angular/core; US by maintainer residence; no NOTICE file so Apache §4(d) not triggered"
+    },
+    "tslib": {
+      "version": "2.8.1",
+      "license": "0BSD",
+      "origin": "US",
+      "maintainer": "Microsoft Corp. (Redmond, WA)",
+      "shipped": "yes",
+      "note": "emit helpers inlined; 0BSD requires no attribution"
+    },
+    "zod": {
+      "version": "4.4.2",
+      "license": "MIT",
+      "origin": "US",
+      "maintainer": "Colin McDonnell (Seattle, WA — individual)",
+      "shipped": "no",
+      "note": "dep of @angular/forms; phantom/tree-shaken — absent from forms fesm2022; US by maintainer residence"
+    },
+    "parse5": {
+      "version": "8.0.1",
+      "license": "MIT",
+      "origin": "GB",
+      "maintainer": "Ivan Nikulin (Cloudflare, London) + co-maintainers",
+      "shipped": "no",
+      "note": "ORIGIN FLAG (UK): dep of @angular/cdk; schematics/dev-tooling only, zero shipped browser bytes; Angular-brought-over; accepted under D-11"
+    },
+    "entities": {
+      "version": "8.0.0",
+      "license": "BSD-2-Clause",
+      "origin": "GB",
+      "maintainer": "Felix Boehm / fb55 (London)",
+      "shipped": "conditional",
+      "note": "ORIGIN FLAG (UK): dep of parse5; the one genuine shipped-runtime exposure but SSR/server-only, browser-inert; accepted under D-11 with the SSR re-scan standing condition"
+    },
+    "@standard-schema/spec": {
+      "version": "1.1.0",
+      "license": "MIT",
+      "origin": "DE",
+      "maintainer": "Informal intl. working group (Colin McDonnell US, Fabian Hiller DE, David Blass)",
+      "shipped": "no",
+      "note": "ORIGIN FLAG (mixed/DE): dep of @angular/forms; types-only, erases at compile (dist/index.js is 0 bytes); accepted under D-11 (allied-nation fallback + Angular closure)"
+    }
+  },
+  "optionalPeers": {
+    "@angular/animations": {
+      "license": "MIT",
+      "origin": "US",
+      "maintainer": "Angular team / Google LLC",
+      "shipped": "conditional",
+      "note": "unmet optional peer of @angular/platform-browser; enters the shipped browser bundle the moment a consumer enables animations (provideAnimations()); pre-vetted US/MIT so an install passes the gate without a re-decision"
+    },
+    "zone.js": {
+      "license": "MIT",
+      "origin": "US",
+      "maintainer": "Angular team / Google LLC",
+      "shipped": "conditional",
+      "note": "unmet optional dep of @angular/core; Caelum is zoneless-by-default so uninstalled, but a reachable shipped path if a consumer opts into zone-based CD; pre-vetted US/MIT"
+    }
+  },
+  "devCopyleftExceptions": {
+    "rollup-plugin-dts": {
+      "license": "LGPL-3.0-only",
+      "reason": "Weak/file-level copyleft build tool used by ng-packagr to bundle .d.ts declarations. Dev-only, contributes ZERO bytes to Caelum's published/browser bundle, and Caelum does not modify or redistribute its LGPL files — so the copyleft never reaches Caelum's distributed source. Ledgered per Book 16 §3.2 (the axe-core precedent) and Book 03 §3.1 (conditional dev-only admit)."
+    }
+  }
+}

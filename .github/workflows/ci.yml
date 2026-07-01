@@ -171,6 +171,15 @@ jobs:
         env: { PYTHONIOENCODING: utf-8, PYTHONUTF8: "1" }
         run: python tools/_audit_research.py
 
+      # Dependency-provenance gate (issue #4, D-11) — the M0-2 scan automated. It
+      # reads the committed package-lock.json + provenance/allowlist.json (no
+      # node_modules), so it belongs in this node-free job and is BLOCKING from day
+      # one. A new runtime dep absent from the allowlist, a non-permissive license,
+      # or a non-US/non-allied origin fails the merge — the "Provenance purity"
+      # invariant (docs/ARCHITECTURE.md §2, R5). Mirrored by preflight's provenance stage.
+      - name: Dependency provenance (license + US-origin, D-11)
+        run: python3 scripts/check_provenance.py
+
       # Skills load ONLY as .claude/skills/<name>/SKILL.md directories — a flat
       # .md file in skills/ silently fails to load (the layer becomes inert docs).
       - name: Skills are directories
@@ -272,12 +281,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Set up toolchain
-        run: 'echo "SKIP (unconfigured): toolchain setup - configure_project fills this step"'
+      # Real from #4: the adapter-isolation ESLint fence (D-03) needs the Node
+      # toolchain + installed deps. Self-contained via setup-node (distinct from the
+      # dev-env Node at ~/nodejs, #15). Format-check + the build/test matrix + the
+      # promotion of this job to a REQUIRED branch-protection check remain #6's scope.
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
       - name: Format check
-        run: 'echo "SKIP (unconfigured): format --check command - configure_project fills this step"'
-      - name: Lint
-        run: 'echo "SKIP (unconfigured): lint command - configure_project fills this step"'
+        run: 'echo "SKIP (unconfigured): format --check command - configure_project fills this step (#6)"'
+      - name: Lint (adapter isolation + angular-eslint)
+        run: npm run lint
       # Optional: docs build as a merge gate (doc warnings as errors) — uncomment
       # if the stack has one (rustdoc / typedoc / sphinx …); a doc-warning gate
       # catches rot the moment it lands instead of at release. Mirror the command
