@@ -1,19 +1,19 @@
 # Caelum
 
-**A US-origin-clean Angular 22 component library — Angular Material + CDK + Angular Aria, with PrimeNG-level breadth and parity.**
+**A comprehensive, accessible Angular 22 component library built on Angular Material, the CDK, and Angular Aria.**
 
-Caelum is an open-source component library for teams leaving PrimeNG. It builds on Material's foundation while delivering the density and breadth PrimeNG users expect, so you can adopt it **component-by-component** — the same way you adopted PrimeNG — instead of a big-bang rewrite. Its canonical demo is **Forge**, an example admin console.
+Caelum is an open-source component library that pairs Material's foundation with the breadth a full-featured application UI needs, designed to be adopted incrementally — one component at a time — in new and existing Angular apps. Its canonical demo is **Forge**, an example admin console.
 
 > **Status: early development (pre-release).** The domain knowledge library is complete; the component-code scaffold is the next milestone (**M0 — Foundation**). Nothing is published to npm yet. Track progress in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
-## Why Caelum
+## Design principles
 
-- **US-origin-clean, through the whole tree.** Every runtime dependency — transitively — is maintained by a US-based entity under a permissive license. Provenance is scanned in CI, and a machine-readable US-origin attestation ships inside the package. (`D-05` / `D-10`)
-- **No paid licenses, ever.** Everything Caelum relies on at runtime is free and permissively licensed.
-- **PrimeNG parity, adopted incrementally.** A living [`p-*` → `cae-*` map](textbooks/reference/COMPARISON.md) plus schematic codemods let you migrate one component at a time (the strangler-fig pattern), with a lint "ratchet" that keeps the migration converging.
-- **Token-only theming.** Every color, space, radius, and type value comes from a token bridge — no hardcoded design values — with light + dark parity. (`D-04`)
-- **Accessibility at parity.** Every component carries explicit keyboard + ARIA behavior, verified with axe plus manual keyboard and screen-reader passes.
-- **Adapter isolation for the hard parts.** The three genuine gaps — data grid, charts, rich-text editor — sit behind neutral interfaces; each third-party library (TanStack Table, D3, Lexical) is confined to a single adapter file and provenance-vetted, enforced by lint. (`D-03`)
+- **Incremental adoption.** Caelum is built to drop into an existing app gradually, component by component — no big-bang rewrite. Teams coming from another component suite such as PrimeNG can use an optional mapping guide (`p-*` → `cae-*`) and schematic codemods to translate existing components to their Caelum equivalents at their own pace.
+- **Accessibility as a baseline.** Every component ships with explicit keyboard and ARIA behavior, verified with axe plus manual keyboard and screen-reader passes.
+- **Token-only theming.** Every color, space, radius, and type value comes from a design-token bridge — no hardcoded values — with light and dark parity. (`D-04`)
+- **Free, permissively licensed dependencies.** Everything Caelum relies on at runtime is free and under a permissive license — no paid tiers.
+- **US-origin supply chain.** As a project requirement, every runtime dependency — transitively — is maintained by a US-based entity under a permissive license; provenance is scanned in CI and a machine-readable origin attestation ships inside the package. (`D-05` / `D-10`)
+- **Clean adapter boundaries.** The few areas that call for a specialized third-party library — data grid, charts, rich-text editor — sit behind neutral interfaces, with each library confined to a single adapter file and vetted for provenance, enforced by lint. (`D-03`)
 
 ## What's in this repository today
 
