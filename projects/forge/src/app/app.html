@@ -1,10 +1,12 @@
 <!--
-  Forge — the Caelum demo console. This screen is built entirely from `cae-*` components
-  (issue #5, Direct batch 1): the form below is a real reactive form whose every control
-  is a Caelum wrapper over Material. Every colour, space, and radius resolves to a
-  `--cae-*` token (no literals), and the wrapped Material controls resolve the SAME values
-  through the bridge (`--mat-sys-*` ← `--cae-*`). Toggling the theme flips only the token
-  layer — nothing here knows which scheme it is in.
+  Forge — the Caelum demo console. This screen is built almost entirely from `cae-*`
+  components: batch 1 (#5, cae-input/checkbox/button/card) and batch 2 (#26,
+  cae-radio/select/textarea, cae-tabs for the reference panels, caeTooltip on the header
+  help button — the one native control, since a tooltip must sit on a focusable element).
+  The form is a real reactive form whose every control is a Caelum wrapper over Material.
+  Every colour, space, and radius resolves to a `--cae-*` token (no literals), and the
+  wrapped Material controls resolve the SAME values through the bridge (`--mat-sys-*` ←
+  `--cae-*`). Toggling the theme flips only the token layer — nothing here knows its scheme.
 -->
 <header class="forge-bar">
   <div class="forge-bar__brand">
@@ -12,9 +14,23 @@
     <span class="forge-bar__title">{{ title() }}</span>
     <span class="forge-bar__sub">on Caelum</span>
   </div>
-  <cae-button variant="outlined" ariaLabel="Switch colour theme" (click)="cycleTheme()">
-    Theme: {{ themeMode() }} → {{ nextLabel() }}
-  </cae-button>
+  <div class="forge-bar__actions">
+    <!-- caeTooltip belongs on a focusable element: this native help button receives focus
+         and its aria-describedby, so the tip is reachable by keyboard and screen reader.
+         (Forwarding a tooltip to cae-button's inner control is #36.) -->
+    <button
+      type="button"
+      class="forge-help"
+      aria-label="About Forge"
+      caeTooltip="Forge is the Caelum demo console — every control here is a cae-* component over Material."
+      caeTooltipPosition="below"
+    >
+      ?
+    </button>
+    <cae-button variant="outlined" ariaLabel="Switch colour theme" (click)="cycleTheme()">
+      Theme: {{ themeMode() }} → {{ nextLabel() }}
+    </cae-button>
+  </div>
 </header>
 
 <main class="forge-main">
@@ -23,10 +39,9 @@
       Direct components, themed through Caelum
     </h1>
     <p class="forge-panel__lead">
-      Batch 1 of the PrimeNG→Caelum <code>cae-*</code> surface — <code>cae-input</code>,
-      <code>cae-checkbox</code>, <code>cae-button</code>, and <code>cae-card</code> — each a thin
-      wrapper over Material. The form is a real reactive form bound straight through the Caelum
-      controls, in light and dark.
+      The PrimeNG→Caelum <code>cae-*</code> surface — inputs, checkbox, <code>cae-radio</code>,
+      <code>cae-select</code>, and <code>cae-textarea</code>, each a thin wrapper over Material. The
+      form is a real reactive form bound straight through the Caelum controls, in light and dark.
     </p>
 
     <cae-card
@@ -70,6 +85,33 @@
             autocomplete="email"
             required
           />
+          <div class="forge-field-group" role="group" aria-labelledby="plan-label">
+            <span id="plan-label" class="forge-field-group__label">
+              Plan <span class="forge-req" aria-hidden="true">*</span>
+            </span>
+            <cae-radio
+              formControlName="plan"
+              name="plan"
+              ariaLabelledby="plan-label"
+              [options]="plans"
+              required
+            />
+          </div>
+          <cae-select
+            formControlName="region"
+            label="Region"
+            [options]="regions"
+            hint="Where the workspace is hosted"
+            required
+          />
+          <cae-textarea
+            formControlName="description"
+            label="Description"
+            name="description"
+            [rows]="3"
+            hint="Optional — what this workspace is for"
+            [maxlength]="280"
+          />
           <cae-input
             formControlName="password"
             type="password"
@@ -90,23 +132,52 @@
       }
     </cae-card>
 
-    <h2 class="forge-panel__subheading">Semantic tokens</h2>
-    <p class="forge-panel__lead">
-      The same token set drives every component above — edit one <code>--cae-*</code> value and the
-      form, the card, and these swatches move together.
-    </p>
-    <ul class="forge-swatches" role="list">
-      @for (s of swatches; track s.token) {
-        <li class="forge-swatch">
-          <span
-            class="forge-swatch__chip"
-            [style.background]="'var(' + s.token + ')'"
-            aria-hidden="true"
-          ></span>
-          <span class="forge-swatch__label">{{ s.label }}</span>
-          <code class="forge-swatch__token">{{ s.token }}</code>
-        </li>
-      }
-    </ul>
+    <!-- cae-tabs organises the reference panels. Content is projected through cae-tab into
+         Material's tab body; the first tab is active on load. -->
+    <cae-tabs
+      class="forge-reference"
+      ariaLabel="Reference"
+      [selectedIndex]="selectedTab()"
+      (selectedIndexChange)="selectedTab.set($event)"
+    >
+      <cae-tab label="Design tokens">
+        <div class="forge-tab-body">
+          <p class="forge-panel__lead">
+            The same token set drives every component above — edit one <code>--cae-*</code> value
+            and the fields, the card, and these swatches move together.
+          </p>
+          <ul class="forge-swatches" role="list">
+            @for (s of swatches; track s.token) {
+              <li class="forge-swatch">
+                <span
+                  class="forge-swatch__chip"
+                  [style.background]="'var(' + s.token + ')'"
+                  aria-hidden="true"
+                ></span>
+                <span class="forge-swatch__label">{{ s.label }}</span>
+                <code class="forge-swatch__token">{{ s.token }}</code>
+              </li>
+            }
+          </ul>
+        </div>
+      </cae-tab>
+
+      <cae-tab label="In this batch">
+        <div class="forge-tab-body">
+          <p class="forge-panel__lead">
+            Batch 2 (#26) adds these Direct wrappers — each swaps 1:1 for its PrimeNG original.
+          </p>
+          <ul class="forge-map" role="list">
+            @for (c of batch2; track c.cae) {
+              <li class="forge-map__row">
+                <code class="forge-map__from">{{ c.prime }}</code>
+                <span aria-hidden="true">→</span>
+                <code class="forge-map__to">{{ c.cae }}</code>
+              </li>
+            }
+          </ul>
+        </div>
+      </cae-tab>
+    </cae-tabs>
   </section>
 </main>

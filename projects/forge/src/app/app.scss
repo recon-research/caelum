@@ -45,6 +45,32 @@
   font-size: var(--cae-text-sm);
 }
 
+.forge-bar__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--cae-space-3);
+}
+
+.forge-help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--cae-space-5);
+  block-size: var(--cae-space-5);
+  padding: 0;
+  border: 1px solid var(--cae-color-border);
+  border-radius: var(--cae-radius-full);
+  background: var(--cae-surface-base);
+  color: var(--cae-color-on-surface-variant);
+  font-weight: var(--cae-weight-bold);
+  cursor: pointer;
+}
+
+.forge-help:focus-visible {
+  outline: var(--cae-focus-ring);
+  outline-offset: var(--cae-focus-ring-offset);
+}
+
 .forge-main {
   display: flex;
   justify-content: center;
@@ -81,9 +107,57 @@
   font-weight: var(--cae-weight-medium);
 }
 
+.forge-reference {
+  display: block;
+  margin-block-start: var(--cae-space-4);
+}
+
+.forge-tab-body {
+  padding-block-start: var(--cae-space-5);
+}
+
+.forge-map {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cae-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.forge-map__row {
+  display: flex;
+  align-items: center;
+  gap: var(--cae-space-3);
+  color: var(--cae-color-on-surface-variant);
+}
+
+.forge-map__to {
+  color: var(--cae-color-primary);
+}
+
 .forge-form-card {
   display: block;
   margin-block-end: var(--cae-space-6);
+}
+
+.forge-field-group {
+  display: block;
+  padding: var(--cae-space-3);
+  border: 1px solid var(--cae-color-border);
+  border-radius: var(--cae-radius-md);
+}
+
+.forge-field-group__label {
+  display: block;
+  margin-block-end: var(--cae-space-2);
+  color: var(--cae-color-on-surface-variant);
+  font-size: var(--cae-text-sm);
+  font-weight: var(--cae-weight-medium);
+}
+
+.forge-req {
+  color: var(--cae-color-error);
 }
 
 .forge-form {
