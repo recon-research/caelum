@@ -1,0 +1,43 @@
+// The bridge (Book 04 §3.2) — one direction of authority: Caelum tokens are the
+// source; Material's `--mat-sys-*` seam is bound FROM them. After this, a Material
+// component resolving `var(--mat-sys-surface)` and a built `cae-*` component
+// resolving `var(--cae-surface-base)` land on the SAME computed value, so a single
+// edit to a `--cae-*` token moves both. Sync is structural, not vigilant (R4).
+//
+// A consumer applies the whole theme with one line:  `@use 'caelum/styles/theme';`
+
+@use '@angular/material' as mat;
+@use 'tokens'; // emits the :root `--cae-*` definitions (once)
+
+html {
+  // Stand Material up. `theme-type` is omitted, so it defaults to `color-scheme`
+  // and Material emits its own system colors via `light-dark()` — every Material
+  // component then responds to the same `color-scheme` switch our tokens use.
+  @include mat.theme(
+    (
+      color: (
+        primary: mat.$azure-palette,
+      ),
+      typography: Roboto,
+      density: 0,
+    )
+  );
+
+  // Re-point Material's system seam at the Caelum semantic tokens. Unknown keys
+  // are silently ignored by the mixin, so this list is safe to evolve.
+  @include mat.theme-overrides(
+    (
+      primary: var(--cae-color-primary),
+      on-primary: var(--cae-color-on-primary),
+      surface: var(--cae-surface-base),
+      surface-container: var(--cae-surface-raised),
+      surface-container-high: var(--cae-surface-raised),
+      on-surface: var(--cae-color-on-surface),
+      on-surface-variant: var(--cae-color-on-surface-variant),
+      outline: var(--cae-color-border),
+      outline-variant: var(--cae-color-border),
+      error: var(--cae-color-error),
+      corner-medium: var(--cae-radius-md),
+    )
+  );
+}

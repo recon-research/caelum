@@ -1,0 +1,112 @@
+// Caelum design tokens — the single source of design truth (D-04, Book 04 §3.1).
+//
+// Two tiers:
+//   • Primitive — raw, context-free ramps (`--cae-<hue>-<step>`, `--cae-size-*`).
+//     Few consumers read these directly; they exist so a rebrand edits a handful
+//     of values and light/dark has somewhere to switch.
+//   • Semantic — role-named tokens (`--cae-color-*`, `--cae-surface-*`, …) that
+//     REFERENCE primitives and are the only tier components bind to.
+//
+// Light/dark is a property of this layer, not of components: each scheme-varying
+// semantic token is `light-dark(<light>, <dark>)`, and `color-scheme` selects the
+// arm. Re-bind the layer, never the components (Book 04 §3.3).
+
+:root {
+  // Follow the OS by default; a `[data-theme]` override (below) forces an arm.
+  color-scheme: light dark;
+
+  // ── Primitive tier — the palette ────────────────────────────────────────
+  --cae-blue-20: #0d47a1;
+  --cae-blue-40: #1565c0;
+  --cae-blue-70: #64b5f6;
+  --cae-blue-80: #90caf9;
+
+  --cae-neutral-0: #ffffff;
+  --cae-neutral-4: #f5f5f7;
+  --cae-neutral-6: #eceef1;
+  --cae-neutral-12: #d8dade;
+  --cae-neutral-40: #5a5f66;
+  --cae-neutral-60: #8a9099;
+  --cae-neutral-84: #1e1f22;
+  --cae-neutral-88: #17181b;
+  --cae-neutral-92: #121316;
+  --cae-neutral-96: #0c0d0f;
+
+  --cae-red-40: #c62828;
+  --cae-red-80: #ef9a9a;
+  --cae-green-40: #2e7d32;
+  --cae-green-80: #a5d6a7;
+  --cae-amber-40: #b26a00;
+  --cae-amber-80: #ffb74d;
+
+  // ── Semantic tier — the component-facing API ────────────────────────────
+  // Color & surface (scheme-varying → light-dark()).
+  --cae-color-primary: light-dark(var(--cae-blue-40), var(--cae-blue-80));
+  --cae-color-on-primary: light-dark(var(--cae-neutral-0), #06243f);
+  --cae-color-primary-hover: light-dark(var(--cae-blue-20), var(--cae-blue-70));
+
+  --cae-surface-base: light-dark(var(--cae-neutral-0), var(--cae-neutral-92));
+  --cae-surface-raised: light-dark(var(--cae-neutral-4), var(--cae-neutral-84));
+  --cae-surface-sunken: light-dark(var(--cae-neutral-6), var(--cae-neutral-96));
+
+  --cae-color-on-surface: light-dark(#1a1c1e, #e6e7ea);
+  --cae-color-on-surface-variant: light-dark(var(--cae-neutral-40), var(--cae-neutral-60));
+  --cae-color-border: light-dark(var(--cae-neutral-12), #34363a);
+
+  --cae-color-error: light-dark(var(--cae-red-40), var(--cae-red-80));
+  --cae-color-success: light-dark(var(--cae-green-40), var(--cae-green-80));
+  --cae-color-warn: light-dark(var(--cae-amber-40), var(--cae-amber-80));
+
+  // Space — an 8pt-derived step scale.
+  --cae-space-1: 4px;
+  --cae-space-2: 8px;
+  --cae-space-3: 12px;
+  --cae-space-4: 16px;
+  --cae-space-5: 24px;
+  --cae-space-6: 32px;
+
+  // Shape.
+  --cae-radius-sm: 4px;
+  --cae-radius-md: 8px;
+  --cae-radius-lg: 16px;
+  --cae-radius-full: 999px;
+
+  // Elevation (scheme-aware — shadows read darker on a dark surface).
+  --cae-elevation-1: 0 1px 2px light-dark(rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0.5));
+  --cae-elevation-2: 0 2px 6px light-dark(rgba(0, 0, 0, 0.16), rgba(0, 0, 0, 0.6));
+  --cae-elevation-3: 0 8px 24px light-dark(rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.72));
+
+  // Type.
+  --cae-font-body: Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --cae-font-heading: var(--cae-font-body);
+  --cae-font-mono: 'Roboto Mono', ui-monospace, 'SF Mono', monospace;
+  --cae-line-body: 1.5;
+  --cae-line-heading: 1.2;
+  --cae-weight-regular: 400;
+  --cae-weight-medium: 500;
+  --cae-weight-bold: 700;
+  --cae-text-sm: 0.875rem;
+  --cae-text-md: 1rem;
+  --cae-text-lg: 1.25rem;
+  --cae-text-xl: 1.75rem;
+
+  // Focus & motion (focus ring is a11y-critical — Book 16).
+  --cae-focus-ring-width: 2px;
+  --cae-focus-ring-color: var(--cae-color-primary);
+  --cae-focus-ring: var(--cae-focus-ring-width) solid var(--cae-focus-ring-color);
+  --cae-focus-ring-offset: 2px;
+  --cae-motion-fast: 120ms;
+  --cae-motion-standard: 200ms;
+  --cae-motion-emphasized: 320ms;
+  --cae-easing-standard: cubic-bezier(0.2, 0, 0, 1);
+}
+
+// Explicit theme override — forces one arm regardless of OS preference. The
+// components are unaware; only `color-scheme` (hence every `light-dark()`) flips.
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+}

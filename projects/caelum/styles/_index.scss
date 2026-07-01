@@ -1,0 +1,9 @@
+// Public SCSS entry point for the Caelum theming token bridge.
+//
+//   @use 'caelum/styles' as cae;   // applies the theme + exposes the tokens
+//
+// `theme` already `@use`s `tokens`, so this single forward stands the whole
+// bridge up. Consumers that only want the raw token layer (e.g. to theme their
+// own shell before Material is present) can `@use 'caelum/styles/tokens'`.
+@forward 'theme';
+@forward 'tokens';

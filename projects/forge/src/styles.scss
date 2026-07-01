@@ -1,1 +1,27 @@
-/* You can add global styles to this file, and also import other style files */
+// Forge is the first consumer of Caelum. One line stands the whole theming token
+// bridge up — Material's `--mat-sys-*` seam and every `--cae-*` token in lockstep,
+// light + dark. (Book 04 §3.2; in a published app this would be `@use 'caelum/styles/theme'`.)
+@use '../../caelum/styles/theme';
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100dvh;
+}
+
+body {
+  background: var(--cae-surface-sunken);
+  color: var(--cae-color-on-surface);
+  font-family: var(--cae-font-body);
+  font-size: var(--cae-text-md);
+  line-height: var(--cae-line-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background var(--cae-motion-standard) var(--cae-easing-standard);
+}
