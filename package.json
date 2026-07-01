@@ -8,6 +8,8 @@
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "check:provenance": "python3 scripts/check_provenance.py",
     "attest": "node scripts/emit-us-origin-attestation.mjs dist/caelum",
     "size:lib": "node scripts/check-lib-size.mjs",

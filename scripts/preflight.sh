@@ -12,12 +12,13 @@
 # in light/manual postures this script IS the heavy-gate evidence.
 # (Windows-native equivalent: scripts/preflight.ps1.)
 #
-# The library-audit / research-audit / todo-hygiene stages are REAL from day
-# one (they mirror ci.yml's enforced jobs); the format/lint/build/test/smoke
-# stages report SKIP — loudly, with a summary count — until configure_project
-# fills them. A fresh copy is green but says exactly what it did NOT verify.
+# All stages are real (configured by #6). The format/lint/build/test stages need
+# the Node toolchain — when npx isn't on PATH they SKIP (loudly, counted in the
+# summary) rather than false-PASS; run with PATH="$HOME/nodejs/bin:$PATH" to
+# exercise them (durable dev-env/CI Node wiring is #15). The audit / provenance /
+# hygiene stages are node-free and always run.
 #
-# Flags: --quick (skip build/test/smoke; audits + hygiene always run) · --skip-smoke (skip the run-loop gate)
+# Flags: --quick (skip build/test; audits + hygiene always run) · --skip-smoke (no-op — kept for CLI compatibility; Caelum has no run-loop smoke gate)
 set -u
 cd "$(dirname "$0")/.."
 
@@ -56,36 +57,37 @@ skip_stage() {
 }
 run_if_node() {
     # Run a stage only when the Node toolchain is on PATH; else SKIP with a note.
-    # The durable dev-env/CI Node wiring is #15/#6; until then, exercise these
-    # locally with  PATH="$HOME/nodejs/bin:$PATH" bash scripts/preflight.sh.
+    # CI runs these via setup-node (#6); locally, exercise them with
+    # PATH="$HOME/nodejs/bin:$PATH" bash scripts/preflight.sh (durable dev-env Node → #15).
     local name="$1"; shift
     [ "$FAILED" -ne 0 ] && return 0
     if command -v npx >/dev/null 2>&1; then
         stage "$name" "$@"
     else
-        skip_stage "$name" "needs Node on PATH — wired into CI/preflight at #6 (see #15)"
+        skip_stage "$name" "needs Node on PATH — run with PATH=\"\$HOME/nodejs/bin:\$PATH\" (durable wiring → #15)"
     fi
 }
-library_gates() {
-    # The shipped-library gates (issue #4): build the lib, emit + verify the
-    # US-origin attestation, enforce the per-entry-point size budget.
-    npx ng build caelum || return 1
-    node scripts/emit-us-origin-attestation.mjs dist/caelum || return 1
-    node scripts/check-lib-size.mjs || return 1
+test_ci() {
+    # Vitest via @angular/build:unit-test (jsdom, no browser). CI=true makes the
+    # builder run once and exit instead of watching (GitHub Actions sets it too).
+    CI=true npx ng test || return 1
 }
 
-# --- The gates, in the same order as ci.yml. configure_project replaces the skip_stage placeholders. ---
-skip_stage "format --check" "unconfigured — configure_project fills this stage (PROJECT_CONVENTIONS.md > Format / lint)"
+# --- The gates: the same commands as ci.yml's `format & lint` + `build & test` jobs
+#     (run sequentially here; those jobs run in parallel in CI). ---
+run_if_node "format --check" npm run format:check
 run_if_node "lint (adapter isolation + angular-eslint)" npm run lint
 
 if [ "$QUICK" -eq 0 ]; then
-    skip_stage "build" "unconfigured — configure_project fills this stage"
-    skip_stage "test" "unconfigured — configure_project fills this stage"
-    if [ "$SKIP_SMOKE" -eq 0 ]; then
-        # The headless / CI-operability gate (validate_headless_mode). Drop if no run loop.
-        skip_stage "headless smoke" "unconfigured — configure_project fills this stage"
-    fi
-    run_if_node "library gates (build + US-origin attestation + size budget)" library_gates
+    # `npm run build:lib` = ng build caelum -> US-origin attestation -> per-entry gzip
+    # size gate. Called by name (like format/lint) so package.json stays the single
+    # source of truth and CI (`npm run build:lib`) can't drift from preflight.
+    run_if_node "build library (+ US-origin attestation + size budget)" npm run build:lib
+    # Forge in production config exercises the angular.json 400/600 kB budgets.
+    run_if_node "build Forge (production budgets)" npx ng build forge
+    # Vitest suite (caelum + Forge). No headless run-loop smoke: Caelum is a
+    # client-side library, Forge a static SPA — build+test IS the operability proof.
+    run_if_node "test (caelum + Forge)" test_ci
 fi
 
 # --- Real-from-day-one gates (mirror ci.yml's consolidated `static gates` job) ---

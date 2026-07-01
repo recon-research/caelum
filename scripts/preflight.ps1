@@ -10,15 +10,15 @@
 # in light/manual postures this script IS the heavy-gate evidence.
 # (POSIX equivalent: scripts/preflight.sh.)
 #
-# The library-audit / research-audit / todo-hygiene stages are REAL from day
-# one (they mirror ci.yml's enforced jobs); the format/lint/build/test/smoke
-# stages report SKIP — loudly, with a summary count — until configure_project
-# fills them. A fresh copy is green but says exactly what it did NOT verify.
+# All stages are real (configured by #6). The format/lint/build/test stages need
+# the Node toolchain -- when npx isn't on PATH they SKIP (loudly, counted in the
+# summary) rather than false-PASS. The audit / provenance / hygiene stages are
+# node-free and always run.
 #
 # Windows PowerShell 5.1 compatible (no &&, no ternary). Keep output strings
 # ASCII: PS 5.1 reads un-BOM'd .ps1 files as ANSI, so non-ASCII renders as mojibake.
 #
-# Flags: -Quick (skip build/test/smoke; audits + hygiene always run) · -SkipSmoke (skip the run-loop gate)
+# Flags: -Quick (skip build/test; audits + hygiene always run) -SkipSmoke (no-op -- kept for CLI compatibility; Caelum has no run-loop smoke gate)
 [CmdletBinding()]
 param(
     [switch]$Quick,
@@ -72,34 +72,35 @@ function Invoke-Stage {
 
 function Invoke-StageIfNode {
     # Run a stage only when the Node toolchain is on PATH; else SKIP with a note.
-    # The durable dev-env/CI Node wiring is #15/#6.
+    # CI runs these via setup-node (#6); the durable dev-env Node wiring is #15.
     param([string]$Name, [scriptblock]$Body)
     if ($script:Failed) { return }
     if (Get-Command npx -ErrorAction SilentlyContinue) {
         Invoke-Stage $Name $Body
     }
     else {
-        Skip-Stage $Name 'needs Node on PATH - wired into CI/preflight at #6 (see #15)'
+        Skip-Stage $Name 'needs Node on PATH (durable wiring - #15)'
     }
 }
 
-# --- The gates, in the same order as ci.yml. configure_project replaces the Skip-Stage placeholders. ---
-Skip-Stage 'format --check' 'unconfigured - configure_project fills this stage (PROJECT_CONVENTIONS.md > Format / lint)'
+# --- The gates: the same commands as ci.yml's `format & lint` + `build & test` jobs
+#     (run sequentially here; those jobs run in parallel in CI). ---
+Invoke-StageIfNode 'format --check' { npm run format:check }
 Invoke-StageIfNode 'lint (adapter isolation + angular-eslint)' { npm run lint }
 
 if (-not $Quick) {
-    Skip-Stage 'build' 'unconfigured - configure_project fills this stage'
-    Skip-Stage 'test' 'unconfigured - configure_project fills this stage'
-    if (-not $SkipSmoke) {
-        # The headless / CI-operability gate (validate_headless_mode). Drop if no run loop.
-        Skip-Stage 'headless smoke' 'unconfigured - configure_project fills this stage'
-    }
-    Invoke-StageIfNode 'library gates (build + US-origin attestation + size budget)' {
-        npx ng build caelum
-        if ($LASTEXITCODE -ne 0) { return }
-        node scripts/emit-us-origin-attestation.mjs dist/caelum
-        if ($LASTEXITCODE -ne 0) { return }
-        node scripts/check-lib-size.mjs
+    # `npm run build:lib` = ng build caelum -> US-origin attestation -> per-entry gzip
+    # size gate. Called by name (like format/lint) so package.json stays the single
+    # source of truth; cmd.exe's && short-circuits, LASTEXITCODE catches a failure.
+    Invoke-StageIfNode 'build library (+ US-origin attestation + size budget)' { npm run build:lib }
+    # Forge in production config exercises the angular.json 400/600 kB budgets.
+    Invoke-StageIfNode 'build Forge (production budgets)' { npx ng build forge }
+    # Vitest suite (caelum + Forge). No headless run-loop smoke: Caelum is a
+    # client-side library, Forge a static SPA -- build+test IS the operability proof.
+    # CI=true makes the builder run once and exit (GitHub Actions sets it too).
+    Invoke-StageIfNode 'test (caelum + Forge)' {
+        $env:CI = 'true'
+        npx ng test
     }
 }
 

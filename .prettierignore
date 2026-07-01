@@ -1,0 +1,25 @@
+# Prettier owns the CODE (TS / HTML templates / SCSS / config JSON). The prose and
+# generated trees below are out of scope — they carry their own audits or are
+# hand-authored — so `prettier --check .` stays authoritative for source without
+# churning documentation. (#6)
+
+# Build output.
+dist/
+node_modules/
+
+# The knowledge library and frontier notes: generated + audited by their own tools
+# (textbooks/tools/_audit_*, research/tools/_audit_research). Reflowing prose here
+# would fight those line-based audits.
+textbooks/
+research/
+
+# Hand-authored operating docs, agent/skill machinery, and issue/CI templates
+# (Markdown prose + carefully-laid-out YAML — not prettier-managed).
+docs/
+.claude/
+.github/
+
+# Root project prose (documentation, not code).
+README.md
+CLAUDE.md
+PROJECT_CONVENTIONS.md

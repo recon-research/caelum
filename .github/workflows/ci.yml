@@ -1,9 +1,11 @@
-# CI — <PROJECT_NAME>
-# TEMPLATE: fill in the build / test / lint / gate commands from PROJECT_CONVENTIONS.md.
-# These jobs encode the definition_of_done gates that can run in CI. Replace each
-# `echo "SKIP (unconfigured) …"` placeholder with the real command, and the setup
-# step with your toolchain's — until then those steps verify NOTHING (they say so
-# in the log). The `static gates` job is real and enforced from day one.
+# CI — Caelum
+# These jobs encode the definition_of_done gates that run in CI. All are real
+# (configured by issue #6, from PROJECT_CONVENTIONS.md > Build & Test): `static
+# gates` is the node-free honesty layer; `build & test` builds the library
+# (+ US-origin attestation + size gate) and Forge (budgets) then runs the Vitest
+# suite; `format & lint` runs Prettier + the adapter-isolation ESLint fence.
+# The commands here mirror scripts/preflight.{sh,ps1} by construction — change one,
+# change the others.
 #
 # ── CI posture — minutes-aware pacing (docs/AUTOMATION.md §6) ────────────────
 # Private repos draw Actions minutes from the plan's monthly pool (Free 2,000 /
@@ -197,9 +199,10 @@ jobs:
       # .github/, textbooks/ and .claude/ are exempt (they *talk about* TODOs —
       # .claude holds the very hook that enforces this rule and the settings
       # $comment that documents it; its only non-doc files are that machinery).
-      # scripts/preflight.{sh,ps1} are exempt while they are TODO-placeholder
-      # templates; configure_project replaces their stage bodies with real
-      # commands — drop the two exemptions then.
+      # scripts/preflight.{sh,ps1} stay exempt PERMANENTLY (not just as templates):
+      # they IMPLEMENT the mirrored `todo hygiene` stage, so the literal words
+      # todo/fixme live in them by necessity — scanning their own diff would
+      # false-positive on the very gate they run (#6 kept these two on purpose).
       # The sed strips ticketed TODO(#NN)/FIXME(#NN) forms first, so EVERY
       # remaining occurrence is naked — a `(#NN)` elsewhere on the line no
       # longer whitewashes one. (sed+grep, not grep -P: PCRE dies on
@@ -246,25 +249,40 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # --- Toolchain setup: replace with your stack's setup action ---
-      # (The placeholder run values are YAML-quoted: an unquoted `echo "SKIP: …"`
-      # contains a colon-space, which YAML reads as a nested mapping — the
-      # workflow file fails to parse and every run dies at startup in 0s.)
-      - name: Set up toolchain
-        run: 'echo "SKIP (unconfigured): toolchain setup - configure_project fills this step (see PROJECT_CONVENTIONS.md > Stack)"'
+      # Angular 22 / Node 22 toolchain. Self-contained via setup-node (distinct from
+      # the dev-env Node at ~/nodejs, #15); npm cache keyed on package-lock.json.
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
 
-      # --- Build (PROJECT_CONVENTIONS.md > Build & Test > Build) ---
-      - name: Build
-        run: 'echo "SKIP (unconfigured): build command - configure_project fills this step"'
+      # Build the publishable library FIRST — Forge consumes it through the
+      # `caelum -> ./dist/caelum` path map, so its build depends on dist/caelum.
+      # `build:lib` = ng build caelum -> emit US-origin attestation -> per-entry
+      # -point gzip size gate (issue #4). CI-enforcing the last two closes the #4
+      # gap where they ran only in the Node-gated preflight (see #6 scope comment).
+      - name: Build library (+ US-origin attestation + size gate)
+        run: npm run build:lib
 
-      # --- Test (PROJECT_CONVENTIONS.md > Build & Test > Test) ---
-      - name: Test
-        run: 'echo "SKIP (unconfigured): test command - configure_project fills this step"'
+      # Forge in production config exercises the angular.json budgets (400/600 kB
+      # initial) — the second size gate. Fails the build if the demo blows its budget.
+      - name: Build Forge (production budgets)
+        run: npx ng build forge
 
-      # --- The headless / operability gate (blocks merge). See validate_headless_mode. ---
-      # Drop this step if the project has no run loop.
-      - name: Headless smoke
-        run: 'echo "SKIP (unconfigured): headless gate command - configure_project fills this step"'
+      # Unit + component tests (Vitest via @angular/build:unit-test, jsdom env — no
+      # browser needed). CI=true (Actions sets it too, but we're explicit so a
+      # self-hosted / non-standard runner can't drop into watch mode and hang) makes
+      # the builder run once and exit. Mirrors preflight's `test` stage (CI=true there).
+      - name: Test (caelum + Forge)
+        env:
+          CI: 'true'
+        run: npx ng test
+
+      # No headless "run loop" to smoke: Caelum ships a client-side component library
+      # and Forge is a static SPA. The build (bundle emitted) + the tests passing ARE
+      # the operability evidence (validate_headless_mode) — there is no daemon to probe.
 
   lint:
     name: format & lint
@@ -281,18 +299,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      # Real from #4: the adapter-isolation ESLint fence (D-03) needs the Node
-      # toolchain + installed deps. Self-contained via setup-node (distinct from the
-      # dev-env Node at ~/nodejs, #15). Format-check + the build/test matrix + the
-      # promotion of this job to a REQUIRED branch-protection check remain #6's scope.
+      # The adapter-isolation ESLint fence (D-03, real from #4) + Prettier format
+      # check both need the Node toolchain + installed deps. Self-contained via
+      # setup-node (distinct from the dev-env Node at ~/nodejs, #15).
       - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
       - name: Install
         run: npm ci
+      # Prettier over the code (TS/HTML/SCSS/config JSON); prose/generated trees are
+      # scoped out via .prettierignore (they carry their own audits). Mirrored by
+      # preflight's `format --check` stage.
       - name: Format check
-        run: 'echo "SKIP (unconfigured): format --check command - configure_project fills this step (#6)"'
+        run: npm run format:check
       - name: Lint (adapter isolation + angular-eslint)
         run: npm run lint
       # Optional: docs build as a merge gate (doc warnings as errors) — uncomment
