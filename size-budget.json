@@ -1,8 +1,8 @@
 {
-  "$comment": "Per-secondary-entry-point size budget for the SHIPPED Caelum library (Book 18 §3.2 — the OTHER size gate). Measured by scripts/check-lib-size.mjs as the gzipped byte size of each dist/caelum/fesm2022/*.mjs. angular.json `budgets` measure only the Forge APPLICATION build (esbuild), NOT ng-packagr output — hence this bespoke gate. It defends the 'pay only for what you import' contract: importing cae-select must not drag in cae-data-grid. A NEW entry point with no budget row here FAILS the gate — set its budget deliberately (the forward ratchet). Tune per entry point as real components land (#5, M2); Book 18 §4b illustrative targets: caelum-select ~12kb, caelum-data-grid ~40kb.",
+  "$comment": "Per-secondary-entry-point size budget for the SHIPPED Caelum library (Book 18 §3.2 — the OTHER size gate). Measured by scripts/check-lib-size.mjs as the gzipped byte size of each dist/caelum/fesm2022/*.mjs. angular.json `budgets` measure only the Forge APPLICATION build (esbuild), NOT ng-packagr output — hence this bespoke gate. It defends the 'pay only for what you import' contract: importing cae-select must not drag in cae-data-grid. A NEW entry point with no budget row here FAILS the gate — set its budget deliberately (the forward ratchet). NOTE: while everything ships from the single `caelum` primary entry point (#28 splits it into per-component secondary entry points), this one budget legitimately grows per Direct-components batch — bump it deliberately each batch (batch 1 #5 ~5.0kb; batch 2 #26 ~8.5kb). Once #28 lands, replace this row with tight per-component rows. Book 18 §4b illustrative targets: caelum-select ~12kb, caelum-data-grid ~40kb.",
   "compression": "gzip",
   "unit": "bytes",
   "entrypoints": {
-    "caelum": 8192
+    "caelum": 10240
   }
 }

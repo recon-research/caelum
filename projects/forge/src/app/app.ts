@@ -10,7 +10,20 @@ import {
   viewChild,
 } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { CaeButton, CaeCard, CaeCheckbox, CaeInput } from 'caelum';
+import {
+  CaeButton,
+  CaeCard,
+  CaeCheckbox,
+  CaeInput,
+  CaeRadio,
+  CaeRadioOption,
+  CaeSelect,
+  CaeSelectOption,
+  CaeTab,
+  CaeTabs,
+  CaeTextarea,
+  CaeTooltip,
+} from 'caelum';
 
 type ThemeMode = 'auto' | 'light' | 'dark';
 
@@ -29,7 +42,19 @@ const SWATCHES: ReadonlyArray<{ token: string; label: string }> = [
 @Component({
   selector: 'app-root',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule, CaeButton, CaeCard, CaeCheckbox, CaeInput],
+  imports: [
+    ReactiveFormsModule,
+    CaeButton,
+    CaeCard,
+    CaeCheckbox,
+    CaeInput,
+    CaeRadio,
+    CaeSelect,
+    CaeTab,
+    CaeTabs,
+    CaeTextarea,
+    CaeTooltip,
+  ],
   templateUrl: './app.html',
   styleUrl: './app.scss',
 })
@@ -39,11 +64,33 @@ export class App {
   protected readonly title = signal('Forge');
   protected readonly swatches = SWATCHES;
 
+  /** Radio + select options as data — proof both render option lists from a model. */
+  protected readonly plans: readonly CaeRadioOption[] = [
+    { value: 'free', label: 'Free — a single project' },
+    { value: 'pro', label: 'Pro — unlimited projects' },
+    { value: 'enterprise', label: 'Enterprise — SSO & audit log' },
+  ];
+  protected readonly regions: readonly CaeSelectOption[] = [
+    { value: 'us-east', label: 'US East (Virginia)' },
+    { value: 'us-west', label: 'US West (Oregon)' },
+    { value: 'eu-central', label: 'EU Central (Frankfurt)' },
+  ];
+
+  /** The batch-2 PrimeNG→Caelum map, shown in the second reference tab. */
+  protected readonly batch2: ReadonlyArray<{ prime: string; cae: string }> = [
+    { prime: 'p-radiobutton', cae: 'cae-radio' },
+    { prime: 'p-select', cae: 'cae-select' },
+    { prime: 'pTextarea', cae: 'cae-textarea' },
+    { prime: 'p-tabs', cae: 'cae-tabs' },
+    { prime: 'pTooltip', cae: 'caeTooltip' },
+  ];
+
   /**
    * A real reactive form wired ONLY to `cae-*` components — the end-to-end proof that
    * each wrapper is a genuine `ControlValueAccessor`, not a decorative shell. `formGroup`
    * / `formControlName` bind straight through the Caelum surface, exactly as they bound
-   * to `p-*` before the migration.
+   * to `p-*` before the migration. Batch 2 adds the radio (`plan`), select (`region`),
+   * and textarea (`description`) controls alongside batch 1's inputs and checkbox.
    */
   protected readonly form = new FormGroup({
     name: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
@@ -51,6 +98,9 @@ export class App {
       nonNullable: true,
       validators: [Validators.required, Validators.email],
     }),
+    plan: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
+    region: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
+    description: new FormControl('', { nonNullable: true }),
     password: new FormControl('', {
       nonNullable: true,
       validators: [Validators.required, Validators.minLength(8)],
@@ -59,6 +109,10 @@ export class App {
   });
 
   protected readonly created = signal<string | null>(null);
+
+  /** Active demo tab — drives cae-tabs through its `selectedIndex`/`selectedIndexChange`
+   * two-way seam (proof that API round-trips), and keeps the selection sticky. */
+  protected readonly selectedTab = signal(0);
 
   /** The persistent (always-rendered) polite live region + focus target for the result. */
   private readonly statusRegion = viewChild<ElementRef<HTMLElement>>('statusRegion');
