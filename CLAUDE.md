@@ -1,0 +1,76 @@
+# CLAUDE.md — Caelum
+
+Caelum is an open-source, **US-origin-clean** Angular 22 component library — Angular Material + CDK with PrimeNG-level breadth, density, and parity — that teams leaving PrimeNG can adopt component-by-component the way they used PrimeNG. Built and tested almost entirely by Claude Code, on autopilot, with the human deferring on architecture and ambition calls. The library's canonical example throughout the docs is **Forge**, a demo admin console.
+
+## Status — *the onboarding & compaction anchor; keep it current*
+
+> The 10-line summary of "where are we" (ownership table below). Detail lives in [`docs/ROADMAP.md`](docs/ROADMAP.md) and the issue tracker — never here.
+
+**As of:** 2026-07-01 · pre-repo (no commits yet) · **Phase:** 0 — Foundation · **Milestone:** M0 (its library-build prerequisite now DONE) · **CI:** n/a (repo not live)
+**Done:** Onboarding (Mode A) — posture set (public · full-blocking CI · review milestone-exits+risky · 48h); ARCHITECTURE (**D-01..D-10**) + ROADMAP (M0–M4) drafted; named **Caelum**/**Forge**; **20-book outline approved & locked** ([`textbooks/LIBRARY_OUTLINE.md`](textbooks/LIBRARY_OUTLINE.md)); "US-origin" rule set (**D-10**); team usage priority captured (tables/forms/dialog/stepper/tree/carousel up; **charts deferred**); D-07/08/09 directions endorsed. **`build_library` — the 20-book Caelum library is COMPLETE (Books 01–20, all five volumes; 2026-06-29 → 2026-07-01).**
+**Library (COMPLETE — the onboarding/compaction anchor):** Vol I Foundations [01 *Angular 22 Architecture* · 02 *Reactivity & Forms* · 03 *Provenance & Licensing* · 04 *Theming Token Bridge*]; Vol II Building on Primitives [05 *CDK Primitives* · 06 *Angular Aria Headless* · 07 *Form Control Fundamentals* · 08 *Numeric/Mask Inputs* · 09 *Overlay & Menu* · 10 *Data Tables & Virtualization* · 11 *Layout/Panels/Media/Drag-Drop*]; Vol III The Adapter Layer [12 *Adapter Pattern* D-03 · 13 *Data Grid* — TanStack/`CaeGridAdapter` D-07 · 14 *Charts* — D3 SVG/`CaeChartAdapter` D-08 · 15 *Editor* — Lexical/`CaeEditorAdapter` CVA D-09]; Vol IV Quality [16 *Accessibility & Parity* — capability ledger + implementer/adversarial split; backs `verify_parity` · 17 *Testing* — **Vitest is v22's default runner** + CDK `ComponentHarness`; backs `add_test` · 18 *Performance* — the **two size gates** + tree-shaking/`@defer`/zoneless; backs `profile_subsystem`/`optimize_loop`]; Vol V Distribution & Adoption [19 *Packaging* — the **two orthogonal provenances** (npm/SLSA *build* vs the shipped *US-origin* attestation, Book 03 §2.3), `ng-packagr`+APF+`exports`(`types`/`default`, **not** `esm2022`)+secondary entry points, peer `^22||^23`+lockstep+`ng-update`; D-06 · 20 **Migration & Adoption** — the living PrimeNG→Caelum `p-*`→`cae-*` map (`reference/COMPARISON.md`), strangler-fig incremental adoption, the standalone `ng generate` codemods (distinct from Book 19's `ng-update`), the forward-only lint-ratchet fitness function (Book 12 §3.3 generalized) against adapter erosion]. + research notes `angular-22-{platform,testing,performance,packaging}`, `tanstack-table`, `visx-charts`, `lexical-editor`, `a11y-testing-tooling`. **Five audits green — 21 books/348 sections, refs 660/0, routing 82/82, links 144/0, research 0/0.** Books 18–20 (+ Book 20's `COMPARISON.md`) built via multi-agent workflows (ultracode): research fan-out → write → 4-lens adversarial-review fan-out. Repo not initialized (git/gh unavailable this session).
+**Next:** **REPO-1** — `git init` + public go-live (create labels, `CI_POSTURE=full`, protect `main` incl. administrators, migrate `PROJECT_BACKLOG.md` → issues + delete it) — the attended `gh` step (`onboard` SKILL step 7); then the **M0 code scaffold** (workspace `caelum`+`forge`, Material+CDK+Aria install + provenance scan, theming token bridge, ESLint adapter-isolation + provenance/size gates, Direct components batch 1).
+**Decisions awaiting the human:** none blocking. *(Pending, not blocking — all filed in `PROJECT_BACKLOG.md`: two Book-01 refinements to formalize as `D-NN` at M0 — a "zoneless-compatible (OnPush + signal-driven CD, no zone-coupled APIs)" invariant + the Material→Aria→CDK reach-for ladder (Angular Aria ships 12 headless patterns in v22); plus **`DEC-CHARTS-LIB`** — visx is React-bound → refine D-08 to D3-direct for the Angular charts adapter (reversible, charts deferred; confirm at M2). Books 15–20 produced no new decisions — the **two-size-gates** + the **US-origin-attestation emitter** (Books 18/19) are **M0-4 design tasks**, not D-NNs; Book 20 confirmed migration/adoption is brief-methodology (no research note needed). All to verify against the live v22 workspace at M0; final transitive-provenance sign-off for grid/charts/editor at M2; revisit D-10 if compliance tightens. Pre-repo: tracked in `PROJECT_BACKLOG.md` + ROADMAP until `origin` exists.)*
+**Resume:** (no branch) · pre-repo · **The 20-book Caelum library is COMPLETE — `build_library` is done (LIB-1 closed).** Next action = **REPO-1**: `git init` + public go-live via an **attended `gh` session** (`onboard` SKILL step 7 — create every label from `PROJECT_CONVENTIONS.md`, `gh variable set CI_POSTURE full`, protect `main` incl. administrators, then migrate `PROJECT_BACKLOG.md` items → tracker issues and delete the file), then the **M0 code scaffold** (ROADMAP M0). verify the library: `cd textbooks && python3 tools/_audit_refs.py` green (refs 660/0, routing 82/82, links 144/0) + `python3 tools/_gen_sections.py` (21 books/348) + `ls books/` (00–20); research audit from repo root.
+
+## Read these first (in order)
+
+1. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — the shape, the invariants, and the decision log (`D-01..`, Appendix A).
+2. [docs/ROADMAP.md](docs/ROADMAP.md) — milestones `M0..`, each with goal / exit-criterion / status; the live plan.
+3. [PROJECT_CONVENTIONS.md](PROJECT_CONVENTIONS.md) — paths, commands, stack, tracker conventions. **Every skill reads this.**
+4. [textbooks/AGENT_GUIDE.md](textbooks/AGENT_GUIDE.md) — the build loop for turning the library into shipped work.
+
+## Source of truth — docs are caches
+
+Truth order: **git/CI &gt; issue tracker &gt; docs &gt; chat memory.** On any mismatch, fix the doc to match reality *before* working — cheap now, poisonous later. **Single-home each fact** — policy here, project mechanics/config in `PROJECT_CONVENTIONS.md`, procedure in the owning skill, operating reference in `docs/`; every other mention is a one-line cross-link, never a second copy (a fact written twice drifts — `README.md` › the single-home rule). Two carve-outs: **ARCHITECTURE invariants / `D-NN` rows are commitments, not caches** — code contradicting one is a defect or a supersede-candidate (file `bug` or `decision`; never edit the log to match drift); and **before `origin` exists, `PROJECT_BACKLOG.md` plays the tracker's role** (see its header). Ownership (who updates what, when):
+
+| Artifact | When it's written |
+|---|---|
+| **Status block** (above) | one line at **every merge** (the merge-time checkpoint); fully at `prepare_compaction`; verified by `onboard` |
+| **docs/ROADMAP.md** | the moment a slice/milestone changes state |
+| **docs/ARCHITECTURE.md** | only when a `D-NN` decision lands |
+| **Issue tracker** | continuously — **defer = file now**, never "I'll note it later" |
+
+## The reference library — use it
+
+[`textbooks/`](textbooks/) is this project's RAG knowledge library (built per-domain; see [textbooks/LIBRARY_SEED.md](textbooks/LIBRARY_SEED.md)). When planning or implementing:
+
+- Route topics via [`textbooks/MANIFEST.json`](textbooks/MANIFEST.json) (`topic_to_books`, `rag_hints`); follow the loop in [`textbooks/AGENT_GUIDE.md`](textbooks/AGENT_GUIDE.md).
+- **Verify every `Book NN §X` citation against [`textbooks/SECTIONS.json`](textbooks/SECTIONS.json) before asserting it** — grep it, don't load it whole. The library is audited; don't invent sections.
+- Pre-mortem with `textbooks/reference/ANTI_PATTERNS.md` + `SYMPTOMS.md`; resolve architectural forks with `DECISION_TREES.md`.
+- **Frontier topics** live in [`research/`](research/) — survey notes (every claim a **real fetched URL + accessed date + tier**), pre-registered experiments (`EXP-NN`), and paper-style reports (`RR-NN`) that ground `D-NN` decisions like book sections do. **Cite as `research/notes/<file>.md` / `RR-NN`, never as a `Book §`** — different trust models; notes stale ~2 quarters. Discipline + audit: [research/README.md](research/README.md).
+
+## How we work — the daily loop
+
+This project runs on autopilot. Day-to-day, the human's input is mostly three moves:
+
+### 1. "Welcome back, let's onboard and continue" → run [`onboard`](.claude/skills/onboard/SKILL.md)
+Preflight → anchors → reconcile docs vs tracker → **read the decision answers** (issue comments) + digest → resume the [build loop](textbooks/AGENT_GUIDE.md). The skill owns the detail, including the edge cases (dirty tree, red main, dead `gh`).
+
+### 2. "Let's prepare for compaction" → run [`prepare_compaction`](.claude/skills/prepare_compaction/SKILL.md)
+Rewrite + stamp Status → **verify its claims against the tracker** → update ROADMAP/ARCHITECTURE → sweep deferrals into tickets → clean tree, pushed via the checkpoint path → emit a ready-to-paste `/compact` command. If merge-time checkpointing happened all along, this is verification, not archaeology. **The agent raises this proactively** — at a clean checkpoint (just merged, tree pushed, no in-flight slice) after a heavy session, it recommends compacting rather than letting the window force an unfocused auto-compaction; the skill owns the timing signals.
+
+### 3. A decision is needed → surface a fork; don't guess, don't stall
+Architecture and scope are ~1× leverage (the human's judgment). When a real fork appears:
+- **File it as an issue labeled `decision`** (template provided): 2–4 options, each with its trade-off and the `Book NN §X` / `DECISION_TREES Dn` behind it, **recommended default first** (per the policy below).
+- **Reversible fork?** Proceed **provisionally** on the recommended default and keep working — the issue states the objection window; every PR built on the default carries `Provisional on #NN`. The human overrules asynchronously by commenting; **silence past the window ratifies the default**.
+- **Hard to reverse** (public API shape, data schema/migration, external commitments, money)? Don't guess: park the slice, pick the **next independent slice** from the tracker. **Nothing independent left?** Strengthen the blocked decision instead — `research_topic` the fork, spike on a throwaway branch (never merged) — then checkpoint and end the session cleanly. Don't invent roadmap scope to stay busy.
+- Once the human decides (a comment on the issue *is* the decision): record it as `D-NN` in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) Appendix A, reflect it in the ROADMAP, close the issue.
+
+Other messages happen, but these three are the spine. Default to continuing the roadmap autonomously between them.
+
+## Definition of done
+
+Nothing is "done" until [`definition_of_done`](.claude/skills/definition_of_done/SKILL.md) passes its gates **with evidence** (output, not assertion): **build · tests · a11y parity (axe + keyboard) · token-only theming (no hardcoded design values) · adapter isolation (no 3p import outside its adapter) · provenance scan (US-origin + free, transitive tree) · liveness (it demonstrably does something end-to-end — inert hard-blocks, ambiguous soft-flags) · anti-patterns avoided · determinism (where required) · performance (profiled, not guessed) · milestone exit-criterion · backlog updated · no unticketed deferrals.** Skills live in [`.claude/skills/`](.claude/skills/).
+
+## Working style — the policy the executing agent runs on
+
+- **Ambitious destination, staged route.** Default to the most complete end-state, delivered through small, independently verifiable slices that each build *into* it. Prefer an easier-to-test intermediate **when it's a stepping stone, never as a scope cut**: a cheaper *first step* toward the same end-state is the default; a cheaper *final scope* requires an explicit `D-NN` decision. A slice is **coherent, not fragmented** — bundle tightly-coupled edits and the doc/ROADMAP updates they imply into one PR rather than splitting a single change across trivial PRs (`PROJECT_CONVENTIONS.md` › Right-sized slices).
+- **Laziest sufficient code.** Ambition is about the *outcome*, not the line count — within a slice, write the least code that fully does the job. Before adding, climb the ladder and stop at the first rung that holds: does it need to exist at all (YAGNI), is it already in the codebase, the standard library, a native platform feature, an existing dependency, or a one-liner — only then write a minimal implementation. The best code is the code you never wrote. **Never** simplify away the non-negotiables, though: validation at trust boundaries, error / data-loss handling, security, accessibility, determinism where required, or anything the human explicitly asked for. And laziness *without first understanding the code it touches* is the dangerous kind — it ships a confident wrong fix. (`adversarial_review` carries the matching over-engineering lens; inspiration: the ponytail project.)
+- **Ticket-first.** No slice without an issue; the branch and PR reference it. A TODO entering code must carry a ticket — `TODO(#NN)` — a naked TODO is a defect (gated by CI and `definition_of_done`).
+- **Defer = file now.** The moment work is deferred or an idea worth keeping appears, file the issue (`track_followups`) — then continue. Promises in chat don't survive compaction; tickets do.
+- **Checkpoint at every merge.** Update the Status line + ROADMAP state in the same breath as the merge. Compaction can then strike at any time and lose at most the in-flight slice.
+- **One writing session per repo.** Concurrent sessions race on the Status line, ROADMAP state, and D-NN numbering. A second simultaneous session works read-only or in its own `git worktree` + branch — never two writers on one checkout.
+- **Token discipline.** Grep the big indexes (`SECTIONS.json`) — never load them whole; `MANIFEST.json` is small by design: load it once, keep it resident. Read narrowly; delegate broad reads to read-only subagents and keep conclusions, not file dumps (cheap/fast models for mechanical sweeps, the strongest for adversarial lenses). Detail lives in skills (lazy-loaded), not in this file.
+- **Follow the written system.** These docs and skills encode the judgment; prefer them over improvisation, and verify with evidence — never claim green without output. Don't re-litigate settled `D-NN` decisions. Never force-push or admin-merge — the gates exist to gate (`PROJECT_CONVENTIONS.md` › Merge policy).
+- **Keep the library honest.** If you extend `textbooks/`, regenerate `SECTIONS.json` and run the audits (they exit non-zero; CI enforces them).

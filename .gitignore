@@ -1,0 +1,41 @@
+# The template's own machinery is Python (textbooks/research audits, .claude/hooks,
+# scripts/preflight + metrics) — its bytecode generates from day one, independent of
+# the downstream project's stack. Ignore it unconditionally.
+__pycache__/
+*.pyc
+
+# --- Add your stack's build artifacts here during onboarding ---
+# Examples (uncomment / adapt to your toolchain):
+# /target            # Rust
+# /build  /dist      # C/C++/CMake, JS bundlers
+# node_modules/      # Node
+# __pycache__/  *.pyc  .venv/   # Python
+# *.o *.obj *.pdb    # native object/debug files
+
+# Profiling / debug captures
+*.tracy
+*.prof
+
+# Secrets / local env — never commit these
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# Claude Code local (machine-specific) settings & permission cache — keep the shared .claude/settings.json
+.claude/settings.local.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Onboarding intake is scratch — keep the README, ignore the dropped docs (optional; delete this block to commit them)
+_intake/*
+!_intake/README.md
+
+# Note: textbooks/ is intentionally VENDORED — the reference library travels with the project.
+# SECTIONS.json is generated (tools/_gen_sections.py) but committed so the agent can grep it without a build step.

@@ -1,0 +1,9 @@
+# TEMPLATE_VERSION — provenance stamp (one `key: value` per line).
+# Written by `onboard` (Mode A) right after the template is copied; re-stamped by
+# `update_from_template` after every sync. `update_from_template` diffs the upstream
+# template from `sha` to its HEAD to know what changed — without this stamp, every
+# template update is hand archaeology.
+source: Claude Code project_template (local copy; upstream path/URL not recorded at copy time — update if known)
+sha: unknown (this working dir is not a git repo; source commit unavailable at onboard)
+copied: 2026-06-25
+last_update: 2026-06-29

@@ -1,0 +1,286 @@
+# CI — <PROJECT_NAME>
+# TEMPLATE: fill in the build / test / lint / gate commands from PROJECT_CONVENTIONS.md.
+# These jobs encode the definition_of_done gates that can run in CI. Replace each
+# `echo "SKIP (unconfigured) …"` placeholder with the real command, and the setup
+# step with your toolchain's — until then those steps verify NOTHING (they say so
+# in the log). The `static gates` job is real and enforced from day one.
+#
+# ── CI posture — minutes-aware pacing (docs/AUTOMATION.md §6) ────────────────
+# Private repos draw Actions minutes from the plan's monthly pool (Free 2,000 /
+# Pro 3,000; Windows bills ~1.7× Linux) — an autopilot loop running everything on
+# every push empties that in days. Two repo variables tune CI independently:
+#
+#   gh variable set CI_POSTURE --body <light|full|manual>      (unset = light)
+#   gh variable set CI_GATING  --body <blocking|advisory>      (unset = blocking)
+#
+# CI_POSTURE — how MUCH runs:
+#   light  (default) — only `static gates` runs, per PR (~1 min: library/research
+#          audits, skills structure, TODO hygiene). The heavy matrix runs on demand.
+#   full   — the heavy build/test/lint matrix too. For public repos (minutes free),
+#          paid pools, or a self-hosted runner.
+#   manual — nothing automatic; escalation paths only. A clean local preflight
+#          pasted into the PR is the merge gate.
+#
+# CI_GATING — WHEN the heavy matrix runs (only meaningful in `full`; in `light` the
+# matrix is already on-demand):
+#   blocking (default) — heavy runs ON THE PR and must be green to merge.
+#   advisory — heavy does NOT run on PRs; it runs POST-MERGE on the main push as a
+#          sanity check. The PR merges on `static gates` + the local preflight (which
+#          runs the SAME heavy gates locally — so this defers re-running already-passed
+#          tests, it does not skip testing). A red post-merge run is caught by the next
+#          onboard, which files a `bug` and fixes forward — cheap, because preflight
+#          already covered the heavy gates, so a post-merge red is the rare
+#          environment-specific case. Require only `static gates` in branch protection.
+#
+# PATH MODULARITY (always on): a doc-only change — every changed file is *.md, or
+# under docs/ or _intake/ — never triggers the heavy matrix, in any posture. This is
+# the "15 minutes of full CI just to edit the roadmap" tax, gone. The `changes` job
+# classifies; the heavy jobs gate on its output. (`static gates` still runs on docs —
+# it checks links, citations, SECTIONS freshness, and hygiene.)
+#
+# Escalation in ANY posture: label a PR `full-ci` (heavy matrix for that PR, even on
+# docs) · `gh workflow run ci.yml` (one full run) · push an `M*`/`v*` milestone tag.
+#
+# Gating is job-level `if:` ON PURPOSE: a job skipped by its conditional reports
+# "Success" and SATISFIES required status checks, while workflow-level path/branch
+# filters leave required checks "Pending" and block the PR forever. Don't "simplify"
+# these into `on:` filters. Require only the checks a given posture actually runs
+# (light/advisory → `static gates`; docs/AUTOMATION.md §5–6).
+#
+# scripts/preflight.{sh,ps1} always runs EVERY gate locally regardless of posture
+# — pacing changes when CI re-verifies, never what must pass. Keep the commands
+# here mirrored with preflight (change one → change the other).
+name: CI
+
+# PRs carry the merge gate; the push trigger is restricted to main (post-merge
+# verification — full posture, and the advisory sanity run) and milestone tags
+# (always the full matrix). `labeled` is in the PR types so adding `full-ci`
+# re-triggers the run; `workflow_dispatch` is the on-demand full run.
+on:
+  push:
+    branches: [main]
+    tags: ['M*', 'v*']
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  workflow_dispatch:
+
+# Rapid pushes to the same ref cancel the superseded run. event_name is in the
+# key so a dispatched full run isn't cancelled by an unrelated push run.
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Path classifier for modularity: is any non-doc file in this change? Its output
+  # gates the heavy matrix so doc-only changes skip it. Cheap (~10s). It runs only
+  # when the heavy matrix could need it (full posture, or an explicit escalation) —
+  # so in light/manual it's skipped too. That guarantee matters: every condition that
+  # can make a heavy job's `if:` true also makes this job's `if:` true, so the heavy
+  # jobs' `needs: changes` never resolves to a skipped dependency.
+  changes:
+    name: classify changes
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.ref, 'refs/tags/') ||
+      vars.CI_POSTURE == 'full' ||
+      (github.event_name == 'pull_request' &&
+       contains(github.event.pull_request.labels.*.name, 'full-ci'))
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.classify.outputs.code }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - id: classify
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          # Hand-rolled (no third-party action) and FAIL-SAFE: code starts true, so
+          # any error or empty signal runs the matrix rather than skipping it on a
+          # bad read. code=false only when a non-empty file list is wholly doc-only.
+          set +e
+          case "$REF" in refs/tags/*) echo "code=true" >> "$GITHUB_OUTPUT"; echo "tag -> code=true"; exit 0 ;; esac
+          if [ "$EVENT" = "workflow_dispatch" ]; then echo "code=true" >> "$GITHUB_OUTPUT"; echo "dispatch -> code=true"; exit 0; fi
+          if [ "$EVENT" = "pull_request" ]; then
+            git fetch origin "$BASE_REF" --quiet
+            range="origin/$BASE_REF...HEAD"
+          else
+            case "$BEFORE" in ""|0000000000000000000000000000000000000000) range="HEAD^...HEAD" ;; *) range="$BEFORE...HEAD" ;; esac
+          fi
+          changed=$(git diff --name-only $range 2>/dev/null)
+          [ -z "$changed" ] && changed=$(git diff --name-only HEAD^...HEAD 2>/dev/null)
+          echo "changed files:"; echo "$changed"
+          # ERE, not PCRE (-P dies on non-UTF-8 locales). A line surviving both
+          # inverted greps is a non-blank, non-doc path -> real code changed.
+          code=true
+          if [ -n "$changed" ]; then
+            noncode=$(echo "$changed" | grep -vE '^$' | grep -vE '(\.md$|^docs/|^_intake/)')
+            [ -z "$noncode" ] && code=false
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "doc-only change? -> code=$code (false = heavy matrix skipped)"
+
+  # The always-real, always-cheap merge gate. ONE consolidated job on purpose:
+  # split into four jobs, the same ~90s of work bills four runners' checkout +
+  # setup time. Runs per PR in light+full; on main pushes only in full;
+  # always on dispatch / tags / a `full-ci` label. Stays BLOCKING even under
+  # advisory gating — it is the fast honesty layer; only the heavy matrix defers.
+  static-gates:
+    name: static gates
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.ref, 'refs/tags/') ||
+      (github.event_name == 'pull_request' &&
+       contains(github.event.pull_request.labels.*.name, 'full-ci')) ||
+      (vars.CI_POSTURE != 'manual' &&
+       (github.event_name == 'pull_request' || vars.CI_POSTURE == 'full'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0   # the hygiene step diffs against the PR base
+      - uses: actions/setup-python@v6
+        with: { python-version: "3.x" }
+
+      # Keeps the knowledge library honest on every run. The audit scripts exit
+      # non-zero on any unresolved citation / failed routing case / broken link,
+      # so this step genuinely blocks merge — it is not decorative.
+      - name: Library audits (refs / routing / links)
+        working-directory: textbooks
+        env: { PYTHONIOENCODING: utf-8, PYTHONUTF8: "1" }
+        run: |
+          python tools/_gen_sections.py
+          # The COMMITTED index is what agents grep to verify citations — a heading
+          # edit merged without regenerating it would poison every later lookup.
+          git diff --exit-code -- SECTIONS.json || { echo "::error::SECTIONS.json is stale — run tools/_gen_sections.py and commit the result."; exit 1; }
+          python tools/_audit_refs.py
+          python tools/_audit_routing.py
+          python tools/_audit_links.py
+
+      # Keeps the frontier research layer honest: MANIFEST routing complete,
+      # every tiered claim carries a real URL + accessed date, reports have
+      # their required sections, every figure/relative link resolves.
+      # (URL liveness is NOT checked here — run `--live` locally; the web is
+      # too flaky to gate merges on.)
+      - name: Research audit (citations / structure / links)
+        working-directory: research
+        env: { PYTHONIOENCODING: utf-8, PYTHONUTF8: "1" }
+        run: python tools/_audit_research.py
+
+      # Skills load ONLY as .claude/skills/<name>/SKILL.md directories — a flat
+      # .md file in skills/ silently fails to load (the layer becomes inert docs).
+      - name: Skills are directories
+        run: |
+          flat=$(find .claude/skills -maxdepth 1 -name '*.md' ! -name 'README.md' 2>/dev/null || true)
+          if [ -n "$flat" ]; then
+            echo "$flat"
+            echo "::error::Flat skill file(s) under .claude/skills/ — Agent Skills load only from <name>/SKILL.md directories. git mv each to <name>/SKILL.md."
+            exit 1
+          fi
+          echo "Skills structure OK."
+
+      # Tracker hygiene: added code must not contain a naked TODO/FIXME — every
+      # deferral carries a filed ticket, written as TODO(#NN). Docs (*.md),
+      # .github/, textbooks/ and .claude/ are exempt (they *talk about* TODOs —
+      # .claude holds the very hook that enforces this rule and the settings
+      # $comment that documents it; its only non-doc files are that machinery).
+      # scripts/preflight.{sh,ps1} are exempt while they are TODO-placeholder
+      # templates; configure_project replaces their stage bodies with real
+      # commands — drop the two exemptions then.
+      # The sed strips ticketed TODO(#NN)/FIXME(#NN) forms first, so EVERY
+      # remaining occurrence is naked — a `(#NN)` elsewhere on the line no
+      # longer whitewashes one. (sed+grep, not grep -P: PCRE dies on
+      # non-UTF-8 locales, e.g. git-bash on Windows.)
+      # Mirrored by the `todo hygiene` stage in scripts/preflight.{sh,ps1}.
+      - name: No naked TODO/FIXME in added lines
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch origin "${{ github.base_ref }}" --quiet
+          naked=$(git diff "origin/${{ github.base_ref }}...HEAD" -- . ':!*.md' ':!.github' ':!textbooks' \
+            ':!scripts/preflight.sh' ':!scripts/preflight.ps1' ':!.claude' \
+            | grep -E '^\+' | grep -vE '^\+\+\+' \
+            | sed -E 's/(todo|fixme)\(#[0-9]+\)//gI' | grep -iE '\b(todo|fixme)\b' || true)
+          if [ -n "$naked" ]; then
+            echo "$naked"
+            echo "::error::Naked TODO/FIXME in the diff — file a ticket first and annotate as TODO(#NN). See PROJECT_CONVENTIONS.md, Tracker & Hygiene."
+            exit 1
+          fi
+          echo "No naked TODOs."
+
+  # ── Heavy jobs — full posture (blocking on PRs / advisory post-merge on main),
+  #    or on demand (`full-ci` label / dispatch / tag). Skipped for doc-only changes
+  #    via `needs: changes`. The `if:` reads: run when explicitly escalated, OR when
+  #    real code changed AND posture is full AND (it's the main push, OR it's a PR
+  #    and gating is blocking). Advisory therefore runs the matrix only post-merge.
+  build-test:
+    name: build & test (${{ matrix.os }})
+    needs: changes
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.ref, 'refs/tags/') ||
+      (github.event_name == 'pull_request' &&
+       contains(github.event.pull_request.labels.*.name, 'full-ci')) ||
+      (needs.changes.outputs.code == 'true' &&
+       vars.CI_POSTURE == 'full' &&
+       (github.event_name == 'push' ||
+        (github.event_name == 'pull_request' && vars.CI_GATING != 'advisory')))
+    strategy:
+      fail-fast: false
+      matrix:
+        # Trim to the platforms you actually ship — Windows bills ~1.7× Linux.
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+
+      # --- Toolchain setup: replace with your stack's setup action ---
+      # (The placeholder run values are YAML-quoted: an unquoted `echo "SKIP: …"`
+      # contains a colon-space, which YAML reads as a nested mapping — the
+      # workflow file fails to parse and every run dies at startup in 0s.)
+      - name: Set up toolchain
+        run: 'echo "SKIP (unconfigured): toolchain setup - configure_project fills this step (see PROJECT_CONVENTIONS.md > Stack)"'
+
+      # --- Build (PROJECT_CONVENTIONS.md > Build & Test > Build) ---
+      - name: Build
+        run: 'echo "SKIP (unconfigured): build command - configure_project fills this step"'
+
+      # --- Test (PROJECT_CONVENTIONS.md > Build & Test > Test) ---
+      - name: Test
+        run: 'echo "SKIP (unconfigured): test command - configure_project fills this step"'
+
+      # --- The headless / operability gate (blocks merge). See validate_headless_mode. ---
+      # Drop this step if the project has no run loop.
+      - name: Headless smoke
+        run: 'echo "SKIP (unconfigured): headless gate command - configure_project fills this step"'
+
+  lint:
+    name: format & lint
+    needs: changes
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.ref, 'refs/tags/') ||
+      (github.event_name == 'pull_request' &&
+       contains(github.event.pull_request.labels.*.name, 'full-ci')) ||
+      (needs.changes.outputs.code == 'true' &&
+       vars.CI_POSTURE == 'full' &&
+       (github.event_name == 'push' ||
+        (github.event_name == 'pull_request' && vars.CI_GATING != 'advisory')))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up toolchain
+        run: 'echo "SKIP (unconfigured): toolchain setup - configure_project fills this step"'
+      - name: Format check
+        run: 'echo "SKIP (unconfigured): format --check command - configure_project fills this step"'
+      - name: Lint
+        run: 'echo "SKIP (unconfigured): lint command - configure_project fills this step"'
+      # Optional: docs build as a merge gate (doc warnings as errors) — uncomment
+      # if the stack has one (rustdoc / typedoc / sphinx …); a doc-warning gate
+      # catches rot the moment it lands instead of at release. Mirror the command
+      # into scripts/preflight.{sh,ps1} if you enable it.
+      # - name: Docs (warnings as errors)
+      #   run: 'echo "SKIP (unconfigured): docs build command"'
