@@ -1,6 +1,16 @@
-import { Component, DOCUMENT, computed, inject, signal } from '@angular/core';
-import { MatButtonModule } from '@angular/material/button';
-import { MatCardModule } from '@angular/material/card';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DOCUMENT,
+  ElementRef,
+  computed,
+  effect,
+  inject,
+  signal,
+  viewChild,
+} from '@angular/core';
+import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { CaeButton, CaeCard, CaeCheckbox, CaeInput } from 'caelum';
 
 type ThemeMode = 'auto' | 'light' | 'dark';
 
@@ -18,7 +28,8 @@ const SWATCHES: ReadonlyArray<{ token: string; label: string }> = [
 
 @Component({
   selector: 'app-root',
-  imports: [MatButtonModule, MatCardModule],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [ReactiveFormsModule, CaeButton, CaeCard, CaeCheckbox, CaeInput],
   templateUrl: './app.html',
   styleUrl: './app.scss',
 })
@@ -27,6 +38,54 @@ export class App {
 
   protected readonly title = signal('Forge');
   protected readonly swatches = SWATCHES;
+
+  /**
+   * A real reactive form wired ONLY to `cae-*` components — the end-to-end proof that
+   * each wrapper is a genuine `ControlValueAccessor`, not a decorative shell. `formGroup`
+   * / `formControlName` bind straight through the Caelum surface, exactly as they bound
+   * to `p-*` before the migration.
+   */
+  protected readonly form = new FormGroup({
+    name: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
+    email: new FormControl('', {
+      nonNullable: true,
+      validators: [Validators.required, Validators.email],
+    }),
+    password: new FormControl('', {
+      nonNullable: true,
+      validators: [Validators.required, Validators.minLength(8)],
+    }),
+    agree: new FormControl(false, { nonNullable: true, validators: [Validators.requiredTrue] }),
+  });
+
+  protected readonly created = signal<string | null>(null);
+
+  /** The persistent (always-rendered) polite live region + focus target for the result. */
+  private readonly statusRegion = viewChild<ElementRef<HTMLElement>>('statusRegion');
+
+  constructor() {
+    // On success, move focus to the confirmation so keyboard / screen-reader users land
+    // on the result instead of being dropped to <body> when the form is swapped out.
+    effect(() => {
+      if (this.created()) {
+        const el = this.statusRegion()?.nativeElement;
+        if (el) queueMicrotask(() => el.focus());
+      }
+    });
+  }
+
+  protected submit(): void {
+    if (this.form.invalid) {
+      this.form.markAllAsTouched();
+      return;
+    }
+    this.created.set(this.form.getRawValue().name);
+  }
+
+  protected reset(): void {
+    this.form.reset();
+    this.created.set(null);
+  }
 
   /** `auto` follows the OS via `color-scheme: light dark`; light/dark force an arm. */
   protected readonly themeMode = signal<ThemeMode>('auto');
