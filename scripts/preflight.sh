@@ -54,10 +54,29 @@ skip_stage() {
     echo "SKIP  $name ($*)"
     SKIPPED=$((SKIPPED + 1))
 }
+run_if_node() {
+    # Run a stage only when the Node toolchain is on PATH; else SKIP with a note.
+    # The durable dev-env/CI Node wiring is #15/#6; until then, exercise these
+    # locally with  PATH="$HOME/nodejs/bin:$PATH" bash scripts/preflight.sh.
+    local name="$1"; shift
+    [ "$FAILED" -ne 0 ] && return 0
+    if command -v npx >/dev/null 2>&1; then
+        stage "$name" "$@"
+    else
+        skip_stage "$name" "needs Node on PATH — wired into CI/preflight at #6 (see #15)"
+    fi
+}
+library_gates() {
+    # The shipped-library gates (issue #4): build the lib, emit + verify the
+    # US-origin attestation, enforce the per-entry-point size budget.
+    npx ng build caelum || return 1
+    node scripts/emit-us-origin-attestation.mjs dist/caelum || return 1
+    node scripts/check-lib-size.mjs || return 1
+}
 
 # --- The gates, in the same order as ci.yml. configure_project replaces the skip_stage placeholders. ---
 skip_stage "format --check" "unconfigured — configure_project fills this stage (PROJECT_CONVENTIONS.md > Format / lint)"
-skip_stage "lint (warnings as errors)" "unconfigured — configure_project fills this stage"
+run_if_node "lint (adapter isolation + angular-eslint)" npm run lint
 
 if [ "$QUICK" -eq 0 ]; then
     skip_stage "build" "unconfigured — configure_project fills this stage"
@@ -66,21 +85,27 @@ if [ "$QUICK" -eq 0 ]; then
         # The headless / CI-operability gate (validate_headless_mode). Drop if no run loop.
         skip_stage "headless smoke" "unconfigured — configure_project fills this stage"
     fi
+    run_if_node "library gates (build + US-origin attestation + size budget)" library_gates
 fi
 
 # --- Real-from-day-one gates (mirror ci.yml's consolidated `static gates` job) ---
 library_audits() {
-    python textbooks/tools/_gen_sections.py || return 1
+    python3 textbooks/tools/_gen_sections.py || return 1
     # The COMMITTED index is what agents grep to verify citations — regen must be a no-op.
     git diff --quiet -- textbooks/SECTIONS.json \
         || { echo "SECTIONS.json is stale — commit the regenerated index"; return 1; }
-    python textbooks/tools/_audit_refs.py || return 1
-    python textbooks/tools/_audit_routing.py || return 1
-    python textbooks/tools/_audit_links.py
+    python3 textbooks/tools/_audit_refs.py || return 1
+    python3 textbooks/tools/_audit_routing.py || return 1
+    python3 textbooks/tools/_audit_links.py
 }
 stage "library audits" library_audits
 
-stage "research audit" python research/tools/_audit_research.py
+stage "research audit" python3 research/tools/_audit_research.py
+
+# Dependency-provenance gate (issue #4, D-11): the M0-2 scan automated. Node-free
+# (reads the committed package-lock.json + provenance/allowlist.json), so it runs
+# in every posture and mirrors CI's static-gates job.
+stage "provenance (deps license + US-origin, D-11)" python3 scripts/check_provenance.py
 
 todo_hygiene() {
     # Mirrors ci.yml's hygiene step (same pathspecs, same regex — change both together).

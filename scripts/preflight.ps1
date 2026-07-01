@@ -70,9 +70,22 @@ function Invoke-Stage {
     }
 }
 
+function Invoke-StageIfNode {
+    # Run a stage only when the Node toolchain is on PATH; else SKIP with a note.
+    # The durable dev-env/CI Node wiring is #15/#6.
+    param([string]$Name, [scriptblock]$Body)
+    if ($script:Failed) { return }
+    if (Get-Command npx -ErrorAction SilentlyContinue) {
+        Invoke-Stage $Name $Body
+    }
+    else {
+        Skip-Stage $Name 'needs Node on PATH - wired into CI/preflight at #6 (see #15)'
+    }
+}
+
 # --- The gates, in the same order as ci.yml. configure_project replaces the Skip-Stage placeholders. ---
 Skip-Stage 'format --check' 'unconfigured - configure_project fills this stage (PROJECT_CONVENTIONS.md > Format / lint)'
-Skip-Stage 'lint (warnings as errors)' 'unconfigured - configure_project fills this stage'
+Invoke-StageIfNode 'lint (adapter isolation + angular-eslint)' { npm run lint }
 
 if (-not $Quick) {
     Skip-Stage 'build' 'unconfigured - configure_project fills this stage'
@@ -80,6 +93,13 @@ if (-not $Quick) {
     if (-not $SkipSmoke) {
         # The headless / CI-operability gate (validate_headless_mode). Drop if no run loop.
         Skip-Stage 'headless smoke' 'unconfigured - configure_project fills this stage'
+    }
+    Invoke-StageIfNode 'library gates (build + US-origin attestation + size budget)' {
+        npx ng build caelum
+        if ($LASTEXITCODE -ne 0) { return }
+        node scripts/emit-us-origin-attestation.mjs dist/caelum
+        if ($LASTEXITCODE -ne 0) { return }
+        node scripts/check-lib-size.mjs
     }
 }
 
@@ -98,6 +118,11 @@ Invoke-Stage 'library audits' {
 }
 
 Invoke-Stage 'research audit' { python research/tools/_audit_research.py }
+
+# Dependency-provenance gate (issue #4, D-11): the M0-2 scan automated. Node-free
+# (reads the committed package-lock.json + provenance/allowlist.json), mirrors
+# CI's static-gates job.
+Invoke-Stage 'provenance (deps license + US-origin, D-11)' { python scripts/check_provenance.py }
 
 Invoke-Stage 'todo hygiene (vs origin/main)' {
     # Mirrors ci.yml's hygiene step (same pathspecs, same regex - change both together).
