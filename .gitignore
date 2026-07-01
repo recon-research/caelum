@@ -39,3 +39,14 @@ _intake/*
 
 # Note: textbooks/ is intentionally VENDORED — the reference library travels with the project.
 # SECTIONS.json is generated (tools/_gen_sections.py) but committed so the agent can grep it without a build step.
+
+# --- Angular / Node workspace (M0 scaffold) ---
+/node_modules
+/dist
+/out-tsc
+/bazel-out
+/.angular/cache
+/coverage
+*.tsbuildinfo
+npm-debug.log
+yarn-error.log
