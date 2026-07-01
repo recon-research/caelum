@@ -321,3 +321,33 @@ jobs:
       # into scripts/preflight.{sh,ps1} if you enable it.
       # - name: Docs (warnings as errors)
       #   run: 'echo "SKIP (unconfigured): docs build command"'
+
+  # Aggregation gate — a SINGLE, stable, non-matrix required check standing in for the
+  # heavy matrix. WHY this exists: a matrix job SKIPPED at the job level (a doc-only PR,
+  # where `changes` -> code=false) posts ONE check-run under the UNEXPANDED name
+  # `build & test (${{ matrix.os }})`, NOT the per-leg `build & test (ubuntu-latest)` /
+  # `(windows-latest)`. So requiring the per-leg names deadlocks every doc-only PR at
+  # "Expected" (verified live on PR #34). This job runs ALWAYS (`if: always()`), so it
+  # posts a real pass/fail on every PR — require `heavy matrix gate` (+ `static gates`),
+  # NOT the matrix legs or `format & lint` directly. It PASSES when build-test AND lint
+  # each SUCCEEDED or were SKIPPED (the legitimate doc-only case) and FAILS if either
+  # failed/cancelled — so a red windows leg or a lint failure still blocks merge. (#32)
+  heavy-gate:
+    name: heavy matrix gate
+    needs: [build-test, lint]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require heavy jobs to have passed or been skipped
+        env:
+          BT: ${{ needs.build-test.result }}
+          LT: ${{ needs.lint.result }}
+        run: |
+          echo "build-test=$BT  lint=$LT"
+          for r in "$BT" "$LT"; do
+            case "$r" in
+              success|skipped) ;;
+              *) echo "::error::heavy job result '$r' — expected success or skipped"; exit 1 ;;
+            esac
+          done
+          echo "heavy matrix gate OK"
