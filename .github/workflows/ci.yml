@@ -272,9 +272,12 @@ jobs:
         run: npx ng build forge
 
       # Unit + component tests (Vitest via @angular/build:unit-test, jsdom env — no
-      # browser needed). GitHub Actions sets CI=true, so the builder runs once and
-      # exits rather than watching. Mirrored by preflight's `test` stage (CI=true there).
+      # browser needed). CI=true (Actions sets it too, but we're explicit so a
+      # self-hosted / non-standard runner can't drop into watch mode and hang) makes
+      # the builder run once and exit. Mirrors preflight's `test` stage (CI=true there).
       - name: Test (caelum + Forge)
+        env:
+          CI: 'true'
         run: npx ng test
 
       # No headless "run loop" to smoke: Caelum ships a client-side component library

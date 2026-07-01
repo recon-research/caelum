@@ -83,19 +83,16 @@ function Invoke-StageIfNode {
     }
 }
 
-# --- The gates, in the same order as ci.yml (the `format & lint` job, then `build & test`). ---
+# --- The gates: the same commands as ci.yml's `format & lint` + `build & test` jobs
+#     (run sequentially here; those jobs run in parallel in CI). ---
 Invoke-StageIfNode 'format --check' { npm run format:check }
 Invoke-StageIfNode 'lint (adapter isolation + angular-eslint)' { npm run lint }
 
 if (-not $Quick) {
-    # build:lib (ng build caelum -> US-origin attestation -> per-entry gzip size gate)
-    Invoke-StageIfNode 'build library (+ US-origin attestation + size budget)' {
-        npx ng build caelum
-        if ($LASTEXITCODE -ne 0) { return }
-        node scripts/emit-us-origin-attestation.mjs dist/caelum
-        if ($LASTEXITCODE -ne 0) { return }
-        node scripts/check-lib-size.mjs
-    }
+    # `npm run build:lib` = ng build caelum -> US-origin attestation -> per-entry gzip
+    # size gate. Called by name (like format/lint) so package.json stays the single
+    # source of truth; cmd.exe's && short-circuits, LASTEXITCODE catches a failure.
+    Invoke-StageIfNode 'build library (+ US-origin attestation + size budget)' { npm run build:lib }
     # Forge in production config exercises the angular.json 400/600 kB budgets.
     Invoke-StageIfNode 'build Forge (production budgets)' { npx ng build forge }
     # Vitest suite (caelum + Forge). No headless run-loop smoke: Caelum is a

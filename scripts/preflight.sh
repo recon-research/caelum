@@ -67,27 +67,22 @@ run_if_node() {
         skip_stage "$name" "needs Node on PATH — run with PATH=\"\$HOME/nodejs/bin:\$PATH\" (durable wiring → #15)"
     fi
 }
-library_gates() {
-    # The shipped-library gates (issue #4): build the lib, emit + verify the
-    # US-origin attestation, enforce the per-entry-point size budget.
-    # (= `npm run build:lib`; spelled out so preflight needs no script resolution.)
-    npx ng build caelum || return 1
-    node scripts/emit-us-origin-attestation.mjs dist/caelum || return 1
-    node scripts/check-lib-size.mjs || return 1
-}
 test_ci() {
     # Vitest via @angular/build:unit-test (jsdom, no browser). CI=true makes the
     # builder run once and exit instead of watching (GitHub Actions sets it too).
     CI=true npx ng test || return 1
 }
 
-# --- The gates, in the same order as ci.yml (the `format & lint` job, then `build & test`). ---
+# --- The gates: the same commands as ci.yml's `format & lint` + `build & test` jobs
+#     (run sequentially here; those jobs run in parallel in CI). ---
 run_if_node "format --check" npm run format:check
 run_if_node "lint (adapter isolation + angular-eslint)" npm run lint
 
 if [ "$QUICK" -eq 0 ]; then
-    # build:lib (ng build caelum -> US-origin attestation -> per-entry gzip size gate)
-    run_if_node "build library (+ US-origin attestation + size budget)" library_gates
+    # `npm run build:lib` = ng build caelum -> US-origin attestation -> per-entry gzip
+    # size gate. Called by name (like format/lint) so package.json stays the single
+    # source of truth and CI (`npm run build:lib`) can't drift from preflight.
+    run_if_node "build library (+ US-origin attestation + size budget)" npm run build:lib
     # Forge in production config exercises the angular.json 400/600 kB budgets.
     run_if_node "build Forge (production budgets)" npx ng build forge
     # Vitest suite (caelum + Forge). No headless run-loop smoke: Caelum is a

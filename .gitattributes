@@ -1,0 +1,6 @@
+# Normalize line endings to LF in the repo AND in every checkout, on all platforms.
+# Prettier (default endOfLine "lf"), the ubuntu-only CI `format & lint` job, and the
+# Windows-dev preflight (scripts/preflight.ps1, which now runs `prettier --check .`)
+# then all agree. Without this, a git-for-windows default checkout (autocrlf=true)
+# gives a CRLF working tree and `prettier --check` false-fails on a clean tree. (#6)
+* text=auto eol=lf
