@@ -261,28 +261,6 @@ code {
   background: none;
 }
 
-// Native trigger for the header cae-menu (must be a focusable element — caeMenuTriggerFor
-// puts the ARIA + keyboard handlers on its host; see the directive's a11y contract).
-.forge-action {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--cae-space-1);
-  padding-block: var(--cae-space-2);
-  padding-inline: var(--cae-space-3);
-  border: 1px solid var(--cae-color-border);
-  border-radius: var(--cae-radius-full);
-  background: var(--cae-surface-base);
-  color: var(--cae-color-on-surface);
-  font: inherit;
-  font-weight: var(--cae-weight-medium);
-  cursor: pointer;
-}
-
-.forge-action:focus-visible {
-  outline: var(--cae-focus-ring);
-  outline-offset: var(--cae-focus-ring-offset);
-}
-
 .forge-step-body {
   display: flex;
   flex-direction: column;

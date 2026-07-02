@@ -62,9 +62,12 @@ describe('App', () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     const el = fixture.nativeElement as HTMLElement;
-    // The menu panel + its focusable native trigger are present.
+    // The menu panel + its cae-button trigger are present; #57 forwards MatMenuTrigger to the
+    // cae-button's inner focusable <button>, so aria-haspopup lands on the real control.
     expect(el.querySelector('cae-menu')).toBeTruthy();
-    expect(el.querySelector('button.forge-action[aria-label="Workspace actions"]')).toBeTruthy();
+    expect(
+      el.querySelector('cae-button button[aria-haspopup="menu"][aria-label="Workspace actions"]'),
+    ).toBeTruthy();
     // Selecting the "sample" action fills the whole reactive form end-to-end.
     fixture.componentInstance['runAction']({ value: 'sample', label: 'Fill with sample data' });
     expect(fixture.componentInstance['form'].getRawValue().name).toBe('Acme Console');
@@ -329,9 +332,10 @@ describe('App', () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     const root = document.documentElement;
-    // The header also holds native buttons (help, actions), so target the theme cae-button.
+    // The header now holds two cae-buttons (actions menu + theme), so target the theme one by
+    // its accessible name to click the right control.
     const toggle = (fixture.nativeElement as HTMLElement).querySelector(
-      '.forge-bar cae-button button',
+      '.forge-bar cae-button button[aria-label="Switch colour theme"]',
     ) as HTMLButtonElement;
 
     // `auto` — no explicit binding, follows the OS via `color-scheme: light dark`.

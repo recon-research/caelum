@@ -1,7 +1,15 @@
-import { booleanAttribute, ChangeDetectionStrategy, Component, input } from '@angular/core';
+import {
+  booleanAttribute,
+  ChangeDetectionStrategy,
+  Component,
+  effect,
+  input,
+  signal,
+} from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
+import { MatMenuTrigger, type MatMenuPanel } from '@angular/material/menu';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import type { CaeTooltipPosition } from 'caelum/shared';
+import type { CaeMenuPanelHost, CaeTooltipPosition } from 'caelum/shared';
 
 /** Appearance variants Caelum surfaces — 1:1 with Material's `matButton`. */
 export type CaeButtonVariant = 'filled' | 'tonal' | 'elevated' | 'outlined' | 'text';
@@ -22,25 +30,52 @@ export type CaeButtonVariant = 'filled' | 'tonal' | 'elevated' | 'outlined' | 't
  * keyboard focus and describes the element a screen-reader user actually lands on — this is
  * the natural `<p-button pTooltip>` → `<cae-button tooltip>` swap (Book 09; Book 16 a11y).
  * An empty `tooltip` (the default) disables the directive: no listeners, no `aria-describedby`.
- * Forwarding `caeMenuTriggerFor` to the inner button is the same seam, tracked separately.
  * A tooltip must never be the *sole* source of essential information.
+ *
+ * **Menu (a11y forwarding seam, #57).** The sibling of the tooltip seam: `caeMenuTriggerFor`
+ * likewise attaches its `MatMenuTrigger` (overlay, keyboard, `aria-haspopup`/`aria-expanded`)
+ * to its *host*, so on a `<cae-button>` wrapper the menu would be pointer-only with its ARIA on
+ * the wrong element. The `menuTriggerFor` input instead binds `MatMenuTrigger` to the **inner
+ * `<button>`** — the natural `<p-menu>` + `<p-button>` → `<cae-menu>` + `<cae-button
+ * [menuTriggerFor]>` swap. Bind a `cae-menu` instance directly; the button never names a Material
+ * type (it reads the panel through the {@link CaeMenuPanelHost} seam). With no menu bound the
+ * trigger is not applied at all (a plain button carries no spurious `aria-expanded`).
  */
 @Component({
   selector: 'cae-button',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MatButtonModule, MatTooltipModule],
+  imports: [MatButtonModule, MatTooltipModule, MatMenuTrigger],
+  // Two branches, identical but for `matMenuTriggerFor`: the trigger is applied ONLY when a menu
+  // is bound. MatMenuTrigger binds `aria-expanded` unconditionally (`"false"` when closed), so an
+  // always-present trigger would announce every plain button as a collapsed disclosure — the
+  // opt-in branch keeps plain buttons clean. Keep the two <button>s' shared bindings in sync.
   template: `
-    <button
-      [matButton]="variant()"
-      [type]="type()"
-      [disabled]="disabled()"
-      [matTooltip]="tooltip()"
-      [matTooltipPosition]="tooltipPosition()"
-      [matTooltipDisabled]="!tooltip()"
-      [attr.aria-label]="ariaLabel() || null"
-    >
-      <ng-content />
-    </button>
+    @if (menuTriggerFor()) {
+      <button
+        [matButton]="variant()"
+        [type]="type()"
+        [disabled]="disabled()"
+        [matTooltip]="tooltip()"
+        [matTooltipPosition]="tooltipPosition()"
+        [matTooltipDisabled]="!tooltip()"
+        [attr.aria-label]="ariaLabel() || null"
+        [matMenuTriggerFor]="menuPanel()"
+      >
+        <ng-content />
+      </button>
+    } @else {
+      <button
+        [matButton]="variant()"
+        [type]="type()"
+        [disabled]="disabled()"
+        [matTooltip]="tooltip()"
+        [matTooltipPosition]="tooltipPosition()"
+        [matTooltipDisabled]="!tooltip()"
+        [attr.aria-label]="ariaLabel() || null"
+      >
+        <ng-content />
+      </button>
+    }
   `,
   styles: `
     :host {
@@ -67,4 +102,24 @@ export class CaeButton {
   readonly tooltip = input('');
   /** Placement of the tooltip relative to the button. */
   readonly tooltipPosition = input<CaeTooltipPosition>('below');
+  /**
+   * A `cae-menu` this button opens (#57). Binds Material's `MatMenuTrigger` to the inner
+   * focusable `<button>`, so the menu is keyboard- and screen-reader-reachable and its
+   * `aria-haspopup`/`aria-expanded` land on the real control. Unset (default) = a plain button.
+   */
+  readonly menuTriggerFor = input<CaeMenuPanelHost>();
+
+  /**
+   * The resolved Material panel of {@link menuTriggerFor}, kept in sync by an effect. The bound
+   * menu's panel resolves only after its own view initialises, and under zoneless OnPush a
+   * cross-component signal read in a template binding wouldn't mark THIS button for check when it
+   * lands — so the effect (which tracks `getMenuPanel()`) writes this local signal, which does.
+   */
+  protected readonly menuPanel = signal<MatMenuPanel | null>(null);
+
+  constructor() {
+    effect(() => {
+      this.menuPanel.set(this.menuTriggerFor()?.getMenuPanel() ?? null);
+    });
+  }
 }

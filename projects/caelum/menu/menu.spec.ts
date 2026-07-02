@@ -47,10 +47,10 @@ describe('CaeMenu', () => {
 
   it('should create and wire the panel into the composed MatMenuTrigger', () => {
     expect(host).toBeTruthy();
-    // caeMenuTriggerFor reads the cae-menu's panel off the instance — the consumer never
-    // touches a Material type.
+    // caeMenuTriggerFor reads the cae-menu's panel off the instance through the public
+    // getMenuPanel seam — the consumer never touches a Material type.
     const caeMenu = fixture.debugElement.query(By.directive(CaeMenu)).componentInstance as CaeMenu;
-    expect(matTrigger().menu).toBe(caeMenu.panel());
+    expect(matTrigger().menu).toBe(caeMenu.getMenuPanel());
   });
 
   it('renders one menu item per data item when opened', async () => {

@@ -8,7 +8,8 @@ import {
   output,
   viewChild,
 } from '@angular/core';
-import { MatMenu, MatMenuItem, MatMenuTrigger } from '@angular/material/menu';
+import { MatMenu, MatMenuItem, MatMenuTrigger, type MatMenuPanel } from '@angular/material/menu';
+import type { CaeMenuPanelHost } from 'caelum/shared';
 
 /** A single item in a `cae-menu`. */
 export interface CaeMenuItem {
@@ -51,7 +52,7 @@ export interface CaeMenuItem {
     </mat-menu>
   `,
 })
-export class CaeMenu {
+export class CaeMenu implements CaeMenuPanelHost {
   /** The menu items, as data. */
   readonly items = input<readonly CaeMenuItem[]>([]);
   /** Horizontal alignment of the panel relative to its trigger. */
@@ -62,12 +63,26 @@ export class CaeMenu {
   readonly itemSelect = output<CaeMenuItem>();
 
   /**
-   * The underlying Material menu panel — an INTERNAL seam read cross-instance by
-   * `caeMenuTriggerFor`, not a consumer API. `@internal` strips it from the published
-   * typings (tsconfig `stripInternal`) so `MatMenu` never leaks into the public surface.
+   * The raw view query backing {@link getMenuPanel} — an INTERNAL seam, not a consumer API.
+   * `@internal` strips it from the published typings (tsconfig `stripInternal`) so the concrete
+   * `MatMenu` type never leaks into the public surface; triggers read it through `getMenuPanel`.
+   * Non-required so it reads as `undefined` (rather than throwing) before the panel's view has
+   * initialised — a trigger's effect re-runs when it resolves.
    * @internal
    */
-  readonly panel = viewChild.required(MatMenu);
+  readonly panel = viewChild(MatMenu);
+
+  /**
+   * The Material menu panel this `cae-menu` hosts, for a trigger to open — the integration seam
+   * behind {@link CaeMenuPanelHost} that `cae-button`'s `menuTriggerFor` (#57) and the
+   * `caeMenuTriggerFor` directive consume. Returns `undefined` until the panel's view has
+   * initialised (read it reactively; callers wire it as `?? null`). This is a *method*, not a
+   * bindable input, so `MatMenuPanel` never enters the public *bindable* surface (D-01/D-02): a
+   * consumer binds the `cae-menu` instance to a trigger, never this panel directly.
+   */
+  getMenuPanel(): MatMenuPanel | undefined {
+    return this.panel();
+  }
 }
 
 /**
@@ -80,9 +95,9 @@ export class CaeMenu {
  * element with `tabindex`). `MatMenuTrigger` puts `aria-haspopup`/`aria-expanded` and its
  * keyboard handlers on THIS host; on a non-focusable host (e.g. a bare `<cae-button>`
  * wrapper, whose real control is the inner `<button>`) the menu becomes pointer-only and
- * the ARIA lands on the wrong element. Forwarding the trigger to `cae-button`'s inner
- * control is #57 (the sibling of the `tooltip` seam #36 added to `cae-button`; blocked on a
- * public panel accessor, since `CaeMenu`'s `panel` seam is internal-only).
+ * the ARIA lands on the wrong element. On a `<cae-button>`, reach for its `menuTriggerFor`
+ * input instead (#57, the sibling of the `tooltip` seam #36): it forwards this trigger to the
+ * inner focusable `<button>`, so the menu is keyboard/SR-reachable and the ARIA lands right.
  */
 @Directive({
   selector: '[caeMenuTriggerFor]',
@@ -95,11 +110,12 @@ export class CaeMenuTrigger {
   readonly caeMenuTriggerFor = input.required<CaeMenu>();
 
   constructor() {
-    // Keep the composed MatMenuTrigger pointed at the cae-menu's panel. Runs after view
-    // init, so the panel viewChild is resolved regardless of element order; re-runs if the
-    // bound cae-menu changes.
+    // Keep the composed MatMenuTrigger pointed at the cae-menu's panel. Reads it through the
+    // public `getMenuPanel` seam; re-runs if the bound cae-menu changes OR when its panel
+    // resolves (so element order and lazy/conditional menus are handled). `?? null` covers the
+    // pre-resolution window — MatMenuTrigger treats a null menu as inert.
     effect(() => {
-      this.trigger.menu = this.caeMenuTriggerFor().panel();
+      this.trigger.menu = this.caeMenuTriggerFor().getMenuPanel() ?? null;
     });
   }
 

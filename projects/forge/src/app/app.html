@@ -30,18 +30,15 @@
       ?
     </button>
 
-    <!-- cae-menu (batch 3) — the panel is data; a focusable native button triggers it
-         (caeMenuTriggerFor needs a focusable host, same contract as caeTooltip; forwarding it
-         to cae-button's inner control is #57). The actions fill or reset the wizard end-to-end. -->
+    <!-- cae-menu (batch 3) opened from a cae-button (#57): `menuTriggerFor` forwards Material's
+         MatMenuTrigger to the button's inner focusable <button>, so the menu is keyboard- and
+         screen-reader-reachable and its aria-haspopup/expanded land on the real control — the
+         natural <p-menu> + <p-button> → <cae-menu> + <cae-button [menuTriggerFor]> swap. The
+         actions fill or reset the wizard end-to-end. -->
     <cae-menu #actionsMenu [items]="actions" (itemSelect)="runAction($event)" />
-    <button
-      type="button"
-      class="forge-action"
-      [caeMenuTriggerFor]="actionsMenu"
-      aria-label="Workspace actions"
-    >
+    <cae-button variant="outlined" ariaLabel="Workspace actions" [menuTriggerFor]="actionsMenu">
       Actions ▾
-    </button>
+    </cae-button>
 
     <!-- cae-button's `tooltip` input (#36): the tip binds to the inner focusable <button>, so
          it's keyboard- and screen-reader-reachable on a wrapper component — the natural
