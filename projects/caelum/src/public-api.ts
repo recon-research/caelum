@@ -5,7 +5,7 @@
  * that gives migrating teams a stable Caelum API seam over Material (D-01/D-02; Book 20
  * §2.1), themed through the token bridge. All ship from this single primary entry point;
  * per-component secondary entry points (`caelum/button`, …; Book 19 §3.2, #28) are a
- * deliberate follow-up. Batch 1 = issue #5; batch 2 = issue #26.
+ * deliberate follow-up. Batch 1 = issue #5; batch 2 = issue #26; batch 3 = issue #27.
  */
 
 // --- Shared types ---
@@ -28,3 +28,10 @@ export type { CaeSelectOption } from './lib/select/select';
 export { CaeTextarea } from './lib/textarea/textarea';
 export { CaeTabs, CaeTab } from './lib/tabs/tabs';
 export { CaeTooltip } from './lib/tooltip/tooltip';
+
+// --- Batch 3 (#27) ---
+export { CaeMenu, CaeMenuTrigger } from './lib/menu/menu';
+export type { CaeMenuItem } from './lib/menu/menu';
+export { CaeStepper, CaeStep } from './lib/stepper/stepper';
+export { CaeTree } from './lib/tree/tree';
+export type { CaeTreeNode } from './lib/tree/tree';
