@@ -167,6 +167,27 @@ describe('App', () => {
     expect(headers()[0].getAttribute('aria-expanded')).toBe('false');
   });
 
+  it('removes a cae-chip tag from the signal list when its × is clicked (#83)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const el = fixture.nativeElement as HTMLElement;
+    const chips = (): HTMLElement[] => Array.from(el.querySelectorAll('.forge-tags cae-chip'));
+    expect(chips().length).toBe(3);
+
+    // Click the first chip's remove button → (removed) drops the tag → the chip unrenders.
+    const firstRemove = chips()[0].querySelector('button')!;
+    const firstLabel = chips()[0].textContent?.trim();
+    firstRemove.click();
+    await fixture.whenStable();
+    expect(chips().length).toBe(2);
+    expect(chips().map((c) => c.textContent?.trim())).not.toContain(firstLabel);
+    // The removal is announced in a live region (standalone chips don't self-manage focus/announce).
+    const status = el.querySelector('.forge-tags__status')!;
+    expect(status.getAttribute('aria-live')).toBe('polite');
+    expect(status.textContent).toContain('Removed');
+    expect(status.textContent).toContain('2 tags remaining');
+  });
+
   it('announces success in a persistent polite live region on submit', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();

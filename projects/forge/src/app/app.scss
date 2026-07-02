@@ -123,6 +123,32 @@
   font-size: var(--cae-text-sm);
 }
 
+.forge-tags {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cae-space-2);
+  margin-block-start: var(--cae-space-4);
+}
+
+.forge-tags__label {
+  color: var(--cae-color-on-surface-variant);
+  font-size: var(--cae-text-sm);
+  font-weight: var(--cae-weight-medium);
+}
+
+.forge-tags__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cae-space-2);
+}
+
+.forge-tags__status {
+  margin: 0;
+  min-block-size: var(--cae-text-sm);
+  color: var(--cae-color-on-surface-variant);
+  font-size: var(--cae-text-sm);
+}
+
 .forge-tab-body {
   padding-block-start: var(--cae-space-5);
 }

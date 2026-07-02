@@ -46,3 +46,6 @@ export * from 'caelum/toggle-button';
 
 // --- Panel/layout: accordion (#77) ---
 export * from 'caelum/accordion';
+
+// --- Data display: chip (#83) ---
+export * from 'caelum/chip';

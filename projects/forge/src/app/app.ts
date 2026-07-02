@@ -23,6 +23,7 @@ import {
 import { CaeAccordion, CaeExpansionPanel } from 'caelum/accordion';
 import { CaeButton } from 'caelum/button';
 import { CaeCard } from 'caelum/card';
+import { CaeChip } from 'caelum/chip';
 import { CaeCheckbox } from 'caelum/checkbox';
 import { CaeInput, type CaeErrorMessages } from 'caelum/input';
 import { CaeMenu, CaeMenuItem } from 'caelum/menu';
@@ -60,6 +61,7 @@ const SWATCHES: ReadonlyArray<{ token: string; label: string }> = [
     CaeExpansionPanel,
     CaeButton,
     CaeCard,
+    CaeChip,
     CaeCheckbox,
     CaeInput,
     CaeMenu,
@@ -146,7 +148,22 @@ export class App {
     { prime: 'p-selectButton', cae: 'cae-select-button' },
     { prime: 'p-toggleButton', cae: 'cae-toggle-button' },
     { prime: 'p-accordion', cae: 'cae-accordion' },
+    { prime: 'p-chip', cae: 'cae-chip' },
   ];
+
+  /**
+   * Removable `cae-chip`s backed by a signal list — the liveness proof for #83. Clicking a chip's
+   * × fires `(removed)`; the consumer owns the removal, so we drop the tag from the signal and the
+   * chip unrenders.
+   */
+  protected readonly tags = signal<readonly string[]>(['design', 'frontend', 'a11y']);
+  /** Announcement for a removed tag — read by a persistent polite live region (a11y, #83). */
+  protected readonly tagMessage = signal('');
+  protected removeTag(tag: string): void {
+    this.tags.update((list) => list.filter((t) => t !== tag));
+    const n = this.tags().length;
+    this.tagMessage.set(`Removed ${tag}. ${n} ${n === 1 ? 'tag' : 'tags'} remaining.`);
+  }
 
   /**
    * A short FAQ rendered as a `cae-accordion` — the liveness proof for #77. It's single-expand
@@ -293,6 +310,7 @@ export class App {
   private readonly formDir = viewChild<FormGroupDirective>('createFormDir');
   /** The invite demo's persistent live region + focus target — mirrors `statusRegion`. */
   private readonly inviteStatusRegion = viewChild<ElementRef<HTMLElement>>('inviteStatus');
+  private readonly tagsStatusRegion = viewChild<ElementRef<HTMLElement>>('tagsStatus');
 
   constructor() {
     // Move focus to the status region whenever it gains a message (success OR error), so a
@@ -310,6 +328,14 @@ export class App {
     effect(() => {
       if (this.inviteSent() || this.inviteError()) {
         const el = this.inviteStatusRegion()?.nativeElement;
+        if (el) queueMicrotask(() => el.focus());
+      }
+    });
+    // A standalone cae-chip doesn't redirect focus on removal (no MatChipSet), so on a tag removal
+    // move focus to the tag status region and announce it — the same guard the form/invite use (#83).
+    effect(() => {
+      if (this.tagMessage()) {
+        const el = this.tagsStatusRegion()?.nativeElement;
         if (el) queueMicrotask(() => el.focus());
       }
     });
