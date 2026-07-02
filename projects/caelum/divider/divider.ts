@@ -11,11 +11,15 @@ import { MatDivider } from '@angular/material/divider';
  * `<mat-divider>` participates directly in the parent's layout, so a `vertical` divider stretches
  * inside a flex row exactly as a bare `mat-divider` would (a wrapping block would collapse to zero
  * height). The wrapper carries no ARIA, so the separator's semantics remain solely on the inner
- * element.
+ * element. One consequence to know: `margin`/`padding`/`border`/`background` set on `<cae-divider>`
+ * itself have NO effect (display:contents removes its box) — space it via the surrounding layout
+ * (e.g. a flex/grid `gap`) instead. The vertical full-height rendering + separator-in-a11y-tree
+ * behaviour under `display:contents` is asserted structurally in the spec and verified in a real
+ * browser at M4 (#91).
  *
  * Parity note: PrimeNG's `p-divider` also supports a centered text label, a line `type`
  * (solid/dashed/dotted), and `align`; `MatDivider` does none of these — tracked as a parity-extras
- * followup (issue #88). Theming is through the token bridge. Zoneless-compatible: `OnPush` + signal
+ * followup (#90). Theming is through the token bridge. Zoneless-compatible: `OnPush` + signal
  * inputs (provisional on #9; Book 01 §3.2).
  */
 @Component({

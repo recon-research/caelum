@@ -9,6 +9,10 @@ export type CaeProgressBarMode = 'determinate' | 'indeterminate' | 'buffer' | 'q
  * (`reference/COMPARISON.md`: `p-progressbar` → `cae-progress-bar`; Book 11). A linear
  * progress indicator. Not a form control — no CVA.
  *
+ * Parity note: PrimeNG's `p-progressBar` renders a built-in value label (`showValue` on by
+ * default); this bare wrapper does not — an opt-in `showValue`/value-label seam is a tracked
+ * followup (#90). Render your own text alongside if you need it.
+ *
  * The inner `<mat-progress-bar>` hosts `role="progressbar"` with `aria-valuemin="0"`,
  * `aria-valuemax="100"`, and `aria-valuenow` (bound in `determinate`/`buffer` modes, absent
  * while `indeterminate`/`query`). Material provides **no accessible name**, so name the bar via

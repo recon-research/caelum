@@ -113,7 +113,9 @@
               [value]="stepProgress()"
               ariaLabel="Workspace setup progress"
             />
-            <cae-divider vertical />
+            <!-- The divider only separates the announced bar from the aria-hidden ring, so hide it
+                 too — otherwise a screen reader announces a "separator" that leads to silent content. -->
+            <cae-divider vertical aria-hidden="true" />
             <div class="forge-progress__ring" aria-hidden="true">
               <cae-progress-spinner mode="determinate" [value]="stepProgress()" [diameter]="40" />
               <span class="forge-progress__pct">{{ stepProgress() }}%</span>

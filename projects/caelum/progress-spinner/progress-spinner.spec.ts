@@ -1,4 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
+import { MatProgressSpinner } from '@angular/material/progress-spinner';
 import { CaeProgressSpinner } from './progress-spinner';
 
 describe('CaeProgressSpinner', () => {
@@ -13,10 +15,25 @@ describe('CaeProgressSpinner', () => {
     return fixture.nativeElement.querySelector('mat-progress-spinner')!;
   }
 
-  it('defaults to an indeterminate progressbar (no aria-valuenow)', () => {
+  it('defaults to an indeterminate progressbar (min/max pinned, no aria-valuenow)', () => {
     fixture.detectChanges();
     expect(spinner().getAttribute('role')).toBe('progressbar');
+    expect(spinner().getAttribute('aria-valuemin')).toBe('0');
+    expect(spinner().getAttribute('aria-valuemax')).toBe('100');
     expect(spinner().getAttribute('aria-valuenow')).toBeNull();
+  });
+
+  it('computes an auto strokeWidth (diameter / 10) by default and honours an explicit value', () => {
+    // The wrapper binds `strokeWidth() || diameter() / 10`, computing the auto value itself rather
+    // than relying on Material's `value || 0` setter (which would render an invisible 0-stroke).
+    fixture.componentRef.setInput('diameter', 50);
+    fixture.detectChanges();
+    const inner = fixture.debugElement.query(By.directive(MatProgressSpinner))
+      .componentInstance as MatProgressSpinner;
+    expect(inner.strokeWidth).toBe(5); // 0 (default) → auto = 50 / 10
+    fixture.componentRef.setInput('strokeWidth', 8);
+    fixture.detectChanges();
+    expect(inner.strokeWidth).toBe(8); // explicit value passes straight through
   });
 
   it('reflects value as aria-valuenow in determinate mode', () => {

@@ -239,7 +239,6 @@
   display: flex;
   align-items: stretch;
   gap: var(--cae-space-3);
-  min-block-size: 48px;
   padding: var(--cae-space-3);
   border: 1px solid var(--cae-color-border);
   border-radius: var(--cae-radius-md);
@@ -263,6 +262,9 @@
 
 .forge-progress__pct {
   position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
   font-size: var(--cae-text-sm);
   font-weight: var(--cae-weight-medium);
   color: var(--cae-color-on-surface-variant);

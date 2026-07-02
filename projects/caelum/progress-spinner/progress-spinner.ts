@@ -18,6 +18,8 @@ export type CaeProgressSpinnerMode = 'determinate' | 'indeterminate';
  * provides no accessible name → pass `ariaLabel` (e.g. `"Loading"`). `strokeWidth` defaults to `0`
  * meaning *auto* (`diameter / 10`); this wrapper computes the auto value in the template rather than
  * relying on Material's `value || 0` setter, which would otherwise collapse an explicit `0`.
+ * `diameter` defaults to **48** — a deliberate Caelum default (Material's `mat-progress-spinner`
+ * uses 100), so set it explicitly for pixel-parity with a `p-progressSpinner` you're replacing.
  *
  * No `color` input (token-bridge theming). Zoneless-compatible: `OnPush` + signal inputs
  * (provisional on #9; Book 01 §3.2).
