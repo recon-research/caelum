@@ -1,8 +1,9 @@
 <!--
   Forge — the Caelum demo console. This screen is built almost entirely from `cae-*`
   components: batch 1 (#5, cae-input/checkbox/button/card), batch 2 (#26,
-  cae-radio/select/textarea/tabs/tooltip), and batch 3 (#27, cae-menu in the header, the
-  form laid out as a cae-stepper wizard, and a cae-tree for workspace structure). The form is
+  cae-radio/select/textarea/tabs/tooltip), batch 3 (#27, cae-menu in the header, the form laid
+  out as a cae-stepper wizard, and a cae-tree for workspace structure), and batch 4 (#68, a
+  cae-switch preference in the form). The form is
   a real reactive form whose every control is a Caelum wrapper over Material — here spread
   across projected stepper steps yet bound to one FormGroup. Every colour, space, and radius
   resolves to a `--cae-*` token (no literals), and the wrapped Material controls resolve the
@@ -60,10 +61,10 @@
       Direct components, themed through Caelum
     </h1>
     <p class="forge-panel__lead">
-      The PrimeNG→Caelum <code>cae-*</code> surface, now through batch 3 — a
-      <code>cae-menu</code> in the header, the form as a <code>cae-stepper</code> wizard, and a
-      <code>cae-tree</code> for structure. The form is a real reactive form bound straight through
-      the Caelum controls, in light and dark.
+      The PrimeNG→Caelum <code>cae-*</code> surface, now through batch 4 — a
+      <code>cae-menu</code> in the header, the form as a <code>cae-stepper</code> wizard, a
+      <code>cae-tree</code> for structure, and a <code>cae-switch</code> preference in the form. The
+      form is a real reactive form bound straight through the Caelum controls, in light and dark.
     </p>
 
     <cae-card
@@ -193,6 +194,12 @@
                       You must accept the terms to continue
                     </p>
                   }
+                </div>
+                <!-- cae-switch (#68): a plain boolean preference, bound to the same reactive form. -->
+                <div class="forge-field-group forge-field-group--flush">
+                  <cae-switch formControlName="notify"
+                    >Email me about workspace activity</cae-switch
+                  >
                 </div>
               </div>
             </cae-step>
@@ -366,10 +373,10 @@
       <cae-tab label="In this batch">
         <div class="forge-tab-body">
           <p class="forge-panel__lead">
-            Batch 3 (#27) adds these Direct wrappers — each swaps 1:1 for its PrimeNG original.
+            Batches 3–4 add these Direct wrappers — each swaps 1:1 for its PrimeNG original.
           </p>
           <ul class="forge-map" role="list">
-            @for (c of batch3; track c.cae) {
+            @for (c of recentComponents; track c.cae) {
               <li class="forge-map__row">
                 <code class="forge-map__from">{{ c.prime }}</code>
                 <span aria-hidden="true">→</span>

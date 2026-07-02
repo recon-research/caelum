@@ -28,6 +28,7 @@ import { CaeMenu, CaeMenuItem } from 'caelum/menu';
 import { CaeRadio, CaeRadioOption } from 'caelum/radio';
 import { CaeSelect, CaeSelectOption } from 'caelum/select';
 import { CaeStep, CaeStepper } from 'caelum/stepper';
+import { CaeSwitch } from 'caelum/switch';
 import { CaeTab, CaeTabs } from 'caelum/tabs';
 import { CaeTextarea } from 'caelum/textarea';
 import { CaeTooltip } from 'caelum/tooltip';
@@ -61,6 +62,7 @@ const SWATCHES: ReadonlyArray<{ token: string; label: string }> = [
     CaeSelect,
     CaeStep,
     CaeStepper,
+    CaeSwitch,
     CaeTab,
     CaeTabs,
     CaeTextarea,
@@ -122,11 +124,12 @@ export class App {
     },
   ];
 
-  /** The batch-3 PrimeNG→Caelum map, shown in the second reference tab. */
-  protected readonly batch3: ReadonlyArray<{ prime: string; cae: string }> = [
+  /** The recent PrimeNG→Caelum map (batches 3–4), shown in the second reference tab. */
+  protected readonly recentComponents: ReadonlyArray<{ prime: string; cae: string }> = [
     { prime: 'p-menu', cae: 'cae-menu' },
     { prime: 'p-stepper', cae: 'cae-stepper' },
     { prime: 'p-tree', cae: 'cae-tree' },
+    { prime: 'p-toggleSwitch', cae: 'cae-switch' },
   ];
 
   /**
@@ -149,6 +152,9 @@ export class App {
       validators: [Validators.required, Validators.minLength(8)],
     }),
     agree: new FormControl(false, { nonNullable: true, validators: [Validators.requiredTrue] }),
+    // A plain boolean preference bound to cae-switch (#68) — no validator; proves the switch
+    // round-trips through the same reactive FormGroup / getRawValue payload as every other control.
+    notify: new FormControl(true, { nonNullable: true }),
   });
 
   /**
@@ -282,6 +288,7 @@ export class App {
       description: 'Internal admin tools for the Acme team.',
       password: 'sample-pass-8',
       agree: true,
+      notify: true,
     });
     this.step.set(0);
   }
