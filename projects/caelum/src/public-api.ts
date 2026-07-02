@@ -12,7 +12,7 @@
  * (the split is additive) — but a barrel import pulls the whole set, so prefer the
  * per-component path in app code. Re-exporting by name (not by re-declaring the source)
  * is also what keeps each source file owned by a single entry point, which ng-packagr
- * requires. Batch 1 = #5; batch 2 = #26; batch 3 = #27; batch 4 = #68.
+ * requires. Batch 1 = #5; batch 2 = #26; batch 3 = #27; batch 4 = #68, #73.
  */
 
 // --- Shared types ---
@@ -39,5 +39,7 @@ export * from 'caelum/menu';
 export * from 'caelum/stepper';
 export * from 'caelum/tree';
 
-// --- Batch 4 (#68) ---
+// --- Batch 4 (#68, #73) ---
 export * from 'caelum/switch';
+export * from 'caelum/select-button';
+export * from 'caelum/toggle-button';

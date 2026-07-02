@@ -44,6 +44,8 @@ describe('App', () => {
     expect(card.querySelectorAll('cae-switch').length).toBe(1);
     expect(card.querySelectorAll('cae-radio').length).toBe(1);
     expect(card.querySelectorAll('cae-select').length).toBe(1);
+    expect(card.querySelectorAll('cae-select-button').length).toBe(1);
+    expect(card.querySelectorAll('cae-toggle-button').length).toBe(1);
     expect(card.querySelectorAll('cae-textarea').length).toBe(1);
     // On the first step, Next is shown — not the submit button.
     expect(card.querySelector('form cae-button button[type="submit"]')).toBeNull();
@@ -92,6 +94,34 @@ describe('App', () => {
     expect(toggle.getAttribute('aria-checked')).toBe('false');
   });
 
+  it('round-trips visibility (cae-select-button) and pinned (cae-toggle-button) through the form (#73)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const card = (fixture.nativeElement as HTMLElement).querySelector(
+      '.forge-form-card',
+    ) as HTMLElement;
+    const cmp = fixture.componentInstance;
+
+    // cae-select-button (single): clicking "Team" writes 'team' to the form (view → model). Steps
+    // stamp eagerly, so both controls are in the DOM regardless of the active step.
+    const team = Array.from(card.querySelectorAll('cae-select-button button')).find(
+      (b) => b.textContent?.trim() === 'Team',
+    ) as HTMLButtonElement;
+    team.click();
+    fixture.detectChanges();
+    expect(cmp['form'].getRawValue().visibility).toBe('team');
+    expect(team.getAttribute('aria-checked')).toBe('true');
+
+    // cae-toggle-button (boolean): seeds false, a click flips it to pressed/true.
+    const pin = card.querySelector('cae-toggle-button button') as HTMLButtonElement;
+    expect(cmp['form'].getRawValue().pinned).toBe(false);
+    expect(pin.getAttribute('aria-pressed')).toBe('false');
+    pin.click();
+    fixture.detectChanges();
+    expect(cmp['form'].getRawValue().pinned).toBe(true);
+    expect(pin.getAttribute('aria-pressed')).toBe('true');
+  });
+
   it('shows the workspace structure as a cae-tree and announces a selection', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
@@ -128,10 +158,12 @@ describe('App', () => {
       email: 'a@b.co',
       plan: 'pro',
       region: 'us-east',
+      visibility: 'team',
       description: '',
       password: 'password1',
       agree: true,
       notify: true,
+      pinned: false,
     });
     cmp['submit']();
     fixture.detectChanges();
@@ -163,12 +195,17 @@ describe('App', () => {
     const el = fixture.nativeElement as HTMLElement;
     const firstRadio = (): Element | null => el.querySelector('cae-radio input[type="radio"]');
     const agreeBox = (): Element | null => el.querySelector('cae-checkbox input[type="checkbox"]');
+    // cae-select-button forwards describedby onto each option's inner <button> (mat-button-toggle
+    // has no aria-describedby input) — assert on the first option button.
+    const firstVisBtn = (): Element | null => el.querySelector('cae-select-button button');
 
     // Before submit: no consumer errors, and no dangling describedby references.
     expect(el.querySelector('#plan-error')).toBeNull();
     expect(el.querySelector('#agree-error')).toBeNull();
+    expect(el.querySelector('#visibility-error')).toBeNull();
     expect(firstRadio()?.getAttribute('aria-describedby')).toBeNull();
     expect(agreeBox()?.getAttribute('aria-describedby')).toBeNull();
+    expect(firstVisBtn()?.getAttribute('aria-describedby')).toBeNull();
 
     // Submit the empty form through the real form event so FormGroupDirective.submitted is set.
     el.querySelector('form')!.dispatchEvent(new Event('submit'));
@@ -191,6 +228,9 @@ describe('App', () => {
     expect(firstRadio()?.getAttribute('aria-describedby')).toBe('plan-error');
     expect(el.querySelector('#agree-error')?.textContent).toContain('accept the terms');
     expect(agreeBox()?.getAttribute('aria-describedby')).toBe('agree-error');
+    // visibility (cae-select-button) — same consumer-owned pattern, described onto its buttons.
+    expect(el.querySelector('#visibility-error')?.textContent).toContain('Choose who can see');
+    expect(firstVisBtn()?.getAttribute('aria-describedby')).toBe('visibility-error');
   });
 
   it('reset clears the errors and the submitted flag so a fresh form is not a wall of errors (#29)', async () => {
@@ -351,10 +391,12 @@ describe('App', () => {
       email: 'a@b.co',
       plan: 'pro',
       region: 'us-east',
+      visibility: 'team',
       description: '',
       password: 'password1',
       agree: true,
       notify: true,
+      pinned: false,
     });
     cmp['submit']();
     fixture.detectChanges();

@@ -27,10 +27,12 @@ import { CaeInput, type CaeErrorMessages } from 'caelum/input';
 import { CaeMenu, CaeMenuItem } from 'caelum/menu';
 import { CaeRadio, CaeRadioOption } from 'caelum/radio';
 import { CaeSelect, CaeSelectOption } from 'caelum/select';
+import { CaeSelectButton, CaeSelectButtonOption } from 'caelum/select-button';
 import { CaeStep, CaeStepper } from 'caelum/stepper';
 import { CaeSwitch } from 'caelum/switch';
 import { CaeTab, CaeTabs } from 'caelum/tabs';
 import { CaeTextarea } from 'caelum/textarea';
+import { CaeToggleButton } from 'caelum/toggle-button';
 import { CaeTooltip } from 'caelum/tooltip';
 import { CaeTree, CaeTreeNode } from 'caelum/tree';
 
@@ -60,12 +62,14 @@ const SWATCHES: ReadonlyArray<{ token: string; label: string }> = [
     CaeMenu,
     CaeRadio,
     CaeSelect,
+    CaeSelectButton,
     CaeStep,
     CaeStepper,
     CaeSwitch,
     CaeTab,
     CaeTabs,
     CaeTextarea,
+    CaeToggleButton,
     CaeTooltip,
     CaeTree,
   ],
@@ -88,6 +92,12 @@ export class App {
     { value: 'us-east', label: 'US East (Virginia)' },
     { value: 'us-west', label: 'US West (Oregon)' },
     { value: 'eu-central', label: 'EU Central (Frankfurt)' },
+  ];
+  /** cae-select-button options (#73) — a single-select button bar (p-selectButton parity). */
+  protected readonly visibilities: readonly CaeSelectButtonOption[] = [
+    { value: 'private', label: 'Private' },
+    { value: 'team', label: 'Team' },
+    { value: 'public', label: 'Public' },
   ];
 
   /** Header `cae-menu` items — functional: they drive the wizard end-to-end. */
@@ -130,6 +140,8 @@ export class App {
     { prime: 'p-stepper', cae: 'cae-stepper' },
     { prime: 'p-tree', cae: 'cae-tree' },
     { prime: 'p-toggleSwitch', cae: 'cae-switch' },
+    { prime: 'p-selectButton', cae: 'cae-select-button' },
+    { prime: 'p-toggleButton', cae: 'cae-toggle-button' },
   ];
 
   /**
@@ -146,6 +158,9 @@ export class App {
     }),
     plan: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
     region: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
+    // A required single-select bound to cae-select-button (#73). Like radio/checkbox it isn't a
+    // mat-form-field, so it uses the consumer-owned error pattern (fieldErrorShown + ariaDescribedby).
+    visibility: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
     description: new FormControl('', { nonNullable: true }),
     password: new FormControl('', {
       nonNullable: true,
@@ -155,6 +170,8 @@ export class App {
     // A plain boolean preference bound to cae-switch (#68) — no validator; proves the switch
     // round-trips through the same reactive FormGroup / getRawValue payload as every other control.
     notify: new FormControl(true, { nonNullable: true }),
+    // A plain boolean bound to cae-toggle-button (#73) — the button-rendered twin of the switch.
+    pinned: new FormControl(false, { nonNullable: true }),
   });
 
   /**
@@ -189,6 +206,7 @@ export class App {
     ['email', 0],
     ['plan', 1],
     ['region', 1],
+    ['visibility', 1],
     ['description', 2],
     ['password', 2],
     ['agree', 2],
@@ -285,10 +303,12 @@ export class App {
       email: 'owner@acme.dev',
       plan: 'pro',
       region: 'us-east',
+      visibility: 'team',
       description: 'Internal admin tools for the Acme team.',
       password: 'sample-pass-8',
       agree: true,
       notify: true,
+      pinned: true,
     });
     this.step.set(0);
   }
@@ -307,7 +327,7 @@ export class App {
    * `<mat-error>`; the form-level status region covers submit-time announcement). Together with
    * `regionErrors` on the select, this closes the plan/region/agree asymmetry #47 named.
    */
-  protected fieldErrorShown(name: 'plan' | 'agree'): boolean {
+  protected fieldErrorShown(name: 'plan' | 'agree' | 'visibility'): boolean {
     const control = this.form.controls[name];
     return control.invalid && (control.touched || (this.formDir()?.submitted ?? false));
   }
