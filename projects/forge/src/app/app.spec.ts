@@ -195,12 +195,17 @@ describe('App', () => {
     const el = fixture.nativeElement as HTMLElement;
     const firstRadio = (): Element | null => el.querySelector('cae-radio input[type="radio"]');
     const agreeBox = (): Element | null => el.querySelector('cae-checkbox input[type="checkbox"]');
+    // cae-select-button forwards describedby onto each option's inner <button> (mat-button-toggle
+    // has no aria-describedby input) — assert on the first option button.
+    const firstVisBtn = (): Element | null => el.querySelector('cae-select-button button');
 
     // Before submit: no consumer errors, and no dangling describedby references.
     expect(el.querySelector('#plan-error')).toBeNull();
     expect(el.querySelector('#agree-error')).toBeNull();
+    expect(el.querySelector('#visibility-error')).toBeNull();
     expect(firstRadio()?.getAttribute('aria-describedby')).toBeNull();
     expect(agreeBox()?.getAttribute('aria-describedby')).toBeNull();
+    expect(firstVisBtn()?.getAttribute('aria-describedby')).toBeNull();
 
     // Submit the empty form through the real form event so FormGroupDirective.submitted is set.
     el.querySelector('form')!.dispatchEvent(new Event('submit'));
@@ -223,6 +228,9 @@ describe('App', () => {
     expect(firstRadio()?.getAttribute('aria-describedby')).toBe('plan-error');
     expect(el.querySelector('#agree-error')?.textContent).toContain('accept the terms');
     expect(agreeBox()?.getAttribute('aria-describedby')).toBe('agree-error');
+    // visibility (cae-select-button) — same consumer-owned pattern, described onto its buttons.
+    expect(el.querySelector('#visibility-error')?.textContent).toContain('Choose who can see');
+    expect(firstVisBtn()?.getAttribute('aria-describedby')).toBe('visibility-error');
   });
 
   it('reset clears the errors and the submitted flag so a fresh form is not a wall of errors (#29)', async () => {

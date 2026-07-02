@@ -173,6 +173,7 @@
                     ariaLabelledby="visibility-label"
                     [ariaDescribedby]="fieldErrorShown('visibility') ? 'visibility-error' : ''"
                     [options]="visibilities"
+                    required
                   />
                   @if (fieldErrorShown('visibility')) {
                     <p id="visibility-error" class="forge-field-error">

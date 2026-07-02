@@ -1,9 +1,9 @@
 import {
+  afterRenderEffect,
   booleanAttribute,
   ChangeDetectionStrategy,
   Component,
   computed,
-  effect,
   ElementRef,
   forwardRef,
   inject,
@@ -53,8 +53,11 @@ export interface CaeSelectButtonOption {
       [multiple]="multiple()"
       [vertical]="vertical()"
       [disabled]="isDisabled()"
+      [hideSingleSelectionIndicator]="hideSelectionIndicator()"
+      [hideMultipleSelectionIndicator]="hideSelectionIndicator()"
       [attr.aria-label]="ariaLabel() || null"
       [attr.aria-labelledby]="ariaLabelledby() || null"
+      [attr.aria-required]="required() ? 'true' : null"
       (change)="handleChange($event.value)"
       (focusout)="onTouched()"
     >
@@ -76,10 +79,23 @@ export class CaeSelectButton implements ControlValueAccessor {
 
   /** The selectable options, as data. */
   readonly options = input<readonly CaeSelectButtonOption[]>([]);
-  /** Allow more than one option selected; flips the value seam from `string` to `string[]`. */
+  /**
+   * Allow more than one option selected; flips the value seam from `string` to `string[]`.
+   * Set this ONCE, at first render (bind a static value, not a signal that toggles at runtime):
+   * Material's `MatButtonToggleGroup` builds its selection model from `multiple` at init and never
+   * rebuilds it, so flipping it later would desync the value shape from the selection semantics.
+   */
   readonly multiple = input(false, { transform: booleanAttribute });
   /** Stack the buttons vertically, 1:1 with Material. */
   readonly vertical = input(false, { transform: booleanAttribute });
+  /** Marks the group required — drives `aria-required` on the group (the sibling of cae-radio). */
+  readonly required = input(false, { transform: booleanAttribute });
+  /**
+   * Hide the leading checkmark Material draws inside the selected button(s). Defaults to `false`
+   * (Material's default — a faithful 1:1 wrapper); set it for the plain, indicator-less look of
+   * `p-selectButton`, whose selected button is highlighted rather than check-marked.
+   */
+  readonly hideSelectionIndicator = input(false, { transform: booleanAttribute });
   /** Template-driven disable; merged with any reactive-forms `setDisabledState`. */
   readonly disabled = input(false, { transform: booleanAttribute });
   /** Accessible name for the group when no visible label wraps it. */
@@ -104,9 +120,10 @@ export class CaeSelectButton implements ControlValueAccessor {
 
   constructor() {
     // `mat-button-toggle` has no `aria-describedby` input, so forward it to every option's inner
-    // focusable <button> ourselves. Reading `options()` re-runs this after the @for re-renders, so
-    // freshly-stamped buttons pick up the description too. See the `ariaDescribedby` docs.
-    effect(() => {
+    // focusable <button> ourselves. An afterRenderEffect runs AFTER the DOM is committed (unlike a
+    // plain effect, whose timing vs. the @for render isn't guaranteed), and re-runs reactively —
+    // reading `options()` makes freshly-stamped buttons pick up the description too. See the docs below.
+    afterRenderEffect(() => {
       const id = this.ariaDescribedby();
       this.options();
       this.host.nativeElement.querySelectorAll('button').forEach((button) => {
@@ -122,8 +139,10 @@ export class CaeSelectButton implements ControlValueAccessor {
   }
 
   // --- ControlValueAccessor ---
+  // In multiple mode the bound form value must be a `string[]` (Material throws on a non-array
+  // truthy value); a null/undefined resets to the mode-appropriate empty (`[]` vs `''`).
   writeValue(value: string | string[]): void {
-    this.value.set(value ?? '');
+    this.value.set(value ?? (this.multiple() ? [] : ''));
   }
   registerOnChange(fn: (value: string | string[]) => void): void {
     this.onChangeFn = fn;

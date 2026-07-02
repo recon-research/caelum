@@ -118,4 +118,35 @@ describe('CaeSelectButton', () => {
     await fixture.whenStable();
     expect(buttons().every((b) => b.getAttribute('aria-describedby') === 'vis-hint')).toBe(true);
   });
+
+  it('re-applies ariaDescribedby to buttons stamped after an options change (afterRenderEffect)', async () => {
+    fixture.componentRef.setInput('ariaDescribedby', 'vis-hint');
+    await fixture.whenStable();
+    expect(buttons().every((b) => b.getAttribute('aria-describedby') === 'vis-hint')).toBe(true);
+    // A fourth option is stamped later — the render effect must re-run and describe it too.
+    fixture.componentRef.setInput('options', [...OPTIONS, { value: 'org', label: 'Org' }]);
+    await fixture.whenStable();
+    expect(buttons().length).toBe(4);
+    expect(buttons().every((b) => b.getAttribute('aria-describedby') === 'vis-hint')).toBe(true);
+  });
+
+  it('reflects a multiple-mode array value written by the form model (writeValue form→UI)', async () => {
+    const f = TestBed.createComponent(CaeSelectButton);
+    f.componentRef.setInput('options', OPTIONS);
+    f.componentRef.setInput('multiple', true);
+    await f.whenStable();
+    const btns = (): HTMLButtonElement[] => Array.from(f.nativeElement.querySelectorAll('button'));
+    f.componentInstance.writeValue(['private', 'public']);
+    f.detectChanges();
+    expect(btns()[0].getAttribute('aria-pressed')).toBe('true');
+    expect(btns()[1].getAttribute('aria-pressed')).toBe('false');
+    expect(btns()[2].getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('drives aria-required on the group when required (the cae-radio-parity a11y seam)', () => {
+    expect(group().getAttribute('aria-required')).toBeNull();
+    fixture.componentRef.setInput('required', true);
+    fixture.detectChanges();
+    expect(group().getAttribute('aria-required')).toBe('true');
+  });
 });

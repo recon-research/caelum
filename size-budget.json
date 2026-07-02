@@ -19,7 +19,7 @@
     "caelum-stepper": 4608,
     "caelum-tree": 3712,
     "caelum-switch": 3072,
-    "caelum-toggle-button": 3200,
-    "caelum-select-button": 3712
+    "caelum-toggle-button": 3456,
+    "caelum-select-button": 4608
   }
 }

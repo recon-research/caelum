@@ -1,9 +1,9 @@
 import {
+  afterRenderEffect,
   booleanAttribute,
   ChangeDetectionStrategy,
   Component,
   computed,
-  effect,
   ElementRef,
   forwardRef,
   inject,
@@ -28,6 +28,10 @@ import { MatButtonToggleModule } from '@angular/material/button-toggle';
  * for validation feedback the consumer renders the message and points `ariaDescribedby` at it
  * (Caelum's consumer-owned error pattern, #47). A label-less/icon-only toggle also needs an
  * accessible name — that cross-control `ariaLabel`/`ariaLabelledby` seam is tracked in #70.
+ *
+ * The projected content is state-independent (one label for both states) — unlike `p-togglebutton`'s
+ * `onLabel`/`offLabel` / `onIcon`/`offIcon`, which `mat-button-toggle` has no equivalent for. Swap the
+ * label in the consumer template if needed; a built-in seam is a reversible follow-up (#75).
  */
 @Component({
   selector: 'cae-toggle-button',
@@ -75,8 +79,9 @@ export class CaeToggleButton implements ControlValueAccessor {
 
   constructor() {
     // `mat-button-toggle` has no `aria-describedby` input, so forward it to the inner focusable
-    // <button> ourselves (post-render; re-runs when the id changes). See the `ariaDescribedby` docs.
-    effect(() => {
+    // <button> ourselves. An afterRenderEffect runs after the DOM is committed and re-runs when the
+    // id changes (a plain effect's timing vs. the first render isn't guaranteed). See the docs below.
+    afterRenderEffect(() => {
       const id = this.ariaDescribedby();
       const button = this.host.nativeElement.querySelector('button');
       if (!button) return;
