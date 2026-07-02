@@ -9,3 +9,4 @@
  */
 export * from './appearance';
 export * from './error-messages';
+export * from './tooltip-position';
