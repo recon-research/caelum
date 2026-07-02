@@ -4,7 +4,8 @@
   cae-radio/select/textarea/tabs/tooltip), batch 3 (#27, cae-menu in the header, the form laid
   out as a cae-stepper wizard, and a cae-tree for workspace structure), and batch 4 (#68 a
   cae-switch preference, #73 a cae-select-button for visibility and a cae-toggle-button
-  preference), plus a cae-accordion FAQ in the reference area (#77). The form is
+  preference), plus a cae-accordion FAQ and a removable cae-chip tag row in the reference
+  area (#77, #83). The form is
   a real reactive form whose every control is a Caelum wrapper over Material — here spread
   across projected stepper steps yet bound to one FormGroup. Every colour, space, and radius
   resolves to a `--cae-*` token (no literals), and the wrapped Material controls resolve the
@@ -427,5 +428,29 @@
         </cae-expansion-panel>
       }
     </cae-accordion>
+
+    <!-- cae-chip (#83): removable tags backed by a signal list. Clicking × fires (removed) and the
+         consumer drops the tag, so the chip unrenders — a live round-trip. -->
+    <div class="forge-tags">
+      <span class="forge-tags__label" id="tags-label">Workspace tags</span>
+      @if (tags().length) {
+        <div class="forge-tags__row" role="list" aria-labelledby="tags-label">
+          @for (tag of tags(); track tag) {
+            <cae-chip
+              role="listitem"
+              removable
+              [removeAriaLabel]="'Remove ' + tag"
+              (removed)="removeTag(tag)"
+              >{{ tag }}</cae-chip
+            >
+          }
+        </div>
+      }
+      <!-- Persistent polite live region: standalone chips don't manage focus on removal, so we
+           announce it here and move focus here (see the effect in app.ts) rather than to <body>. -->
+      <p #tagsStatus class="forge-tags__status" role="status" aria-live="polite" tabindex="-1">
+        {{ tagMessage() }}
+      </p>
+    </div>
   </section>
 </main>
