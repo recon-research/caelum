@@ -101,6 +101,7 @@
                   name="workspaceName"
                   autocomplete="off"
                   hint="Shown across Forge"
+                  [errorMessages]="nameErrors"
                   required
                 />
                 <cae-input
@@ -109,6 +110,7 @@
                   label="Owner email"
                   name="email"
                   autocomplete="email"
+                  [errorMessages]="emailErrors"
                   required
                 />
               </div>
@@ -155,6 +157,7 @@
                   name="password"
                   autocomplete="new-password"
                   hint="At least 8 characters"
+                  [errorMessages]="passwordErrors"
                   required
                 />
                 <cae-checkbox formControlName="agree" required>

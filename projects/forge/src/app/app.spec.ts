@@ -132,6 +132,38 @@ describe('App', () => {
     expect(cmp['step']()).toBe(1);
   });
 
+  it('reset clears the errors and the submitted flag so a fresh form is not a wall of errors (#29)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const cmp = fixture.componentInstance;
+    const el = fixture.nativeElement as HTMLElement;
+    // mat-form-field carries a *-invalid class only while it is actually showing errors
+    // (driven by errorState). The <mat-error> node persists in the DOM even when hidden, so
+    // count invalid FIELDS, not mat-error elements.
+    const invalidFieldCount = (): number =>
+      Array.from(el.querySelectorAll('mat-form-field')).filter((f) =>
+        f.className.includes('invalid'),
+      ).length;
+
+    // Submit the empty form through the real form event so FormGroupDirective.submitted is set
+    // (calling submit() alone wouldn't). It's invalid → required cae-inputs light up.
+    el.querySelector('form')!.dispatchEvent(new Event('submit'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(cmp['formDir']()?.submitted).toBe(true);
+    expect(invalidFieldCount()).toBeGreaterThan(0);
+
+    // Reset must clear BOTH the model and the directive's submitted flag; otherwise the
+    // pristine, untouched blank form keeps showing those errors (the regression #29's fix guards).
+    cmp['reset']();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(cmp['formDir']()?.submitted).toBe(false);
+    expect(invalidFieldCount()).toBe(0);
+  });
+
   it('surfaces every semantic swatch token in the first reference tab', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
