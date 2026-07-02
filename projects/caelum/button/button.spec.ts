@@ -91,6 +91,45 @@ describe('CaeButton', () => {
     const button = fixture.nativeElement.querySelector('button') as HTMLButtonElement;
     expect(button.hasAttribute('aria-expanded')).toBe(false);
   });
+
+  it('natively disables the button by default so it is inert (#58)', () => {
+    fixture.componentRef.setInput('disabled', true);
+    fixture.detectChanges();
+    const button = fixture.nativeElement.querySelector('button') as HTMLButtonElement;
+    // Plain disabled (disabledInteractive off): the real `disabled` attribute is set, which
+    // suppresses focus + pointer events — so aria-disabled is redundant and Material omits it.
+    expect(button.hasAttribute('disabled')).toBe(true);
+    expect(button.hasAttribute('aria-disabled')).toBe(false);
+  });
+
+  it('keeps a disabled button focusable via disabledInteractive so its tooltip can show (#58)', async () => {
+    fixture.componentRef.setInput('disabled', true);
+    fixture.componentRef.setInput('disabledInteractive', true);
+    fixture.componentRef.setInput('tooltip', 'Complete the form to enable this');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const button = fixture.nativeElement.querySelector('button') as HTMLButtonElement;
+    // Material drops the native `disabled` attribute (which would swallow focus/hover) and marks
+    // the button aria-disabled instead: AT still announces it disabled, but it stays focusable and
+    // hoverable — so the tooltip explaining *why* it is disabled can actually appear.
+    expect(button.hasAttribute('disabled')).toBe(false);
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    const tip = fixture.debugElement.query(By.directive(MatTooltip)).injector.get(MatTooltip);
+    expect(tip.disabled).toBe(false);
+    // The description reaches the (now focusable) inner button — the element a user lands on.
+    expect(button.getAttribute('aria-describedby')).toBeTruthy();
+  });
+
+  it('coerces a bare disabledInteractive attribute (#58)', () => {
+    // Bare `<cae-button disabledInteractive>` must engage the mode (booleanAttribute), matching
+    // how the `disabled` input coerces.
+    fixture.componentRef.setInput('disabled', true);
+    fixture.componentRef.setInput('disabledInteractive', '');
+    fixture.detectChanges();
+    const button = fixture.nativeElement.querySelector('button') as HTMLButtonElement;
+    expect(button.hasAttribute('disabled')).toBe(false);
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+  });
 });
 
 @Component({
@@ -101,6 +140,7 @@ describe('CaeButton', () => {
       [menuTriggerFor]="m"
       [tooltip]="tip"
       [disabled]="disabled"
+      [disabledInteractive]="disabledInteractive"
       variant="outlined"
       ariaLabel="Workspace actions"
       >Actions</cae-button
@@ -114,6 +154,7 @@ class MenuButtonHost {
   ];
   tip = 'Workspace actions';
   disabled = false;
+  disabledInteractive = false;
 }
 
 describe('CaeButton (menu trigger #57)', () => {
@@ -184,5 +225,21 @@ describe('CaeButton (menu trigger #57)', () => {
     await f.whenStable();
     const button = f.nativeElement.querySelector('cae-button button') as HTMLButtonElement;
     expect(button.disabled).toBe(true);
+  });
+
+  it('forwards disabledInteractive on the menu-branch button, keeping it a working trigger (#58 two-branch parity)', async () => {
+    // disabledInteractive must be forwarded in the menu branch as well as the plain branch — a
+    // divergence would ship silently. An interactive-disabled button stays focusable, so it can
+    // still open its menu while being announced disabled.
+    const f = TestBed.createComponent(MenuButtonHost);
+    f.componentInstance.disabled = true;
+    f.componentInstance.disabledInteractive = true;
+    f.detectChanges();
+    await f.whenStable();
+    const button = f.nativeElement.querySelector('cae-button button') as HTMLButtonElement;
+    expect(button.hasAttribute('disabled')).toBe(false);
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    // The trigger (and its aria-haspopup) still sits on the focusable inner button.
+    expect(button.getAttribute('aria-haspopup')).toBe('menu');
   });
 });
