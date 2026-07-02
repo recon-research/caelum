@@ -232,6 +232,42 @@
   margin-block-start: var(--cae-space-3);
 }
 
+// Live wizard-progress strip (#88). align-items: stretch lets the VERTICAL cae-divider — whose
+// wrapper is display:contents, so the inner <mat-divider> is the actual flex item — fill the row
+// height; the bar and ring opt back to centre with align-self.
+.forge-progress {
+  display: flex;
+  align-items: stretch;
+  gap: var(--cae-space-3);
+  min-block-size: 48px;
+  padding: var(--cae-space-3);
+  border: 1px solid var(--cae-color-border);
+  border-radius: var(--cae-radius-md);
+  background: var(--cae-surface-sunken);
+  margin-block-end: var(--cae-space-3);
+}
+
+.forge-progress__bar {
+  flex: 1 1 auto;
+  align-self: center;
+}
+
+.forge-progress__ring {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  align-self: center;
+}
+
+.forge-progress__pct {
+  position: absolute;
+  font-size: var(--cae-text-sm);
+  font-weight: var(--cae-weight-medium);
+  color: var(--cae-color-on-surface-variant);
+}
+
 .forge-form__status {
   margin: 0;
   color: var(--cae-color-success);

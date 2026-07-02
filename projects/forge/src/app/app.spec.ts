@@ -188,6 +188,38 @@ describe('App', () => {
     expect(status.textContent).toContain('2 tags remaining');
   });
 
+  it('renders a live wizard-progress strip from the display primitives (#88)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const cmp = fixture.componentInstance;
+    const card = (fixture.nativeElement as HTMLElement).querySelector(
+      '.forge-form-card',
+    ) as HTMLElement;
+
+    // The cae-progress-bar carries the announced value; on step 0 that's 33% (step 1 of 3).
+    const bar = card.querySelector('cae-progress-bar mat-progress-bar')!;
+    expect(bar.getAttribute('role')).toBe('progressbar');
+    expect(bar.getAttribute('aria-label')).toBe('Workspace setup progress');
+    expect(bar.getAttribute('aria-valuenow')).toBe('33');
+
+    // A VERTICAL cae-divider separates the bar from the ring (its display:contents wrapper hoists
+    // the inner mat-divider, which is the actual role=separator element).
+    const divider = card.querySelector('.forge-progress mat-divider')!;
+    expect(divider.getAttribute('role')).toBe('separator');
+    expect(divider.getAttribute('aria-orientation')).toBe('vertical');
+
+    // The cae-progress-spinner ring is a decorative echo — hidden from AT so the value is announced
+    // once (by the bar), not twice.
+    const ring = card.querySelector('.forge-progress__ring')!;
+    expect(ring.getAttribute('aria-hidden')).toBe('true');
+    expect(ring.querySelector('cae-progress-spinner mat-progress-spinner')).toBeTruthy();
+
+    // It's live: advancing to the last step fills the meter to 100% (signal-driven via stepProgress).
+    cmp['step'].set(2);
+    fixture.detectChanges();
+    expect(bar.getAttribute('aria-valuenow')).toBe('100');
+  });
+
   it('announces success in a persistent polite live region on submit', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();

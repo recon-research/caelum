@@ -49,3 +49,8 @@ export * from 'caelum/accordion';
 
 // --- Data display: chip (#83) ---
 export * from 'caelum/chip';
+
+// --- Display primitives: progress-bar, progress-spinner, divider (#88) ---
+export * from 'caelum/progress-bar';
+export * from 'caelum/progress-spinner';
+export * from 'caelum/divider';
