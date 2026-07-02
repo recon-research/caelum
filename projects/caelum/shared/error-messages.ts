@@ -11,8 +11,8 @@
  * EXCEPT on an empty *required* field, where it suppresses it by design (`aria-required`
  * conveys the requirement); so leaving `required` unmapped ships a field that is invalid to
  * sighted users yet silent to a screen reader (Book 07 §3.3). Prefer mapping every validated
- * key. Shared by the form-field controls (`cae-input`, `cae-textarea`), so it lives in the
- * type-only `caelum/shared` (mirrors `CaeFormFieldAppearance`); it survives the per-component
- * entry-point split (#28) without either control importing the other's module.
+ * key. Shared by the form-field controls (`cae-input`, `cae-textarea`, `cae-select`), so it
+ * lives in the type-only `caelum/shared` (mirrors `CaeFormFieldAppearance`); it survives the
+ * per-component entry-point split (#28) without any control importing another's module.
  */
 export type CaeErrorMessages = Record<string, string | ((error: unknown) => string)>;

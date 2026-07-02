@@ -132,6 +132,38 @@ describe('App', () => {
     expect(cmp['step']()).toBe(1);
   });
 
+  it('surfaces a per-field error on every required control on a bad submit — no silent-invalid (#47)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const el = fixture.nativeElement as HTMLElement;
+    const firstRadio = (): Element | null => el.querySelector('cae-radio input[type="radio"]');
+    const agreeBox = (): Element | null => el.querySelector('cae-checkbox input[type="checkbox"]');
+
+    // Before submit: no consumer errors, and no dangling describedby references.
+    expect(el.querySelector('#plan-error')).toBeNull();
+    expect(el.querySelector('#agree-error')).toBeNull();
+    expect(firstRadio()?.getAttribute('aria-describedby')).toBeNull();
+    expect(agreeBox()?.getAttribute('aria-describedby')).toBeNull();
+
+    // Submit the empty form through the real form event so FormGroupDirective.submitted is set.
+    el.querySelector('form')!.dispatchEvent(new Event('submit'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    // region (cae-select) forwards into its mat-form-field — a real <mat-error>, not silent-invalid.
+    const regionField = el.querySelector('cae-select mat-form-field');
+    expect(regionField?.className).toContain('invalid');
+    expect(el.querySelector('cae-select mat-error')?.textContent).toContain('A region is required');
+
+    // plan (cae-radio) + agree (cae-checkbox) aren't mat-form-fields: consumer messages, linked
+    // via ariaDescribedby ON THE FOCUSABLE INPUTS (a radiogroup container never receives focus).
+    expect(el.querySelector('#plan-error')?.textContent).toContain('Choose a plan');
+    expect(firstRadio()?.getAttribute('aria-describedby')).toBe('plan-error');
+    expect(el.querySelector('#agree-error')?.textContent).toContain('accept the terms');
+    expect(agreeBox()?.getAttribute('aria-describedby')).toBe('agree-error');
+  });
+
   it('reset clears the errors and the submitted flag so a fresh form is not a wall of errors (#29)', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();

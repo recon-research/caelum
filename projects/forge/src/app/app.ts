@@ -166,6 +166,8 @@ export class App {
     required: 'A password is required',
     minlength: (e) => `Use at least ${(e as { requiredLength: number }).requiredLength} characters`,
   };
+  /** cae-select forwards errors into its mat-form-field like cae-input (#47) — so map its key. */
+  protected readonly regionErrors: CaeErrorMessages = { required: 'A region is required' };
 
   protected readonly created = signal<string | null>(null);
   /** A form-level error announced on invalid submit; per-field messages now render inline (#29). */
@@ -236,6 +238,19 @@ export class App {
   protected goToStep(index: number): void {
     this.formError.set(null);
     this.step.set(Math.min(Math.max(index, 0), this.lastStep));
+  }
+
+  /**
+   * Whether a required NON-form-field control (`plan` radio, `agree` checkbox) should show its
+   * error — the SAME trigger the mat-error fields use (invalid && (touched || submitted)).
+   * These aren't `mat-form-field`s, so per #47 Forge renders the message itself and links it via
+   * the control's `ariaDescribedby` (forwarded onto the focusable input, announced on focus like
+   * `<mat-error>`; the form-level status region covers submit-time announcement). Together with
+   * `regionErrors` on the select, this closes the plan/region/agree asymmetry #47 named.
+   */
+  protected fieldErrorShown(name: 'plan' | 'agree'): boolean {
+    const control = this.form.controls[name];
+    return control.invalid && (control.touched || (this.formDir()?.submitted ?? false));
   }
 
   /** The first wizard step that holds an invalid control (0 if none). */

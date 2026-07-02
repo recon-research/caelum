@@ -1,4 +1,6 @@
+import { Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import { By } from '@angular/platform-browser';
 import { MatSelect } from '@angular/material/select';
 
@@ -68,5 +70,84 @@ describe('CaeSelect', () => {
     el.dispatchEvent(new Event('focusout', { bubbles: true }));
     fixture.detectChanges();
     expect(touched).toBe(true);
+  });
+});
+
+// Validation-error forwarding (#47, extending #29): the consumer binds their control to the
+// OUTER <cae-select>, so this exercises the bridge that reflects that control's validity into
+// the inner mat-select's error state. A host component supplies a real reactive control + map.
+@Component({
+  imports: [CaeSelect, ReactiveFormsModule],
+  template: `
+    <cae-select [formControl]="ctrl" [errorMessages]="messages" label="Region" [options]="opts" />
+  `,
+})
+class SelectErrorHost {
+  readonly opts: CaeSelectOption[] = OPTIONS;
+  readonly ctrl = new FormControl('', {
+    nonNullable: true,
+    validators: [Validators.required],
+  });
+  messages: Record<string, string> = { required: 'A region is required' };
+}
+
+describe('CaeSelect — validation errors', () => {
+  let fixture: ComponentFixture<SelectErrorHost>;
+  let host: SelectErrorHost;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({ imports: [SelectErrorHost] }).compileComponents();
+    fixture = TestBed.createComponent(SelectErrorHost);
+    host = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+  });
+
+  const selectErrorState = (): boolean =>
+    fixture.debugElement.query(By.directive(MatSelect)).injector.get(MatSelect).errorState;
+  const errorText = (): string =>
+    fixture.nativeElement.querySelector('mat-error')?.textContent?.trim() ?? '';
+  const ariaInvalid = (): string | null =>
+    fixture.nativeElement.querySelector('mat-select')?.getAttribute('aria-invalid') ?? null;
+
+  it('stays silent while the control is untouched', () => {
+    expect(host.ctrl.invalid).toBe(true);
+    expect(selectErrorState()).toBe(false);
+    expect(errorText()).toBe('');
+  });
+
+  it('shows the mapped message once the control is invalid and touched', async () => {
+    host.ctrl.markAsTouched();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(selectErrorState()).toBe(true);
+    expect(errorText()).toContain('A region is required');
+  });
+
+  it('clears the error when the control becomes valid', async () => {
+    host.ctrl.markAsTouched();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    host.ctrl.setValue('b');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(selectErrorState()).toBe(false);
+    expect(errorText()).toBe('');
+  });
+
+  it('marks the field invalid even when no message is mapped for the error', async () => {
+    host.messages = {};
+    host.ctrl.markAsTouched();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    // Error state (→ invalid styling) still flips; there is just no text. Unlike matInput,
+    // mat-select reflects errorState into aria-invalid unconditionally (no empty-required
+    // suppression), so aria-invalid is present here regardless of the `required` input.
+    expect(selectErrorState()).toBe(true);
+    expect(errorText()).toBe('');
+    expect(ariaInvalid()).toBe('true');
   });
 });

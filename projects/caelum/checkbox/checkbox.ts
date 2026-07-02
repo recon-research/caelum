@@ -18,6 +18,11 @@ import { MatCheckboxModule } from '@angular/material/checkbox';
  * match the PrimeNG migration target. Reactive-forms disabling (`setDisabledState`) is
  * merged with the template `disabled` input. Zoneless-compatible: `OnPush` + signal
  * state, no zone-coupled APIs (provisional on #9; Book 01 §3.2).
+ *
+ * Like `cae-radio`, a checkbox is not a `MatFormFieldControl`, so it has no built-in
+ * `<mat-error>`; for validation feedback the consumer renders the message and points
+ * `ariaDescribedby` at it (Caelum's consumer-owned error pattern for non-form-field controls,
+ * #47). It's forwarded to the focusable inner `<input>` (Material's `aria-describedby` seam).
  */
 @Component({
   selector: 'cae-checkbox',
@@ -32,6 +37,7 @@ import { MatCheckboxModule } from '@angular/material/checkbox';
       [disabled]="isDisabled()"
       [required]="required()"
       [labelPosition]="labelPosition()"
+      [aria-describedby]="$any(ariaDescribedby() || null)"
       (change)="handleChange($event.checked)"
       (focusout)="onTouched()"
     >
@@ -46,6 +52,14 @@ export class CaeCheckbox implements ControlValueAccessor {
   readonly labelPosition = input<'before' | 'after'>('after');
   /** Template-driven disable; merged with any reactive-forms `setDisabledState`. */
   readonly disabled = input(false, { transform: booleanAttribute });
+  /**
+   * `id`(s) of element(s) describing the control — the a11y hook for a consumer-owned error or
+   * hint (see the class docstring and `cae-radio`). Forwarded to the focusable inner `<input>`,
+   * where a screen reader reads it on focus; pair with a form-level live region for submit.
+   * (`$any` in the template bridges Material's `aria-describedby` input, typed `string`, so an
+   * empty value passes `null` and the attribute is dropped rather than rendered empty.)
+   */
+  readonly ariaDescribedby = input('');
 
   protected readonly checked = signal(false);
   private readonly formDisabled = signal(false);

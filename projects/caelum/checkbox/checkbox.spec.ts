@@ -45,4 +45,12 @@ describe('CaeCheckbox', () => {
     fixture.detectChanges();
     expect(nativeBox().disabled).toBe(true);
   });
+
+  it('forwards ariaDescribedby to the focusable input (the consumer-error a11y hook, #47)', () => {
+    // Absent by default (no dangling reference to a non-existent id).
+    expect(nativeBox().getAttribute('aria-describedby')).toBeNull();
+    fixture.componentRef.setInput('ariaDescribedby', 'agree-error');
+    fixture.detectChanges();
+    expect(nativeBox().getAttribute('aria-describedby')).toBe('agree-error');
+  });
 });

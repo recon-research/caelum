@@ -118,23 +118,35 @@
 
             <cae-step label="Plan">
               <div class="forge-step-body">
-                <div class="forge-field-group" role="group" aria-labelledby="plan-label">
+                <!-- The label + radiogroup share one accessible name: cae-radio renders the
+                     role=radiogroup and takes ariaLabelledby, so this wrapper is styling only
+                     (no role=group, which would double-announce the "Plan" group). -->
+                <div class="forge-field-group">
                   <span id="plan-label" class="forge-field-group__label">
                     Plan <span class="forge-req" aria-hidden="true">*</span>
                   </span>
+                  <!-- cae-radio isn't a mat-form-field, so it has no built-in <mat-error>. Per
+                       #47, Forge renders the message and links it via cae-radio's ariaDescribedby
+                       (forwarded onto each focusable radio input) — announced on focus like the
+                       mat-error fields above; the form-level status region covers submit. -->
                   <cae-radio
                     formControlName="plan"
                     name="plan"
                     ariaLabelledby="plan-label"
+                    [ariaDescribedby]="fieldErrorShown('plan') ? 'plan-error' : ''"
                     [options]="plans"
                     required
                   />
+                  @if (fieldErrorShown('plan')) {
+                    <p id="plan-error" class="forge-field-error">Choose a plan to continue</p>
+                  }
                 </div>
                 <cae-select
                   formControlName="region"
                   label="Region"
                   [options]="regions"
                   hint="Where the workspace is hosted"
+                  [errorMessages]="regionErrors"
                   required
                 />
               </div>
@@ -160,9 +172,22 @@
                   [errorMessages]="passwordErrors"
                   required
                 />
-                <cae-checkbox formControlName="agree" required>
-                  I accept the terms of service
-                </cae-checkbox>
+                <!-- cae-checkbox is likewise not a mat-form-field: same #47 hook — the consumer
+                     error is linked via ariaDescribedby (forwarded onto the focusable input). -->
+                <div class="forge-field-group forge-field-group--flush">
+                  <cae-checkbox
+                    formControlName="agree"
+                    [ariaDescribedby]="fieldErrorShown('agree') ? 'agree-error' : ''"
+                    required
+                  >
+                    I accept the terms of service
+                  </cae-checkbox>
+                  @if (fieldErrorShown('agree')) {
+                    <p id="agree-error" class="forge-field-error">
+                      You must accept the terms to continue
+                    </p>
+                  }
+                </div>
               </div>
             </cae-step>
           </cae-stepper>
