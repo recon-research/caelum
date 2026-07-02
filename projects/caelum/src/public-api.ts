@@ -18,6 +18,9 @@
 // --- Shared types ---
 export * from 'caelum/shared';
 
+// --- Shared base for the mat-form-field controls (input/textarea/select) (#46) ---
+export * from 'caelum/form-field';
+
 // --- Batch 1 (#5) ---
 export * from 'caelum/button';
 export * from 'caelum/card';
