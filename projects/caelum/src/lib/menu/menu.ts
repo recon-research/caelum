@@ -43,7 +43,7 @@ export interface CaeMenuItem {
   imports: [MatMenu, MatMenuItem],
   template: `
     <mat-menu [xPosition]="xPosition()" [yPosition]="yPosition()">
-      @for (item of items(); track item.value ?? item.label) {
+      @for (item of items(); track $index) {
         <button mat-menu-item [disabled]="item.disabled ?? false" (click)="itemSelect.emit(item)">
           {{ item.label }}
         </button>
@@ -62,9 +62,10 @@ export class CaeMenu {
   readonly itemSelect = output<CaeMenuItem>();
 
   /**
-   * The underlying Material menu panel. Consumed by `caeMenuTriggerFor` (which reads it
-   * off the `CaeMenu` instance), not intended for direct binding — the wrapper hides
-   * Material from the trigger's public API.
+   * The underlying Material menu panel — an INTERNAL seam read cross-instance by
+   * `caeMenuTriggerFor`, not a consumer API. `@internal` strips it from the published
+   * typings (tsconfig `stripInternal`) so `MatMenu` never leaks into the public surface.
+   * @internal
    */
   readonly panel = viewChild.required(MatMenu);
 }

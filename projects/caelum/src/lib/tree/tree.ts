@@ -8,7 +8,7 @@ export interface CaeTreeNode {
   /** Optional value identifying the node in `(nodeSelect)`; the whole node is emitted. */
   value?: string;
   /** Child nodes; presence (and non-emptiness) makes this node expandable. */
-  children?: CaeTreeNode[];
+  children?: readonly CaeTreeNode[];
 }
 
 /**
@@ -16,13 +16,17 @@ export interface CaeTreeNode {
  * (`reference/COMPARISON.md`: `p-tree` → `cae-tree`). Nodes are nested data
  * (`CaeTreeNode[]`); the wrapper drives Material's modern data API (`dataSource` +
  * `childrenAccessor` — the deprecated `TreeControl`/`DataSource` boilerplate is avoided).
- * Each node is a `treeitem`; its label and toggle are real `<button>`s, so selection and
- * expand/collapse are fully keyboard-operable (Tab + Enter/Space) and mouse-operable, with
- * the tree structure conveyed to assistive tech. Because a nested `childrenAccessor` renders
- * all descendants regardless of expansion, collapsed subtrees are hidden with CSS bound to
- * `isExpanded` (the a11y state stays correct via `aria-expanded`). No animations. Theme comes
- * free through the token bridge. Zoneless-compatible: `OnPush` + signal state (provisional on
- * #9; Book 01 §3.2).
+ *
+ * Accessibility follows the WAI-ARIA tree pattern the CDK provides: each node is a
+ * `treeitem` with a **single roving tab stop** (one node is tabbable, the rest carry
+ * `tabindex="-1"`), arrow keys move between nodes, and `(activation)` (Enter/Space) selects.
+ * The label is therefore plain text — NOT a nested focusable control, which would add extra
+ * tab stops and swallow the CDK's arrow-key handling. The toggle is a `tabindex="-1"` button
+ * (a mouse affordance; keyboard users expand/collapse with Left/Right). Because a nested
+ * `childrenAccessor` renders all descendants regardless of expansion, collapsed subtrees are
+ * hidden with CSS bound to `isExpanded` (the a11y state stays correct via `aria-expanded`).
+ * No animations. Theme comes free through the token bridge. Zoneless-compatible: `OnPush` +
+ * signal state (provisional on #9; Book 01 §3.2).
  */
 @Component({
   selector: 'cae-tree',
@@ -35,17 +39,27 @@ export interface CaeTreeNode {
       [childrenAccessor]="childrenAccessor"
       [attr.aria-label]="ariaLabel() || null"
     >
-      <!-- Leaf node: a focusable treeitem; its label button selects. -->
-      <mat-tree-node *matTreeNodeDef="let node">
+      <!-- Leaf node: the treeitem host is the focus/activation target (CDK roving tabindex +
+           keyboard nav); (activation) selects via Enter/Space. (click) is the mouse
+           equivalent; onNodeClick stops the bubble so a nested ancestor doesn't also select. -->
+      <mat-tree-node
+        *matTreeNodeDef="let node"
+        (activation)="nodeSelect.emit(node)"
+        (click)="onNodeClick(node, $event)"
+      >
         <span class="cae-tree__row cae-tree__row--leaf">
-          <button type="button" class="cae-tree__label" (click)="nodeSelect.emit(node)">
-            {{ node.label }}
-          </button>
+          <span class="cae-tree__label">{{ node.label }}</span>
         </span>
       </mat-tree-node>
 
-      <!-- Expandable node: toggle + label; children stamped into the outlet, hidden when collapsed. -->
-      <mat-nested-tree-node *matTreeNodeDef="let node; when: hasChild" [isExpandable]="true">
+      <!-- Expandable node: toggle (tabindex=-1) + plain-text label; children stamped into the
+           outlet, hidden when collapsed. -->
+      <mat-nested-tree-node
+        *matTreeNodeDef="let node; when: hasChild"
+        [isExpandable]="true"
+        (activation)="nodeSelect.emit(node)"
+        (click)="onNodeClick(node, $event)"
+      >
         <span class="cae-tree__row">
           <button
             type="button"
@@ -55,9 +69,7 @@ export interface CaeTreeNode {
           >
             <span aria-hidden="true">{{ tree.isExpanded(node) ? '▾' : '▸' }}</span>
           </button>
-          <button type="button" class="cae-tree__label" (click)="nodeSelect.emit(node)">
-            {{ node.label }}
-          </button>
+          <span class="cae-tree__label">{{ node.label }}</span>
         </span>
         <div
           class="cae-tree__children"
@@ -95,16 +107,16 @@ export interface CaeTreeNode {
       cursor: pointer;
     }
     .cae-tree__label {
-      padding: 0;
-      border: 0;
-      background: none;
-      color: inherit;
-      font: inherit;
-      text-align: start;
       cursor: pointer;
     }
-    .cae-tree__toggle:focus-visible,
-    .cae-tree__label:focus-visible {
+    /* One roving focus ring, drawn tightly around the focused node's row. */
+    mat-tree-node:focus-visible,
+    mat-nested-tree-node:focus-visible {
+      outline: none;
+    }
+    mat-tree-node:focus-visible > .cae-tree__row,
+    mat-nested-tree-node:focus-visible > .cae-tree__row,
+    .cae-tree__toggle:focus-visible {
       outline: var(--cae-focus-ring);
       outline-offset: var(--cae-focus-ring-offset);
       border-radius: var(--cae-radius-sm);
@@ -119,16 +131,27 @@ export class CaeTree {
   readonly nodes = input<readonly CaeTreeNode[]>([]);
   /** Accessible name for the tree. */
   readonly ariaLabel = input('');
-  /** Emits the node when its label is activated (click or keyboard). */
+  /** Emits the node when it is activated (Enter/Space on the focused node, or a click). */
   readonly nodeSelect = output<CaeTreeNode>();
 
   /** A fresh mutable array for Material's `dataSource` (which rejects readonly). */
   protected readonly dataSource = computed(() => [...this.nodes()]);
 
-  /** Derives a node's children for Material's hierarchy expansion. */
-  protected readonly childrenAccessor = (node: CaeTreeNode): CaeTreeNode[] => node.children ?? [];
+  /** Derives a node's children for Material's hierarchy expansion (mutable copy for the CDK). */
+  protected readonly childrenAccessor = (node: CaeTreeNode): CaeTreeNode[] => [
+    ...(node.children ?? []),
+  ];
 
   /** `when` predicate selecting the expandable node template. */
   protected hasChild = (_: number, node: CaeTreeNode): boolean =>
     !!node.children && node.children.length > 0;
+
+  /**
+   * Emit selection for a mouse click, stopping the bubble so an ancestor node (which
+   * contains its descendants in the outlet) doesn't also fire `nodeSelect`.
+   */
+  protected onNodeClick(node: CaeTreeNode, event: Event): void {
+    event.stopPropagation();
+    this.nodeSelect.emit(node);
+  }
 }

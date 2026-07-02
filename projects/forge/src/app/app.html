@@ -70,7 +70,8 @@
       <p
         #statusRegion
         class="forge-form__status"
-        [class.forge-form__status--shown]="created()"
+        [class.forge-form__status--shown]="created() || formError()"
+        [class.forge-form__status--error]="formError() && !created()"
         role="status"
         aria-live="polite"
         tabindex="-1"
@@ -78,6 +79,8 @@
         @if (created(); as name) {
           Workspace “{{ name }}” created — the whole form round-tripped through the
           <code>cae-*</code> ControlValueAccessors, across the stepper.
+        } @else if (formError(); as error) {
+          {{ error }}
         }
       </p>
 
@@ -188,8 +191,8 @@
       subtitle="A cae-tree over the same tokens"
     >
       <p class="forge-panel__lead">
-        Expand the nodes and select one; the choice is announced below. Arrow keys move focus
-        between nodes.
+        Expand the nodes and select one; the choice is announced below. The tree is a single tab
+        stop — arrow keys move between nodes, Enter selects.
       </p>
       <cae-tree
         ariaLabel="Workspace structure"

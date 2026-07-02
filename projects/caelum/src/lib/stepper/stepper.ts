@@ -38,13 +38,14 @@ export class CaeStep {
  * (`reference/COMPARISON.md`: `p-stepper`/`p-steps` → `cae-stepper`). Steps are declared as
  * projected `cae-step` children (label + content), mirroring the `p-step` authoring model,
  * and rendered through `mat-stepper`. `selectedIndex` is two-way bindable
- * (`[(selectedIndex)]`), so drive navigation from a signal and/or let users click reachable
- * headers. `linear` gates forward motion (a linear stepper advances only once earlier steps
- * are complete). Theme comes free through the token bridge. Zoneless-compatible: `OnPush` +
- * signal state (provisional on #9; Book 01 §3.2).
+ * (`[(selectedIndex)]`), so drive navigation from a signal and/or let users click headers.
+ * Theme comes free through the token bridge. Zoneless-compatible: `OnPush` + signal state
+ * (provisional on #9; Book 01 §3.2).
  *
  * NOTE: unlike `cae-tabs`, Material stamps every step body eagerly (they are all in the DOM,
- * shown/hidden by selection) — a lazy step body is a later enhancement if needed.
+ * shown/hidden by selection) — a lazy step body is a later enhancement if needed. Linear
+ * (validity-gated) stepping needs a `stepControl` seam on `cae-step` and is a deliberate
+ * follow-up (not exposed here, so no half-working `linear` input ships).
  */
 @Component({
   selector: 'cae-stepper',
@@ -53,9 +54,8 @@ export class CaeStep {
   template: `
     <mat-stepper
       [selectedIndex]="selectedIndex()"
-      [linear]="linear()"
       [orientation]="orientation()"
-      [aria-label]="ariaLabel()"
+      [aria-label]="ariaLabel() || null"
       (selectedIndexChange)="selectedIndexChange.emit($event)"
     >
       @for (step of steps(); track step) {
@@ -80,8 +80,6 @@ export class CaeStepper {
   readonly selectedIndexChange = output<number>();
   /** Layout axis. */
   readonly orientation = input<'horizontal' | 'vertical'>('horizontal');
-  /** When true, a step can't be reached until earlier steps are complete. */
-  readonly linear = input(false, { transform: booleanAttribute });
   /** Accessible name for the stepper. */
   readonly ariaLabel = input('');
 }

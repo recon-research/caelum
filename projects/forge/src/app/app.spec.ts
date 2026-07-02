@@ -117,6 +117,21 @@ describe('App', () => {
     expect(region?.textContent).toContain('Acme');
   });
 
+  it('announces an error and jumps to the first invalid step on a bad submit', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const cmp = fixture.componentInstance;
+    // Steps 0 (name/email) valid, step 1 (plan/region) invalid — the jump target must be 1,
+    // not a hardcoded 0, and the failure must be announced (not silent focus loss).
+    cmp['form'].patchValue({ name: 'Acme', email: 'a@b.co' });
+    cmp['submit']();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const region = (fixture.nativeElement as HTMLElement).querySelector('.forge-form__status');
+    expect(region?.textContent).toContain('missing');
+    expect(cmp['step']()).toBe(1);
+  });
+
   it('surfaces every semantic swatch token in the first reference tab', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();

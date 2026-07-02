@@ -70,12 +70,12 @@ describe('CaeMenu', () => {
     expect(host.selected?.value).toBe('exp');
   });
 
-  it('supports programmatic toggle/close (PrimeNG menu.toggle parity)', async () => {
-    trigger().open();
+  it('toggles the menu open then closed (PrimeNG menu.toggle parity)', async () => {
+    trigger().toggle();
     fixture.detectChanges();
     await fixture.whenStable();
     expect(matTrigger().menuOpen).toBe(true);
-    trigger().close();
+    trigger().toggle();
     fixture.detectChanges();
     await fixture.whenStable();
     expect(matTrigger().menuOpen).toBe(false);

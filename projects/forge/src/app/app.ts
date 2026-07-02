@@ -152,11 +152,24 @@ export class App {
   });
 
   protected readonly created = signal<string | null>(null);
+  /** A form-level error announced on invalid submit (per-field error display is #29). */
+  protected readonly formError = signal<string | null>(null);
 
   /** Active wizard step — drives cae-stepper through its two-way `selectedIndex` seam. */
   protected readonly step = signal(0);
   /** Index of the last step (Submit replaces Next here). */
   protected readonly lastStep = 2;
+
+  /** Which wizard step each control lives on — used to jump to the first invalid one. */
+  private readonly stepOfControl: ReadonlyArray<readonly [string, number]> = [
+    ['name', 0],
+    ['email', 0],
+    ['plan', 1],
+    ['region', 1],
+    ['description', 2],
+    ['password', 2],
+    ['agree', 2],
+  ];
 
   /** Active reference tab — drives cae-tabs' two-way `selectedIndex`. */
   protected readonly selectedTab = signal(0);
@@ -168,10 +181,11 @@ export class App {
   private readonly statusRegion = viewChild<ElementRef<HTMLElement>>('statusRegion');
 
   constructor() {
-    // On success, move focus to the confirmation so keyboard / screen-reader users land on
-    // the result instead of being dropped to <body> when the form is swapped out.
+    // Move focus to the status region whenever it gains a message (success OR error), so a
+    // keyboard / screen-reader user lands on the announcement instead of being dropped to
+    // <body> when the form or the submit button re-renders.
     effect(() => {
-      if (this.created()) {
+      if (this.created() || this.formError()) {
         const el = this.statusRegion()?.nativeElement;
         if (el) queueMicrotask(() => el.focus());
       }
@@ -187,6 +201,7 @@ export class App {
   /** Populate the wizard with valid sample data and return to step one. */
   protected fillSample(): void {
     this.created.set(null);
+    this.formError.set(null);
     this.form.setValue({
       name: 'Acme Console',
       email: 'owner@acme.dev',
@@ -201,7 +216,16 @@ export class App {
 
   /** Move the wizard by one step, clamped to the valid range. */
   protected goToStep(index: number): void {
+    this.formError.set(null);
     this.step.set(Math.min(Math.max(index, 0), this.lastStep));
+  }
+
+  /** The first wizard step that holds an invalid control (0 if none). */
+  private firstInvalidStep(): number {
+    for (const [control, stepIndex] of this.stepOfControl) {
+      if (this.form.get(control)?.invalid) return stepIndex;
+    }
+    return 0;
   }
 
   /** Record the tree node the user selected. */
@@ -212,16 +236,23 @@ export class App {
   protected submit(): void {
     if (this.form.invalid) {
       this.form.markAllAsTouched();
-      // Jump to the first step so the user can see and fix the earliest invalid control.
-      this.step.set(0);
+      // Jump to the step that actually holds the first invalid control, and announce the
+      // failure in the live region (the effect moves focus there) — so a keyboard / SR user
+      // isn't dropped on <body> with no feedback when the submit button re-renders.
+      this.step.set(this.firstInvalidStep());
+      this.formError.set(
+        'Some required details are missing — jumped to the step that needs input.',
+      );
       return;
     }
+    this.formError.set(null);
     this.created.set(this.form.getRawValue().name);
   }
 
   protected reset(): void {
     this.form.reset();
     this.created.set(null);
+    this.formError.set(null);
     this.step.set(0);
   }
 

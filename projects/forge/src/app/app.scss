@@ -184,6 +184,10 @@
   margin-block-end: var(--cae-space-4);
 }
 
+.forge-form__status--error {
+  color: var(--cae-color-error);
+}
+
 .forge-form__status:focus-visible {
   outline: var(--cae-focus-ring);
   outline-offset: var(--cae-focus-ring-offset);
