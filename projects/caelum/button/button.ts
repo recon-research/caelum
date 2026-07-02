@@ -98,8 +98,11 @@ export class CaeButton {
    * the native `disabled` attribute — which suppresses focus and pointer events — for
    * `aria-disabled="true"`: assistive tech still announces it disabled and it stays tabbable, but
    * hover/focus now reveal the tooltip explaining *why* (the `<p-button pTooltip disabled>` parity
-   * case). Opt-in, default off. The action is NOT auto-suppressed — guard `(click)` and avoid a
-   * bare `type="submit"` so an interactive-disabled button can't still fire (Book 16 a11y).
+   * case). Opt-in, default off. The action is NOT auto-suppressed — guard it (a `(click)` handler,
+   * or the enclosing form's `(ngSubmit)`, as Forge's *Send invite* does) so an interactive-disabled
+   * button can't still fire. A bound `menuTriggerFor` is likewise still openable while
+   * interactive-disabled (its click belongs to `MatMenuTrigger`, not you) — unbind it to block that:
+   * `[menuTriggerFor]="busy ? undefined : menu"` (Book 16 a11y).
    */
   readonly disabledInteractive = input(false, { transform: booleanAttribute });
   /** Accessible name — set for icon-only or otherwise ambiguously-labelled buttons. */

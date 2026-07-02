@@ -116,16 +116,21 @@ describe('CaeButton', () => {
     expect(button.getAttribute('aria-disabled')).toBe('true');
     const tip = fixture.debugElement.query(By.directive(MatTooltip)).injector.get(MatTooltip);
     expect(tip.disabled).toBe(false);
-    // The description reaches the (now focusable) inner button — the element a user lands on.
+    // aria-describedby is tooltip-driven (like #36), not proof of focusability on its own — a
+    // native-disabled button gets it too. The aria-disabled + absent `disabled` attr assertions
+    // above are what actually require disabledInteractive; this just confirms the tip is wired.
     expect(button.getAttribute('aria-describedby')).toBeTruthy();
   });
 
-  it('coerces a bare disabledInteractive attribute (#58)', () => {
+  it('coerces a bare disabledInteractive attribute on cae-button itself (#58)', () => {
     // Bare `<cae-button disabledInteractive>` must engage the mode (booleanAttribute), matching
-    // how the `disabled` input coerces.
+    // how the `disabled` input coerces. Assert on cae-button's OWN input signal, not just the
+    // rendered attr: Material's inner input also coerces '' → true, so an attr-only check would
+    // stay green even if cae-button's transform were dropped (regressing its InputSignal<boolean>).
     fixture.componentRef.setInput('disabled', true);
     fixture.componentRef.setInput('disabledInteractive', '');
     fixture.detectChanges();
+    expect(fixture.componentInstance.disabledInteractive()).toBe(true);
     const button = fixture.nativeElement.querySelector('button') as HTMLButtonElement;
     expect(button.hasAttribute('disabled')).toBe(false);
     expect(button.getAttribute('aria-disabled')).toBe('true');
