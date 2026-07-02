@@ -10,7 +10,7 @@ import {
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatSelectModule } from '@angular/material/select';
-import type { CaeFormFieldAppearance } from '../shared/appearance';
+import type { CaeFormFieldAppearance } from 'caelum/shared';
 
 /** A single option in a `cae-select`. */
 export interface CaeSelectOption {

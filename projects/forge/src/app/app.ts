@@ -10,27 +10,22 @@ import {
   viewChild,
 } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import {
-  CaeButton,
-  CaeCard,
-  CaeCheckbox,
-  CaeInput,
-  CaeMenu,
-  CaeMenuItem,
-  CaeMenuTrigger,
-  CaeRadio,
-  CaeRadioOption,
-  CaeSelect,
-  CaeSelectOption,
-  CaeStep,
-  CaeStepper,
-  CaeTab,
-  CaeTabs,
-  CaeTextarea,
-  CaeTooltip,
-  CaeTree,
-  CaeTreeNode,
-} from 'caelum';
+// Forge imports each control from its own secondary entry point (#28) — the real
+// "pay only for what you import" adoption pattern (Book 18 §3.3). The `caelum` barrel
+// still works unchanged (the split is additive; a barrel import is exercised by
+// projects/caelum/src/public-api.spec.ts), but app code should prefer these paths.
+import { CaeButton } from 'caelum/button';
+import { CaeCard } from 'caelum/card';
+import { CaeCheckbox } from 'caelum/checkbox';
+import { CaeInput } from 'caelum/input';
+import { CaeMenu, CaeMenuItem, CaeMenuTrigger } from 'caelum/menu';
+import { CaeRadio, CaeRadioOption } from 'caelum/radio';
+import { CaeSelect, CaeSelectOption } from 'caelum/select';
+import { CaeStep, CaeStepper } from 'caelum/stepper';
+import { CaeTab, CaeTabs } from 'caelum/tabs';
+import { CaeTextarea } from 'caelum/textarea';
+import { CaeTooltip } from 'caelum/tooltip';
+import { CaeTree, CaeTreeNode } from 'caelum/tree';
 
 type ThemeMode = 'auto' | 'light' | 'dark';
 

@@ -10,7 +10,7 @@ import {
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
-import type { CaeFormFieldAppearance } from '../shared/appearance';
+import type { CaeFormFieldAppearance } from 'caelum/shared';
 
 /**
  * `cae-textarea` — the Direct (1:1) wrapper over a `matInput` `<textarea>` inside a

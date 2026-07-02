@@ -9,6 +9,6 @@
     "stripInternal": true,
     "types": []
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "*/*.ts"],
   "exclude": ["**/*.spec.ts"]
 }

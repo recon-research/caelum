@@ -4,7 +4,8 @@
   "compileOnSave": false,
   "compilerOptions": {
     "paths": {
-      "caelum": ["./dist/caelum"]
+      "caelum": ["./dist/caelum"],
+      "caelum/*": ["./dist/caelum/*"]
     },
     "noImplicitOverride": true,
     "noPropertyAccessFromIndexSignature": true,
