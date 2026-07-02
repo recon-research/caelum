@@ -6,7 +6,7 @@
     "caelum": 960,
     "caelum-shared": 560,
     "caelum-form-field": 6144,
-    "caelum-button": 3072,
+    "caelum-button": 4096,
     "caelum-card": 2000,
     "caelum-checkbox": 2816,
     "caelum-input": 3584,

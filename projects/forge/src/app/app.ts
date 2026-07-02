@@ -24,7 +24,7 @@ import { CaeButton } from 'caelum/button';
 import { CaeCard } from 'caelum/card';
 import { CaeCheckbox } from 'caelum/checkbox';
 import { CaeInput, type CaeErrorMessages } from 'caelum/input';
-import { CaeMenu, CaeMenuItem, CaeMenuTrigger } from 'caelum/menu';
+import { CaeMenu, CaeMenuItem } from 'caelum/menu';
 import { CaeRadio, CaeRadioOption } from 'caelum/radio';
 import { CaeSelect, CaeSelectOption } from 'caelum/select';
 import { CaeStep, CaeStepper } from 'caelum/stepper';
@@ -57,7 +57,6 @@ const SWATCHES: ReadonlyArray<{ token: string; label: string }> = [
     CaeCheckbox,
     CaeInput,
     CaeMenu,
-    CaeMenuTrigger,
     CaeRadio,
     CaeSelect,
     CaeStep,
