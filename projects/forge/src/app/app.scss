@@ -141,6 +141,13 @@
   margin-block-end: var(--cae-space-6);
 }
 
+// The linear-stepper demo card (#40) — same block spacing, its own class so tests can scope
+// the create-workspace card's control counts without matching this second stepper.
+.forge-invite-card {
+  display: block;
+  margin-block-end: var(--cae-space-6);
+}
+
 .forge-field-group {
   display: block;
   padding: var(--cae-space-3);

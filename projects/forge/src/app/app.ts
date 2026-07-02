@@ -195,10 +195,54 @@ export class App {
   /** The node last selected in the structure tree. */
   protected readonly selectedNode = signal<string | null>(null);
 
+  // --- Linear (validity-gated) stepper demo (#40) ---
+  // A second, deliberately small cae-stepper set to `[linear]`: Material gates advancing until
+  // each step's `stepControl` is valid (you can't reach "Access" until "Contact" is), and
+  // cae-stepper reconciles the two-way `selectedIndex` if a refused move would otherwise leave
+  // the signal ahead of the rendered step. Kept separate from the create-workspace wizard above
+  // (intentionally free-navigation) so both stepper modes are on display.
+  protected readonly inviteContact = new FormGroup({
+    email: new FormControl('', {
+      nonNullable: true,
+      validators: [Validators.required, Validators.email],
+    }),
+  });
+  protected readonly inviteAccess = new FormGroup({
+    role: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
+  });
+  protected readonly invite = new FormGroup({
+    contact: this.inviteContact,
+    access: this.inviteAccess,
+  });
+  protected readonly roles: readonly CaeSelectOption[] = [
+    { value: 'admin', label: 'Admin — full access' },
+    { value: 'member', label: 'Member — can edit' },
+    { value: 'viewer', label: 'Viewer — read only' },
+  ];
+  protected readonly inviteEmailErrors: CaeErrorMessages = {
+    required: 'A teammate email is required',
+    email: 'Enter a valid email address',
+  };
+  protected readonly inviteRoleErrors: CaeErrorMessages = { required: 'Choose a role' };
+  /** Active step of the linear invite stepper — two-way bound to its cae-stepper. */
+  protected readonly inviteStep = signal(0);
+  /** The email an invitation was sent to (success state). */
+  protected readonly inviteSent = signal<string | null>(null);
+  /** A message for the invite live region — a refused-advance prompt, cleared on progress. */
+  protected readonly inviteError = signal<string | null>(null);
+  private readonly inviteGroups = [this.inviteContact, this.inviteAccess];
+
   /** The persistent (always-rendered) polite live region + focus target for the result. */
   private readonly statusRegion = viewChild<ElementRef<HTMLElement>>('statusRegion');
-  /** The reactive form's directive — reset through it so `submitted` clears (see reset()). */
-  private readonly formDir = viewChild(FormGroupDirective);
+  /**
+   * The create-workspace form's directive — reset through it so `submitted` clears (see reset()).
+   * Queried by the template ref (not `viewChild(FormGroupDirective)`), which would be ambiguous
+   * now that a SECOND `[formGroup]` (the invite demo) lives in this view: a bare directive query
+   * flips to the invite form once the wizard's form is swapped out for "Create another".
+   */
+  private readonly formDir = viewChild<FormGroupDirective>('createFormDir');
+  /** The invite demo's persistent live region + focus target — mirrors `statusRegion`. */
+  private readonly inviteStatusRegion = viewChild<ElementRef<HTMLElement>>('inviteStatus');
 
   constructor() {
     // Move focus to the status region whenever it gains a message (success OR error), so a
@@ -207,6 +251,15 @@ export class App {
     effect(() => {
       if (this.created() || this.formError()) {
         const el = this.statusRegion()?.nativeElement;
+        if (el) queueMicrotask(() => el.focus());
+      }
+    });
+    // Same pattern for the invite demo: on a sent invitation or a refused-advance prompt, move
+    // focus to its persistent region so the message is announced and focus isn't stranded when
+    // the invite form is swapped for "Invite another".
+    effect(() => {
+      if (this.inviteSent() || this.inviteError()) {
+        const el = this.inviteStatusRegion()?.nativeElement;
         if (el) queueMicrotask(() => el.focus());
       }
     });
@@ -293,6 +346,47 @@ export class App {
     this.created.set(null);
     this.formError.set(null);
     this.step.set(0);
+  }
+
+  /**
+   * Advance the linear invite stepper — a well-behaved consumer validates the current step
+   * BEFORE requesting the move: if it's invalid, surface the field errors (markAllAsTouched)
+   * and announce a prompt in the live region (the effect moves focus there), rather than firing
+   * an optimistic move the `[linear]` stepper would refuse (which would flicker Next→Submit and
+   * strand focus). The stepper's own selectedIndex reconciliation (#40) remains the safety net
+   * for any consumer that DOES drive the index blindly — exercised in the library's own spec.
+   */
+  protected inviteNext(): void {
+    const group = this.inviteGroups[this.inviteStep()];
+    if (group.invalid) {
+      group.markAllAsTouched();
+      this.inviteError.set('Complete this step before continuing.');
+      return;
+    }
+    this.inviteError.set(null);
+    this.inviteStep.set(Math.min(this.inviteStep() + 1, this.inviteGroups.length - 1));
+  }
+
+  protected inviteBack(): void {
+    this.inviteError.set(null);
+    this.inviteStep.set(Math.max(this.inviteStep() - 1, 0));
+  }
+
+  protected sendInvite(): void {
+    if (this.invite.invalid) {
+      this.invite.markAllAsTouched();
+      this.inviteError.set('Complete this step before sending the invitation.');
+      return;
+    }
+    this.inviteError.set(null);
+    this.inviteSent.set(this.inviteContact.getRawValue().email);
+  }
+
+  protected resetInvite(): void {
+    this.invite.reset();
+    this.inviteSent.set(null);
+    this.inviteError.set(null);
+    this.inviteStep.set(0);
   }
 
   /** `auto` follows the OS via `color-scheme: light dark`; light/dark force an arm. */

@@ -1,6 +1,6 @@
 import { Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 
 import { CaeStep, CaeStepper } from './stepper';
 
@@ -76,4 +76,68 @@ describe('CaeStepper', () => {
     // The second step body is rendered (steps stamp eagerly) and now the selected one.
     expect(el().querySelector('.panel-2')?.textContent).toContain('Second step body');
   });
+});
+
+@Component({
+  imports: [CaeStepper, CaeStep, ReactiveFormsModule],
+  template: `
+    <cae-stepper linear [selectedIndex]="index" (selectedIndexChange)="index = $event">
+      <cae-step label="One" [stepControl]="one">
+        <input class="one" [formControl]="one" />
+      </cae-step>
+      <cae-step label="Two" [stepControl]="two">
+        <input class="two" [formControl]="two" />
+      </cae-step>
+    </cae-stepper>
+  `,
+})
+class LinearHost {
+  one = new FormControl('', { nonNullable: true, validators: [Validators.required] });
+  two = new FormControl('', { nonNullable: true, validators: [Validators.required] });
+  index = 0;
+}
+
+describe('CaeStepper (linear)', () => {
+  let fixture: ComponentFixture<LinearHost>;
+  let host: LinearHost;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({ imports: [LinearHost] }).compileComponents();
+    fixture = TestBed.createComponent(LinearHost);
+    host = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+  });
+
+  const settle = async (): Promise<void> => {
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+  };
+
+  it('refuses to advance past an invalid step and snaps the two-way selectedIndex back (#40)', async () => {
+    // Step 0's control is required and empty → invalid. Request a jump to step 1.
+    host.index = 1;
+    await settle();
+    // Material refuses the linear move (and emits nothing); the wrapper reads the actual index
+    // back and reconciles, so the parent signal never diverges from the rendered step.
+    expect(host.index).toBe(0);
+  });
+
+  it('disables the header of an unreachable step for assistive tech (linear a11y)', async () => {
+    // With step 0 invalid, step 1 is unreachable — Material marks its header aria-disabled so
+    // keyboard / SR users can't tab-jump into a gated step.
+    const disabledHeaders = el().querySelectorAll('mat-step-header[aria-disabled="true"]');
+    expect(disabledHeaders.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('advances once the step control is valid', async () => {
+    host.one.setValue('filled'); // step 0 now valid
+    host.index = 1;
+    await settle();
+    expect(host.index).toBe(1);
+    expect(el().querySelector('.two')).toBeTruthy();
+  });
+
+  const el = (): HTMLElement => fixture.nativeElement as HTMLElement;
 });

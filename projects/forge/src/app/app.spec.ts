@@ -31,19 +31,22 @@ describe('App', () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     const el = fixture.nativeElement as HTMLElement;
+    // Scope to the create-workspace card — a second, linear stepper demo (#40) lives lower on
+    // the page and would otherwise inflate these global control/header counts.
+    const card = el.querySelector('.forge-form-card') as HTMLElement;
     // Three projected cae-step headers (the stepper uses role=tab for its headers).
-    const stepHeaders = el.querySelectorAll('form [role="tab"]');
+    const stepHeaders = card.querySelectorAll('form [role="tab"]');
     expect(stepHeaders.length).toBe(3);
-    expect(el.querySelector('form')?.textContent).toContain('Identity');
+    expect(card.querySelector('form')?.textContent).toContain('Identity');
     // Every control is a cae-* wrapper; steps stamp eagerly, so all are in the DOM at once.
-    expect(el.querySelectorAll('cae-input').length).toBe(3);
-    expect(el.querySelectorAll('cae-checkbox').length).toBe(1);
-    expect(el.querySelectorAll('cae-radio').length).toBe(1);
-    expect(el.querySelectorAll('cae-select').length).toBe(1);
-    expect(el.querySelectorAll('cae-textarea').length).toBe(1);
+    expect(card.querySelectorAll('cae-input').length).toBe(3);
+    expect(card.querySelectorAll('cae-checkbox').length).toBe(1);
+    expect(card.querySelectorAll('cae-radio').length).toBe(1);
+    expect(card.querySelectorAll('cae-select').length).toBe(1);
+    expect(card.querySelectorAll('cae-textarea').length).toBe(1);
     // On the first step, Next is shown — not the submit button.
-    expect(el.querySelector('form cae-button button[type="submit"]')).toBeNull();
-    expect(el.querySelector('form')?.textContent).toContain('Next');
+    expect(card.querySelector('form cae-button button[type="submit"]')).toBeNull();
+    expect(card.querySelector('form')?.textContent).toContain('Next');
   });
 
   it('reveals the submit button on the last wizard step', async () => {
@@ -52,7 +55,7 @@ describe('App', () => {
     fixture.componentInstance['step'].set(2);
     fixture.detectChanges();
     const el = fixture.nativeElement as HTMLElement;
-    expect(el.querySelector('form cae-button button[type="submit"]')).toBeTruthy();
+    expect(el.querySelector('.forge-form-card form cae-button button[type="submit"]')).toBeTruthy();
   });
 
   it('drives the wizard from a functional header cae-menu (Fill with sample data)', async () => {
@@ -152,9 +155,13 @@ describe('App', () => {
     fixture.detectChanges();
 
     // region (cae-select) forwards into its mat-form-field — a real <mat-error>, not silent-invalid.
-    const regionField = el.querySelector('cae-select mat-form-field');
+    // Scope to the create-workspace card: the invite demo has its own cae-select lower on the page.
+    const card = el.querySelector('.forge-form-card') as HTMLElement;
+    const regionField = card.querySelector('cae-select mat-form-field');
     expect(regionField?.className).toContain('invalid');
-    expect(el.querySelector('cae-select mat-error')?.textContent).toContain('A region is required');
+    expect(card.querySelector('cae-select mat-error')?.textContent).toContain(
+      'A region is required',
+    );
 
     // plan (cae-radio) + agree (cae-checkbox) aren't mat-form-fields: consumer messages, linked
     // via ariaDescribedby ON THE FOCUSABLE INPUTS (a radiogroup container never receives focus).
@@ -172,8 +179,10 @@ describe('App', () => {
     // mat-form-field carries a *-invalid class only while it is actually showing errors
     // (driven by errorState). The <mat-error> node persists in the DOM even when hidden, so
     // count invalid FIELDS, not mat-error elements.
+    // Scope to the create-workspace card so the invite demo's fields don't skew the count.
+    const card = el.querySelector('.forge-form-card') as HTMLElement;
     const invalidFieldCount = (): number =>
-      Array.from(el.querySelectorAll('mat-form-field')).filter((f) =>
+      Array.from(card.querySelectorAll('mat-form-field')).filter((f) =>
         f.className.includes('invalid'),
       ).length;
 
@@ -194,6 +203,117 @@ describe('App', () => {
     fixture.detectChanges();
     expect(cmp['formDir']()?.submitted).toBe(false);
     expect(invalidFieldCount()).toBe(0);
+  });
+
+  it('gates the linear invite stepper until the step is valid, surfacing a prompt (#40)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const cmp = fixture.componentInstance;
+    // The demo renders a second, linear stepper (2 steps) below the create-workspace wizard.
+    const invite = (fixture.nativeElement as HTMLElement).querySelector(
+      '.forge-invite-card',
+    ) as HTMLElement;
+    expect(invite.querySelectorAll('[role="tab"]').length).toBe(2);
+    // Empty email → step 0 invalid. A premature "Next" doesn't advance and surfaces a prompt in
+    // the persistent live region (not a silent no-op). The library's selectedIndex reconciliation
+    // for a *blind* index push is covered separately in stepper.spec.ts ("CaeStepper (linear)").
+    cmp['inviteNext']();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(cmp['inviteStep']()).toBe(0);
+    expect(invite.querySelector('.forge-form__status')?.textContent).toContain(
+      'Complete this step',
+    );
+  });
+
+  it('wires a control through nested formGroupName inside a projected linear step (#40)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const cmp = fixture.componentInstance;
+    // Type into the RENDERED invite email input (step 0 stamps eagerly): the value only reaches
+    // `invite.contact.email` if formGroupName="contact" + formControlName="email" resolved through
+    // cae-step's double projection to the ancestor [formGroup]. The model-only tests below would
+    // pass even if that template wiring were broken — this exercises it end-to-end.
+    const email = (fixture.nativeElement as HTMLElement).querySelector(
+      '.forge-invite-card input[type="email"]',
+    ) as HTMLInputElement;
+    expect(email).toBeTruthy();
+    email.value = 'wired@acme.dev';
+    email.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(cmp['inviteContact'].controls.email.value).toBe('wired@acme.dev');
+  });
+
+  it('advances the linear invite stepper once valid and sends the invitation', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const cmp = fixture.componentInstance;
+    cmp['inviteContact'].controls.email.setValue('teammate@acme.dev');
+    cmp['inviteNext']();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(cmp['inviteStep']()).toBe(1);
+
+    cmp['inviteAccess'].controls.role.setValue('member');
+    cmp['sendInvite']();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(cmp['inviteSent']()).toBe('teammate@acme.dev');
+  });
+
+  it('announces the invite result in a persistent live region (#40 a11y)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const cmp = fixture.componentInstance;
+    const invite = (): HTMLElement =>
+      (fixture.nativeElement as HTMLElement).querySelector('.forge-invite-card') as HTMLElement;
+    // The region is mounted BEFORE any result (persistent, so a screen reader observes the
+    // later mutation) with the right live-region semantics.
+    const region = invite().querySelector('.forge-form__status');
+    expect(region?.getAttribute('role')).toBe('status');
+    expect(region?.getAttribute('aria-live')).toBe('polite');
+    // On success it carries the announcement — the form (and its focused button) is swapped out,
+    // but the region persists so focus/announcement aren't lost (mirrors the wizard's pattern).
+    cmp['inviteContact'].controls.email.setValue('teammate@acme.dev');
+    cmp['inviteAccess'].controls.role.setValue('member');
+    cmp['sendInvite']();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(invite().querySelector('.forge-form__status')?.textContent).toContain(
+      'teammate@acme.dev',
+    );
+  });
+
+  it('“Create another” resets the create-workspace form, not the invite form (#40)', async () => {
+    // Regression guard: a second [formGroup] (the invite demo) made viewChild(FormGroupDirective)
+    // ambiguous — once the wizard form was swapped for "Create another", the query flipped to the
+    // invite form and reset() wiped the wrong one. The fix queries the wizard form by template ref.
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const cmp = fixture.componentInstance;
+    // An in-progress invite that must survive, and a successful workspace submit.
+    cmp['inviteContact'].controls.email.setValue('keep@acme.dev');
+    cmp['form'].setValue({
+      name: 'Acme',
+      email: 'a@b.co',
+      plan: 'pro',
+      region: 'us-east',
+      description: '',
+      password: 'password1',
+      agree: true,
+    });
+    cmp['submit']();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(cmp['created']()).toBe('Acme');
+    // "Create another" → reset(): must clear the WORKSPACE form and leave the invite untouched.
+    cmp['reset']();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(cmp['form'].getRawValue().name).toBe('');
+    expect(cmp['inviteContact'].controls.email.value).toBe('keep@acme.dev');
   });
 
   it('surfaces every semantic swatch token in the first reference tab', async () => {
