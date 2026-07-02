@@ -14,8 +14,9 @@ import { MatTooltip } from '@angular/material/tooltip';
  * tooltip shows on hover/focus of its host and sets `aria-describedby` on that host, so a
  * tooltip placed on a non-focusable wrapper (e.g. the host of `<cae-button>`, whose real
  * `<button>` is nested) is pointer-only and never announced to keyboard / screen-reader
- * users. Forwarding a tooltip to a wrapper component's inner control is a separate seam
- * (see #36); never make a tooltip the *sole* source of essential information.
+ * users. For a wrapper component, use its own forwarding seam instead — `cae-button` exposes
+ * a `tooltip` input that binds `MatTooltip` to its inner focusable `<button>` (#36). Never
+ * make a tooltip the *sole* source of essential information.
  */
 @Directive({
   selector: '[caeTooltip]',

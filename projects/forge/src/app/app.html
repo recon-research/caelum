@@ -16,9 +16,10 @@
     <span class="forge-bar__sub">on Caelum</span>
   </div>
   <div class="forge-bar__actions">
-    <!-- caeTooltip belongs on a focusable element: this native help button receives focus
+    <!-- caeTooltip on a focusable element directly: this native help button receives focus
          and its aria-describedby, so the tip is reachable by keyboard and screen reader.
-         (Forwarding a tooltip to cae-button's inner control is #36.) -->
+         (For a cae-* wrapper, use its own seam instead — see the Theme cae-button below,
+         whose `tooltip` input forwards to its inner focusable <button>, #36.) -->
     <button
       type="button"
       class="forge-help"
@@ -30,8 +31,8 @@
     </button>
 
     <!-- cae-menu (batch 3) — the panel is data; a focusable native button triggers it
-         (caeMenuTriggerFor needs a focusable host, same contract as caeTooltip, #36). The
-         actions are functional: they fill or reset the wizard end-to-end. -->
+         (caeMenuTriggerFor needs a focusable host, same contract as caeTooltip; forwarding it
+         to cae-button's inner control is #57). The actions fill or reset the wizard end-to-end. -->
     <cae-menu #actionsMenu [items]="actions" (itemSelect)="runAction($event)" />
     <button
       type="button"
@@ -42,7 +43,15 @@
       Actions ▾
     </button>
 
-    <cae-button variant="outlined" ariaLabel="Switch colour theme" (click)="cycleTheme()">
+    <!-- cae-button's `tooltip` input (#36): the tip binds to the inner focusable <button>, so
+         it's keyboard- and screen-reader-reachable on a wrapper component — the natural
+         <p-button pTooltip> → <cae-button tooltip> swap. -->
+    <cae-button
+      variant="outlined"
+      ariaLabel="Switch colour theme"
+      tooltip="Cycle the colour theme: light → dark → auto"
+      (click)="cycleTheme()"
+    >
       Theme: {{ themeMode() }} → {{ nextLabel() }}
     </cae-button>
   </div>

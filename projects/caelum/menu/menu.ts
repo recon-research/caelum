@@ -81,7 +81,8 @@ export class CaeMenu {
  * keyboard handlers on THIS host; on a non-focusable host (e.g. a bare `<cae-button>`
  * wrapper, whose real control is the inner `<button>`) the menu becomes pointer-only and
  * the ARIA lands on the wrong element. Forwarding the trigger to `cae-button`'s inner
- * control is #36 (the same seam `caeTooltip` needs).
+ * control is #57 (the sibling of the `tooltip` seam #36 added to `cae-button`; blocked on a
+ * public panel accessor, since `CaeMenu`'s `panel` seam is internal-only).
  */
 @Directive({
   selector: '[caeMenuTriggerFor]',
