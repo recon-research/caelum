@@ -12,7 +12,7 @@
  * (the split is additive) — but a barrel import pulls the whole set, so prefer the
  * per-component path in app code. Re-exporting by name (not by re-declaring the source)
  * is also what keeps each source file owned by a single entry point, which ng-packagr
- * requires. Batch 1 = #5; batch 2 = #26; batch 3 = #27.
+ * requires. Batch 1 = #5; batch 2 = #26; batch 3 = #27; batch 4 = #68.
  */
 
 // --- Shared types ---

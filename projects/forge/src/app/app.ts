@@ -124,11 +124,12 @@ export class App {
     },
   ];
 
-  /** The batch-3 PrimeNG→Caelum map, shown in the second reference tab. */
-  protected readonly batch3: ReadonlyArray<{ prime: string; cae: string }> = [
+  /** The recent PrimeNG→Caelum map (batches 3–4), shown in the second reference tab. */
+  protected readonly recentComponents: ReadonlyArray<{ prime: string; cae: string }> = [
     { prime: 'p-menu', cae: 'cae-menu' },
     { prime: 'p-stepper', cae: 'cae-stepper' },
     { prime: 'p-tree', cae: 'cae-tree' },
+    { prime: 'p-toggleSwitch', cae: 'cae-switch' },
   ];
 
   /**

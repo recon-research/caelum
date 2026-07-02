@@ -37,6 +37,7 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
       [disabled]="isDisabled()"
       [required]="required()"
       [labelPosition]="labelPosition()"
+      [hideIcon]="hideIcon()"
       [aria-describedby]="$any(ariaDescribedby() || null)"
       (change)="handleChange($event.checked)"
       (focusout)="onTouched()"
@@ -50,6 +51,12 @@ export class CaeSwitch implements ControlValueAccessor {
   readonly required = input(false, { transform: booleanAttribute });
   /** Label side relative to the toggle, 1:1 with Material. */
   readonly labelPosition = input<'before' | 'after'>('after');
+  /**
+   * Hide the glyph Material draws inside the thumb (a check when on, a dash when off). Defaults to
+   * `false` (Material's default — a faithful 1:1 wrapper); set it for the plain, icon-less look of
+   * `p-toggleSwitch`, whose thumb is the one visible divergence from a bare PrimeNG switch.
+   */
+  readonly hideIcon = input(false, { transform: booleanAttribute });
   /** Template-driven disable; merged with any reactive-forms `setDisabledState`. */
   readonly disabled = input(false, { transform: booleanAttribute });
   /**

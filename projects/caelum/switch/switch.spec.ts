@@ -63,6 +63,16 @@ describe('CaeSwitch', () => {
     expect(nativeSwitch().disabled).toBe(true);
   });
 
+  it('renders Material’s thumb icon by default and hides it via hideIcon (p-toggleSwitch parity, #68)', () => {
+    // Material draws a check/dash glyph inside the thumb unless hideIcon is set; p-toggleSwitch
+    // shows none, so this is the opt-out for a plain switch look.
+    expect(fixture.nativeElement.querySelector('.mdc-switch__icons')).not.toBeNull();
+    fixture.componentRef.setInput('hideIcon', '');
+    fixture.detectChanges();
+    expect(component.hideIcon()).toBe(true);
+    expect(fixture.nativeElement.querySelector('.mdc-switch__icons')).toBeNull();
+  });
+
   it('sets aria-required when required (booleanAttribute)', () => {
     fixture.componentRef.setInput('required', '');
     fixture.detectChanges();
