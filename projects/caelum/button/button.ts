@@ -110,10 +110,14 @@ export class CaeButton {
   readonly menuTriggerFor = input<CaeMenuPanelHost>();
 
   /**
-   * The resolved Material panel of {@link menuTriggerFor}, kept in sync by an effect. The bound
-   * menu's panel resolves only after its own view initialises, and under zoneless OnPush a
-   * cross-component signal read in a template binding wouldn't mark THIS button for check when it
-   * lands — so the effect (which tracks `getMenuPanel()`) writes this local signal, which does.
+   * The resolved Material panel of {@link menuTriggerFor}. An effect bridges the bound menu's
+   * panel — a viewChild signal that resolves only after ITS view initialises — into this local
+   * signal, mirroring the `caeMenuTriggerFor` directive. Reading that cross-component signal
+   * directly in the template would re-wire reactively too (Angular tracks signal reads inside
+   * template-invoked methods), but resolving it in an effect (which runs after change detection)
+   * keeps the binding order-independent and sidesteps a possible dev-mode
+   * ExpressionChangedAfterChecked when a consumer declares the menu *after* the button.
+   * @internal
    */
   protected readonly menuPanel = signal<MatMenuPanel | null>(null);
 

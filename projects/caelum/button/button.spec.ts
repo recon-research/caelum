@@ -97,7 +97,14 @@ describe('CaeButton', () => {
   imports: [CaeButton, CaeMenu],
   template: `
     <cae-menu #m [items]="items" />
-    <cae-button [menuTriggerFor]="m" [tooltip]="tip">Actions</cae-button>
+    <cae-button
+      [menuTriggerFor]="m"
+      [tooltip]="tip"
+      [disabled]="disabled"
+      variant="outlined"
+      ariaLabel="Workspace actions"
+      >Actions</cae-button
+    >
   `,
 })
 class MenuButtonHost {
@@ -106,6 +113,7 @@ class MenuButtonHost {
     { value: 'b', label: 'Bravo' },
   ];
   tip = 'Workspace actions';
+  disabled = false;
 }
 
 describe('CaeButton (menu trigger #57)', () => {
@@ -153,14 +161,28 @@ describe('CaeButton (menu trigger #57)', () => {
     expect(items[0].textContent).toContain('Alpha');
   });
 
-  it('keeps the tooltip on the same inner button alongside the menu trigger (two-branch parity)', () => {
+  it('keeps the shared bindings (tooltip + variant + aria-label) on the inner button in the menu branch (two-branch parity)', () => {
     const button = innerButton();
     const tip = fixture.debugElement.query(By.directive(MatTooltip));
     const trig = fixture.debugElement.query(By.directive(MatMenuTrigger));
-    // Both host directives land on the one real control — the menu branch must not drop the
-    // tooltip binding the plain branch carries.
+    const matBtn = fixture.debugElement.query(By.directive(MatButton)).injector.get(MatButton);
+    // The menu branch must carry the SAME bindings as the plain branch — a divergence would ship
+    // silently, since this parity check is the only cross-branch guard.
     expect(tip.nativeElement).toBe(button);
     expect(trig.nativeElement).toBe(button);
     expect(tip.injector.get(MatTooltip).message).toBe('Workspace actions');
+    expect(matBtn.appearance).toBe('outlined');
+    expect(button.getAttribute('aria-label')).toBe('Workspace actions');
+  });
+
+  it('forwards the disabled state on the menu-branch button too (two-branch parity)', async () => {
+    // Set before the first CD so it binds at initial render (a plain-field mutation after render
+    // does not propagate under zoneless).
+    const f = TestBed.createComponent(MenuButtonHost);
+    f.componentInstance.disabled = true;
+    f.detectChanges();
+    await f.whenStable();
+    const button = f.nativeElement.querySelector('cae-button button') as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
   });
 });
