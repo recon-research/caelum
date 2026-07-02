@@ -38,3 +38,6 @@ export * from 'caelum/tooltip';
 export * from 'caelum/menu';
 export * from 'caelum/stepper';
 export * from 'caelum/tree';
+
+// --- Batch 4 (#68) ---
+export * from 'caelum/switch';

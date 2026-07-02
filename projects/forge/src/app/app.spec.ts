@@ -41,6 +41,7 @@ describe('App', () => {
     // Every control is a cae-* wrapper; steps stamp eagerly, so all are in the DOM at once.
     expect(card.querySelectorAll('cae-input').length).toBe(3);
     expect(card.querySelectorAll('cae-checkbox').length).toBe(1);
+    expect(card.querySelectorAll('cae-switch').length).toBe(1);
     expect(card.querySelectorAll('cae-radio').length).toBe(1);
     expect(card.querySelectorAll('cae-select').length).toBe(1);
     expect(card.querySelectorAll('cae-textarea').length).toBe(1);
@@ -72,6 +73,23 @@ describe('App', () => {
     fixture.componentInstance['runAction']({ value: 'sample', label: 'Fill with sample data' });
     expect(fixture.componentInstance['form'].getRawValue().name).toBe('Acme Console');
     expect(fixture.componentInstance['form'].valid).toBe(true);
+  });
+
+  it('round-trips the notify preference through the bound cae-switch (#68)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    fixture.componentInstance['step'].set(2);
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    const toggle = el.querySelector('cae-switch button[role="switch"]') as HTMLButtonElement;
+    // The control seeds to true, so the switch renders checked (model → view).
+    expect(fixture.componentInstance['form'].getRawValue().notify).toBe(true);
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
+    // A user toggle flows back to the form (view → model).
+    toggle.click();
+    fixture.detectChanges();
+    expect(fixture.componentInstance['form'].getRawValue().notify).toBe(false);
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
   });
 
   it('shows the workspace structure as a cae-tree and announces a selection', async () => {
@@ -113,6 +131,7 @@ describe('App', () => {
       description: '',
       password: 'password1',
       agree: true,
+      notify: true,
     });
     cmp['submit']();
     fixture.detectChanges();
@@ -335,6 +354,7 @@ describe('App', () => {
       description: '',
       password: 'password1',
       agree: true,
+      notify: true,
     });
     cmp['submit']();
     fixture.detectChanges();
