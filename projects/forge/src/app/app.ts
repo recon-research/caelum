@@ -12,12 +12,12 @@ import {
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 // Forge imports each control from its own secondary entry point (#28) — the real
 // "pay only for what you import" adoption pattern (Book 18 §3.3). The `caelum` barrel
-// still works unchanged (the split is additive; a barrel import is exercised by
-// projects/caelum/src/public-api.spec.ts), but app code should prefer these paths.
+// still works unchanged (the split is additive; scripts/check-lib-exports.mjs gates that
+// every entry point is also re-exported by the barrel), but app code should prefer these paths.
 import { CaeButton } from 'caelum/button';
 import { CaeCard } from 'caelum/card';
 import { CaeCheckbox } from 'caelum/checkbox';
-import { CaeInput } from 'caelum/input';
+import { CaeInput, type CaeErrorMessages } from 'caelum/input';
 import { CaeMenu, CaeMenuItem, CaeMenuTrigger } from 'caelum/menu';
 import { CaeRadio, CaeRadioOption } from 'caelum/radio';
 import { CaeSelect, CaeSelectOption } from 'caelum/select';
@@ -146,8 +146,23 @@ export class App {
     agree: new FormControl(false, { nonNullable: true, validators: [Validators.requiredTrue] }),
   });
 
+  /**
+   * Per-field validator-key → message maps (#29). A failed submit marks the form touched, so
+   * the cae-input controls render these inline as `<mat-error>` (with `aria-invalid` +
+   * describedby wired by Material); the minlength message interpolates the required length.
+   */
+  protected readonly nameErrors: CaeErrorMessages = { required: 'A workspace name is required' };
+  protected readonly emailErrors: CaeErrorMessages = {
+    required: 'An owner email is required',
+    email: 'Enter a valid email address',
+  };
+  protected readonly passwordErrors: CaeErrorMessages = {
+    required: 'A password is required',
+    minlength: (e) => `Use at least ${(e as { requiredLength: number }).requiredLength} characters`,
+  };
+
   protected readonly created = signal<string | null>(null);
-  /** A form-level error announced on invalid submit (per-field error display is #29). */
+  /** A form-level error announced on invalid submit; per-field messages now render inline (#29). */
   protected readonly formError = signal<string | null>(null);
 
   /** Active wizard step — drives cae-stepper through its two-way `selectedIndex` seam. */

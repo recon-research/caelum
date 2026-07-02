@@ -1,16 +1,23 @@
 import {
+  AfterViewInit,
   booleanAttribute,
   ChangeDetectionStrategy,
+  ChangeDetectorRef,
   Component,
   computed,
-  forwardRef,
+  DestroyRef,
+  inject,
   input,
   signal,
+  viewChild,
 } from '@angular/core';
-import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ControlContainer, ControlValueAccessor, NgControl } from '@angular/forms';
+import { ErrorStateMatcher } from '@angular/material/core';
 import { MatFormFieldModule } from '@angular/material/form-field';
-import { MatInputModule } from '@angular/material/input';
-import type { CaeFormFieldAppearance } from 'caelum/shared';
+import { MatInput, MatInputModule } from '@angular/material/input';
+import type { Observable } from 'rxjs';
+import type { CaeErrorMessages, CaeFormFieldAppearance } from 'caelum/shared';
 
 /**
  * `cae-textarea` — the Direct (1:1) wrapper over a `matInput` `<textarea>` inside a
@@ -20,16 +27,20 @@ import type { CaeFormFieldAppearance } from 'caelum/shared';
  * `pTextarea` (Book 07 §3.1). Native attributes a real form needs (`name`, `readonly`,
  * `maxlength`) are forwarded to the inner `<textarea>`, and IME composition is buffered
  * (onChange fires on `compositionend`, matching Angular's `DefaultValueAccessor`).
- * Validation-error forwarding rides on the same later pass as `cae-input` (#29).
+ *
+ * **Validation errors (#29).** Same seam as `cae-input`: the inner `matInput` has no
+ * `NgControl`, so this control self-injects the OUTER control, bridges its error state via a
+ * per-control `ErrorStateMatcher` (timing delegated to the DI matcher for library-wide
+ * uniformity), drives `matInput.updateErrorState()` from the control's events, and renders
+ * `errorMessages` as `<mat-error>` — `aria-invalid` + `aria-describedby` then come free from
+ * Material (Book 07 §3.3/§3.4).
+ *
  * Zoneless-compatible: `OnPush` + signal state (provisional on #9; Book 01 §3.2).
  */
 @Component({
   selector: 'cae-textarea',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [MatFormFieldModule, MatInputModule],
-  providers: [
-    { provide: NG_VALUE_ACCESSOR, useExisting: forwardRef(() => CaeTextarea), multi: true },
-  ],
   template: `
     <mat-form-field [appearance]="appearance()">
       @if (label()) {
@@ -43,6 +54,7 @@ import type { CaeFormFieldAppearance } from 'caelum/shared';
         [placeholder]="placeholder()"
         [required]="required()"
         [disabled]="isDisabled()"
+        [errorStateMatcher]="errorStateMatcher"
         [attr.name]="name() || null"
         [attr.maxlength]="maxlength()"
         [attr.aria-label]="ariaLabel() || null"
@@ -54,6 +66,9 @@ import type { CaeFormFieldAppearance } from 'caelum/shared';
       ></textarea>
       @if (hint()) {
         <mat-hint>{{ hint() }}</mat-hint>
+      }
+      @for (message of activeErrorMessages(); track $index) {
+        <mat-error>{{ message }}</mat-error>
       }
     </mat-form-field>
   `,
@@ -67,7 +82,7 @@ import type { CaeFormFieldAppearance } from 'caelum/shared';
     }
   `,
 })
-export class CaeTextarea implements ControlValueAccessor {
+export class CaeTextarea implements ControlValueAccessor, AfterViewInit {
   /** Floating label text; omitted → no label. Prefer over placeholder for a11y. */
   readonly label = input('');
   /** Native placeholder. Not an accessible name — set `label` or `ariaLabel` too. */
@@ -82,6 +97,13 @@ export class CaeTextarea implements ControlValueAccessor {
   readonly disabled = input(false, { transform: booleanAttribute });
   /** Form-field appearance (shared with `cae-input`). Defaults to `outline`. */
   readonly appearance = input<CaeFormFieldAppearance>('outline');
+  /**
+   * Maps a bound control's validator error keys → the message shown when that error is
+   * active (see `CaeErrorMessages`). Errors show on the library-wide trigger (invalid &&
+   * (touched || form submitted)); an unmapped failure still styles the field invalid + sets
+   * `aria-invalid` but shows no text.
+   */
+  readonly errorMessages = input<CaeErrorMessages>({});
 
   // --- Forwarded native attributes (a component wrapper hides the real <textarea>). ---
   /** `name` attribute (native form submission grouping). */
@@ -101,6 +123,71 @@ export class CaeTextarea implements ControlValueAccessor {
 
   private onChangeFn: (value: string) => void = () => {};
   protected onTouched: () => void = () => {};
+
+  // --- Validation-error forwarding (#29); see cae-input for the full rationale. ---
+  /** The OUTER control bound to `<cae-textarea>` — the source of validity the inner field lacks. */
+  private readonly ngControl = inject(NgControl, { optional: true, self: true });
+  /** The surrounding form directive (for `ngSubmit`), if any. */
+  private readonly parentContainer = inject(ControlContainer, { optional: true });
+  /** Library-wide error-timing policy (Material's default, or a consumer app-root override). */
+  private readonly defaultErrorMatcher = inject(ErrorStateMatcher);
+  private readonly cdr = inject(ChangeDetectorRef);
+  private readonly destroyRef = inject(DestroyRef);
+  /** The inner MatInput directive — poked to recompute its (bridged) error state. */
+  private readonly matInput = viewChild(MatInput);
+
+  /**
+   * Per-control matcher bound on the inner `<textarea matInput>`: it evaluates the OUTER
+   * control, delegating timing to the DI matcher so the trigger is uniform library-wide and
+   * still overridable at the app root (Book 07 §3.3).
+   */
+  protected readonly errorStateMatcher: ErrorStateMatcher = {
+    isErrorState: (_control, form) =>
+      this.defaultErrorMatcher.isErrorState(this.ngControl?.control ?? null, form),
+  };
+
+  constructor() {
+    // Self-injected CVA (no NG_VALUE_ACCESSOR provider) so this control can read the bound
+    // NgControl's validity for error forwarding (Book 07 §4).
+    if (this.ngControl) this.ngControl.valueAccessor = this;
+  }
+
+  ngAfterViewInit(): void {
+    this.wireErrorState();
+  }
+
+  /** The mapped messages for the bound control's currently-active errors, in error order. */
+  protected activeErrorMessages(): string[] {
+    const errors = this.ngControl?.control?.errors;
+    if (!errors) return [];
+    const messages = this.errorMessages();
+    const out: string[] = [];
+    for (const key of Object.keys(errors)) {
+      const entry = messages[key];
+      if (entry == null) continue;
+      out.push(typeof entry === 'function' ? entry(errors[key]) : entry);
+    }
+    return out;
+  }
+
+  private wireErrorState(): void {
+    const control = this.ngControl?.control;
+    if (!control) return;
+    const refresh = (): void => {
+      // Inner matInput has no NgControl → drive its (bridged) error state from the OUTER
+      // control; see cae-input for the full note (Book 07 §3.3).
+      this.matInput()?.updateErrorState();
+      this.cdr.markForCheck();
+    };
+    control.events.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(refresh);
+    const submit = (
+      this.parentContainer?.formDirective as { ngSubmit?: Observable<unknown> } | null
+    )?.ngSubmit;
+    submit?.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(refresh);
+    // Initial sync for a control that starts touched + invalid — deferred a microtask so the
+    // error-state flip lands in a fresh tick (no ExpressionChangedAfterItHasBeenChecked).
+    queueMicrotask(refresh);
+  }
 
   protected handleInput(value: string): void {
     if (this.composing) return;
