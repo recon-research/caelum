@@ -149,6 +149,24 @@ describe('App', () => {
     expect(tabs[1].textContent).toContain('In this batch');
   });
 
+  it('renders a single-expand cae-accordion FAQ that coordinates its panels (#77)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const faq = (fixture.nativeElement as HTMLElement).querySelector('.forge-faq')!;
+    const headers = (): HTMLElement[] =>
+      Array.from(faq.querySelectorAll('mat-expansion-panel-header'));
+    expect(headers().length).toBe(3);
+
+    // Single-expand end-to-end: opening the second section closes the first (accordion-coordinated).
+    headers()[0].click();
+    await fixture.whenStable();
+    expect(headers()[0].getAttribute('aria-expanded')).toBe('true');
+    headers()[1].click();
+    await fixture.whenStable();
+    expect(headers()[1].getAttribute('aria-expanded')).toBe('true');
+    expect(headers()[0].getAttribute('aria-expanded')).toBe('false');
+  });
+
   it('announces success in a persistent polite live region on submit', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();

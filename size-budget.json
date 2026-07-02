@@ -20,6 +20,7 @@
     "caelum-tree": 3712,
     "caelum-switch": 3072,
     "caelum-toggle-button": 3456,
-    "caelum-select-button": 4608
+    "caelum-select-button": 4608,
+    "caelum-accordion": 4096
   }
 }
