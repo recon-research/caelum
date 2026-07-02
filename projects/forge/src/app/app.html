@@ -96,7 +96,7 @@
       @if (created()) {
         <cae-button variant="tonal" (click)="reset()">Create another</cae-button>
       } @else {
-        <form [formGroup]="form" (ngSubmit)="submit()" class="forge-form">
+        <form [formGroup]="form" #createFormDir="ngForm" (ngSubmit)="submit()" class="forge-form">
           <cae-stepper
             ariaLabel="Create workspace"
             [selectedIndex]="step()"
@@ -215,6 +215,86 @@
               <cae-button type="submit" variant="filled">Create workspace</cae-button>
             }
             <cae-button type="button" variant="text" (click)="reset()">Reset</cae-button>
+          </div>
+        </form>
+      }
+    </cae-card>
+
+    <!-- A second cae-stepper set to [linear] (#40): Material gates advancing until each step's
+         stepControl is valid, and cae-stepper reconciles the two-way selectedIndex when a refused
+         move would leave the signal ahead of the rendered step. Deliberately separate from the
+         free-navigation wizard above, so both stepper modes are demonstrated side by side. -->
+    <cae-card
+      class="forge-invite-card"
+      title="Invite a teammate"
+      subtitle="A linear cae-stepper — you can't advance until the step is valid"
+    >
+      <!-- Persistent live region + focus target (mirrors the wizard's #statusRegion): rendered
+           OUTSIDE the @if so the success/prompt is reliably announced and keyboard/SR focus isn't
+           dropped to <body> when the form is swapped for "Invite another". -->
+      <p
+        #inviteStatus
+        class="forge-form__status"
+        [class.forge-form__status--shown]="inviteSent() || inviteError()"
+        [class.forge-form__status--error]="inviteError() && !inviteSent()"
+        role="status"
+        aria-live="polite"
+        tabindex="-1"
+      >
+        @if (inviteSent(); as email) {
+          Invitation sent to “{{ email }}” — the linear stepper gated each step until it was valid.
+        } @else if (inviteError(); as error) {
+          {{ error }}
+        }
+      </p>
+
+      @if (inviteSent()) {
+        <cae-button variant="tonal" (click)="resetInvite()">Invite another</cae-button>
+      } @else {
+        <form [formGroup]="invite" (ngSubmit)="sendInvite()" class="forge-form">
+          <cae-stepper
+            linear
+            ariaLabel="Invite a teammate"
+            [selectedIndex]="inviteStep()"
+            (selectedIndexChange)="inviteStep.set($event)"
+          >
+            <cae-step label="Contact" [stepControl]="inviteContact">
+              <div class="forge-step-body" formGroupName="contact">
+                <cae-input
+                  formControlName="email"
+                  type="email"
+                  label="Teammate email"
+                  name="inviteEmail"
+                  autocomplete="off"
+                  hint="They'll receive an invitation link"
+                  [errorMessages]="inviteEmailErrors"
+                  required
+                />
+              </div>
+            </cae-step>
+            <cae-step label="Access" [stepControl]="inviteAccess">
+              <div class="forge-step-body" formGroupName="access">
+                <cae-select
+                  formControlName="role"
+                  label="Role"
+                  [options]="roles"
+                  hint="What the teammate can do"
+                  [errorMessages]="inviteRoleErrors"
+                  required
+                />
+              </div>
+            </cae-step>
+          </cae-stepper>
+
+          <div class="forge-form__actions">
+            @if (inviteStep() > 0) {
+              <cae-button type="button" variant="text" (click)="inviteBack()">Back</cae-button>
+            }
+            @if (inviteStep() < 1) {
+              <cae-button type="button" variant="tonal" (click)="inviteNext()">Next</cae-button>
+            } @else {
+              <cae-button type="submit" variant="filled">Send invite</cae-button>
+            }
           </div>
         </form>
       }
