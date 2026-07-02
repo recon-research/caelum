@@ -1,10 +1,31 @@
-import { TestBed } from '@angular/core/testing';
+import {
+  ComponentFixture,
+  DeferBlockBehavior,
+  DeferBlockState,
+  TestBed,
+} from '@angular/core/testing';
 import { App } from './app';
+
+/**
+ * Render every `@defer` block (#85) to its loaded state. The reference/demo sections below the
+ * fold — the structure tree, reference tabs, FAQ accordion, and tag row — are `@defer (on idle)`
+ * so their Material modules (MatTree/MatTabs/MatExpansion/MatChips) split off Forge's initial
+ * bundle. Under `DeferBlockBehavior.Manual` they stay as placeholders until rendered, so any test
+ * asserting on that content renders the blocks first (deterministic — no reliance on idle timing).
+ */
+async function renderDeferred(fixture: ComponentFixture<App>): Promise<void> {
+  for (const block of await fixture.getDeferBlocks()) {
+    await block.render(DeferBlockState.Complete);
+  }
+  fixture.detectChanges();
+}
 
 describe('App', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [App],
+      // Deterministically control the @defer blocks (#85) — see renderDeferred above.
+      deferBlockBehavior: DeferBlockBehavior.Manual,
     }).compileComponents();
   });
 
@@ -25,6 +46,30 @@ describe('App', () => {
     const el = fixture.nativeElement as HTMLElement;
     expect(el.querySelector('.forge-bar__title')?.textContent).toContain('Forge');
     expect(el.querySelector('h1')?.textContent).toContain('Direct components');
+  });
+
+  it('defers the below-the-fold demo sections off the initial bundle (#85)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const el = fixture.nativeElement as HTMLElement;
+    // Exactly four @defer blocks — the structure tree, reference tabs, FAQ accordion, and tag row —
+    // each carrying a heavy Material module (MatTree/MatTabs/MatExpansion/MatChips) off the initial
+    // bundle. This is the regression guard for the #85 bundle win: deleting an @defer wrapper stays
+    // UNDER the 1mb budget error (so `ng build` wouldn't fail), but drops a block here → red test.
+    expect((await fixture.getDeferBlocks()).length).toBe(4);
+    // The eager critical path (the create-workspace form) is present with NO defer block rendered...
+    expect(el.querySelector('.forge-form-card')).not.toBeNull();
+    // ...while the deferred demo sections are genuinely absent until rendered (proof they're lazy).
+    expect(el.querySelector('cae-tree')).toBeNull();
+    expect(el.querySelector('.forge-reference')).toBeNull();
+    expect(el.querySelector('.forge-faq')).toBeNull();
+    expect(el.querySelector('.forge-tags')).toBeNull();
+    // Rendering the blocks brings each section in — so the content isn't lost, only deferred.
+    await renderDeferred(fixture);
+    expect(el.querySelector('cae-tree')).not.toBeNull();
+    expect(el.querySelector('.forge-reference')).not.toBeNull();
+    expect(el.querySelector('.forge-faq')).not.toBeNull();
+    expect(el.querySelector('.forge-tags')).not.toBeNull();
   });
 
   it('lays the form out as a cae-stepper wizard, built from cae-* controls', async () => {
@@ -125,6 +170,7 @@ describe('App', () => {
   it('shows the workspace structure as a cae-tree and announces a selection', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
+    await renderDeferred(fixture); // the structure tree is @defer'd below the fold (#85)
     const el = fixture.nativeElement as HTMLElement;
     const labels = Array.from(el.querySelectorAll('cae-tree .cae-tree__label')).map((n) =>
       n.textContent?.trim(),
@@ -140,6 +186,7 @@ describe('App', () => {
   it('organises the reference panels into cae-tabs', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
+    await renderDeferred(fixture); // the reference tabs are @defer'd below the fold (#85)
     // Scope to the reference tabs — the stepper headers also carry role=tab.
     const tabs = (fixture.nativeElement as HTMLElement).querySelectorAll(
       '.forge-reference [role="tab"]',
@@ -152,6 +199,7 @@ describe('App', () => {
   it('renders a single-expand cae-accordion FAQ that coordinates its panels (#77)', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
+    await renderDeferred(fixture); // the FAQ accordion is @defer'd below the fold (#85)
     const faq = (fixture.nativeElement as HTMLElement).querySelector('.forge-faq')!;
     const headers = (): HTMLElement[] =>
       Array.from(faq.querySelectorAll('mat-expansion-panel-header'));
@@ -170,6 +218,7 @@ describe('App', () => {
   it('removes a cae-chip tag from the signal list when its × is clicked (#83)', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
+    await renderDeferred(fixture); // the tag row is @defer'd below the fold (#85)
     const el = fixture.nativeElement as HTMLElement;
     const chips = (): HTMLElement[] => Array.from(el.querySelectorAll('.forge-tags cae-chip'));
     expect(chips().length).toBe(3);
@@ -484,6 +533,7 @@ describe('App', () => {
   it('surfaces every semantic swatch token in the first reference tab', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
+    await renderDeferred(fixture); // swatches live in the @defer'd reference tabs (#85)
     // Swatches live in the first (default-active) cae-tab — proof cae-tab projects its
     // content into the Material tab body.
     const chips = (fixture.nativeElement as HTMLElement).querySelectorAll('.forge-swatch');
