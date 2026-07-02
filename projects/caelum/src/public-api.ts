@@ -12,7 +12,8 @@
  * (the split is additive) — but a barrel import pulls the whole set, so prefer the
  * per-component path in app code. Re-exporting by name (not by re-declaring the source)
  * is also what keeps each source file owned by a single entry point, which ng-packagr
- * requires. Batch 1 = #5; batch 2 = #26; batch 3 = #27; batch 4 = #68, #73.
+ * requires. Batch 1 = #5; batch 2 = #26; batch 3 = #27; batch 4 = #68, #73; accordion = #77;
+ * chip = #83; display primitives (progress-bar/spinner/divider) = #88.
  */
 
 // --- Shared types ---
@@ -49,3 +50,8 @@ export * from 'caelum/accordion';
 
 // --- Data display: chip (#83) ---
 export * from 'caelum/chip';
+
+// --- Display primitives: progress-bar, progress-spinner, divider (#88) ---
+export * from 'caelum/progress-bar';
+export * from 'caelum/progress-spinner';
+export * from 'caelum/divider';

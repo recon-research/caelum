@@ -37,6 +37,10 @@ import { CaeTextarea } from 'caelum/textarea';
 import { CaeToggleButton } from 'caelum/toggle-button';
 import { CaeTooltip } from 'caelum/tooltip';
 import { CaeTree, CaeTreeNode } from 'caelum/tree';
+// Display primitives (#88) — non-interactive Direct wrappers, no CVA.
+import { CaeDivider } from 'caelum/divider';
+import { CaeProgressBar } from 'caelum/progress-bar';
+import { CaeProgressSpinner } from 'caelum/progress-spinner';
 
 type ThemeMode = 'auto' | 'light' | 'dark';
 
@@ -77,6 +81,9 @@ const SWATCHES: ReadonlyArray<{ token: string; label: string }> = [
     CaeToggleButton,
     CaeTooltip,
     CaeTree,
+    CaeDivider,
+    CaeProgressBar,
+    CaeProgressSpinner,
   ],
   templateUrl: './app.html',
   styleUrl: './app.scss',
@@ -149,6 +156,9 @@ export class App {
     { prime: 'p-toggleButton', cae: 'cae-toggle-button' },
     { prime: 'p-accordion', cae: 'cae-accordion' },
     { prime: 'p-chip', cae: 'cae-chip' },
+    { prime: 'p-progressbar', cae: 'cae-progress-bar' },
+    { prime: 'p-progressspinner', cae: 'cae-progress-spinner' },
+    { prime: 'p-divider', cae: 'cae-divider' },
   ];
 
   /**
@@ -243,6 +253,14 @@ export class App {
   protected readonly step = signal(0);
   /** Index of the last step (Submit replaces Next here). */
   protected readonly lastStep = 2;
+  /**
+   * Wizard completion %, derived from the `step` signal — feeds the `cae-progress-bar` and the
+   * decorative `cae-progress-spinner` ring (#88). Signal-driven, so both meters fill live as the
+   * user advances (steps 0/1/2 → 33/67/100%).
+   */
+  protected readonly stepProgress = computed(() =>
+    Math.round(((this.step() + 1) / (this.lastStep + 1)) * 100),
+  );
 
   /** Which wizard step each control lives on — used to jump to the first invalid one. */
   private readonly stepOfControl: ReadonlyArray<readonly [string, number]> = [

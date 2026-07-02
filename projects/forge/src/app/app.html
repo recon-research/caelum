@@ -5,7 +5,8 @@
   out as a cae-stepper wizard, and a cae-tree for workspace structure), and batch 4 (#68 a
   cae-switch preference, #73 a cae-select-button for visibility and a cae-toggle-button
   preference), plus a cae-accordion FAQ and a removable cae-chip tag row in the reference
-  area (#77, #83). The form is
+  area (#77, #83), and a live wizard-progress strip built from cae-progress-bar /
+  cae-progress-spinner / cae-divider (#88). The form is
   a real reactive form whose every control is a Caelum wrapper over Material — here spread
   across projected stepper steps yet bound to one FormGroup. Every colour, space, and radius
   resolves to a `--cae-*` token (no literals), and the wrapped Material controls resolve the
@@ -99,6 +100,28 @@
         <cae-button variant="tonal" (click)="reset()">Create another</cae-button>
       } @else {
         <form [formGroup]="form" #createFormDir="ngForm" (ngSubmit)="submit()" class="forge-form">
+          <!-- cae-progress-bar + cae-progress-spinner + cae-divider (#88): a live wizard-progress
+               strip driven by the step signal — both meters fill as you advance. The bar carries
+               the announced progress (role=progressbar + ariaLabel); the ring is a decorative echo
+               (aria-hidden), so a screen reader hears the value once. The VERTICAL cae-divider sits
+               inside this flex row and stretches to full height because the wrapper is
+               display:contents (a wrapping block would collapse to zero height). -->
+          <div class="forge-progress">
+            <cae-progress-bar
+              class="forge-progress__bar"
+              mode="determinate"
+              [value]="stepProgress()"
+              ariaLabel="Workspace setup progress"
+            />
+            <!-- The divider only separates the announced bar from the aria-hidden ring, so hide it
+                 too — otherwise a screen reader announces a "separator" that leads to silent content. -->
+            <cae-divider vertical aria-hidden="true" />
+            <div class="forge-progress__ring" aria-hidden="true">
+              <cae-progress-spinner mode="determinate" [value]="stepProgress()" [diameter]="40" />
+              <span class="forge-progress__pct">{{ stepProgress() }}%</span>
+            </div>
+          </div>
+
           <cae-stepper
             ariaLabel="Create workspace"
             [selectedIndex]="step()"
