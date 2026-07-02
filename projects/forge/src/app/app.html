@@ -1,12 +1,13 @@
 <!--
   Forge — the Caelum demo console. This screen is built almost entirely from `cae-*`
-  components: batch 1 (#5, cae-input/checkbox/button/card) and batch 2 (#26,
-  cae-radio/select/textarea, cae-tabs for the reference panels, caeTooltip on the header
-  help button — the one native control, since a tooltip must sit on a focusable element).
-  The form is a real reactive form whose every control is a Caelum wrapper over Material.
-  Every colour, space, and radius resolves to a `--cae-*` token (no literals), and the
-  wrapped Material controls resolve the SAME values through the bridge (`--mat-sys-*` ←
-  `--cae-*`). Toggling the theme flips only the token layer — nothing here knows its scheme.
+  components: batch 1 (#5, cae-input/checkbox/button/card), batch 2 (#26,
+  cae-radio/select/textarea/tabs/tooltip), and batch 3 (#27, cae-menu in the header, the
+  form laid out as a cae-stepper wizard, and a cae-tree for workspace structure). The form is
+  a real reactive form whose every control is a Caelum wrapper over Material — here spread
+  across projected stepper steps yet bound to one FormGroup. Every colour, space, and radius
+  resolves to a `--cae-*` token (no literals), and the wrapped Material controls resolve the
+  SAME values through the bridge (`--mat-sys-*` ← `--cae-*`). Toggling the theme flips only
+  the token layer — nothing here knows its scheme.
 -->
 <header class="forge-bar">
   <div class="forge-bar__brand">
@@ -27,6 +28,20 @@
     >
       ?
     </button>
+
+    <!-- cae-menu (batch 3) — the panel is data; a focusable native button triggers it
+         (caeMenuTriggerFor needs a focusable host, same contract as caeTooltip, #36). The
+         actions are functional: they fill or reset the wizard end-to-end. -->
+    <cae-menu #actionsMenu [items]="actions" (itemSelect)="runAction($event)" />
+    <button
+      type="button"
+      class="forge-action"
+      [caeMenuTriggerFor]="actionsMenu"
+      aria-label="Workspace actions"
+    >
+      Actions ▾
+    </button>
+
     <cae-button variant="outlined" ariaLabel="Switch colour theme" (click)="cycleTheme()">
       Theme: {{ themeMode() }} → {{ nextLabel() }}
     </cae-button>
@@ -39,29 +54,33 @@
       Direct components, themed through Caelum
     </h1>
     <p class="forge-panel__lead">
-      The PrimeNG→Caelum <code>cae-*</code> surface — inputs, checkbox, <code>cae-radio</code>,
-      <code>cae-select</code>, and <code>cae-textarea</code>, each a thin wrapper over Material. The
-      form is a real reactive form bound straight through the Caelum controls, in light and dark.
+      The PrimeNG→Caelum <code>cae-*</code> surface, now through batch 3 — a
+      <code>cae-menu</code> in the header, the form as a <code>cae-stepper</code> wizard, and a
+      <code>cae-tree</code> for structure. The form is a real reactive form bound straight through
+      the Caelum controls, in light and dark.
     </p>
 
     <cae-card
       class="forge-form-card"
       title="Create workspace"
-      subtitle="A reactive form built only from cae-* components"
+      subtitle="A guided, multi-step form built only from cae-* components"
     >
       <!-- Persistent polite live region + focus target: announces the result reliably and
            keeps keyboard/SR focus from being lost when the form is swapped out. -->
       <p
         #statusRegion
         class="forge-form__status"
-        [class.forge-form__status--shown]="created()"
+        [class.forge-form__status--shown]="created() || formError()"
+        [class.forge-form__status--error]="formError() && !created()"
         role="status"
         aria-live="polite"
         tabindex="-1"
       >
         @if (created(); as name) {
           Workspace “{{ name }}” created — the whole form round-tripped through the
-          <code>cae-*</code> ControlValueAccessors.
+          <code>cae-*</code> ControlValueAccessors, across the stepper.
+        } @else if (formError(); as error) {
+          {{ error }}
         }
       </p>
 
@@ -69,67 +88,122 @@
         <cae-button variant="tonal" (click)="reset()">Create another</cae-button>
       } @else {
         <form [formGroup]="form" (ngSubmit)="submit()" class="forge-form">
-          <cae-input
-            formControlName="name"
-            label="Workspace name"
-            name="workspaceName"
-            autocomplete="off"
-            hint="Shown across Forge"
-            required
-          />
-          <cae-input
-            formControlName="email"
-            type="email"
-            label="Owner email"
-            name="email"
-            autocomplete="email"
-            required
-          />
-          <div class="forge-field-group" role="group" aria-labelledby="plan-label">
-            <span id="plan-label" class="forge-field-group__label">
-              Plan <span class="forge-req" aria-hidden="true">*</span>
-            </span>
-            <cae-radio
-              formControlName="plan"
-              name="plan"
-              ariaLabelledby="plan-label"
-              [options]="plans"
-              required
-            />
-          </div>
-          <cae-select
-            formControlName="region"
-            label="Region"
-            [options]="regions"
-            hint="Where the workspace is hosted"
-            required
-          />
-          <cae-textarea
-            formControlName="description"
-            label="Description"
-            name="description"
-            [rows]="3"
-            hint="Optional — what this workspace is for"
-            [maxlength]="280"
-          />
-          <cae-input
-            formControlName="password"
-            type="password"
-            label="Password"
-            name="password"
-            autocomplete="new-password"
-            hint="At least 8 characters"
-            required
-          />
-          <cae-checkbox formControlName="agree" required>
-            I accept the terms of service
-          </cae-checkbox>
+          <cae-stepper
+            ariaLabel="Create workspace"
+            [selectedIndex]="step()"
+            (selectedIndexChange)="step.set($event)"
+          >
+            <cae-step label="Identity">
+              <div class="forge-step-body">
+                <cae-input
+                  formControlName="name"
+                  label="Workspace name"
+                  name="workspaceName"
+                  autocomplete="off"
+                  hint="Shown across Forge"
+                  required
+                />
+                <cae-input
+                  formControlName="email"
+                  type="email"
+                  label="Owner email"
+                  name="email"
+                  autocomplete="email"
+                  required
+                />
+              </div>
+            </cae-step>
+
+            <cae-step label="Plan">
+              <div class="forge-step-body">
+                <div class="forge-field-group" role="group" aria-labelledby="plan-label">
+                  <span id="plan-label" class="forge-field-group__label">
+                    Plan <span class="forge-req" aria-hidden="true">*</span>
+                  </span>
+                  <cae-radio
+                    formControlName="plan"
+                    name="plan"
+                    ariaLabelledby="plan-label"
+                    [options]="plans"
+                    required
+                  />
+                </div>
+                <cae-select
+                  formControlName="region"
+                  label="Region"
+                  [options]="regions"
+                  hint="Where the workspace is hosted"
+                  required
+                />
+              </div>
+            </cae-step>
+
+            <cae-step label="Details" optional>
+              <div class="forge-step-body">
+                <cae-textarea
+                  formControlName="description"
+                  label="Description"
+                  name="description"
+                  [rows]="3"
+                  hint="Optional — what this workspace is for"
+                  [maxlength]="280"
+                />
+                <cae-input
+                  formControlName="password"
+                  type="password"
+                  label="Password"
+                  name="password"
+                  autocomplete="new-password"
+                  hint="At least 8 characters"
+                  required
+                />
+                <cae-checkbox formControlName="agree" required>
+                  I accept the terms of service
+                </cae-checkbox>
+              </div>
+            </cae-step>
+          </cae-stepper>
+
           <div class="forge-form__actions">
-            <cae-button type="submit" variant="filled">Create workspace</cae-button>
+            @if (step() > 0) {
+              <cae-button type="button" variant="text" (click)="goToStep(step() - 1)">
+                Back
+              </cae-button>
+            }
+            @if (step() < lastStep) {
+              <cae-button type="button" variant="tonal" (click)="goToStep(step() + 1)">
+                Next
+              </cae-button>
+            } @else {
+              <cae-button type="submit" variant="filled">Create workspace</cae-button>
+            }
             <cae-button type="button" variant="text" (click)="reset()">Reset</cae-button>
           </div>
         </form>
       }
+    </cae-card>
+
+    <!-- cae-tree (batch 3) — nested data, expandable, keyboard-navigable (roving focus +
+         arrow keys from the CDK). Selecting a node announces it in a polite live region. -->
+    <cae-card
+      class="forge-structure-card"
+      title="Workspace structure"
+      subtitle="A cae-tree over the same tokens"
+    >
+      <p class="forge-panel__lead">
+        Expand the nodes and select one; the choice is announced below. The tree is a single tab
+        stop — arrow keys move between nodes, Enter selects.
+      </p>
+      <cae-tree
+        ariaLabel="Workspace structure"
+        [nodes]="structure"
+        (nodeSelect)="pickNode($event)"
+      />
+      <p class="forge-tree-status" role="status" aria-live="polite">
+        @if (selectedNode(); as node) {
+          Selected: <strong>{{ node }}</strong>
+        }
+      </p>
     </cae-card>
 
     <!-- cae-tabs organises the reference panels. Content is projected through cae-tab into
@@ -165,10 +239,10 @@
       <cae-tab label="In this batch">
         <div class="forge-tab-body">
           <p class="forge-panel__lead">
-            Batch 2 (#26) adds these Direct wrappers — each swaps 1:1 for its PrimeNG original.
+            Batch 3 (#27) adds these Direct wrappers — each swaps 1:1 for its PrimeNG original.
           </p>
           <ul class="forge-map" role="list">
-            @for (c of batch2; track c.cae) {
+            @for (c of batch3; track c.cae) {
               <li class="forge-map__row">
                 <code class="forge-map__from">{{ c.prime }}</code>
                 <span aria-hidden="true">→</span>
