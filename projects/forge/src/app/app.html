@@ -4,7 +4,7 @@
   cae-radio/select/textarea/tabs/tooltip), batch 3 (#27, cae-menu in the header, the form laid
   out as a cae-stepper wizard, and a cae-tree for workspace structure), and batch 4 (#68 a
   cae-switch preference, #73 a cae-select-button for visibility and a cae-toggle-button
-  preference). The form is
+  preference), plus a cae-accordion FAQ in the reference area (#77). The form is
   a real reactive form whose every control is a Caelum wrapper over Material — here spread
   across projected stepper steps yet bound to one FormGroup. Every colour, space, and radius
   resolves to a `--cae-*` token (no literals), and the wrapped Material controls resolve the
@@ -403,7 +403,7 @@
       <cae-tab label="In this batch">
         <div class="forge-tab-body">
           <p class="forge-panel__lead">
-            Batches 3–4 add these Direct wrappers — each swaps 1:1 for its PrimeNG original.
+            Recent batches add these Direct wrappers — each swaps 1:1 for its PrimeNG original.
           </p>
           <ul class="forge-map" role="list">
             @for (c of recentComponents; track c.cae) {
@@ -417,5 +417,15 @@
         </div>
       </cae-tab>
     </cae-tabs>
+
+    <!-- cae-accordion (#77): a single-expand FAQ. Opening one cae-expansion-panel closes the
+         others — the accordion coordinates its projected children with no wiring here. -->
+    <cae-accordion class="forge-faq">
+      @for (faq of faqs; track faq.q) {
+        <cae-expansion-panel [title]="faq.q" [description]="faq.hint">
+          <p class="forge-faq__answer">{{ faq.a }}</p>
+        </cae-expansion-panel>
+      }
+    </cae-accordion>
   </section>
 </main>

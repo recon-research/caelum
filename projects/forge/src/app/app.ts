@@ -20,6 +20,7 @@ import {
 // "pay only for what you import" adoption pattern (Book 18 §3.3). The `caelum` barrel
 // still works unchanged (the split is additive; scripts/check-lib-exports.mjs gates that
 // every entry point is also re-exported by the barrel), but app code should prefer these paths.
+import { CaeAccordion, CaeExpansionPanel } from 'caelum/accordion';
 import { CaeButton } from 'caelum/button';
 import { CaeCard } from 'caelum/card';
 import { CaeCheckbox } from 'caelum/checkbox';
@@ -55,6 +56,8 @@ const SWATCHES: ReadonlyArray<{ token: string; label: string }> = [
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     ReactiveFormsModule,
+    CaeAccordion,
+    CaeExpansionPanel,
     CaeButton,
     CaeCard,
     CaeCheckbox,
@@ -142,6 +145,30 @@ export class App {
     { prime: 'p-toggleSwitch', cae: 'cae-switch' },
     { prime: 'p-selectButton', cae: 'cae-select-button' },
     { prime: 'p-toggleButton', cae: 'cae-toggle-button' },
+    { prime: 'p-accordion', cae: 'cae-accordion' },
+  ];
+
+  /**
+   * A short FAQ rendered as a `cae-accordion` — the liveness proof for #77. It's single-expand
+   * by default (opening one section closes the others, coordinated by the accordion), showing the
+   * projected `cae-expansion-panel` children behave as one group without any wiring on our side.
+   */
+  protected readonly faqs: ReadonlyArray<{ q: string; hint: string; a: string }> = [
+    {
+      q: 'How do I adopt Caelum?',
+      hint: 'component by component',
+      a: 'Swap one PrimeNG component at a time — each cae-* wrapper is a 1:1 drop-in, so a migration is a series of small, independently shippable changes rather than a rewrite.',
+    },
+    {
+      q: 'Will it match my brand?',
+      hint: 'one token set',
+      a: 'Every component reads the same --cae-* design tokens. Set them once and the fields, cards, and this accordion all move together — no per-component theming.',
+    },
+    {
+      q: 'What about accessibility?',
+      hint: 'built in',
+      a: 'Each header is a real focusable control with aria-expanded and Enter/Space toggling, inherited from Material and verified in the library’s parity suite.',
+    },
   ];
 
   /**

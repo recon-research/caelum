@@ -43,3 +43,6 @@ export * from 'caelum/tree';
 export * from 'caelum/switch';
 export * from 'caelum/select-button';
 export * from 'caelum/toggle-button';
+
+// --- Panel/layout: accordion (#77) ---
+export * from 'caelum/accordion';
