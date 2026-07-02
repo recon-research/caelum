@@ -148,6 +148,12 @@
   border-radius: var(--cae-radius-md);
 }
 
+// A layout-only variant (no box) — groups a single control with its consumer error (#47).
+.forge-field-group--flush {
+  padding: 0;
+  border: 0;
+}
+
 .forge-field-group__label {
   display: block;
   margin-block-end: var(--cae-space-2);
@@ -158,6 +164,14 @@
 
 .forge-req {
   color: var(--cae-color-error);
+}
+
+// Consumer-owned error for the plan radio group (#47) — cae-radio isn't a mat-form-field, so
+// Forge renders this and links it via cae-radio's ariaDescribedby. Sized to match <mat-error>.
+.forge-field-error {
+  margin: var(--cae-space-2) 0 0;
+  color: var(--cae-color-error);
+  font-size: var(--cae-text-sm);
 }
 
 .forge-form {

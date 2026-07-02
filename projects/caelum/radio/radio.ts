@@ -53,7 +53,11 @@ export interface CaeRadioOption {
       (focusout)="onTouched()"
     >
       @for (option of options(); track option.value) {
-        <mat-radio-button [value]="option.value" [disabled]="option.disabled ?? false">
+        <mat-radio-button
+          [value]="option.value"
+          [disabled]="option.disabled ?? false"
+          [aria-describedby]="$any(ariaDescribedby() || null)"
+        >
           {{ option.label }}
         </mat-radio-button>
       }
@@ -91,6 +95,20 @@ export class CaeRadio implements ControlValueAccessor {
   readonly ariaLabel = input('');
   /** `id` of a visible element that labels the group (preferred when a label is shown). */
   readonly ariaLabelledby = input('');
+  /**
+   * `id`(s) of element(s) describing the group — the a11y hook for a consumer-owned error or
+   * hint. Unlike `cae-input`/`cae-select`, a radio group is not a `MatFormFieldControl`, so it
+   * has no built-in `<mat-error>`; the consumer renders the message and points this at it. A
+   * radio group uses roving tabindex — focus lands on a radio `<input>`, never the group host —
+   * so this is forwarded to each `<mat-radio-button>`'s focusable `<input>` (Material's own
+   * `aria-describedby` seam), where a screen reader reads it on focus; pair it with a form-level
+   * live region for submit-time announcement, as Forge does. This is Caelum's consumer-owned
+   * error pattern for the non-form-field controls (radio/checkbox), established by #47 — a hook,
+   * not built-in error rendering (an `errorMessages` built-in could be added later; it's additive).
+   * (`$any` in the template bridges Material's `aria-describedby` input, typed `string`, so an
+   * empty value passes `null` and the attribute is dropped rather than rendered empty.)
+   */
+  readonly ariaDescribedby = input('');
 
   protected readonly value = signal('');
   private readonly formDisabled = signal(false);

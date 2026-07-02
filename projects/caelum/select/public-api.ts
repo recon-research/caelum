@@ -5,6 +5,6 @@
  * from the primary `caelum` barrel, which stays intact (this split is additive).
  */
 export * from './select';
-// Re-exported so a consumer importing only `caelum/select` can type its `appearance`
-// input without reaching back to the barrel (this control exposes it in its public API).
-export type { CaeFormFieldAppearance } from 'caelum/shared';
+// Re-exported so a consumer importing only `caelum/select` can type its `appearance` and
+// `errorMessages` inputs without reaching back to the barrel (this control exposes both).
+export type { CaeErrorMessages, CaeFormFieldAppearance } from 'caelum/shared';

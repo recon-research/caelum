@@ -55,6 +55,20 @@ describe('CaeRadio', () => {
     expect(radios().every((r) => r.disabled)).toBe(true);
   });
 
+  it('forwards ariaDescribedby to each focusable radio input, not the group (the a11y hook, #47)', () => {
+    // A radio group uses roving tabindex — focus lands on a radio <input>, never the
+    // non-focusable role=radiogroup container — so the description must sit on the inputs to be
+    // announced on focus (mirroring how <mat-error> links to a focusable control).
+    expect(radios().every((r) => r.getAttribute('aria-describedby') === null)).toBe(true);
+    fixture.componentRef.setInput('ariaDescribedby', 'plan-error');
+    fixture.detectChanges();
+    expect(radios().every((r) => r.getAttribute('aria-describedby') === 'plan-error')).toBe(true);
+    // And nothing on the non-focusable group container.
+    expect(
+      fixture.nativeElement.querySelector('mat-radio-group').getAttribute('aria-describedby'),
+    ).toBeNull();
+  });
+
   it('gives an unnamed group a unique fallback name (avoids cross-group collision)', () => {
     const firstName = radios()[0].getAttribute('name');
     expect(firstName).toMatch(/^cae-radio-/);
