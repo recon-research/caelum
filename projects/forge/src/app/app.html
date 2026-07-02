@@ -2,8 +2,9 @@
   Forge — the Caelum demo console. This screen is built almost entirely from `cae-*`
   components: batch 1 (#5, cae-input/checkbox/button/card), batch 2 (#26,
   cae-radio/select/textarea/tabs/tooltip), batch 3 (#27, cae-menu in the header, the form laid
-  out as a cae-stepper wizard, and a cae-tree for workspace structure), and batch 4 (#68, a
-  cae-switch preference in the form). The form is
+  out as a cae-stepper wizard, and a cae-tree for workspace structure), and batch 4 (#68 a
+  cae-switch preference, #73 a cae-select-button for visibility and a cae-toggle-button
+  preference). The form is
   a real reactive form whose every control is a Caelum wrapper over Material — here spread
   across projected stepper steps yet bound to one FormGroup. Every colour, space, and radius
   resolves to a `--cae-*` token (no literals), and the wrapped Material controls resolve the
@@ -63,8 +64,10 @@
     <p class="forge-panel__lead">
       The PrimeNG→Caelum <code>cae-*</code> surface, now through batch 4 — a
       <code>cae-menu</code> in the header, the form as a <code>cae-stepper</code> wizard, a
-      <code>cae-tree</code> for structure, and a <code>cae-switch</code> preference in the form. The
-      form is a real reactive form bound straight through the Caelum controls, in light and dark.
+      <code>cae-tree</code> for structure, a <code>cae-switch</code> preference, and a
+      <code>cae-select-button</code> / <code>cae-toggle-button</code> pair over
+      <code>MatButtonToggle</code>. The form is a real reactive form bound straight through the
+      Caelum controls, in light and dark.
     </p>
 
     <cae-card
@@ -156,6 +159,27 @@
                   [errorMessages]="regionErrors"
                   required
                 />
+                <!-- cae-select-button (#73): a button-bar single-select (p-selectButton parity).
+                     Like cae-radio it isn't a mat-form-field, so #47's consumer-owned error hook
+                     applies — the message is linked via ariaDescribedby, which cae-select-button
+                     forwards onto each option's focusable <button> (mat-button-toggle has no
+                     aria-describedby input, so the wrapper sets it directly). -->
+                <div class="forge-field-group">
+                  <span id="visibility-label" class="forge-field-group__label">
+                    Visibility <span class="forge-req" aria-hidden="true">*</span>
+                  </span>
+                  <cae-select-button
+                    formControlName="visibility"
+                    ariaLabelledby="visibility-label"
+                    [ariaDescribedby]="fieldErrorShown('visibility') ? 'visibility-error' : ''"
+                    [options]="visibilities"
+                  />
+                  @if (fieldErrorShown('visibility')) {
+                    <p id="visibility-error" class="forge-field-error">
+                      Choose who can see this workspace
+                    </p>
+                  }
+                </div>
               </div>
             </cae-step>
 
@@ -200,6 +224,11 @@
                   <cae-switch formControlName="notify"
                     >Email me about workspace activity</cae-switch
                   >
+                </div>
+                <!-- cae-toggle-button (#73): the same kind of boolean, rendered as a pressable
+                     button (role=button + aria-pressed) — the switch's button-shaped twin. -->
+                <div class="forge-field-group forge-field-group--flush">
+                  <cae-toggle-button formControlName="pinned">Pin to sidebar</cae-toggle-button>
                 </div>
               </div>
             </cae-step>
