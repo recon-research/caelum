@@ -52,20 +52,26 @@ Each milestone has a **goal**, **slices**, a verifiable **exit criterion**, a **
 **Resolved this session (2026-06-29)** — recorded in [ARCHITECTURE.md](ARCHITECTURE.md) Appendix A:
 - **Naming** — library **Caelum**, demo **Forge** (chosen).
 - **D-10 — "US-origin" definition** — *maintaining entity HQ'd in the US + permissive license (MIT/BSD/Apache-2.0) + no non-US runtime transitive dep* (adopted; **refined by D-11**).
-- **D-07 / D-08 / D-09 — the three library directions** — **TanStack** (grid) / **visx** (charts) / **Lexical** (editor) endorsed.
+- **D-07 / D-08 / D-09 — the three library directions** — **TanStack** (grid) / **visx** (charts) / **Lexical** (editor) endorsed. *(D-08's visx choice later superseded by **D-14** → D3-direct; see below.)*
 
 **Resolved 2026-07-01** (recorded in Appendix A):
 - **D-11 — refinement of D-10** (from #21, the M0-2 provenance scan) — origin gate is scoped to **shipped-runtime reachability** (not the full installed tree), with a **US-preferred / allied-nation (UK, Germany, …) fallback** when a need can't be met US-origin or self-built; **Angular's own transitive closure is accepted wholesale**; the license rule (permissive + free) is unchanged. Sign-off for D-07/D-09 grid/editor libs at M2 now runs against D-11.
 
+**Resolved 2026-07-02** (recorded in Appendix A — all four ratified by the human on the recommended default; #9/#10/#11/#39 closed):
+- **D-12 — zoneless-compatible invariant** (#9) — `OnPush` + signal-driven CD, no zone-coupled `NgZone`/`zone.js`; now a §2 invariant (every `cae-*` already complied — this pins existing practice as a commitment).
+- **D-13 — Material → Aria → CDK → bespoke reach-for ladder** (#10) — refines D-02 into an ordered per-component preference.
+- **D-14 — charts → D3-direct** (#11) — supersedes D-08's visx choice (visx is React-bound); build on framework-agnostic `d3-scale`/`d3-shape`; confirm modules + walk the transitive tree at the M2 charts sign-off.
+- **D-15 — cae-dialog / cae-toast = service passthrough** (#39) — injectable `CaeDialog` / `CaeToast` over `MatDialog` / `MatSnackBar` (named `cae-toast` per the COMPARISON map); **unblocks the dialog/toast slice** (the last blocked slice — now buildable when scheduled).
+
 Nothing currently blocks the build. Remaining (not blocking now):
-- **Final transitive-provenance sign-off** for the endorsed grid/editor libs before pinning — at **M2** (D-07/D-09), per the D-10 rule.
-- **Charts (D-08) deferred** — build when the team's chart need lands.
+- **Final transitive-provenance sign-off** for the endorsed grid/editor libs before pinning — at **M2** (D-07/D-09), per the D-11 rule.
+- **Charts deferred** — build when the team's chart need lands; foundation is now **D3-direct (D-14)**, not visx.
 
 ## Cut order
 
 If time runs short, the order things get dropped (last-to-first) — decided in advance, not in a panic. **Never cut M0–M1** (foundation + common-case components — the bulk of any screen).
 
 1. ✂ Rich-text editor adapter (M2) — heaviest gap, narrowest usage; defer to `contenteditable` stub or out-of-scope.
-2. ✂ Charts adapter beyond a minimal set (M2) — ship a small visx chart set; defer exotic chart types.
+2. ✂ Charts adapter beyond a minimal set (M2) — ship a small D3-direct chart set (D-14); defer exotic chart types.
 3. ✂ Niche long-tail widgets (M3) — Knob, OrgChart, MegaMenu, Dock, Terminal — build only if a consumer needs them.
 4. ✂ Visual-regression automation (M4) — fall back to manual snapshot review if the harness slips.
