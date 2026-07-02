@@ -9,7 +9,13 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import {
+  FormControl,
+  FormGroup,
+  FormGroupDirective,
+  ReactiveFormsModule,
+  Validators,
+} from '@angular/forms';
 // Forge imports each control from its own secondary entry point (#28) — the real
 // "pay only for what you import" adoption pattern (Book 18 §3.3). The `caelum` barrel
 // still works unchanged (the split is additive; scripts/check-lib-exports.mjs gates that
@@ -189,6 +195,8 @@ export class App {
 
   /** The persistent (always-rendered) polite live region + focus target for the result. */
   private readonly statusRegion = viewChild<ElementRef<HTMLElement>>('statusRegion');
+  /** The reactive form's directive — reset through it so `submitted` clears (see reset()). */
+  private readonly formDir = viewChild(FormGroupDirective);
 
   constructor() {
     // Move focus to the status region whenever it gains a message (success OR error), so a
@@ -260,7 +268,13 @@ export class App {
   }
 
   protected reset(): void {
-    this.form.reset();
+    // Reset through the DIRECTIVE, not just the model: a bare form.reset() clears values but
+    // leaves FormGroupDirective.submitted true, so with #29's error forwarding the freshly
+    // cleared required fields would immediately show errors on the pristine form. resetForm()
+    // clears both. Fall back to the model reset when the form isn't rendered (success screen).
+    const dir = this.formDir();
+    if (dir) dir.resetForm();
+    else this.form.reset();
     this.created.set(null);
     this.formError.set(null);
     this.step.set(0);

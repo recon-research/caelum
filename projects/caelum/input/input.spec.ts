@@ -89,6 +89,8 @@ describe('CaeInput — validation errors', () => {
     fixture.debugElement.query(By.directive(MatInput)).injector.get(MatInput).errorState;
   const errorText = (): string =>
     fixture.nativeElement.querySelector('mat-error')?.textContent?.trim() ?? '';
+  const ariaInvalid = (): string | null =>
+    fixture.nativeElement.querySelector('input')?.getAttribute('aria-invalid') ?? null;
 
   it('stays silent while the control is untouched', () => {
     expect(host.ctrl.invalid).toBe(true);
@@ -123,8 +125,12 @@ describe('CaeInput — validation errors', () => {
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
-    // Error state (→ invalid styling + aria-invalid) still flips; there is just no text.
+    // Error state (→ invalid styling) still flips; there is just no text. This host does NOT
+    // set the `required` INPUT, so Material's empty+required aria-invalid suppression does not
+    // apply and aria-invalid is present. (A required-marked empty field suppresses aria-invalid
+    // by design — hence the docstring guidance to always map `required`.)
     expect(matInputErrorState()).toBe(true);
     expect(errorText()).toBe('');
+    expect(ariaInvalid()).toBe('true');
   });
 });

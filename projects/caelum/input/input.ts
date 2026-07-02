@@ -1,22 +1,22 @@
 import {
-  AfterViewInit,
   booleanAttribute,
   ChangeDetectionStrategy,
   ChangeDetectorRef,
   Component,
   computed,
   DestroyRef,
+  DoCheck,
   inject,
   input,
   signal,
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ControlContainer, ControlValueAccessor, NgControl } from '@angular/forms';
+import { type AbstractControl, ControlValueAccessor, NgControl } from '@angular/forms';
 import { ErrorStateMatcher } from '@angular/material/core';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInput, MatInputModule } from '@angular/material/input';
-import type { Observable } from 'rxjs';
+import { Subscription } from 'rxjs';
 import type { CaeErrorMessages, CaeFormFieldAppearance } from 'caelum/shared';
 
 /**
@@ -42,8 +42,11 @@ export type CaeInputType = 'text' | 'email' | 'password' | 'tel' | 'url' | 'sear
  * state into the inner field with a per-control `ErrorStateMatcher` (delegating the *timing*
  * to the DI `ErrorStateMatcher` so every field — and any app-root override — agrees), and
  * drives `matInput.updateErrorState()` from the control's own events. `errorMessages` maps
- * validator keys → text, rendered as `<mat-error>`; `aria-invalid` + the error/hint
- * `aria-describedby` link then come free from Material (Book 07 §3.4).
+ * validator keys → text, rendered as `<mat-error>` and linked via `aria-describedby` (so a
+ * screen reader announces it when the field is focused; for submit-time announcement keep a
+ * form-level live region, as Forge does). Material sets `aria-invalid` from the bridged error
+ * state — except on an empty *required* field, where it suppresses `aria-invalid` by design
+ * and `aria-required` conveys the requirement instead (Book 07 §3.3/§3.4).
  *
  * Theme + label association come free through Material and the token bridge.
  * Zoneless-compatible: `OnPush` + signal state, no zone-coupled APIs (provisional on #9;
@@ -93,7 +96,7 @@ export type CaeInputType = 'text' | 'email' | 'password' | 'tel' | 'url' | 'sear
     }
   `,
 })
-export class CaeInput implements ControlValueAccessor, AfterViewInit {
+export class CaeInput implements ControlValueAccessor, DoCheck {
   /** Floating label text; omitted → no label. Prefer over placeholder for a11y. */
   readonly label = input('');
   /** Native placeholder. Not an accessible name — set `label` or `ariaLabel` too. */
@@ -102,7 +105,12 @@ export class CaeInput implements ControlValueAccessor, AfterViewInit {
   readonly hint = input('');
   /** Input type. */
   readonly type = input<CaeInputType>('text');
-  /** Marks the field required (Material renders the required marker). */
+  /**
+   * Marks the field required (Material renders the required marker). Mirror the control's
+   * `Validators.required`: this drives the marker, `aria-required`, AND Material's
+   * empty-field `aria-invalid` suppression, so the validator and this input must agree or the
+   * a11y state diverges.
+   */
   readonly required = input(false, { transform: booleanAttribute });
   /** Template-driven disable; merged with any reactive-forms `setDisabledState`. */
   readonly disabled = input(false, { transform: booleanAttribute });
@@ -111,8 +119,10 @@ export class CaeInput implements ControlValueAccessor, AfterViewInit {
   /**
    * Maps a bound control's validator error keys → the message shown when that error is
    * active (see `CaeErrorMessages`). Errors show on the library-wide trigger (invalid &&
-   * (touched || form submitted)); an unmapped failure still styles the field invalid + sets
-   * `aria-invalid` but shows no text.
+   * (touched || form submitted)). An unmapped failure still styles the field invalid (and, on
+   * a non-empty field, sets `aria-invalid`) but shows no text — so map every key you validate,
+   * `required` especially, or a required-empty field is invalid to sighted users yet silent to
+   * a screen reader (Material suppresses `aria-invalid` there; only the linked text announces).
    */
   readonly errorMessages = input<CaeErrorMessages>({});
 
@@ -142,14 +152,15 @@ export class CaeInput implements ControlValueAccessor, AfterViewInit {
   // --- Validation-error forwarding (#29) ---
   /** The OUTER control bound to `<cae-input>` — the source of validity the inner field lacks. */
   private readonly ngControl = inject(NgControl, { optional: true, self: true });
-  /** The surrounding form directive (for `ngSubmit`), if any. */
-  private readonly parentContainer = inject(ControlContainer, { optional: true });
   /** Library-wide error-timing policy (Material's default, or a consumer app-root override). */
   private readonly defaultErrorMatcher = inject(ErrorStateMatcher);
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly destroyRef = inject(DestroyRef);
   /** The inner MatInput directive — poked to recompute its (bridged) error state. */
   private readonly matInput = viewChild(MatInput);
+  /** The control instance the error subscriptions are bound to (re-wired if it's swapped). */
+  private wiredControl: AbstractControl | null = null;
+  private errorSub?: Subscription;
 
   /**
    * Per-control matcher bound on the inner `<input matInput>`: it ignores the inner field's
@@ -167,10 +178,19 @@ export class CaeInput implements ControlValueAccessor, AfterViewInit {
     if (this.ngControl) this.ngControl.valueAccessor = this;
   }
 
-  ngAfterViewInit(): void {
-    // Wire error forwarding once the view exists: the linked control and the inner MatInput
-    // are both resolved by ngAfterViewInit.
-    this.wireErrorState();
+  ngDoCheck(): void {
+    // (Re)wire the CD nudge whenever the bound control instance changes — the initial resolve,
+    // a [formControl] swap, or form.setControl — tearing down the prior subscription.
+    const control = this.ngControl?.control ?? null;
+    if (control !== this.wiredControl) {
+      this.wiredControl = control;
+      this.wireErrorState(control);
+    }
+    // Recompute the bridged error state against the LIVE touched/submitted flags every check.
+    // The inner matInput skips this itself (it has no NgControl), and `submitted` changes emit
+    // no control event — and resetForm() clears the model before `submitted`, so an event-only
+    // refresh would latch stale (Book 07 §3.3). Cheap: updateErrorState emits only on a flip.
+    this.matInput()?.updateErrorState();
   }
 
   /** The mapped messages for the bound control's currently-active errors, in error order. */
@@ -187,26 +207,20 @@ export class CaeInput implements ControlValueAccessor, AfterViewInit {
     return out;
   }
 
-  private wireErrorState(): void {
-    const control = this.ngControl?.control;
+  private wireErrorState(control: AbstractControl | null): void {
+    this.errorSub?.unsubscribe();
+    this.errorSub = undefined;
     if (!control) return;
-    const refresh = (): void => {
-      // The inner matInput has no NgControl, so its own ngDoCheck never recomputes error
-      // state (Book 07 §3.3): drive it from the OUTER control. updateErrorState() emits
-      // MatInput.stateChanges on a flip → mat-form-field re-renders its error slot;
-      // markForCheck re-renders our <mat-error> text when only the message changed.
-      this.matInput()?.updateErrorState();
-      this.cdr.markForCheck();
-    };
-    control.events.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(refresh);
-    // The default policy also shows errors after a form submit, which emits no control event.
-    const submit = (
-      this.parentContainer?.formDirective as { ngSubmit?: Observable<unknown> } | null
-    )?.ngSubmit;
-    submit?.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(refresh);
-    // Initial sync for a control that starts touched + invalid — deferred a microtask so the
-    // error-state flip lands in a fresh tick (no ExpressionChangedAfterItHasBeenChecked).
-    queueMicrotask(refresh);
+    // Programmatic changes (setValue/setErrors/markAsTouched) emit no DOM event, so in a
+    // zoneless app nothing schedules change detection; nudge it so ngDoCheck recomputes the
+    // error state and the <mat-error> text re-renders. DOM-driven changes (blur, submit) already
+    // schedule CD. takeUntilDestroyed cleans up on destroy; the stored sub is torn down on swap.
+    this.errorSub = control.events
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.cdr.markForCheck());
+    // One CD so ngDoCheck runs again with the inner MatInput resolved — syncs a control that
+    // starts touched + invalid.
+    this.cdr.markForCheck();
   }
 
   protected handleInput(value: string): void {
