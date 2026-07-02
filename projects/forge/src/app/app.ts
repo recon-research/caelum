@@ -36,7 +36,10 @@ import { CaeTab, CaeTabs } from 'caelum/tabs';
 import { CaeTextarea } from 'caelum/textarea';
 import { CaeToggleButton } from 'caelum/toggle-button';
 import { CaeTooltip } from 'caelum/tooltip';
-import { CaeTree, CaeTreeNode } from 'caelum/tree';
+// `CaeTreeNode` is inline-`type` so the runtime import of `caelum/tree` is CaeTree alone, used
+// only inside the deferred structure card (#85) — a value+type share on one import declaration
+// counts as an eager use and would keep cae-tree (MatTree) in the initial bundle.
+import { CaeTree, type CaeTreeNode } from 'caelum/tree';
 // Display primitives (#88) — non-interactive Direct wrappers, no CVA.
 import { CaeDivider } from 'caelum/divider';
 import { CaeProgressBar } from 'caelum/progress-bar';

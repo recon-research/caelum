@@ -372,108 +372,127 @@
     </cae-card>
 
     <!-- cae-tree (batch 3) — nested data, expandable, keyboard-navigable (roving focus +
-         arrow keys from the CDK). Selecting a node announces it in a polite live region. -->
-    <cae-card
-      class="forge-structure-card"
-      title="Workspace structure"
-      subtitle="A cae-tree over the same tokens"
-    >
-      <p class="forge-panel__lead">
-        Expand the nodes and select one; the choice is announced below. The tree is a single tab
-        stop — arrow keys move between nodes, Enter selects.
-      </p>
-      <cae-tree
-        ariaLabel="Workspace structure"
-        [nodes]="structure"
-        (nodeSelect)="pickNode($event)"
-      />
-      <p class="forge-tree-status" role="status" aria-live="polite">
-        @if (selectedNode(); as node) {
-          Selected: <strong>{{ node }}</strong>
-        }
-      </p>
-    </cae-card>
+         arrow keys from the CDK). Selecting a node announces it in a polite live region.
+         Deferred (#85): below the fold, so MatTree splits into a lazy chunk off Forge's initial
+         bundle. `on idle` (not `on viewport`) is deliberate: it loads during browser idle for
+         EVERY user with no scroll dependency, so unlike `on viewport` the content is only
+         TRANSIENTLY absent (until idle fires, ~ms after paint) rather than permanently stranded
+         for a screen-reader / keyboard user who navigates without scrolling. No @placeholder /
+         @error here is an accepted trade-off for below-the-fold demo content on a static SPA
+         (a chunk-load failure just leaves the section absent — the pre-defer JS-failure case).
+         This applies to all four @defer blocks below. -->
+    @defer (on idle) {
+      <cae-card
+        class="forge-structure-card"
+        title="Workspace structure"
+        subtitle="A cae-tree over the same tokens"
+      >
+        <p class="forge-panel__lead">
+          Expand the nodes and select one; the choice is announced below. The tree is a single tab
+          stop — arrow keys move between nodes, Enter selects.
+        </p>
+        <cae-tree
+          ariaLabel="Workspace structure"
+          [nodes]="structure"
+          (nodeSelect)="pickNode($event)"
+        />
+        <p class="forge-tree-status" role="status" aria-live="polite">
+          @if (selectedNode(); as node) {
+            Selected: <strong>{{ node }}</strong>
+          }
+        </p>
+      </cae-card>
+    }
 
     <!-- cae-tabs organises the reference panels. Content is projected through cae-tab into
-         Material's tab body; the first tab is active on load. -->
-    <cae-tabs
-      class="forge-reference"
-      ariaLabel="Reference"
-      [selectedIndex]="selectedTab()"
-      (selectedIndexChange)="selectedTab.set($event)"
-    >
-      <cae-tab label="Design tokens">
-        <div class="forge-tab-body">
-          <p class="forge-panel__lead">
-            The same token set drives every component above — edit one <code>--cae-*</code> value
-            and the fields, the card, and these swatches move together.
-          </p>
-          <ul class="forge-swatches" role="list">
-            @for (s of swatches; track s.token) {
-              <li class="forge-swatch">
-                <span
-                  class="forge-swatch__chip"
-                  [style.background]="'var(' + s.token + ')'"
-                  aria-hidden="true"
-                ></span>
-                <span class="forge-swatch__label">{{ s.label }}</span>
-                <code class="forge-swatch__token">{{ s.token }}</code>
-              </li>
-            }
-          </ul>
-        </div>
-      </cae-tab>
+         Material's tab body; the first tab is active on load. Deferred (#85): below the fold,
+         so MatTabs splits into a lazy chunk loaded on idle. -->
+    @defer (on idle) {
+      <cae-tabs
+        class="forge-reference"
+        ariaLabel="Reference"
+        [selectedIndex]="selectedTab()"
+        (selectedIndexChange)="selectedTab.set($event)"
+      >
+        <cae-tab label="Design tokens">
+          <div class="forge-tab-body">
+            <p class="forge-panel__lead">
+              The same token set drives every component above — edit one <code>--cae-*</code> value
+              and the fields, the card, and these swatches move together.
+            </p>
+            <ul class="forge-swatches" role="list">
+              @for (s of swatches; track s.token) {
+                <li class="forge-swatch">
+                  <span
+                    class="forge-swatch__chip"
+                    [style.background]="'var(' + s.token + ')'"
+                    aria-hidden="true"
+                  ></span>
+                  <span class="forge-swatch__label">{{ s.label }}</span>
+                  <code class="forge-swatch__token">{{ s.token }}</code>
+                </li>
+              }
+            </ul>
+          </div>
+        </cae-tab>
 
-      <cae-tab label="In this batch">
-        <div class="forge-tab-body">
-          <p class="forge-panel__lead">
-            Recent batches add these Direct wrappers — each swaps 1:1 for its PrimeNG original.
-          </p>
-          <ul class="forge-map" role="list">
-            @for (c of recentComponents; track c.cae) {
-              <li class="forge-map__row">
-                <code class="forge-map__from">{{ c.prime }}</code>
-                <span aria-hidden="true">→</span>
-                <code class="forge-map__to">{{ c.cae }}</code>
-              </li>
-            }
-          </ul>
-        </div>
-      </cae-tab>
-    </cae-tabs>
+        <cae-tab label="In this batch">
+          <div class="forge-tab-body">
+            <p class="forge-panel__lead">
+              Recent batches add these Direct wrappers — each swaps 1:1 for its PrimeNG original.
+            </p>
+            <ul class="forge-map" role="list">
+              @for (c of recentComponents; track c.cae) {
+                <li class="forge-map__row">
+                  <code class="forge-map__from">{{ c.prime }}</code>
+                  <span aria-hidden="true">→</span>
+                  <code class="forge-map__to">{{ c.cae }}</code>
+                </li>
+              }
+            </ul>
+          </div>
+        </cae-tab>
+      </cae-tabs>
+    }
 
     <!-- cae-accordion (#77): a single-expand FAQ. Opening one cae-expansion-panel closes the
-         others — the accordion coordinates its projected children with no wiring here. -->
-    <cae-accordion class="forge-faq">
-      @for (faq of faqs; track faq.q) {
-        <cae-expansion-panel [title]="faq.q" [description]="faq.hint">
-          <p class="forge-faq__answer">{{ faq.a }}</p>
-        </cae-expansion-panel>
-      }
-    </cae-accordion>
+         others — the accordion coordinates its projected children with no wiring here. Deferred
+         (#85): below the fold, so MatExpansion splits into a lazy chunk loaded on idle. -->
+    @defer (on idle) {
+      <cae-accordion class="forge-faq">
+        @for (faq of faqs; track faq.q) {
+          <cae-expansion-panel [title]="faq.q" [description]="faq.hint">
+            <p class="forge-faq__answer">{{ faq.a }}</p>
+          </cae-expansion-panel>
+        }
+      </cae-accordion>
+    }
 
     <!-- cae-chip (#83): removable tags backed by a signal list. Clicking × fires (removed) and the
-         consumer drops the tag, so the chip unrenders — a live round-trip. -->
-    <div class="forge-tags">
-      <span class="forge-tags__label" id="tags-label">Workspace tags</span>
-      @if (tags().length) {
-        <div class="forge-tags__row" role="list" aria-labelledby="tags-label">
-          @for (tag of tags(); track tag) {
-            <cae-chip
-              role="listitem"
-              removable
-              [removeAriaLabel]="'Remove ' + tag"
-              (removed)="removeTag(tag)"
-              >{{ tag }}</cae-chip
-            >
-          }
-        </div>
-      }
-      <!-- Persistent polite live region: standalone chips don't manage focus on removal, so we
+         consumer drops the tag, so the chip unrenders — a live round-trip. Deferred (#85): below
+         the fold, so MatChips splits into a lazy chunk loaded on idle. -->
+    @defer (on idle) {
+      <div class="forge-tags">
+        <span class="forge-tags__label" id="tags-label">Workspace tags</span>
+        @if (tags().length) {
+          <div class="forge-tags__row" role="list" aria-labelledby="tags-label">
+            @for (tag of tags(); track tag) {
+              <cae-chip
+                role="listitem"
+                removable
+                [removeAriaLabel]="'Remove ' + tag"
+                (removed)="removeTag(tag)"
+                >{{ tag }}</cae-chip
+              >
+            }
+          </div>
+        }
+        <!-- Persistent polite live region: standalone chips don't manage focus on removal, so we
            announce it here and move focus here (see the effect in app.ts) rather than to <body>. -->
-      <p #tagsStatus class="forge-tags__status" role="status" aria-live="polite" tabindex="-1">
-        {{ tagMessage() }}
-      </p>
-    </div>
+        <p #tagsStatus class="forge-tags__status" role="status" aria-live="polite" tabindex="-1">
+          {{ tagMessage() }}
+        </p>
+      </div>
+    }
   </section>
 </main>
