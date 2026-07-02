@@ -266,6 +266,35 @@ describe('App', () => {
     expect(cmp['inviteSent']()).toBe('teammate@acme.dev');
   });
 
+  it('keeps the invite submit interactive-disabled with an explanatory tooltip until a role is chosen (#58)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const cmp = fixture.componentInstance;
+    // Reach the Access step with a valid contact but no role → invite.invalid.
+    cmp['inviteContact'].controls.email.setValue('teammate@acme.dev');
+    cmp['inviteNext']();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const submit = (): HTMLButtonElement =>
+      (fixture.nativeElement as HTMLElement).querySelector(
+        '.forge-invite-card cae-button button[type="submit"]',
+      ) as HTMLButtonElement;
+    // Interactive-disabled: no native `disabled` attr (so it stays focusable/hoverable), but
+    // aria-disabled announces the state, and the explanatory tooltip's description is attached.
+    expect(submit().hasAttribute('disabled')).toBe(false);
+    expect(submit().getAttribute('aria-disabled')).toBe('true');
+    expect(submit().getAttribute('aria-describedby')).toBeTruthy();
+
+    // Once a role is chosen the button enables and the tooltip (and its describedby) drop away.
+    cmp['inviteAccess'].controls.role.setValue('member');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(submit().getAttribute('aria-disabled')).toBeNull();
+    expect(submit().hasAttribute('aria-describedby')).toBe(false);
+  });
+
   it('announces the invite result in a persistent live region (#40 a11y)', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();

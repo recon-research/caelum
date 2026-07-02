@@ -55,6 +55,7 @@ export type CaeButtonVariant = 'filled' | 'tonal' | 'elevated' | 'outlined' | 't
         [matButton]="variant()"
         [type]="type()"
         [disabled]="disabled()"
+        [disabledInteractive]="disabledInteractive()"
         [matTooltip]="tooltip()"
         [matTooltipPosition]="tooltipPosition()"
         [matTooltipDisabled]="!tooltip()"
@@ -68,6 +69,7 @@ export type CaeButtonVariant = 'filled' | 'tonal' | 'elevated' | 'outlined' | 't
         [matButton]="variant()"
         [type]="type()"
         [disabled]="disabled()"
+        [disabledInteractive]="disabledInteractive()"
         [matTooltip]="tooltip()"
         [matTooltipPosition]="tooltipPosition()"
         [matTooltipDisabled]="!tooltip()"
@@ -90,14 +92,27 @@ export class CaeButton {
   readonly type = input<'button' | 'submit' | 'reset'>('button');
   /** Disable the button (coerced, so bare `<cae-button disabled>` works). */
   readonly disabled = input(false, { transform: booleanAttribute });
+  /**
+   * Keep a *disabled* button focusable and hoverable so it can still surface its `tooltip`
+   * (Material's `disabledInteractive`, #58). With both `disabled` and this set, the button drops
+   * the native `disabled` attribute — which suppresses focus and pointer events — for
+   * `aria-disabled="true"`: assistive tech still announces it disabled and it stays tabbable, but
+   * hover/focus now reveal the tooltip explaining *why* (the `<p-button pTooltip disabled>` parity
+   * case). Opt-in, default off. The action is NOT auto-suppressed — guard it (a `(click)` handler,
+   * or the enclosing form's `(ngSubmit)`, as Forge's *Send invite* does) so an interactive-disabled
+   * button can't still fire. A bound `menuTriggerFor` is likewise still openable while
+   * interactive-disabled (its click belongs to `MatMenuTrigger`, not you) — unbind it to block that:
+   * `[menuTriggerFor]="busy ? undefined : menu"` (Book 16 a11y).
+   */
+  readonly disabledInteractive = input(false, { transform: booleanAttribute });
   /** Accessible name — set for icon-only or otherwise ambiguously-labelled buttons. */
   readonly ariaLabel = input('');
   /**
    * Tooltip text, shown on hover **and keyboard focus** of the button and forwarded to the
    * inner focusable control as `aria-describedby`. Empty (default) attaches nothing. Note: a
    * *disabled* button is not focusable and swallows pointer events, so its tooltip won't
-   * display visually (though the description still reaches a screen reader) — don't rely on it
-   * as the sole explanation of a disabled state (a `disabledInteractive` seam is #58).
+   * display visually (though the description still reaches a screen reader) — set
+   * `disabledInteractive` to keep the disabled button focusable so its tooltip shows (#58).
    */
   readonly tooltip = input('');
   /** Placement of the tooltip relative to the button. */

@@ -290,7 +290,20 @@
             @if (inviteStep() < 1) {
               <cae-button type="button" variant="tonal" (click)="inviteNext()">Next</cae-button>
             } @else {
-              <cae-button type="submit" variant="filled">Send invite</cae-button>
+              <!-- disabledInteractive (#58): until a role is chosen the submit looks disabled but
+                   stays focusable/hoverable, so its tooltip explains WHY — the
+                   <p-button pTooltip disabled> parity case. sendInvite() still guards the action
+                   (the button stays clickable while interactive-disabled), so nothing fires early.
+                   The tooltip is dropped once valid, so an enabled button carries no describedby. -->
+              <cae-button
+                type="submit"
+                variant="filled"
+                [disabled]="invite.invalid"
+                disabledInteractive
+                [tooltip]="invite.invalid ? 'Choose a role to send the invitation' : ''"
+              >
+                Send invite
+              </cae-button>
             }
           </div>
         </form>
