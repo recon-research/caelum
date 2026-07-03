@@ -83,6 +83,12 @@ describe('CaeConfirmService', () => {
     expect(surface()).toBeNull();
   });
 
+  // NOTE: the safety-critical "initial focus lands on reject" property can't be asserted in jsdom —
+  // Material's CSS-selector autoFocus is a no-op there (document.activeElement stays on <body>). It's
+  // guarded structurally instead: the template class and the service's autoFocus selector are derived
+  // from ONE shared constant (REJECT_CLASS/ACCEPT_CLASS) so they can't desync, and the config-seam test
+  // above asserts the selector value. Real-browser focus-landing verification is filed as M4 (#107).
+
   it('resolves false when dismissed without a choice (Escape / backdrop → close(undefined))', async () => {
     const result = confirm.confirm({ message: 'Proceed?' });
     await settle();
@@ -128,6 +134,14 @@ describe('CaeConfirmService', () => {
       const spy = spyOpen();
       confirm.confirm({ message: 'Delete?', defaultFocus: 'accept' });
       expect(spy.mock.calls[0][1]!.autoFocus).toBe('.cae-confirm__accept button');
+    });
+
+    it('leaves the confirm dismissable — disableClose stays off so Escape/backdrop reject', () => {
+      const spy = spyOpen();
+      confirm.confirm({ message: 'Delete?' });
+      // A disableClose:true regression (a plausible copy-paste from a modal dialog) would silently stop
+      // Escape/backdrop from rejecting, breaking the documented dismiss=reject contract; assert it off.
+      expect(spy.mock.calls[0][1]!.disableClose).toBeFalsy();
     });
 
     it('names the dialog by its message (aria-label) when there is no header', () => {

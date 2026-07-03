@@ -57,6 +57,13 @@ interface CaeConfirmData {
 /** Monotonic counter for unique message-element ids (no `Math.random` — it's blocked and non-hermetic). */
 let confirmUid = 0;
 
+// The action-button marker classes live in ONE place: the template binds them and the service builds
+// its autoFocus selector from them, so the class and the selector can never desync. A desync would
+// silently defeat the safe-default reject focus (Material's CSS-selector autoFocus no-ops on a miss,
+// with no throw), which no jsdom test would catch — so the single source of truth IS the guard.
+const REJECT_CLASS = 'cae-confirm__reject';
+const ACCEPT_CLASS = 'cae-confirm__accept';
+
 /**
  * The internal alertdialog body {@link CaeConfirmService} opens — a pure `cae-*` component built from
  * the #100 content directives and two `cae-button`s, so it carries no `@angular/material` import. Not
@@ -74,18 +81,12 @@ let confirmUid = 0;
       <p class="cae-confirm__message" [id]="data.describedById">{{ data.message }}</p>
     </div>
     <div caeDialogActions align="end">
-      <cae-button
-        class="cae-confirm__reject"
-        [variant]="data.rejectAppearance"
-        (click)="reject()"
-        >{{ data.rejectLabel }}</cae-button
-      >
-      <cae-button
-        class="cae-confirm__accept"
-        [variant]="data.acceptAppearance"
-        (click)="accept()"
-        >{{ data.acceptLabel }}</cae-button
-      >
+      <cae-button [class]="rejectClass" [variant]="data.rejectAppearance" (click)="reject()">{{
+        data.rejectLabel
+      }}</cae-button>
+      <cae-button [class]="acceptClass" [variant]="data.acceptAppearance" (click)="accept()">{{
+        data.acceptLabel
+      }}</cae-button>
     </div>
   `,
 })
@@ -93,6 +94,9 @@ class CaeConfirmDialog {
   /** The resolved confirm payload (labels/variants defaulted by the service). */
   protected readonly data = inject(CAE_DIALOG_DATA) as CaeConfirmData;
   private readonly ref = injectCaeDialogRef<boolean>();
+  /** The action-button marker classes — the SAME constants the service's autoFocus selector uses. */
+  protected readonly rejectClass = REJECT_CLASS;
+  protected readonly acceptClass = ACCEPT_CLASS;
 
   /** Close, resolving the confirm to `true`. */
   protected accept(): void {
@@ -142,8 +146,8 @@ export class CaeConfirmService {
     // is Material's documented `autoFocus` hook; `'reject'` (default) parks focus on the safe choice.
     const autoFocus =
       (options.defaultFocus ?? 'reject') === 'accept'
-        ? '.cae-confirm__accept button'
-        : '.cae-confirm__reject button';
+        ? `.${ACCEPT_CLASS} button`
+        : `.${REJECT_CLASS} button`;
     const ref = this.dialog.open<CaeConfirmDialog, boolean, CaeConfirmData>(CaeConfirmDialog, {
       role: 'alertdialog',
       data,

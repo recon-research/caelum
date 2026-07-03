@@ -28,6 +28,6 @@
     "caelum-divider": 2048,
     "caelum-toast": 2048,
     "caelum-dialog": 3072,
-    "caelum-confirm": 3072
+    "caelum-confirm": 3456
   }
 }
