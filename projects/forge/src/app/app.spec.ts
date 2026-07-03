@@ -293,18 +293,20 @@ describe('App', () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     const el = fixture.nativeElement as HTMLElement;
-    // Exactly six @defer blocks — the capacity sliders, modules listbox, structure tree, reference
-    // tabs, FAQ accordion, and tag row — each carrying a heavy Material module (MatSlider/MatList/
-    // MatTree/MatTabs/MatExpansion/MatChips) off the initial bundle. This is the regression guard for
-    // the #85 bundle win: deleting an @defer wrapper stays UNDER the 1mb budget error (so `ng build`
-    // wouldn't fail), but drops a block here → red test. (The modules listbox card, #114, is the
-    // newest: MatSelectionList is heavy, so it's deferred rather than raising the budget.)
-    expect((await fixture.getDeferBlocks()).length).toBe(6);
+    // Exactly seven @defer blocks — the capacity sliders, modules listbox, timezone autocomplete,
+    // structure tree, reference tabs, FAQ accordion, and tag row — each carrying a heavy Material
+    // module (MatSlider/MatList/MatAutocomplete/MatTree/MatTabs/MatExpansion/MatChips) off the initial
+    // bundle. This is the regression guard for the #85 bundle win: deleting an @defer wrapper stays
+    // UNDER the 1mb budget error (so `ng build` wouldn't fail), but drops a block here → red test.
+    // (The timezone autocomplete card, #119, is the newest: matAutocomplete's overlay is heavy, so
+    // it's deferred rather than raising the budget.)
+    expect((await fixture.getDeferBlocks()).length).toBe(7);
     // The eager critical path (the create-workspace form) is present with NO defer block rendered...
     expect(el.querySelector('.forge-form-card')).not.toBeNull();
     // ...while the deferred demo sections are genuinely absent until rendered (proof they're lazy).
     expect(el.querySelector('.forge-capacity-card')).toBeNull();
     expect(el.querySelector('.forge-modules-card')).toBeNull();
+    expect(el.querySelector('.forge-timezone-card')).toBeNull();
     expect(el.querySelector('cae-tree')).toBeNull();
     expect(el.querySelector('.forge-reference')).toBeNull();
     expect(el.querySelector('.forge-faq')).toBeNull();
@@ -313,6 +315,7 @@ describe('App', () => {
     await renderDeferred(fixture);
     expect(el.querySelector('.forge-capacity-card')).not.toBeNull();
     expect(el.querySelector('.forge-modules-card')).not.toBeNull();
+    expect(el.querySelector('.forge-timezone-card')).not.toBeNull();
     expect(el.querySelector('cae-tree')).not.toBeNull();
     expect(el.querySelector('.forge-reference')).not.toBeNull();
     expect(el.querySelector('.forge-faq')).not.toBeNull();
@@ -486,6 +489,36 @@ describe('App', () => {
     fixture.detectChanges();
     expect(optionByLabel('Single sign-on').getAttribute('aria-selected')).toBe('true');
     expect(optionByLabel('Analytics').getAttribute('aria-selected')).toBe('false');
+  });
+
+  it('round-trips the timezone cae-autocomplete and surfaces its required error (#119)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    await renderDeferred(fixture); // the timezone card is @defer'd below the fold (#85, #119)
+    const cmp = fixture.componentInstance;
+    const card = (fixture.nativeElement as HTMLElement).querySelector(
+      '.forge-timezone-card',
+    ) as HTMLElement;
+    expect(card).not.toBeNull();
+    const input = card.querySelector('input') as HTMLInputElement;
+    expect(input).not.toBeNull();
+
+    // Model → view: a programmatic setValue writes the chosen key's LABEL into the input through the
+    // CVA (a real display sync, not a tautological FormControl read).
+    cmp['timezone'].setValue('europe/london');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(input.value).toBe('Europe / London');
+    expect(cmp['timezone'].value).toBe('europe/london');
+
+    // The required validator surfaces an inline <mat-error> once the field is cleared + touched.
+    cmp['timezone'].setValue('');
+    cmp['timezone'].markAsTouched();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const error = card.querySelector('mat-error') as HTMLElement;
+    expect(error).not.toBeNull();
+    expect(error.textContent).toContain('Choose a timezone');
   });
 
   it('shows the workspace structure as a cae-tree and announces a selection', async () => {

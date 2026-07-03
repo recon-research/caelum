@@ -26,6 +26,7 @@ import { CaeButton } from 'caelum/button';
 import { CaeCard } from 'caelum/card';
 import { CaeChip } from 'caelum/chip';
 import { CaeCheckbox } from 'caelum/checkbox';
+import { CaeAutocomplete, type CaeAutocompleteOption } from 'caelum/autocomplete';
 import { CaeInput, type CaeErrorMessages } from 'caelum/input';
 import { CaeListbox, type CaeListboxOption } from 'caelum/listbox';
 import { CaeMenu, CaeMenuItem } from 'caelum/menu';
@@ -89,6 +90,7 @@ const SWATCHES: ReadonlyArray<{ token: string; label: string }> = [
     CaeCard,
     CaeChip,
     CaeCheckbox,
+    CaeAutocomplete,
     CaeInput,
     CaeListbox,
     CaeMenu,
@@ -234,6 +236,26 @@ export class App {
     { value: 'billing', label: 'Billing' },
     { value: 'audit-log', label: 'Audit log' },
     { value: 'sso', label: 'Single sign-on' },
+  ];
+
+  /**
+   * A standalone required control for the deferred "Default timezone" cae-autocomplete demo (#119) —
+   * a typeahead combobox round-trips the chosen timezone's key through a reactive control, with an
+   * inline `<mat-error>` on the required validator. Deferred (#85): matAutocomplete's overlay module
+   * is heavy, so it's `@defer (on idle)`'d off the initial bundle.
+   */
+  protected readonly timezone = new FormControl('', {
+    nonNullable: true,
+    validators: [Validators.required],
+  });
+  /** The timezone autocomplete suggestions, as data (the `CaeAutocompleteOption[]` seam). */
+  protected readonly timezoneOptions: readonly CaeAutocompleteOption[] = [
+    { value: 'utc', label: 'UTC' },
+    { value: 'america/new_york', label: 'America / New York' },
+    { value: 'america/los_angeles', label: 'America / Los Angeles' },
+    { value: 'europe/london', label: 'Europe / London' },
+    { value: 'europe/berlin', label: 'Europe / Berlin' },
+    { value: 'asia/tokyo', label: 'Asia / Tokyo' },
   ];
 
   /**
