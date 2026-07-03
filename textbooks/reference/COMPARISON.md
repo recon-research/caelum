@@ -90,7 +90,7 @@ Below, the **current** selector is listed with the historical alias noted. Verif
 | `p-card` | `cae-card` | `MatCard` | Direct | 11 |
 | `p-tabs` (was `p-tabview`) | `cae-tabs` | `MatTabGroup` | Direct | 11 |
 | `p-stepper` (`p-steps`) | `cae-stepper` | `MatStepper` | Direct | 11 |
-| `p-toolbar` | `cae-toolbar` | `MatToolbar` | Direct | 11 |
+| `p-toolbar` | `cae-toolbar` | `MatToolbar` (`caeToolbarStart`/`caeToolbarEnd` slots; no `role=toolbar` — needs roving tabindex; center group / rows → #127) | Direct | 11 |
 | `p-divider` | `cae-divider` | `MatDivider` | Direct | 11 |
 | `p-panel`, `p-fieldset` | `cae-panel` / `cae-fieldset` | `MatCard` / built legend | Compose | 11 |
 | `p-scrollpanel` | `cae-scroll-panel` | CDK scrolling / native overflow | Build-S | 11 |
@@ -140,7 +140,7 @@ Below, the **current** selector is listed with the historical alias noted. Verif
 | `p-message` (inline) | `cae-alert` | alert component on `MatCard` (no first-party alert) | Build-S | 11 |
 | `p-progressbar` | `cae-progress-bar` | `MatProgressBar` | Direct | 11 |
 | `p-progressspinner` | `cae-progress-spinner` | `MatProgressSpinner` | Direct | 11 |
-| `p-badge` (`pBadge`) | `cae-badge` | `MatBadge` | Direct | 11 |
+| `p-badge` (`pBadge`) | `cae-badge` | `MatBadge` (`[caeBadge]` directive form; forward `caeBadgeDescription` for a11y; no standalone component / severity colour → #129) | Direct | 11 |
 | `p-metergroup` | `cae-meter-group` | stacked `MatProgressBar` | Build-S | 11 |
 | `p-skeleton` | `cae-skeleton` | CSS shimmer | Build-S | 11 |
 

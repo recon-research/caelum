@@ -13,7 +13,7 @@
  * per-component path in app code. Re-exporting by name (not by re-declaring the source)
  * is also what keeps each source file owned by a single entry point, which ng-packagr
  * requires. Batch 1 = #5; batch 2 = #26; batch 3 = #27; batch 4 = #68, #73; accordion = #77;
- * chip = #83; display primitives (progress-bar/spinner/divider) = #88.
+ * chip = #83; display primitives (progress-bar/spinner/divider) = #88; toolbar/badge = #126.
  */
 
 // --- Shared types ---
@@ -45,11 +45,13 @@ export * from 'caelum/switch';
 export * from 'caelum/select-button';
 export * from 'caelum/toggle-button';
 
-// --- Panel/layout: accordion (#77) ---
+// --- Panel/layout: accordion (#77), toolbar (#126) ---
 export * from 'caelum/accordion';
+export * from 'caelum/toolbar';
 
-// --- Data display: chip (#83) ---
+// --- Data display: chip (#83), badge (#126) ---
 export * from 'caelum/chip';
+export * from 'caelum/badge';
 
 // --- Display primitives: progress-bar, progress-spinner, divider (#88) ---
 export * from 'caelum/progress-bar';

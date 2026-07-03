@@ -22,6 +22,7 @@ import {
 // still works unchanged (the split is additive; scripts/check-lib-exports.mjs gates that
 // every entry point is also re-exported by the barrel), but app code should prefer these paths.
 import { CaeAccordion, CaeExpansionPanel } from 'caelum/accordion';
+import { CaeBadge } from 'caelum/badge';
 import { CaeButton } from 'caelum/button';
 import { CaeCard } from 'caelum/card';
 import { CaeChip } from 'caelum/chip';
@@ -39,6 +40,7 @@ import { CaeSwitch } from 'caelum/switch';
 import { CaeTab, CaeTabs } from 'caelum/tabs';
 import { CaeTextarea } from 'caelum/textarea';
 import { CaeToggleButton } from 'caelum/toggle-button';
+import { CaeToolbar } from 'caelum/toolbar';
 import { CaeTooltip } from 'caelum/tooltip';
 // `CaeTreeNode` is inline-`type` so the runtime import of `caelum/tree` is CaeTree alone, used
 // only inside the deferred structure card (#85) — a value+type share on one import declaration
@@ -86,9 +88,11 @@ const SWATCHES: ReadonlyArray<{ token: string; label: string }> = [
     ReactiveFormsModule,
     CaeAccordion,
     CaeExpansionPanel,
+    CaeBadge,
     CaeButton,
     CaeCard,
     CaeChip,
+    CaeToolbar,
     CaeCheckbox,
     CaeAutocomplete,
     CaeInput,
@@ -122,6 +126,9 @@ export class App {
   private readonly injector = inject(Injector);
 
   protected readonly title = signal('Forge');
+
+  /** Header notification count — drives the cae-badge on the toolbar's notifications button. */
+  protected readonly unread = signal(3);
   protected readonly swatches = SWATCHES;
 
   /** Radio + select options as data — proof both render option lists from a model. */
@@ -574,6 +581,11 @@ export class App {
   // separate from the form/invite status regions: a toast carries its OWN aria-live region, so
   // wiring it to those would double-announce.
   protected readonly toastAction = signal<string | null>(null);
+
+  /** Clear the header notification count — the cae-badge hides itself (caeBadgeHidden) at 0. */
+  protected markRead(): void {
+    this.unread.set(0);
+  }
 
   /** Fire-and-forget toast — the common p-toast case (auto-dismisses, no ref needed). */
   protected notify(): void {
