@@ -38,6 +38,8 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
       [required]="required()"
       [labelPosition]="labelPosition()"
       [hideIcon]="hideIcon()"
+      [aria-label]="$any(ariaLabel() || null)"
+      [aria-labelledby]="$any(ariaLabelledby() || null)"
       [aria-describedby]="$any(ariaDescribedby() || null)"
       (change)="handleChange($event.checked)"
       (focusout)="onTouched()"
@@ -59,6 +61,27 @@ export class CaeSwitch implements ControlValueAccessor {
   readonly hideIcon = input(false, { transform: booleanAttribute });
   /** Template-driven disable; merged with any reactive-forms `setDisabledState`. */
   readonly disabled = input(false, { transform: booleanAttribute });
+  /**
+   * Accessible name for the control in the **label-less** case — when no visible label is projected
+   * (e.g. a settings row whose descriptive text is a separate DOM element, the canonical switch
+   * pattern). Forwarded to Material's own `aria-label` input, which lands it on the focusable inner
+   * `<button role="switch">` (the wrapper `<cae-switch>` isn't focusable, so a host `aria-label`
+   * would be ignored by AT — hence forwarding it here, #70). Prefer a projected label (the default)
+   * whenever one is shown: setting `ariaLabel` (or `ariaLabelledby`) alongside a visible label
+   * overrides it as the accessible name, a WCAG 2.5.3 "label in name" mismatch — use one or the
+   * other. When both naming inputs are set, `ariaLabelledby` wins over `ariaLabel` (WAI-ARIA
+   * precedence).
+   * (`$any` with `|| null` bridges Material's aria inputs, which are typed inconsistently across
+   * controls, and drops an empty value so the attribute is not rendered blank.)
+   */
+  readonly ariaLabel = input('');
+  /**
+   * `id` of a visible element that names the control — the preferred label-less seam when the naming
+   * text already lives in the DOM (e.g. the settings-row heading). Forwarded to Material's
+   * `aria-labelledby` input onto the focusable inner `<button role="switch">`. See `ariaLabel` for
+   * when to reach for each; mirrors `cae-radio`'s naming seam (#70).
+   */
+  readonly ariaLabelledby = input('');
   /**
    * `id`(s) of element(s) describing the control — the a11y hook for a consumer-owned error or
    * hint (see the class docstring and `cae-checkbox`). Forwarded to the focusable inner

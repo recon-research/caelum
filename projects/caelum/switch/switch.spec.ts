@@ -87,4 +87,27 @@ describe('CaeSwitch', () => {
     fixture.detectChanges();
     expect(nativeSwitch().getAttribute('aria-describedby')).toBe('notify-hint');
   });
+
+  it('forwards ariaLabel to the focusable button for the label-less case (#70)', () => {
+    // The canonical label-less switch: descriptive text lives elsewhere, so name the control here.
+    expect(nativeSwitch().getAttribute('aria-label')).toBeNull();
+    fixture.componentRef.setInput('ariaLabel', 'Email notifications');
+    fixture.detectChanges();
+    expect(nativeSwitch().getAttribute('aria-label')).toBe('Email notifications');
+  });
+
+  it('overrides the switch label via ariaLabelledby for the label-less case (#70)', () => {
+    // Unlike mat-checkbox (which names its input via <label for>), MatSlideToggle always points its
+    // button's aria-labelledby at its own internal <label> id (the projected-label path). Our input
+    // takes over that slot — Material's _getAriaLabelledBy() returns a set aria-labelledby first — so
+    // the name resolves to the consumer's own visible element instead of Material's (empty) label.
+    const byDefault = nativeSwitch().getAttribute('aria-labelledby');
+    // Material always names the button by default via its own internal <label> id (never null) —
+    // assert that non-null default without hardcoding the brittle id, then that our input overrides.
+    expect(byDefault).toBeTruthy();
+    expect(byDefault).not.toBe('notify-heading');
+    fixture.componentRef.setInput('ariaLabelledby', 'notify-heading');
+    fixture.detectChanges();
+    expect(nativeSwitch().getAttribute('aria-labelledby')).toBe('notify-heading');
+  });
 });
