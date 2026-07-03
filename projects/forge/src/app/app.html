@@ -82,9 +82,11 @@
         <cae-button variant="tonal" (click)="notify()">Save settings</cae-button>
         <cae-button variant="outlined" (click)="archive()">Archive project</cae-button>
       </div>
-      @if (toastAction(); as msg) {
-        <p class="forge-notify__echo" role="status" aria-live="polite">{{ msg }}</p>
-      }
+      <!-- Persistent polite live region (NOT conditionally stamped): a screen reader reliably
+           announces only a change to a region that already exists in the a11y tree, so keep the <p>
+           mounted and vary its text — mirroring #statusRegion / #tagsStatus. A region created together
+           with its text (an @if around the <p>) is commonly not announced. -->
+      <p class="forge-notify__echo" role="status" aria-live="polite">{{ toastAction() }}</p>
     </div>
 
     <cae-card

@@ -509,7 +509,10 @@ export class App {
   /** Toast with an action button — exercises the returned CaeToastRef's onAction() seam. */
   protected archive(): void {
     this.toastAction.set(null);
-    const ref = this.toast.open('Project archived', 'Undo', { duration: 6000 });
+    // An ACTIONABLE toast is opened sticky (duration 0): MatSnackBar doesn't move focus into the
+    // toast, so a timed auto-dismiss could remove the Undo button before a keyboard / screen-reader
+    // user tabs to it (WCAG 2.2.1). It closes when Undo is clicked, so it never lingers unusably.
+    const ref = this.toast.open('Project archived', 'Undo', { duration: 0, politeness: 'polite' });
     // onAction() completes when the toast dismisses, so this subscription self-cleans (no leak).
     ref.onAction().subscribe(() => this.toastAction.set('Archive undone.'));
   }

@@ -33,7 +33,10 @@ export interface CaeToastConfig {
   duration?: number;
   horizontalPosition?: CaeToastHorizontalPosition;
   verticalPosition?: CaeToastVerticalPosition;
-  /** aria-live politeness of the announcement (Material default `'assertive'`). */
+  /**
+   * aria-live politeness of the announcement (Material default `'polite'`). Pass `'assertive'`
+   * only for urgent/error toasts that should interrupt the screen reader.
+   */
   politeness?: CaeToastPoliteness;
   /** An explicit message announced to assistive tech (defaults to the visible `message`). */
   announcementMessage?: string;
@@ -96,9 +99,15 @@ export class CaeToast {
    * {@link CaeToastRef.onAction} and dismisses the toast. Returns a {@link CaeToastRef}.
    */
   open(message: string, action?: string, config?: CaeToastConfig): CaeToastRef {
-    // Spread config AFTER the default so an explicit `duration` (including 0 for a sticky toast)
-    // overrides it, while an omitted duration falls back to the safe auto-dismiss default.
-    const merged: MatSnackBarConfig = { duration: DEFAULT_DURATION_MS, ...config };
+    // Nullish-coalesce the duration rather than spread-seed it. A `{ duration: DEFAULT, ...config }`
+    // spread lets an explicit `duration: undefined` (a type-valid input — `duration?: number`) clobber
+    // the seed and silently produce a sticky toast. `?? DEFAULT` makes BOTH an omitted and an
+    // explicit-undefined duration fall back, while a real `0` is preserved (`0 ?? 5000 === 0`), so the
+    // sticky opt-in still works.
+    const merged: MatSnackBarConfig = {
+      ...config,
+      duration: config?.duration ?? DEFAULT_DURATION_MS,
+    };
     return this.snackBar.open(message, action, merged);
   }
 

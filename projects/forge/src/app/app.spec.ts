@@ -70,7 +70,9 @@ describe('App', () => {
     expect(overlay.querySelector('mat-snack-bar-container')?.textContent).toContain(
       'Workspace settings saved',
     );
-    expect(el.querySelector('.forge-notify__echo')).toBeNull();
+    // The echo live region is persistently mounted but empty here — the toast's own aria-live region
+    // is the announcer for the fire-and-forget case, not the echo.
+    expect(el.querySelector('.forge-notify__echo')?.textContent?.trim()).toBe('');
 
     TestBed.inject(OverlayContainer).ngOnDestroy();
   });
@@ -80,6 +82,14 @@ describe('App', () => {
     await fixture.whenStable();
     const el = fixture.nativeElement as HTMLElement;
     const overlay = TestBed.inject(OverlayContainer).getContainerElement();
+
+    // The echo live region must ALREADY exist (empty) before the action fires, so a screen reader
+    // announces the later text as a CHANGE to a persistent region — not a region stamped together with
+    // its text (which is commonly not announced). This guards the a11y fix, which a textContent-only
+    // assertion would miss.
+    const echo = (): HTMLElement | null => el.querySelector('.forge-notify__echo');
+    expect(echo()).not.toBeNull();
+    expect(echo()!.textContent!.trim()).toBe('');
 
     // A fresh fixture means no prior toast — the action toast opens without MatSnackBar's flaky
     // replace-an-open-toast hop. Its Undo button fires the returned CaeToastRef's onAction(), which
@@ -95,7 +105,7 @@ describe('App', () => {
     undo.click();
     fixture.detectChanges();
     await fixture.whenStable();
-    expect(el.querySelector('.forge-notify__echo')?.textContent).toContain('Archive undone');
+    expect(echo()?.textContent).toContain('Archive undone');
 
     TestBed.inject(OverlayContainer).ngOnDestroy();
   });

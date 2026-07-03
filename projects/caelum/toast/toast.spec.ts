@@ -96,17 +96,35 @@ describe('CaeToast', () => {
     expect(snackBar()).toBeNull();
   });
 
-  // The default-duration flip (D-15 / p-toast parity) and the explicit-override contract are
-  // asserted against the passthrough config: CaeToast and MatSnackBar are both providedIn root,
-  // so this spy sits on the exact singleton CaeToast injected.
+  // The default-duration flip (D-15 / p-toast parity) and the merge contract are asserted against
+  // the passthrough config: CaeToast and MatSnackBar are both providedIn root, so this spy sits on
+  // the exact singleton CaeToast injected. mockReturnValue keeps each a PURE seam test — no real
+  // overlay is opened and no auto-dismiss timer is armed (a zoneless-suite flakiness source).
+  const openSpy = () => vi.spyOn(TestBed.inject(MatSnackBar), 'open').mockReturnValue({} as never);
+
   it('applies the default 5000 ms duration when no config is given', () => {
-    const spy = vi.spyOn(TestBed.inject(MatSnackBar), 'open');
+    const spy = openSpy();
     toast.open('Saved');
     expect(spy).toHaveBeenCalledWith('Saved', undefined, { duration: 5000 });
   });
 
+  it('fills the default duration into a partial config that omits it (the Forge notify() path)', () => {
+    // The load-bearing merge branch: a config WITHOUT a duration must still receive the default —
+    // the exact shape Forge's notify() sends (`{ politeness: 'polite' }`). A `config ?? default`
+    // regression would keep the no-config + explicit-duration tests green while breaking this one.
+    const spy = openSpy();
+    toast.open('Saved', undefined, { politeness: 'polite' });
+    expect(spy).toHaveBeenCalledWith('Saved', undefined, { duration: 5000, politeness: 'polite' });
+  });
+
+  it('treats an explicit `duration: undefined` as omitted → still gets the default', () => {
+    const spy = openSpy();
+    toast.open('Saved', undefined, { duration: undefined });
+    expect(spy).toHaveBeenCalledWith('Saved', undefined, { duration: 5000 });
+  });
+
   it('lets an explicit duration (incl. 0 for a sticky toast) override the default', () => {
-    const spy = vi.spyOn(TestBed.inject(MatSnackBar), 'open');
+    const spy = openSpy();
     toast.open('Sticky', 'Undo', { duration: 0, politeness: 'polite' });
     expect(spy).toHaveBeenCalledWith('Sticky', 'Undo', { duration: 0, politeness: 'polite' });
   });
