@@ -101,7 +101,11 @@ describe('CaeSwitch', () => {
     // button's aria-labelledby at its own internal <label> id (the projected-label path). Our input
     // takes over that slot — Material's _getAriaLabelledBy() returns a set aria-labelledby first — so
     // the name resolves to the consumer's own visible element instead of Material's (empty) label.
-    expect(nativeSwitch().getAttribute('aria-labelledby')).not.toBe('notify-heading');
+    const byDefault = nativeSwitch().getAttribute('aria-labelledby');
+    // Material always names the button by default via its own internal <label> id (never null) —
+    // assert that non-null default without hardcoding the brittle id, then that our input overrides.
+    expect(byDefault).toBeTruthy();
+    expect(byDefault).not.toBe('notify-heading');
     fixture.componentRef.setInput('ariaLabelledby', 'notify-heading');
     fixture.detectChanges();
     expect(nativeSwitch().getAttribute('aria-labelledby')).toBe('notify-heading');

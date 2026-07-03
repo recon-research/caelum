@@ -60,11 +60,11 @@ export class CaeCheckbox implements ControlValueAccessor {
    * pattern). Forwarded to Material's own `aria-label` input, which lands it on the focusable inner
    * `<input>` (the wrapper `<cae-checkbox>` isn't focusable, so a host `aria-label` would be
    * ignored by AT — hence forwarding it here, #70). Prefer a projected label (the default) whenever
-   * one is shown: setting `ariaLabel` alongside a visible label overrides it as the accessible name,
-   * a WCAG 2.5.3 "label in name" mismatch — use one or the other. `ariaLabelledby` wins over
-   * `ariaLabel` when both are set (WAI-ARIA precedence).
-   * (`$any` bridges Material's input, typed `string`, so an empty value passes `null` and the
-   * attribute is dropped rather than rendered empty.)
+   * one is shown: setting `ariaLabel` (or `ariaLabelledby`) alongside a visible label overrides it as
+   * the accessible name, a WCAG 2.5.3 "label in name" mismatch — use one or the other. When both
+   * naming inputs are set, `ariaLabelledby` wins over `ariaLabel` (WAI-ARIA precedence).
+   * (`$any` with `|| null` bridges Material's aria inputs, which are typed inconsistently across
+   * controls, and drops an empty value so the attribute is not rendered blank.)
    */
   readonly ariaLabel = input('');
   /**
