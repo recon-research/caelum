@@ -22,6 +22,7 @@ Compaction quality is set by *when* you compact. The agent watches for the momen
    - **Done** (closed this session, by PR #), **In progress** (+ issue/PR #), **Next** (1–3 slices by issue #).
    - **Decisions awaiting the human** — must exactly mirror `gh issue list --label decision`; mark any proceeding provisionally.
    - **Resume** in the strict format: `<branch> · <issue #> · <one imperative next action> · verify with: <command>` — specific enough that a cold session needs nothing else.
+   - **Keep it lean — the ~10-line contract** (the blockquote under `## Status` says so). Completed slices are **one-liners** — `☑ name #NN (PR #MM): one line` pointing at the issue — **never** the full write-up; that lives in the closed issue/PR and the [`docs/ROADMAP.md`](../../../docs/ROADMAP.md) M0 slice index. Reusable patterns + gotchas go in [`docs/PATTERNS.md`](../../../docs/PATTERNS.md), not here. If the block has regrown into per-slice narratives (each merge appending its adversarial-review essay), **recompact it** — a bloated anchor is exactly the drift #123 fixed, and it re-drifts if a checkpoint pastes the full slice write-up instead of a one-liner.
 2. **Verify the claims (anti-staleness gate).** Cross-check mechanically before moving on:
    - every **Done** item ↔ a merged PR exists (`gh pr list --state merged -L 10`);
    - every **In progress / Next** item ↔ an open issue;
