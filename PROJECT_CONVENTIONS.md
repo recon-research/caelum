@@ -17,6 +17,7 @@ The drop-in skills describe *what* to do; the project-specific *where* and *how*
 - **Run**: `npm start` (≈ `ng serve forge`). There is no headless run-loop to smoke — Caelum is a client-side library, Forge a static SPA; the build (bundle emitted) + the test suite passing are the operability evidence.
 - **Test**: `CI=true npm test` (≈ `CI=true ng test`) — Vitest via `@angular/build:unit-test`, **jsdom** environment (no browser needed); runs caelum + Forge unit/component specs. `CI=true` makes the builder run once and exit rather than watch (GitHub Actions sets `CI=true` automatically). a11y via `axe-core`; visual/interaction via Playwright (M4).
 - **Format / lint**: `npm run format:check` (Prettier over the code — TS/HTML/SCSS/config JSON; prose/generated trees scoped out via `.prettierignore`; `npm run format` to fix) + `npm run lint` (ESLint `angular-eslint` + the `no-restricted-imports` adapter-isolation fence, D-03; warnings-as-errors). The dependency-provenance gate runs in `static gates` (node-free), not the lint job.
+- **Toolchain (this dev box)**: Node 22 lives at `~/nodejs` — prefix commands with `PATH="$HOME/nodejs/bin:$PATH"` (session-only; do **not** edit shell profiles — the classifier blocks it). All `python*` invocations use **`python3`** (`python` is not guaranteed on python3-only machines; #7). Durable Node provisioning for the dev env + CI is tracked in #15.
 
 ## Source Layout
 - **Main source**: `projects/caelum/` (the publishable library) · `projects/forge/src/` (the Forge demo console).
