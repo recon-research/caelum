@@ -145,11 +145,21 @@ describe('CaeListbox', () => {
     expect(list().getAttribute('aria-labelledby')).toBe('regions-label');
   });
 
-  it('forwards ariaDescribedby to the listbox container (the consumer-error hook, #47; absent by default)', () => {
+  it('forwards ariaDescribedby onto each focusable option, not the container (the #47 hook; absent by default)', () => {
+    // The list roves focus onto the options, so the description lands on each <mat-list-option>
+    // (where a screen reader reads it on focus), NOT the never-focused listbox host.
     expect(list().getAttribute('aria-describedby')).toBeNull();
+    expect(optionByLabel('Alpha').getAttribute('aria-describedby')).toBeNull();
     fixture.componentRef.setInput('ariaDescribedby', 'regions-error');
     fixture.detectChanges();
-    expect(list().getAttribute('aria-describedby')).toBe('regions-error');
+    expect(list().getAttribute('aria-describedby')).toBeNull(); // not on the container
+    for (const label of ['Alpha', 'Bravo', 'Charlie']) {
+      expect(optionByLabel(label).getAttribute('aria-describedby')).toBe('regions-error');
+    }
+    // Clearing it drops the attribute from every option.
+    fixture.componentRef.setInput('ariaDescribedby', '');
+    fixture.detectChanges();
+    expect(optionByLabel('Alpha').getAttribute('aria-describedby')).toBeNull();
   });
 
   describe('multiple mode', () => {
@@ -184,6 +194,20 @@ describe('CaeListbox', () => {
       optionByLabel('Alpha').click();
       fixture.detectChanges();
       expect([...latest].sort()).toEqual(['a', 'b']);
+    });
+
+    it('shrinks the emitted string[] when an already-selected option is toggled off (deselect)', () => {
+      // Guards against an append-only regression: handleChange must read the authoritative full
+      // selection, so removing a selection emits the SHRUNK array, not just accumulate.
+      component.writeValue(['a', 'b']);
+      fixture.detectChanges();
+      let latest: string[] = ['a', 'b'];
+      component.registerOnChange((v) => (latest = v as string[]));
+      optionByLabel('Alpha').click(); // toggle OFF the already-selected 'a'
+      fixture.detectChanges();
+      expect(latest).toEqual(['b']);
+      expect(optionByLabel('Alpha').getAttribute('aria-selected')).toBe('false');
+      expect(optionByLabel('Bravo').getAttribute('aria-selected')).toBe('true');
     });
 
     it('coerces a bare string written to a multiple list into a single-item array', () => {

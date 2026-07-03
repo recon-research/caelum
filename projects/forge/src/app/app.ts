@@ -229,7 +229,7 @@ export class App {
     nonNullable: true,
   });
   /** The modules listbox options, as data (the `CaeListboxOption[]` seam). */
-  protected readonly moduleOptions: CaeListboxOption[] = [
+  protected readonly moduleOptions: readonly CaeListboxOption[] = [
     { value: 'analytics', label: 'Analytics' },
     { value: 'billing', label: 'Billing' },
     { value: 'audit-log', label: 'Audit log' },
