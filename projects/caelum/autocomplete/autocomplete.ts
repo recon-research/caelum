@@ -10,7 +10,6 @@ import {
   viewChild,
 } from '@angular/core';
 import { MatAutocompleteModule } from '@angular/material/autocomplete';
-import type { MatAutocompleteSelectedEvent } from '@angular/material/autocomplete';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInput, MatInputModule } from '@angular/material/input';
 import { CaeFormFieldControlBase } from 'caelum/form-field';
@@ -35,9 +34,10 @@ export interface CaeAutocompleteOption {
  * **Value seam — a strict single-select combobox.** The CVA value is the **chosen suggestion's
  * `value` key** (a `string`, like `cae-select`), committed **only when a suggestion is selected** —
  * NOT the free-typed text. Typing filters the panel; `displayWith` renders the chosen label in the
- * input. On blur, text that wasn't committed by picking a suggestion reverts to the chosen label, so
- * the input display never diverges from the model (clearing the input then blurring commits `''`).
- * This keeps the model clean and key-based; a free-text mode (the value = the typed string), a
+ * input. On blur the input display is **reconciled to the model** — text that wasn't committed by
+ * picking a suggestion reverts to the chosen label (clearing the input then blurring commits `''`).
+ * (Between focus and blur the two can diverge — mid-typing, or after Escape — reconciliation is at
+ * blur.) This keeps the model clean and key-based; a free-text mode (the value = the typed string), a
  * `multiple` chip mode, async/loading suggestions, `minLength`, and option groups are additive
  * follow-ups (#120). It is a deliberate, documented flip from Material's free-typing default toward
  * `p-autocomplete`'s "choose a suggestion" model — kept reversible (free text is opt-in later).
@@ -52,6 +52,10 @@ export interface CaeAutocompleteOption {
  * **Accessibility.** `matAutocomplete` wires `role=combobox` + `aria-expanded` +
  * `aria-activedescendant` on the input and `role=listbox` on the panel; name the field with `label`
  * (preferred) or `ariaLabel`. Validation feedback is the mat-form-field `<mat-error>` (Book 07 §3.4).
+ * Known gap: because the inner input is uncontrolled, no panel option carries `aria-selected` on open
+ * (Material only marks it on a live pick, and `MatOption.selected` is read-only so it can't be bound
+ * declaratively as `cae-listbox` does) — the chosen value is still announced via the input text
+ * (tracked with the async/dynamic gaps in #120).
  *
  * No `color` input: theming comes through the `--cae-*`/`--mat-sys-*` token bridge, not Material's
  * palette input (the library's token-only discipline). Zoneless-compatible: `OnPush` + signal state
@@ -82,7 +86,7 @@ export interface CaeAutocompleteOption {
         #auto="matAutocomplete"
         [displayWith]="displayFn"
         [autoActiveFirstOption]="autoActiveFirstOption()"
-        (optionSelected)="onSelected($event)"
+        (optionSelected)="onSelected($event.option.value)"
       >
         @for (option of filtered(); track option.value) {
           <mat-option [value]="option.value" [disabled]="option.disabled ?? false">
@@ -110,10 +114,12 @@ export class CaeAutocomplete extends CaeFormFieldControlBase {
   readonly options = input<readonly CaeAutocompleteOption[]>([]);
   /**
    * Highlight the first matching suggestion when the panel opens so Enter selects it (Material's
-   * `autoActiveFirstOption`). Defaults to `true` — the common combobox UX — a deliberate flip from
-   * Material's `false`.
+   * `autoActiveFirstOption`). Defaults to `false`, matching Material AND `p-autocomplete`'s
+   * `autoHighlight` — since the panel opens on mere focus, a `true` default would let an accidental
+   * Enter commit the first option before the user has chosen. Set it `true` to let Enter pick the top
+   * match after typing.
    */
-  readonly autoActiveFirstOption = input(true, { transform: booleanAttribute });
+  readonly autoActiveFirstOption = input(false, { transform: booleanAttribute });
   /**
    * Predicate deciding whether a suggestion matches the typed query (already lower-cased + trimmed).
    * Defaults to a case-insensitive label substring match; override for e.g. prefix or value matching.
@@ -164,12 +170,18 @@ export class CaeAutocomplete extends CaeFormFieldControlBase {
     });
   }
 
+  // The strict-combobox behaviour (filter on `query`, revert un-picked text on blur) is hand-rolled
+  // rather than using Material's native `requireSelection`: that input works through the trigger's OWN
+  // CVA, but this control deliberately keeps the inner input UNCONTROLLED so the CVA + error bridge
+  // live on the OUTER element (#46). The hand-roll's clear-then-blur → commit-'' also matches
+  // `p-autocomplete` better than requireSelection's revert-to-previous. `requireSelection` is the
+  // eventual lever for the opt-in free-text mode (#120).
+
   protected onType(text: string): void {
     this.query.set(text);
   }
 
-  protected onSelected(event: MatAutocompleteSelectedEvent): void {
-    const value = event.option.value as string;
+  protected onSelected(value: string): void {
     this.commitValue(value);
     this.query.set(this.displayFn(value));
   }
@@ -178,14 +190,26 @@ export class CaeAutocomplete extends CaeFormFieldControlBase {
     // Strict combobox: reconcile the input display with the committed model on blur.
     const label = this.selectedOption()?.label ?? '';
     if (input.value.trim() === '') {
-      // Cleared the input → commit the empty selection (the way to clear a strict combobox).
+      // Cleared (incl. whitespace-only) → show empty + commit the empty selection. Set the display
+      // directly: when the model is already '' no value change fires, so the effect won't clear it.
+      input.value = '';
       if (this.value() !== '') this.commitValue('');
       this.query.set('');
     } else if (input.value !== label) {
-      // Typed text that was never selected → revert to the chosen label (display never diverges).
+      // Typed text that was never selected → revert to the chosen label.
       input.value = label;
       this.query.set(label);
     }
     this.onTouched();
+  }
+
+  // --- ControlValueAccessor ---
+  // Reset the filter query on any programmatic write (a form patch, load, or reset) so the panel
+  // shows the full list on reopen rather than a list stale-filtered by the text that preceded the
+  // write (with `query` empty, `filtered()` returns all options). The input display is reconciled
+  // independently by the afterRenderEffect, so this never affects what the user sees.
+  override writeValue(value: string): void {
+    super.writeValue(value);
+    this.query.set('');
   }
 }

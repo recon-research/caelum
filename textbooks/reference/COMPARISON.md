@@ -36,7 +36,7 @@ Below, the **current** selector is listed with the historical alias noted. Verif
 | `pInputText` (directive), `pTextarea` | `cae-input` / `cae-textarea` | `matInput` + `mat-form-field` | Direct | 07 |
 | `p-select` (was `p-dropdown`) | `cae-select` | `MatSelect` | Direct | 09 |
 | `p-multiselect` | `cae-multi-select` | `MatSelect[multiple]` + filter + chip summary | Compose | 09 |
-| `p-autocomplete` | `cae-autocomplete` | `matAutocomplete` | Direct | 09 |
+| `p-autocomplete` | `cae-autocomplete` | `matAutocomplete` (v1 force-selection default, unlike `p-autocomplete`; free text → #120) | Direct | 09 |
 | `p-checkbox` | `cae-checkbox` | `MatCheckbox` | Direct | 07 |
 | `p-radiobutton` | `cae-radio` | `MatRadioButton` | Direct | 07 |
 | `p-toggleswitch` (was `p-inputswitch`) | `cae-switch` | `MatSlideToggle` | Direct | 07 |

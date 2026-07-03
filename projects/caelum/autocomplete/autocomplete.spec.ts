@@ -1,7 +1,6 @@
 import { Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
-import type { MatAutocompleteSelectedEvent } from '@angular/material/autocomplete';
 
 import { CaeAutocomplete, CaeAutocompleteOption } from './autocomplete';
 
@@ -33,9 +32,8 @@ describe('CaeAutocomplete', () => {
   });
 
   const inputEl = (): HTMLInputElement => fixture.nativeElement.querySelector('input');
-  // Fabricate the selection event Material would raise — the handler only reads option.value.
-  const pick = (value: string): void =>
-    component['onSelected']({ option: { value } } as MatAutocompleteSelectedEvent);
+  // The (optionSelected) template binding passes $event.option.value straight to the handler.
+  const pick = (value: string): void => component['onSelected'](value);
 
   it('creates and renders a matInput wired to a mat-autocomplete', () => {
     expect(component).toBeTruthy();
@@ -78,6 +76,23 @@ describe('CaeAutocomplete', () => {
     fixture.detectChanges();
     component['onType']('United States'); // equals the chosen label → not a filter, show all
     expect(component['filtered']().length).toBe(3);
+  });
+
+  it('resets the filter query on a programmatic write so the panel is not stale-filtered (#121 review)', () => {
+    // Regression for the CONFIRMED MAJOR: a prior filter left `query` stale, then a form patch/reset
+    // (writeValue) must not leave the panel filtered by the old text.
+    component['onType']('king'); // query='king' → filters to only United Kingdom
+    expect(component['filtered']().length).toBe(1);
+    component.writeValue('us'); // a programmatic write (form patch / reset)
+    fixture.detectChanges();
+    expect(component['filtered']().length).toBe(3); // full list again, not the stale [uk]
+  });
+
+  it('clears whitespace-only text on blur even when the model is already empty', () => {
+    const el = inputEl();
+    el.value = '   ';
+    component['onBlur'](el); // model already '' → no commit fires, so onBlur must clear directly
+    expect(el.value).toBe('');
   });
 
   it('honours a custom filterWith predicate', () => {
