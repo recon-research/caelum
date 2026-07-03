@@ -27,6 +27,7 @@ import { CaeCard } from 'caelum/card';
 import { CaeChip } from 'caelum/chip';
 import { CaeCheckbox } from 'caelum/checkbox';
 import { CaeInput, type CaeErrorMessages } from 'caelum/input';
+import { CaeListbox, type CaeListboxOption } from 'caelum/listbox';
 import { CaeMenu, CaeMenuItem } from 'caelum/menu';
 import { CaeRadio, CaeRadioOption } from 'caelum/radio';
 import { CaeSelect, CaeSelectOption } from 'caelum/select';
@@ -89,6 +90,7 @@ const SWATCHES: ReadonlyArray<{ token: string; label: string }> = [
     CaeChip,
     CaeCheckbox,
     CaeInput,
+    CaeListbox,
     CaeMenu,
     CaeRadio,
     CaeSelect,
@@ -215,6 +217,24 @@ export class App {
   });
   /** Formats the budget slider's thumb bubble + aria-valuetext with a `$` unit (cae-slider displayWith). */
   protected readonly formatDollars = (value: number): string => `$${value}`;
+
+  /**
+   * A standalone reactive control for the deferred "Workspace modules" listbox (#114) — a
+   * cae-listbox in `multiple` mode round-trips a `string[]` selection through a reactive control,
+   * exactly as `p-listbox` did. Kept out of the eager wizard and rendered in an `@defer (on idle)`
+   * block below the fold, so MatSelectionList splits into its own lazy chunk off Forge's initial
+   * bundle (the #85 defer-before-raise policy).
+   */
+  protected readonly modules = new FormControl<string[]>(['analytics', 'billing'], {
+    nonNullable: true,
+  });
+  /** The modules listbox options, as data (the `CaeListboxOption[]` seam). */
+  protected readonly moduleOptions: readonly CaeListboxOption[] = [
+    { value: 'analytics', label: 'Analytics' },
+    { value: 'billing', label: 'Billing' },
+    { value: 'audit-log', label: 'Audit log' },
+    { value: 'sso', label: 'Single sign-on' },
+  ];
 
   /**
    * A short FAQ rendered as a `cae-accordion` — the liveness proof for #77. It's single-expand

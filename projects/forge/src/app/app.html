@@ -467,6 +467,31 @@
       </cae-card>
     }
 
+    <!-- cae-listbox (#114): an always-visible multi-select list (p-listbox parity), bound to a
+         standalone reactive control. Deferred (#85): mat-selection-list is a heavy module, so — like
+         the capacity sliders — it's `@defer (on idle)`'d into its own lazy chunk off Forge's initial
+         bundle rather than raising the budget. role=listbox carries the accessible name via
+         aria-labelledby (the visible heading) + Material's roving arrow-key nav; the visible count is
+         supplementary (SR users get per-option aria-selected), so it's not a live region. -->
+    @defer (on idle) {
+      <cae-card
+        class="forge-modules-card"
+        title="Workspace modules"
+        subtitle="cae-listbox — multi-select, bound to a reactive form"
+      >
+        <div class="forge-field-group">
+          <span id="modules-label" class="forge-field-group__label">Enabled modules</span>
+          <cae-listbox
+            multiple
+            ariaLabelledby="modules-label"
+            [options]="moduleOptions"
+            [formControl]="modules"
+          />
+          <span aria-hidden="true">{{ modules.value.length }} enabled</span>
+        </div>
+      </cae-card>
+    }
+
     <!-- cae-tree (batch 3) — nested data, expandable, keyboard-navigable (roving focus +
          arrow keys from the CDK). Selecting a node announces it in a polite live region.
          Deferred (#85): below the fold, so MatTree splits into a lazy chunk off Forge's initial
