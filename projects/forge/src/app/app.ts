@@ -52,7 +52,8 @@ import { CaeToast } from 'caelum/toast';
 // (and MatDialog + the dialog-container machinery with it) plus the dialog body are dynamic-import()ed
 // on first open, so their ~40 kB stay OFF Forge's initial bundle (the #85 defer-before-raise policy —
 // a dialog is the canonical open-on-interaction lazy load). These imports are `type`-only (erased),
-// so they add no eager code; the runtime values come from the `import()` calls in renameWorkspace().
+// so they add no eager code; the runtime values come from the `import()` calls in renameWorkspace()
+// (CaeDialog) and deleteWorkspace() (CaeConfirmService, #101 — likewise lazy since it pulls MatDialog).
 // NOTE (regression guard): unlike #85's `@defer` blocks (asserted by getDeferBlocks() in app.spec), an
 // `import()` split is NOT introspectable from a unit test, so there's no boundary test here — a future
 // edit that makes MatDialog eager would push the initial bundle to ~852 kB (over the 850 kB angular.json
@@ -564,6 +565,31 @@ export class App {
         this.renameMessage.set(`Workspace renamed to “${name}”.`);
       }
     });
+  }
+
+  /** A persistent polite live region announcing a completed (confirmed) delete. */
+  protected readonly deleteMessage = signal('');
+
+  /**
+   * Guard a destructive "delete" behind a confirm (#101). `CaeConfirmService` is dynamic-`import()`ed
+   * on first use — like the rename dialog it pulls MatDialog, so it stays off the initial bundle (#85).
+   * The confirm opens as a `role="alertdialog"` with initial focus on **Cancel** (the safe default), so
+   * an accidental keypress can't delete; `confirm()` resolves `true` only on Delete, `false` on
+   * Cancel / Escape / backdrop. We announce only on accept (a real destructive app would remove here).
+   */
+  protected async deleteWorkspace(): Promise<void> {
+    this.deleteMessage.set('');
+    const { CaeConfirmService } = await import('caelum/confirm');
+    const name = this.workspaceName();
+    const confirmed = await this.injector.get(CaeConfirmService).confirm({
+      header: 'Delete workspace?',
+      message: `This permanently deletes “${name}”. This can't be undone.`,
+      acceptLabel: 'Delete',
+      rejectLabel: 'Cancel',
+    });
+    if (confirmed) {
+      this.deleteMessage.set(`Workspace “${name}” deleted.`);
+    }
   }
 
   /** `auto` follows the OS via `color-scheme: light dark`; light/dark force an arm. */

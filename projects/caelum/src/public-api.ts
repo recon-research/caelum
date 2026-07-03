@@ -61,3 +61,6 @@ export * from 'caelum/toast';
 
 // --- Services: dialog (#100, D-15 — service passthrough over MatDialog + content directives) ---
 export * from 'caelum/dialog';
+
+// --- Services: confirm (#101, D-15 — the confirm half, role=alertdialog built ON cae-dialog) ---
+export * from 'caelum/confirm';
