@@ -13,49 +13,73 @@
   SAME values through the bridge (`--mat-sys-*` ← `--cae-*`). Toggling the theme flips only
   the token layer — nothing here knows its scheme.
 -->
+<!-- The page banner is a real cae-toolbar (#126, p-toolbar → cae-toolbar over MatToolbar):
+     brand in the caeToolbarStart group, actions in caeToolbarEnd, a flex spacer between. It
+     stays inside a <header> so the banner LANDMARK is preserved — cae-toolbar is a visual bar,
+     deliberately NOT role="toolbar" (that ARIA widget needs roving tabindex, which a bar
+     doesn't manage). -->
 <header class="forge-bar">
-  <div class="forge-bar__brand">
-    <span class="forge-bar__mark" aria-hidden="true"></span>
-    <span class="forge-bar__title">{{ title() }}</span>
-    <span class="forge-bar__sub">on Caelum</span>
-  </div>
-  <div class="forge-bar__actions">
-    <!-- caeTooltip on a focusable element directly: this native help button receives focus
-         and its aria-describedby, so the tip is reachable by keyboard and screen reader.
-         (For a cae-* wrapper, use its own seam instead — see the Theme cae-button below,
-         whose `tooltip` input forwards to its inner focusable <button>, #36.) -->
-    <button
-      type="button"
-      class="forge-help"
-      aria-label="About Forge"
-      caeTooltip="Forge is the Caelum demo console — every control here is a cae-* component over Material."
-      caeTooltipPosition="below"
-    >
-      ?
-    </button>
+  <cae-toolbar>
+    <div caeToolbarStart class="forge-bar__brand">
+      <span class="forge-bar__mark" aria-hidden="true"></span>
+      <span class="forge-bar__title">{{ title() }}</span>
+      <span class="forge-bar__sub">on Caelum</span>
+    </div>
+    <div caeToolbarEnd class="forge-bar__actions">
+      <!-- cae-badge (#126, pBadge → caeBadge over MatBadge): the count is a signal. The badge's
+           number is decorative to a screen reader, so the count lives in the button's accessible
+           NAME (always announced), not a caeBadgeDescription (an aria-describedby description that
+           some SR verbosity modes skip). It reads plainly "Notifications" once cleared. "Mark read"
+           sets the count to 0; caeBadgeHidden then removes the badge while the button stays mounted
+           (a real liveness round-trip). -->
+      <button
+        type="button"
+        class="forge-help"
+        [attr.aria-label]="unread() ? unread() + ' unread notifications' : 'Notifications'"
+        [caeBadge]="unread()"
+        [caeBadgeHidden]="unread() === 0"
+        (click)="markRead()"
+      >
+        <span aria-hidden="true">&#128276;</span>
+      </button>
 
-    <!-- cae-menu (batch 3) opened from a cae-button (#57): `menuTriggerFor` forwards Material's
-         MatMenuTrigger to the button's inner focusable <button>, so the menu is keyboard- and
-         screen-reader-reachable and its aria-haspopup/expanded land on the real control — the
-         natural <p-menu> + <p-button> → <cae-menu> + <cae-button [menuTriggerFor]> swap. The
-         actions fill or reset the wizard end-to-end. -->
-    <cae-menu #actionsMenu [items]="actions" (itemSelect)="runAction($event)" />
-    <cae-button variant="outlined" ariaLabel="Workspace actions" [menuTriggerFor]="actionsMenu">
-      Actions ▾
-    </cae-button>
+      <!-- caeTooltip on a focusable element directly: this native help button receives focus
+           and its aria-describedby, so the tip is reachable by keyboard and screen reader.
+           (For a cae-* wrapper, use its own seam instead — see the Theme cae-button below,
+           whose `tooltip` input forwards to its inner focusable <button>, #36.) -->
+      <button
+        type="button"
+        class="forge-help"
+        aria-label="About Forge"
+        caeTooltip="Forge is the Caelum demo console — every control here is a cae-* component over Material."
+        caeTooltipPosition="below"
+      >
+        ?
+      </button>
 
-    <!-- cae-button's `tooltip` input (#36): the tip binds to the inner focusable <button>, so
-         it's keyboard- and screen-reader-reachable on a wrapper component — the natural
-         <p-button pTooltip> → <cae-button tooltip> swap. -->
-    <cae-button
-      variant="outlined"
-      ariaLabel="Switch colour theme"
-      tooltip="Cycle the colour theme: light → dark → auto"
-      (click)="cycleTheme()"
-    >
-      Theme: {{ themeMode() }} → {{ nextLabel() }}
-    </cae-button>
-  </div>
+      <!-- cae-menu (batch 3) opened from a cae-button (#57): `menuTriggerFor` forwards Material's
+           MatMenuTrigger to the button's inner focusable <button>, so the menu is keyboard- and
+           screen-reader-reachable and its aria-haspopup/expanded land on the real control — the
+           natural <p-menu> + <p-button> → <cae-menu> + <cae-button [menuTriggerFor]> swap. The
+           actions fill or reset the wizard end-to-end. -->
+      <cae-menu #actionsMenu [items]="actions" (itemSelect)="runAction($event)" />
+      <cae-button variant="outlined" ariaLabel="Workspace actions" [menuTriggerFor]="actionsMenu">
+        Actions ▾
+      </cae-button>
+
+      <!-- cae-button's `tooltip` input (#36): the tip binds to the inner focusable <button>, so
+           it's keyboard- and screen-reader-reachable on a wrapper component — the natural
+           <p-button pTooltip> → <cae-button tooltip> swap. -->
+      <cae-button
+        variant="outlined"
+        ariaLabel="Switch colour theme"
+        tooltip="Cycle the colour theme: light → dark → auto"
+        (click)="cycleTheme()"
+      >
+        Theme: {{ themeMode() }} → {{ nextLabel() }}
+      </cae-button>
+    </div>
+  </cae-toolbar>
 </header>
 
 <main class="forge-main">

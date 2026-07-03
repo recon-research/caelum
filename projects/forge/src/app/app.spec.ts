@@ -51,6 +51,35 @@ describe('App', () => {
     expect(el.querySelector('h1')?.textContent).toContain('Direct components');
   });
 
+  it('renders the banner as a cae-toolbar and hides the notification cae-badge on mark-read (#126)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const el = fixture.nativeElement as HTMLElement;
+
+    // The banner is a cae-toolbar INSIDE the <header> landmark (the landmark is preserved),
+    // with the brand in the caeToolbarStart group.
+    const toolbar = el.querySelector('header.forge-bar cae-toolbar');
+    expect(toolbar).toBeTruthy();
+    expect(toolbar!.querySelector('[caeToolbarStart] .forge-bar__title')?.textContent).toContain(
+      'Forge',
+    );
+
+    // The badged notifications button (MatBadge marks its host .mat-badge): a visible count of 3,
+    // with the count folded into the accessible NAME (always announced), and not hidden.
+    const bell = el.querySelector('button.mat-badge') as HTMLButtonElement;
+    expect(bell).toBeTruthy();
+    expect(el.querySelector('.mat-badge-content')?.textContent).toContain('3');
+    expect(bell.getAttribute('aria-label')).toContain('3');
+    expect(bell.classList.contains('mat-badge-hidden')).toBe(false);
+
+    // Mark read → count → 0 → caeBadgeHidden removes the badge while the button stays mounted,
+    // and the accessible name drops the stale count (reads plainly "Notifications").
+    bell.click();
+    await fixture.whenStable();
+    expect(bell.classList.contains('mat-badge-hidden')).toBe(true);
+    expect(bell.getAttribute('aria-label')).toBe('Notifications');
+  });
+
   // Helper: the notifications-demo button whose label matches (each is an inner <button> of a
   // cae-button; clicking it bubbles to the host's (click), like the theme-toggle test).
   const notifyButton = (el: HTMLElement, label: string): HTMLButtonElement =>

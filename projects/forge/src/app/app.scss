@@ -8,17 +8,13 @@
   min-height: 100dvh;
 }
 
+// The page banner is now a cae-toolbar (#126) inside this <header> landmark. The toolbar
+// supplies the bar surface, height, and inline padding, so the header only needs the
+// separating hairline beneath it (the layout — start/end groups + spacer — is the toolbar's).
+// Alignment note: mat-toolbar's inline padding is Material's 16px, which equals --cae-space-4
+// (the inline padding of .forge-main below), so the brand lines up with the panel content.
 .forge-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--cae-space-4);
-  padding-inline: var(--cae-space-5);
-  padding-block: var(--cae-space-3);
-  background: var(--cae-surface-raised);
-  color: var(--cae-color-on-surface);
   border-block-end: 1px solid var(--cae-color-border);
-  box-shadow: var(--cae-elevation-1);
 }
 
 .forge-bar__brand {
