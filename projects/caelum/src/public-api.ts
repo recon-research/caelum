@@ -55,3 +55,6 @@ export * from 'caelum/chip';
 export * from 'caelum/progress-bar';
 export * from 'caelum/progress-spinner';
 export * from 'caelum/divider';
+
+// --- Services: toast (#96, D-15 — the first service passthrough, over MatSnackBar) ---
+export * from 'caelum/toast';

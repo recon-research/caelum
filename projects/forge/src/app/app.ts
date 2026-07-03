@@ -44,6 +44,9 @@ import { CaeTree, type CaeTreeNode } from 'caelum/tree';
 import { CaeDivider } from 'caelum/divider';
 import { CaeProgressBar } from 'caelum/progress-bar';
 import { CaeProgressSpinner } from 'caelum/progress-spinner';
+// The first SERVICE passthrough (#96, D-15) — injected, not listed in `imports` (it's not a
+// component/directive). Its toasts carry their own aria-live region.
+import { CaeToast } from 'caelum/toast';
 
 type ThemeMode = 'auto' | 'light' | 'dark';
 
@@ -93,6 +96,8 @@ const SWATCHES: ReadonlyArray<{ token: string; label: string }> = [
 })
 export class App {
   private readonly document = inject(DOCUMENT);
+  /** The injectable cae-toast service (#96) — a transient, self-announcing notification. */
+  private readonly toast = inject(CaeToast);
 
   protected readonly title = signal('Forge');
   protected readonly swatches = SWATCHES;
@@ -487,6 +492,26 @@ export class App {
     this.inviteSent.set(null);
     this.inviteError.set(null);
     this.inviteStep.set(0);
+  }
+
+  // --- cae-toast demo (#96) ---
+  // A visible echo of the last toast action, proving the CaeToastRef round-trips. It's kept
+  // separate from the form/invite status regions: a toast carries its OWN aria-live region, so
+  // wiring it to those would double-announce.
+  protected readonly toastAction = signal<string | null>(null);
+
+  /** Fire-and-forget toast — the common p-toast case (auto-dismisses, no ref needed). */
+  protected notify(): void {
+    this.toastAction.set(null);
+    this.toast.open('Workspace settings saved', undefined, { politeness: 'polite' });
+  }
+
+  /** Toast with an action button — exercises the returned CaeToastRef's onAction() seam. */
+  protected archive(): void {
+    this.toastAction.set(null);
+    const ref = this.toast.open('Project archived', 'Undo', { duration: 6000 });
+    // onAction() completes when the toast dismisses, so this subscription self-cleans (no leak).
+    ref.onAction().subscribe(() => this.toastAction.set('Archive undone.'));
   }
 
   /** `auto` follows the OS via `color-scheme: light dark`; light/dark force an arm. */
