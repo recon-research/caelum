@@ -149,6 +149,30 @@
   font-size: var(--cae-text-sm);
 }
 
+.forge-notify {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cae-space-2);
+  margin-block-end: var(--cae-space-6);
+}
+
+.forge-notify__label,
+.forge-notify__echo {
+  margin: 0;
+  color: var(--cae-color-on-surface-variant);
+  font-size: var(--cae-text-sm);
+}
+
+.forge-notify__label {
+  font-weight: var(--cae-weight-medium);
+}
+
+.forge-notify__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cae-space-2);
+}
+
 .forge-tab-body {
   padding-block-start: var(--cae-space-5);
 }

@@ -72,6 +72,23 @@
       Caelum controls, in light and dark.
     </p>
 
+    <!-- cae-toast (#96): the first SERVICE passthrough (D-15). CaeToast wraps MatSnackBar behind a
+         Caelum-stable open(); each toast carries its own aria-live region, so this demo stays
+         SEPARATE from the form's status region to avoid a double announcement. "Save settings" is
+         the fire-and-forget case; "Archive" returns a CaeToastRef whose Undo action echoes below. -->
+    <div class="forge-notify">
+      <span class="forge-notify__label" id="notify-label">Notifications (cae-toast)</span>
+      <div class="forge-notify__actions" role="group" aria-labelledby="notify-label">
+        <cae-button variant="tonal" (click)="notify()">Save settings</cae-button>
+        <cae-button variant="outlined" (click)="archive()">Archive project</cae-button>
+      </div>
+      <!-- Persistent polite live region (NOT conditionally stamped): a screen reader reliably
+           announces only a change to a region that already exists in the a11y tree, so keep the <p>
+           mounted and vary its text — mirroring #statusRegion / #tagsStatus. A region created together
+           with its text (an @if around the <p>) is commonly not announced. -->
+      <p class="forge-notify__echo" role="status" aria-live="polite">{{ toastAction() }}</p>
+    </div>
+
     <cae-card
       class="forge-form-card"
       title="Create workspace"

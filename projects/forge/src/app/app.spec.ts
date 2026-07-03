@@ -4,6 +4,7 @@ import {
   DeferBlockState,
   TestBed,
 } from '@angular/core/testing';
+import { OverlayContainer } from '@angular/cdk/overlay';
 import { App } from './app';
 
 /**
@@ -46,6 +47,67 @@ describe('App', () => {
     const el = fixture.nativeElement as HTMLElement;
     expect(el.querySelector('.forge-bar__title')?.textContent).toContain('Forge');
     expect(el.querySelector('h1')?.textContent).toContain('Direct components');
+  });
+
+  // Helper: the notifications-demo button whose label matches (each is an inner <button> of a
+  // cae-button; clicking it bubbles to the host's (click), like the theme-toggle test).
+  const notifyButton = (el: HTMLElement, label: string): HTMLButtonElement =>
+    Array.from(el.querySelectorAll('.forge-notify__actions cae-button button')).find(
+      (b) => b.textContent?.trim() === label,
+    ) as HTMLButtonElement;
+
+  it('fires a self-announcing cae-toast from the notifications demo (#96)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const el = fixture.nativeElement as HTMLElement;
+    const overlay = TestBed.inject(OverlayContainer).getContainerElement();
+
+    // Fire-and-forget: the toast renders into the overlay carrying its OWN aria-live region, and no
+    // echo shows (the ref isn't used) — so the toast, not the form status region, is the announcer.
+    notifyButton(el, 'Save settings').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(overlay.querySelector('mat-snack-bar-container')?.textContent).toContain(
+      'Workspace settings saved',
+    );
+    // The echo live region is persistently mounted but empty here — the toast's own aria-live region
+    // is the announcer for the fire-and-forget case, not the echo.
+    expect(el.querySelector('.forge-notify__echo')?.textContent?.trim()).toBe('');
+
+    TestBed.inject(OverlayContainer).ngOnDestroy();
+  });
+
+  it('echoes the CaeToastRef action back when the toast Undo is clicked (#96)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const el = fixture.nativeElement as HTMLElement;
+    const overlay = TestBed.inject(OverlayContainer).getContainerElement();
+
+    // The echo live region must ALREADY exist (empty) before the action fires, so a screen reader
+    // announces the later text as a CHANGE to a persistent region — not a region stamped together with
+    // its text (which is commonly not announced). This guards the a11y fix, which a textContent-only
+    // assertion would miss.
+    const echo = (): HTMLElement | null => el.querySelector('.forge-notify__echo');
+    expect(echo()).not.toBeNull();
+    expect(echo()!.textContent!.trim()).toBe('');
+
+    // A fresh fixture means no prior toast — the action toast opens without MatSnackBar's flaky
+    // replace-an-open-toast hop. Its Undo button fires the returned CaeToastRef's onAction(), which
+    // sets the echo signal — proof the ref (not just fire-and-forget) round-trips end to end.
+    notifyButton(el, 'Archive project').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const container = overlay.querySelector('mat-snack-bar-container')!;
+    expect(container.textContent).toContain('Project archived');
+    const undo = container.querySelector('button') as HTMLButtonElement;
+    expect(undo.textContent).toContain('Undo');
+
+    undo.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(echo()?.textContent).toContain('Archive undone');
+
+    TestBed.inject(OverlayContainer).ngOnDestroy();
   });
 
   it('defers the below-the-fold demo sections off the initial bundle (#85)', async () => {
