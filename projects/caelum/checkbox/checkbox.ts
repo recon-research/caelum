@@ -37,6 +37,8 @@ import { MatCheckboxModule } from '@angular/material/checkbox';
       [disabled]="isDisabled()"
       [required]="required()"
       [labelPosition]="labelPosition()"
+      [aria-label]="$any(ariaLabel() || null)"
+      [aria-labelledby]="$any(ariaLabelledby() || null)"
       [aria-describedby]="$any(ariaDescribedby() || null)"
       (change)="handleChange($event.checked)"
       (focusout)="onTouched()"
@@ -52,6 +54,26 @@ export class CaeCheckbox implements ControlValueAccessor {
   readonly labelPosition = input<'before' | 'after'>('after');
   /** Template-driven disable; merged with any reactive-forms `setDisabledState`. */
   readonly disabled = input(false, { transform: booleanAttribute });
+  /**
+   * Accessible name for the control in the **label-less** case — when no visible label is projected
+   * (e.g. a settings row whose descriptive text is a separate DOM element, a common switch/checkbox
+   * pattern). Forwarded to Material's own `aria-label` input, which lands it on the focusable inner
+   * `<input>` (the wrapper `<cae-checkbox>` isn't focusable, so a host `aria-label` would be
+   * ignored by AT — hence forwarding it here, #70). Prefer a projected label (the default) whenever
+   * one is shown: setting `ariaLabel` alongside a visible label overrides it as the accessible name,
+   * a WCAG 2.5.3 "label in name" mismatch — use one or the other. `ariaLabelledby` wins over
+   * `ariaLabel` when both are set (WAI-ARIA precedence).
+   * (`$any` bridges Material's input, typed `string`, so an empty value passes `null` and the
+   * attribute is dropped rather than rendered empty.)
+   */
+  readonly ariaLabel = input('');
+  /**
+   * `id` of a visible element that names the control — the preferred label-less seam when the naming
+   * text already lives in the DOM (e.g. the settings-row heading). Forwarded to Material's
+   * `aria-labelledby` input onto the focusable inner `<input>`. See `ariaLabel` for when to reach for
+   * each; mirrors `cae-radio`'s naming seam (#70).
+   */
+  readonly ariaLabelledby = input('');
   /**
    * `id`(s) of element(s) describing the control — the a11y hook for a consumer-owned error or
    * hint (see the class docstring and `cae-radio`). Forwarded to the focusable inner `<input>`,

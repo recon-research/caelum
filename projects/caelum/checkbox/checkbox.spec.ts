@@ -53,4 +53,19 @@ describe('CaeCheckbox', () => {
     fixture.detectChanges();
     expect(nativeBox().getAttribute('aria-describedby')).toBe('agree-error');
   });
+
+  it('forwards ariaLabel to the focusable input for the label-less case (#70)', () => {
+    // Absent by default — the projected label is the normal path; no empty attribute rendered.
+    expect(nativeBox().getAttribute('aria-label')).toBeNull();
+    fixture.componentRef.setInput('ariaLabel', 'Accept the terms');
+    fixture.detectChanges();
+    expect(nativeBox().getAttribute('aria-label')).toBe('Accept the terms');
+  });
+
+  it('forwards ariaLabelledby to the focusable input (#70)', () => {
+    expect(nativeBox().getAttribute('aria-labelledby')).toBeNull();
+    fixture.componentRef.setInput('ariaLabelledby', 'terms-heading');
+    fixture.detectChanges();
+    expect(nativeBox().getAttribute('aria-labelledby')).toBe('terms-heading');
+  });
 });
