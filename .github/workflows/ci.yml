@@ -155,13 +155,13 @@ jobs:
         working-directory: textbooks
         env: { PYTHONIOENCODING: utf-8, PYTHONUTF8: "1" }
         run: |
-          python tools/_gen_sections.py
+          python3 tools/_gen_sections.py
           # The COMMITTED index is what agents grep to verify citations — a heading
           # edit merged without regenerating it would poison every later lookup.
           git diff --exit-code -- SECTIONS.json || { echo "::error::SECTIONS.json is stale — run tools/_gen_sections.py and commit the result."; exit 1; }
-          python tools/_audit_refs.py
-          python tools/_audit_routing.py
-          python tools/_audit_links.py
+          python3 tools/_audit_refs.py
+          python3 tools/_audit_routing.py
+          python3 tools/_audit_links.py
 
       # Keeps the frontier research layer honest: MANIFEST routing complete,
       # every tiered claim carries a real URL + accessed date, reports have
@@ -171,7 +171,7 @@ jobs:
       - name: Research audit (citations / structure / links)
         working-directory: research
         env: { PYTHONIOENCODING: utf-8, PYTHONUTF8: "1" }
-        run: python tools/_audit_research.py
+        run: python3 tools/_audit_research.py
 
       # Dependency-provenance gate (issue #4, D-11) — the M0-2 scan automated. It
       # reads the committed package-lock.json + provenance/allowlist.json (no

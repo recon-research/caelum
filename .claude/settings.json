@@ -41,11 +41,11 @@
       "Bash(gh run list:*)",
       "Bash(gh run view:*)",
       "Bash(gh run watch:*)",
-      "Bash(python tools/_gen_sections.py:*)",
-      "Bash(python tools/_audit:*)",
-      "Bash(python textbooks/tools/_gen_sections.py:*)",
-      "Bash(python textbooks/tools/_audit:*)",
-      "Bash(python research/tools/_audit_research.py:*)",
+      "Bash(python3 tools/_gen_sections.py:*)",
+      "Bash(python3 tools/_audit:*)",
+      "Bash(python3 textbooks/tools/_gen_sections.py:*)",
+      "Bash(python3 textbooks/tools/_audit:*)",
+      "Bash(python3 research/tools/_audit_research.py:*)",
       "Bash(scripts/preflight.sh:*)",
       "Bash(bash scripts/preflight.sh:*)",
 
@@ -110,7 +110,7 @@
       {
         "matcher": "Bash|PowerShell",
         "hooks": [
-          { "type": "command", "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/block_naked_todos.py\"" }
+          { "type": "command", "command": "python3 \"${CLAUDE_PROJECT_DIR}/.claude/hooks/block_naked_todos.py\"" }
         ]
       }
     ],
@@ -118,13 +118,13 @@
       {
         "matcher": "startup|resume|clear",
         "hooks": [
-          { "type": "command", "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/session_start_banner.py\"" }
+          { "type": "command", "command": "python3 \"${CLAUDE_PROJECT_DIR}/.claude/hooks/session_start_banner.py\"" }
         ]
       },
       {
         "matcher": "compact",
         "hooks": [
-          { "type": "command", "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/session_start_banner.py\"" }
+          { "type": "command", "command": "python3 \"${CLAUDE_PROJECT_DIR}/.claude/hooks/session_start_banner.py\"" }
         ]
       }
     ]

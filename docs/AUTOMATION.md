@@ -51,7 +51,7 @@ jobs:
 
 ## 4. Scheduled runs — nightly hygiene without a session `[production-proven]`
 
-- **Desktop app → Routines → New routine → Local** (https://code.claude.com/docs/en/desktop-scheduled-tasks, accessed 2026-06-10): runs a fresh session on a schedule, optionally in an isolated worktree, with per-task always-allow permissions. Suggested nightly prompt: *"Run scripts/preflight (audits + hygiene), `python research/tools/_audit_research.py --strict-staleness`, and reconcile the CLAUDE.md Status block against `gh issue list`/`gh pr list`; file a `followup` issue for anything found; change nothing else."*
+- **Desktop app → Routines → New routine → Local** (https://code.claude.com/docs/en/desktop-scheduled-tasks, accessed 2026-06-10): runs a fresh session on a schedule, optionally in an isolated worktree, with per-task always-allow permissions. Suggested nightly prompt: *"Run scripts/preflight (audits + hygiene), `python3 research/tools/_audit_research.py --strict-staleness`, and reconcile the CLAUDE.md Status block against `gh issue list`/`gh pr list`; file a `followup` issue for anything found; change nothing else."*
 - **Cloud Routines** `[experimental — research preview]` (https://code.claude.com/docs/en/routines, accessed 2026-06-10): machine-off schedules and GitHub triggers — but only `pull_request`/`release` events (not issues), so decision-issue automation still needs §3.
 - **Headless CI** (`claude -p --bare --output-format json`) for scripted gates in Actions (https://code.claude.com/docs/en/headless, accessed 2026-06-10). Note: from June 15, 2026, subscription `claude -p` draws from a separate monthly Agent SDK credit pool.
 

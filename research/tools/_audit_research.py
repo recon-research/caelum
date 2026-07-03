@@ -1,4 +1,4 @@
-# Audit for the research/ frontier layer. Run from research/: python tools/_audit_research.py
+# Audit for the research/ frontier layer. Run from research/: python3 tools/_audit_research.py
 # Flags: --strict-staleness (stale notes fail instead of warn) · --live (HEAD-check cited URLs; local use, not CI)
 # Exits non-zero on errors, so CI can gate on it. See README.md for the discipline this enforces.
 import json, re, glob, os, sys, datetime

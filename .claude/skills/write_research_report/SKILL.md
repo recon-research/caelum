@@ -18,7 +18,7 @@ The publishable artifact: readable by a human cold, auditable by an agent, and r
    - **Discussion & limitations** — failure modes, external validity, the lab-to-prod / sim-to-real gap; SPECULATIVE labeled.
    - **Future work** — every item carries a ticket # (file them now via `track_followups`).
    - **Reproducibility** — the cold-checkout path: commands, seeds, commit, environment, the one command that rebuilds the figures.
-   - **References** — every cited source with author/title/venue/year + the real URL + accessed date. **Verify each URL was fetched** (during the survey or now); optionally run `python tools/_audit_research.py --live` from `research/` to catch dead links before shipping.
+   - **References** — every cited source with author/title/venue/year + the real URL + accessed date. **Verify each URL was fetched** (during the survey or now); optionally run `python3 tools/_audit_research.py --live` from `research/` to catch dead links before shipping.
 3. **Wire + validate:** `reports[]` entry in `research/MANIFEST.json` (statuses → `reported`); run the research audit (it enforces the required sections, URL-bearing references, and resolving figure paths); ship via the normal PR flow.
 4. **Connect the consequences:** decisions this grounds get updated/filed (`decision` issues citing `RR-NN`); if the finding is settled enough to teach, file the graduation ticket — `build_library` folds it into the textbook (Bleeding Edge → curriculum) and the note shrinks to a delta.
 5. **Optional rendering:** export to docx/pdf via the harness's document skill if a stakeholder needs one — generated FROM the markdown, clearly marked as a rendering, never edited directly.

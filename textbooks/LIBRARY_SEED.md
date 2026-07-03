@@ -228,7 +228,7 @@ Wire every skill into the MANIFEST `skills[]` array — the **catalog of record*
 
 ## 9. The Maintenance Scripts (write these verbatim)
 
-These are domain-agnostic — they self-configure from MANIFEST. Write them to `tools/` and run from the repo root (with UTF-8 output, e.g. `PYTHONIOENCODING=utf-8 PYTHONUTF8=1 python tools/_audit_refs.py`). The `_audit_refs.py` / `_audit_links.py` scans glob `reference/` and `vision/` as well — adjust the globbed dirs if your layout differs.
+These are domain-agnostic — they self-configure from MANIFEST. Write them to `tools/` and run from the repo root (with UTF-8 output, e.g. `PYTHONIOENCODING=utf-8 PYTHONUTF8=1 python3 tools/_audit_refs.py`). The `_audit_refs.py` / `_audit_links.py` scans glob `reference/` and `vision/` as well — adjust the globbed dirs if your layout differs.
 
 ### 9.1 `_gen_sections.py`
 ```python

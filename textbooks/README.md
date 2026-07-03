@@ -32,10 +32,10 @@ A structured, self-validating RAG knowledge library for **Caelum** — a US-orig
 Run from this directory after any change to books or headings:
 
 ```
-python tools/_gen_sections.py     # regenerate SECTIONS.json
-python tools/_audit_refs.py        # 0 unresolved Book NN §X references
-python tools/_audit_routing.py     # all ROUTING_EVAL cases pass
-python tools/_audit_links.py       # 0 broken markdown links
+python3 tools/_gen_sections.py     # regenerate SECTIONS.json
+python3 tools/_audit_refs.py        # 0 unresolved Book NN §X references
+python3 tools/_audit_routing.py     # all ROUTING_EVAL cases pass
+python3 tools/_audit_links.py       # 0 broken markdown links
 ```
 
 A library that passes all four is internally consistent. The scripts **exit non-zero on failure**, so CI enforces them as a real merge gate (see [`../.github/workflows/ci.yml`](../.github/workflows/ci.yml)). See [LIBRARY_SEED.md](LIBRARY_SEED.md) §4 and §8.
