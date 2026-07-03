@@ -5,6 +5,8 @@ import {
   TestBed,
 } from '@angular/core/testing';
 import { OverlayContainer } from '@angular/cdk/overlay';
+import { MatDialog } from '@angular/material/dialog';
+import { firstValueFrom } from 'rxjs';
 import { App } from './app';
 
 /**
@@ -106,6 +108,106 @@ describe('App', () => {
     fixture.detectChanges();
     await fixture.whenStable();
     expect(echo()?.textContent).toContain('Archive undone');
+
+    TestBed.inject(OverlayContainer).ngOnDestroy();
+  });
+
+  it('renames the workspace through a lazily-loaded cae-dialog (#100)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const el = fixture.nativeElement as HTMLElement;
+    const overlay = TestBed.inject(OverlayContainer).getContainerElement();
+    const app = fixture.componentInstance as unknown as { renameWorkspace(): Promise<void> };
+
+    const settle = async (): Promise<void> => {
+      fixture.detectChanges();
+      await fixture.whenStable();
+    };
+    // The rename echo region is persistently mounted (empty) BEFORE any rename — so a screen reader
+    // announces the later text as a change, not a freshly-stamped region (mirrors the toast echo).
+    const echo = (): HTMLElement | null => el.querySelector('.forge-workspace__echo');
+    const name = (): string =>
+      el.querySelector('.forge-workspace__name')?.textContent?.trim() ?? '';
+    expect(echo()).not.toBeNull();
+    expect(echo()!.textContent!.trim()).toBe('');
+    expect(name()).toBe('Acme Console');
+
+    // The Rename button is wired to renameWorkspace(); we invoke that directly and AWAIT it so the
+    // lazy `import()` of the dialog service + body settles deterministically. A DOM click can't be
+    // awaited, and the multi-tick import would race test teardown (NG0205); the (click) binding
+    // itself is verified by the template compiler in the build.
+    expect(
+      Array.from(el.querySelectorAll('.forge-workspace cae-button button')).some((b) =>
+        b.textContent?.includes('Rename'),
+      ),
+    ).toBe(true);
+    await app.renameWorkspace();
+    await settle();
+
+    const surface = overlay.querySelector('mat-dialog-container');
+    expect(surface).not.toBeNull();
+    expect(surface!.textContent).toContain('Rename workspace');
+    // The dialog body is a pure cae-* component pre-filled with the current name via CAE_DIALOG_DATA.
+    const input = surface!.querySelector('input') as HTMLInputElement;
+    expect(input.value).toBe('Acme Console');
+
+    // Edit the cae-input CVA and Save — Save closes programmatically via injectCaeDialogRef, so
+    // afterClosed() delivers the trimmed new name back to App, which updates the signal + announces.
+    input.value = '  Acme Prod  ';
+    input.dispatchEvent(new Event('input'));
+    await settle();
+
+    // Await the dialog's own afterClosed (the deterministic close signal — the App fixture's CD
+    // doesn't drive the separate overlay tree, so a plain settle() loop wouldn't see the disposal).
+    const dialogRef = TestBed.inject(MatDialog).openDialogs[0];
+    const closedResult = firstValueFrom(dialogRef.afterClosed());
+    const save = Array.from(surface!.querySelectorAll('cae-button button')).find(
+      (b) => b.textContent?.trim() === 'Save',
+    ) as HTMLButtonElement;
+    save.click();
+    expect(await closedResult).toBe('Acme Prod'); // trimmed result from injectCaeDialogRef.close
+    await settle();
+
+    expect(name()).toBe('Acme Prod');
+    expect(echo()?.textContent).toContain('Acme Prod');
+    expect(overlay.querySelector('mat-dialog-container')).toBeNull();
+
+    TestBed.inject(OverlayContainer).ngOnDestroy();
+  });
+
+  it('leaves the workspace name unchanged when the rename dialog is dismissed (#100)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const el = fixture.nativeElement as HTMLElement;
+    const overlay = TestBed.inject(OverlayContainer).getContainerElement();
+    const app = fixture.componentInstance as unknown as { renameWorkspace(): Promise<void> };
+    const settle = async (): Promise<void> => {
+      fixture.detectChanges();
+      await fixture.whenStable();
+    };
+    const echo = (): HTMLElement | null => el.querySelector('.forge-workspace__echo');
+    const name = (): string =>
+      el.querySelector('.forge-workspace__name')?.textContent?.trim() ?? '';
+
+    await app.renameWorkspace();
+    await settle();
+    const surface = overlay.querySelector('mat-dialog-container');
+    expect(surface).not.toBeNull();
+
+    // Cancel is a bare caeDialogClose → '' (falsy). App's `if (name && name !== …)` guard must leave
+    // the name unchanged and the echo empty; a dropped truthiness check would blank the name here.
+    const dialogRef = TestBed.inject(MatDialog).openDialogs[0];
+    const closedResult = firstValueFrom(dialogRef.afterClosed());
+    const cancel = Array.from(surface!.querySelectorAll('cae-button button')).find(
+      (b) => b.textContent?.trim() === 'Cancel',
+    ) as HTMLButtonElement;
+    cancel.click();
+    expect(await closedResult).toBe('');
+    await settle();
+
+    expect(name()).toBe('Acme Console');
+    expect(echo()?.textContent?.trim()).toBe('');
+    expect(overlay.querySelector('mat-dialog-container')).toBeNull();
 
     TestBed.inject(OverlayContainer).ngOnDestroy();
   });
