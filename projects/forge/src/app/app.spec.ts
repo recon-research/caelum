@@ -293,17 +293,18 @@ describe('App', () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     const el = fixture.nativeElement as HTMLElement;
-    // Exactly five @defer blocks — the capacity sliders, structure tree, reference tabs, FAQ
-    // accordion, and tag row — each carrying a heavy Material module (MatSlider/MatTree/MatTabs/
-    // MatExpansion/MatChips) off the initial bundle. This is the regression guard for the #85 bundle
-    // win: deleting an @defer wrapper stays UNDER the 1mb budget error (so `ng build` wouldn't fail),
-    // but drops a block here → red test. (The capacity slider card, #109, is the newest: MatSlider is
-    // heavy, so it's deferred rather than raising the budget.)
-    expect((await fixture.getDeferBlocks()).length).toBe(5);
+    // Exactly six @defer blocks — the capacity sliders, modules listbox, structure tree, reference
+    // tabs, FAQ accordion, and tag row — each carrying a heavy Material module (MatSlider/MatList/
+    // MatTree/MatTabs/MatExpansion/MatChips) off the initial bundle. This is the regression guard for
+    // the #85 bundle win: deleting an @defer wrapper stays UNDER the 1mb budget error (so `ng build`
+    // wouldn't fail), but drops a block here → red test. (The modules listbox card, #114, is the
+    // newest: MatSelectionList is heavy, so it's deferred rather than raising the budget.)
+    expect((await fixture.getDeferBlocks()).length).toBe(6);
     // The eager critical path (the create-workspace form) is present with NO defer block rendered...
     expect(el.querySelector('.forge-form-card')).not.toBeNull();
     // ...while the deferred demo sections are genuinely absent until rendered (proof they're lazy).
     expect(el.querySelector('.forge-capacity-card')).toBeNull();
+    expect(el.querySelector('.forge-modules-card')).toBeNull();
     expect(el.querySelector('cae-tree')).toBeNull();
     expect(el.querySelector('.forge-reference')).toBeNull();
     expect(el.querySelector('.forge-faq')).toBeNull();
@@ -311,6 +312,7 @@ describe('App', () => {
     // Rendering the blocks brings each section in — so the content isn't lost, only deferred.
     await renderDeferred(fixture);
     expect(el.querySelector('.forge-capacity-card')).not.toBeNull();
+    expect(el.querySelector('.forge-modules-card')).not.toBeNull();
     expect(el.querySelector('cae-tree')).not.toBeNull();
     expect(el.querySelector('.forge-reference')).not.toBeNull();
     expect(el.querySelector('.forge-faq')).not.toBeNull();
@@ -447,6 +449,43 @@ describe('App', () => {
     expect(seatsThumb.value).toBe('25'); // model → view through the CVA writeValue
     expect(cmp['capacity'].getRawValue().seats).toBe(25);
     expect(cmp['capacity'].getRawValue().budget).toEqual([150, 600]);
+  });
+
+  it('round-trips the multi-select cae-listbox through the deferred modules control (#114)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    await renderDeferred(fixture); // the modules card is @defer'd below the fold (#85, #114)
+    const cmp = fixture.componentInstance;
+    const card = (fixture.nativeElement as HTMLElement).querySelector(
+      '.forge-modules-card',
+    ) as HTMLElement;
+    expect(card).not.toBeNull();
+
+    // The listbox renders one role=option per data item, seeded from the model (writeValue → the
+    // rendered aria-selected — mat-selection-list renders in jsdom, unlike MatSlider).
+    const listbox = card.querySelector('mat-selection-list') as HTMLElement;
+    expect(listbox.getAttribute('role')).toBe('listbox');
+    expect(listbox.getAttribute('aria-multiselectable')).toBe('true');
+    expect(listbox.getAttribute('aria-labelledby')).toBe('modules-label');
+    const options = Array.from(listbox.querySelectorAll('mat-list-option'));
+    expect(options.length).toBe(4);
+    const optionByLabel = (label: string): HTMLElement =>
+      options.find((o) => o.textContent?.includes(label))! as HTMLElement;
+    // The two seeded modules (analytics, billing) are selected; the others are not.
+    expect(optionByLabel('Analytics').getAttribute('aria-selected')).toBe('true');
+    expect(optionByLabel('Billing').getAttribute('aria-selected')).toBe('true');
+    expect(optionByLabel('Audit log').getAttribute('aria-selected')).toBe('false');
+
+    // A user click writes THROUGH the CVA to the reactive control (view → model): adding "Audit log"
+    // appends it to the string[] value — a real round-trip, not a tautological FormControl echo.
+    optionByLabel('Audit log').click();
+    fixture.detectChanges();
+    expect([...cmp['modules'].value].sort()).toEqual(['analytics', 'audit-log', 'billing']);
+    // And model → view: a programmatic setValue reflects onto the rendered options.
+    cmp['modules'].setValue(['sso']);
+    fixture.detectChanges();
+    expect(optionByLabel('Single sign-on').getAttribute('aria-selected')).toBe('true');
+    expect(optionByLabel('Analytics').getAttribute('aria-selected')).toBe('false');
   });
 
   it('shows the workspace structure as a cae-tree and announces a selection', async () => {

@@ -27,6 +27,7 @@
     "caelum-progress-spinner": 2304,
     "caelum-divider": 2048,
     "caelum-slider": 5632,
+    "caelum-listbox": 4608,
     "caelum-toast": 2048,
     "caelum-dialog": 3072,
     "caelum-confirm": 3456
