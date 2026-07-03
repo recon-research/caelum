@@ -31,6 +31,7 @@ import { CaeMenu, CaeMenuItem } from 'caelum/menu';
 import { CaeRadio, CaeRadioOption } from 'caelum/radio';
 import { CaeSelect, CaeSelectOption } from 'caelum/select';
 import { CaeSelectButton, CaeSelectButtonOption } from 'caelum/select-button';
+import { CaeSlider } from 'caelum/slider';
 import { CaeStep, CaeStepper } from 'caelum/stepper';
 import { CaeSwitch } from 'caelum/switch';
 import { CaeTab, CaeTabs } from 'caelum/tabs';
@@ -92,6 +93,7 @@ const SWATCHES: ReadonlyArray<{ token: string; label: string }> = [
     CaeRadio,
     CaeSelect,
     CaeSelectButton,
+    CaeSlider,
     CaeStep,
     CaeStepper,
     CaeSwitch,
@@ -198,6 +200,21 @@ export class App {
     const n = this.tags().length;
     this.tagMessage.set(`Removed ${tag}. ${n} ${n === 1 ? 'tag' : 'tags'} remaining.`);
   }
+
+  /**
+   * A small standalone reactive form for the deferred "Workspace capacity" card (#109) — a single
+   * cae-slider (seats) + a RANGE cae-slider (budget, a [min, max] pair, the mode-dependent value
+   * seam). Kept OUT of the eager create-workspace wizard and rendered in an `@defer (on idle)` block
+   * below the fold, so MatSlider (a heavy Material module) splits into its own lazy chunk and stays
+   * off Forge's initial bundle — the #85 defer-before-raise policy, the same reason MatTree /
+   * MatTabs / MatChips are deferred. Each slider round-trips through this form's `getRawValue()`.
+   */
+  protected readonly capacity = new FormGroup({
+    seats: new FormControl(10, { nonNullable: true }),
+    budget: new FormControl<[number, number]>([100, 500], { nonNullable: true }),
+  });
+  /** Formats the budget slider's thumb bubble + aria-valuetext with a `$` unit (cae-slider displayWith). */
+  protected readonly formatDollars = (value: number): string => `$${value}`;
 
   /**
    * A short FAQ rendered as a `cae-accordion` — the liveness proof for #77. It's single-expand

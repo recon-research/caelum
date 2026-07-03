@@ -56,6 +56,9 @@ export * from 'caelum/progress-bar';
 export * from 'caelum/progress-spinner';
 export * from 'caelum/divider';
 
+// --- Form controls: slider (#109 — numeric CVA over MatSlider, single + range) ---
+export * from 'caelum/slider';
+
 // --- Services: toast (#96, D-15 — the first service passthrough, over MatSnackBar) ---
 export * from 'caelum/toast';
 
