@@ -212,6 +212,83 @@ describe('App', () => {
     TestBed.inject(OverlayContainer).ngOnDestroy();
   });
 
+  // deleteWorkspace() dynamic-`import()`s CaeConfirmService then AWAITS the confirm result, so — unlike
+  // renameWorkspace(), whose subscribe is fire-and-forget — it can't be awaited-to-open. The lazy
+  // import resolves on a macrotask that fixture.whenStable() doesn't track, so we drive a real-timer
+  // poll until the alertdialog appears, choose, then await the method's completion.
+  const flushTimer = async (fixture: ComponentFixture<App>): Promise<void> => {
+    await new Promise<void>((resolve) => setTimeout(resolve));
+    fixture.detectChanges();
+    await fixture.whenStable();
+  };
+  const waitForConfirm = async (
+    fixture: ComponentFixture<App>,
+    overlay: HTMLElement,
+  ): Promise<HTMLElement> => {
+    for (let i = 0; i < 25 && !overlay.querySelector('mat-dialog-container'); i++) {
+      await flushTimer(fixture);
+    }
+    const surface = overlay.querySelector('mat-dialog-container') as HTMLElement | null;
+    expect(surface).not.toBeNull();
+    return surface!;
+  };
+  const confirmButton = (surface: HTMLElement, label: string): HTMLButtonElement =>
+    Array.from(surface.querySelectorAll('cae-button button')).find(
+      (b) => b.textContent?.trim() === label,
+    ) as HTMLButtonElement;
+
+  it('deletes the workspace only after confirming through a lazily-loaded cae-confirm (#101)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const el = fixture.nativeElement as HTMLElement;
+    const overlay = TestBed.inject(OverlayContainer).getContainerElement();
+    const app = fixture.componentInstance as unknown as { deleteWorkspace(): Promise<void> };
+    // The delete echo (the 2nd persistent live region in the workspace card) starts mounted + empty.
+    const deleteEcho = (): HTMLElement =>
+      el.querySelectorAll('.forge-workspace__echo')[1] as HTMLElement;
+    expect(deleteEcho()).toBeTruthy();
+    expect(deleteEcho().textContent!.trim()).toBe('');
+
+    const done = app.deleteWorkspace();
+    const surface = await waitForConfirm(fixture, overlay);
+    expect(surface.getAttribute('role')).toBe('alertdialog'); // announced as an interruption
+    expect(surface.textContent).toContain('Delete workspace?');
+    expect(surface.textContent).toContain('Acme Console');
+
+    // Click Delete (the accept action) → confirm() resolves true → deleteWorkspace announces.
+    confirmButton(surface, 'Delete').click();
+    await done;
+    await flushTimer(fixture);
+
+    expect(deleteEcho().textContent).toContain('deleted');
+    expect(overlay.querySelector('mat-dialog-container')).toBeNull();
+
+    TestBed.inject(OverlayContainer).ngOnDestroy();
+  });
+
+  it('leaves the workspace intact when the delete confirm is rejected (#101)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const el = fixture.nativeElement as HTMLElement;
+    const overlay = TestBed.inject(OverlayContainer).getContainerElement();
+    const app = fixture.componentInstance as unknown as { deleteWorkspace(): Promise<void> };
+    const deleteEcho = (): HTMLElement =>
+      el.querySelectorAll('.forge-workspace__echo')[1] as HTMLElement;
+
+    const done = app.deleteWorkspace();
+    const surface = await waitForConfirm(fixture, overlay);
+
+    // Cancel (the safe, default-focused reject) → confirm() resolves false → nothing announced.
+    confirmButton(surface, 'Cancel').click();
+    await done;
+    await flushTimer(fixture);
+
+    expect(deleteEcho().textContent!.trim()).toBe('');
+    expect(overlay.querySelector('mat-dialog-container')).toBeNull();
+
+    TestBed.inject(OverlayContainer).ngOnDestroy();
+  });
+
   it('defers the below-the-fold demo sections off the initial bundle (#85)', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();

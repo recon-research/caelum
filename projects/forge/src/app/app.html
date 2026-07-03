@@ -89,22 +89,27 @@
       <p class="forge-notify__echo" role="status" aria-live="polite">{{ toastAction() }}</p>
     </div>
 
-    <!-- cae-dialog (#100): the second SERVICE passthrough (D-15). CaeDialog wraps MatDialog behind a
-         Caelum-stable open(); the RenameWorkspaceDialog body is a PURE cae-* component (title/content/
-         actions + a cae-input CVA), authored with NO @angular/material import via the caeDialog*
-         directives and the CAE_DIALOG_DATA / injectCaeDialogRef seams. afterClosed() returns the new
-         name. MatDialog restores focus to the Rename button on close, so — unlike the toast echo — the
-         live region announces without a focus move. -->
+    <!-- cae-dialog (#100) + cae-confirm (#101): the D-15 dialog services. CaeDialog wraps MatDialog
+         behind a Caelum-stable open() — the RenameWorkspaceDialog body is a PURE cae-* component
+         (title/content/actions + a cae-input CVA), authored with NO @angular/material import via the
+         caeDialog* directives and the CAE_DIALOG_DATA / injectCaeDialogRef seams. Delete goes through
+         CaeConfirmService — a build-once role=alertdialog confirm with focus parked on Cancel (safe
+         default), so an accidental Enter can't delete. Both restore focus to their trigger on close,
+         so — unlike the toast echo — the live regions announce without a focus move. -->
     <div class="forge-workspace">
-      <span class="forge-workspace__label" id="workspace-label">Workspace (cae-dialog)</span>
-      <!-- role=group + aria-labelledby names this cluster "Workspace (cae-dialog)" for a screen
-           reader (mirrors the notifications group above), giving #workspace-label a real referent. -->
+      <span class="forge-workspace__label" id="workspace-label"
+        >Workspace (cae-dialog · cae-confirm)</span
+      >
+      <!-- role=group + aria-labelledby names this cluster for a screen reader (mirrors the
+           notifications group above), giving #workspace-label a real referent. -->
       <div class="forge-workspace__row" role="group" aria-labelledby="workspace-label">
         <span class="forge-workspace__name">{{ workspaceName() }}</span>
         <cae-button variant="outlined" (click)="renameWorkspace()">Rename…</cae-button>
+        <cae-button variant="text" (click)="deleteWorkspace()">Delete…</cae-button>
       </div>
-      <!-- Persistent polite live region (mirrors the notify echo): mounted always, text varied. -->
+      <!-- Persistent polite live regions (mirror the notify echo): mounted always, text varied. -->
       <p class="forge-workspace__echo" role="status" aria-live="polite">{{ renameMessage() }}</p>
+      <p class="forge-workspace__echo" role="status" aria-live="polite">{{ deleteMessage() }}</p>
     </div>
 
     <cae-card
