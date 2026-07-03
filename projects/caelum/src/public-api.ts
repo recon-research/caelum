@@ -62,6 +62,9 @@ export * from 'caelum/slider';
 // --- Form controls: listbox (#114 — selection-list CVA over MatSelectionList, single + multiple) ---
 export * from 'caelum/listbox';
 
+// --- Form controls: autocomplete (#119 — typeahead combobox CVA over matAutocomplete) ---
+export * from 'caelum/autocomplete';
+
 // --- Services: toast (#96, D-15 — the first service passthrough, over MatSnackBar) ---
 export * from 'caelum/toast';
 
