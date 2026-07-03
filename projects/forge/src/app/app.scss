@@ -149,7 +149,8 @@
   font-size: var(--cae-text-sm);
 }
 
-.forge-notify {
+.forge-notify,
+.forge-workspace {
   display: flex;
   flex-direction: column;
   gap: var(--cae-space-2);
@@ -157,13 +158,16 @@
 }
 
 .forge-notify__label,
-.forge-notify__echo {
+.forge-notify__echo,
+.forge-workspace__label,
+.forge-workspace__echo {
   margin: 0;
   color: var(--cae-color-on-surface-variant);
   font-size: var(--cae-text-sm);
 }
 
-.forge-notify__label {
+.forge-notify__label,
+.forge-workspace__label {
   font-weight: var(--cae-weight-medium);
 }
 
@@ -171,6 +175,18 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--cae-space-2);
+}
+
+.forge-workspace__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--cae-space-3);
+}
+
+.forge-workspace__name {
+  font-weight: var(--cae-weight-medium);
+  color: var(--cae-color-on-surface);
 }
 
 .forge-tab-body {

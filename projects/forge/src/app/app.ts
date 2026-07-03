@@ -3,6 +3,7 @@ import {
   Component,
   DOCUMENT,
   ElementRef,
+  Injector,
   computed,
   effect,
   inject,
@@ -47,6 +48,18 @@ import { CaeProgressSpinner } from 'caelum/progress-spinner';
 // The first SERVICE passthrough (#96, D-15) — injected, not listed in `imports` (it's not a
 // component/directive). Its toasts carry their own aria-live region.
 import { CaeToast } from 'caelum/toast';
+// The second SERVICE passthrough (#100, D-15) — CaeDialog over MatDialog. Loaded LAZILY: the service
+// (and MatDialog + the dialog-container machinery with it) plus the dialog body are dynamic-import()ed
+// on first open, so their ~40 kB stay OFF Forge's initial bundle (the #85 defer-before-raise policy —
+// a dialog is the canonical open-on-interaction lazy load). These imports are `type`-only (erased),
+// so they add no eager code; the runtime values come from the `import()` calls in renameWorkspace().
+// NOTE (regression guard): unlike #85's `@defer` blocks (asserted by getDeferBlocks() in app.spec), an
+// `import()` split is NOT introspectable from a unit test, so there's no boundary test here — a future
+// edit that makes MatDialog eager would push the initial bundle to ~852 kB (over the 850 kB angular.json
+// WARN but under the 1 mb ERROR → CI stays green). Risk is low (these are type-only), and a durable
+// dist-stats guard is filed as a followup (#102). Keep both imports `type`-only; never add
+// RenameWorkspaceDialog to `imports[]` or reference it as a value outside renameWorkspace()'s import().
+import type { RenameWorkspaceDialog, RenameWorkspaceData } from './rename-workspace-dialog';
 
 type ThemeMode = 'auto' | 'light' | 'dark';
 
@@ -98,6 +111,8 @@ export class App {
   private readonly document = inject(DOCUMENT);
   /** The injectable cae-toast service (#96) — a transient, self-announcing notification. */
   private readonly toast = inject(CaeToast);
+  /** Resolves the lazily-imported CaeDialog singleton on demand (see renameWorkspace). */
+  private readonly injector = inject(Injector);
 
   protected readonly title = signal('Forge');
   protected readonly swatches = SWATCHES;
@@ -515,6 +530,40 @@ export class App {
     const ref = this.toast.open('Project archived', 'Undo', { duration: 0, politeness: 'polite' });
     // onAction() completes when the toast dismisses, so this subscription self-cleans (no leak).
     ref.onAction().subscribe(() => this.toastAction.set('Archive undone.'));
+  }
+
+  // --- cae-dialog demo (#100) ---
+  /** The current workspace name, edited through the rename dialog. */
+  protected readonly workspaceName = signal('Acme Console');
+  /** A persistent polite live region announcing a completed rename. */
+  protected readonly renameMessage = signal('');
+
+  /**
+   * Open the rename dialog (a pure `cae-*` body) with the current name as data, and apply the
+   * result. The dialog service + body are dynamic-`import()`ed here so MatDialog stays off the
+   * initial bundle (#85 defer-before-raise). NOTE: unlike the toast demo, this does NOT move focus
+   * to the live region — MatDialog restores focus to the trigger button on close (correct dialog
+   * UX), so a focus-move here would fight that; the persistent polite region announces the change
+   * without stealing focus.
+   */
+  protected async renameWorkspace(): Promise<void> {
+    this.renameMessage.set('');
+    const [{ CaeDialog }, { RenameWorkspaceDialog: dialogBody }] = await Promise.all([
+      import('caelum/dialog'),
+      import('./rename-workspace-dialog'),
+    ]);
+    const dialog = this.injector.get(CaeDialog);
+    const ref = dialog.open<RenameWorkspaceDialog, string, RenameWorkspaceData>(dialogBody, {
+      data: { name: this.workspaceName() },
+      autoFocus: 'first-tabbable',
+    });
+    ref.afterClosed().subscribe((name) => {
+      // afterClosed delivers the Save result, or undefined/'' on Cancel/Escape/backdrop (all falsy).
+      if (name && name !== this.workspaceName()) {
+        this.workspaceName.set(name);
+        this.renameMessage.set(`Workspace renamed to “${name}”.`);
+      }
+    });
   }
 
   /** `auto` follows the OS via `color-scheme: light dark`; light/dark force an arm. */

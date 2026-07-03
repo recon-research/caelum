@@ -58,3 +58,6 @@ export * from 'caelum/divider';
 
 // --- Services: toast (#96, D-15 — the first service passthrough, over MatSnackBar) ---
 export * from 'caelum/toast';
+
+// --- Services: dialog (#100, D-15 — service passthrough over MatDialog + content directives) ---
+export * from 'caelum/dialog';
