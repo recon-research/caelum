@@ -8,8 +8,8 @@
 # ${CLAUDE_PROJECT_DIR} is the braced placeholder Claude Code substitutes
 # itself, so it works regardless of which shell runs the hook):
 #   "hooks": { "SessionStart": [
-#     { "matcher": "startup|resume|clear", "hooks": [ { "type": "command", "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/session_start_banner.py\"" } ] },
-#     { "matcher": "compact",              "hooks": [ { "type": "command", "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/session_start_banner.py\"" } ] } ] }
+#     { "matcher": "startup|resume|clear", "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PROJECT_DIR}/.claude/hooks/session_start_banner.py\"" } ] },
+#     { "matcher": "compact",              "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PROJECT_DIR}/.claude/hooks/session_start_banner.py\"" } ] } ] }
 #
 # Contract: exit 0 always; stdout = injected context; on any error print
 # nothing (a banner must never wedge a session).

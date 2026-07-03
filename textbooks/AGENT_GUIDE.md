@@ -89,10 +89,10 @@ Your multiplier is **not** uniform. Drive boilerplate / refactor / tests / docs 
 ## 6. Keep the library honest (maintenance)
 
 If you edit the library (add a book, renumber, change headings), run from the library root:
-- `python tools/_gen_sections.py` — regenerate `SECTIONS.json`.
-- `python tools/_audit_refs.py` — confirm every `Book NN §X` resolves (target: **0 misses**).
-- `python tools/_audit_routing.py` — confirm representative queries still route right; add a `ROUTING_EVAL.json` case for any new topic.
-- `python tools/_audit_links.py` — confirm every relative markdown link resolves (target: **0 broken**).
+- `python3 tools/_gen_sections.py` — regenerate `SECTIONS.json`.
+- `python3 tools/_audit_refs.py` — confirm every `Book NN §X` resolves (target: **0 misses**).
+- `python3 tools/_audit_routing.py` — confirm representative queries still route right; add a `ROUTING_EVAL.json` case for any new topic.
+- `python3 tools/_audit_links.py` — confirm every relative markdown link resolves (target: **0 broken**).
 - Update counts in `README.md` / `CLAUDE.md` / `MANIFEST.json`; update `topic_to_books` / `rag_hints`; add a `CHANGELOG.md` entry. **Counts drift — verify, don't trust.**
 
 ---

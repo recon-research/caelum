@@ -15,7 +15,7 @@
 
 - Cite the intake brief as `brief §N` until books exist; cross-reference other books as `Book NN §X` **only after** the target section is written (verify against `SECTIONS.json`).
 - **Version-specific claims are frontier.** Angular 22 went stable 2026-06-03 — *after* the model's training cutoff. Any concrete Angular-22 / Material-22 / Aria API or feature claim must be grounded by a [`research_topic`](../.claude/skills/research_topic/SKILL.md) note (real fetched URL + date + tier) or marked explicitly as "verify against 22 docs." **Do not fabricate version specifics.** Architectural patterns (standalone components, signals, CVA, CDK overlay/a11y) are stable and transfer; specific 22-only APIs need a source.
-- After each book: `python tools/_gen_sections.py` → run the four audits → fix to green → CHANGELOG entry → tick the Progress table.
+- After each book: `python3 tools/_gen_sections.py` → run the four audits → fix to green → CHANGELOG entry → tick the Progress table.
 
 ## The curriculum — 5 volumes / 20 books
 

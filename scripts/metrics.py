@@ -14,9 +14,9 @@
 # them as provisional until the window fills, then calibrate per project.
 #
 # Usage:
-#   python scripts/metrics.py                 # write docs/METRICS.md (default 90-day window)
-#   python scripts/metrics.py --window-days 30
-#   python scripts/metrics.py --print         # print to stdout, do not write the file
+#   python3 scripts/metrics.py                 # write docs/METRICS.md (default 90-day window)
+#   python3 scripts/metrics.py --window-days 30
+#   python3 scripts/metrics.py --print         # print to stdout, do not write the file
 #
 # Single-implementation Python (like the audits/hooks) -- runs on both shells;
 # no .ps1 twin. Stdlib only. cwd-independent.

@@ -37,7 +37,7 @@ Reports and notes **ground `D-NN` decisions** exactly like book sections do — 
 
 ## The audit
 
-Run `python tools/_audit_research.py` from this directory (CI does, on every push):
+Run `python3 tools/_audit_research.py` from this directory (CI does, on every push):
 
 - `MANIFEST.json` is valid; every entry's path exists; every on-disk note/experiment/report is routed in the MANIFEST.
 - Every note has a `reviewed:` date; every **tiered claim line** carries an inline `(source: https://…)` **and** an `accessed YYYY-MM-DD`. Untagged **quantitative** claims (a percentage / `N×` with no tier *and* no source) **warn** — a narrow, low-noise backstop for the gap where an untagged claim would skip the source gate; prose claims remain the discipline-plus-review boundary.

@@ -15,7 +15,7 @@ Implement and measure honestly. The two failure modes this skill kills: **cherry
 4. **Run scripted, not ad hoc.** The exact commands land in Reproducibility (with seeds, commit sha, environment). N repeats where variance matters; keep **every** run's data — discarding "bad runs" is cherry-picking with extra steps.
 5. **Collect into `results/`:** raw data (CSV/JSON), figures (PNG/SVG), and the **plot script that regenerates every figure from the committed data** — no orphaned images. Build the comparison table: variant vs baseline, mean ± variance; vs the paper's reported numbers where applicable, with discrepancies stated plainly.
 6. **Record the outcome** against the *pre-registered* bar: supported / refuted / inconclusive — plus Failure modes & limitations (where it breaks, what wasn't tested). **Negative results are recorded with the same care** — they prevent re-litigating the idea next quarter.
-7. **Wire it in:** `experiments[]` entry in `research/MANIFEST.json` (status: `experimenting` → the note's status too); run `python tools/_audit_research.py`; file follow-up tickets; if the outcome grounds a decision, update/file the `decision` issue citing `EXP-NN`. Ship the PR.
+7. **Wire it in:** `experiments[]` entry in `research/MANIFEST.json` (status: `experimenting` → the note's status too); run `python3 tools/_audit_research.py`; file follow-up tickets; if the outcome grounds a decision, update/file the `decision` issue citing `EXP-NN`. Ship the PR.
 
 ## Verification
 

@@ -10,7 +10,7 @@
 # ${CLAUDE_PROJECT_DIR} is the braced placeholder Claude Code substitutes
 # itself, so it works regardless of which shell runs the hook):
 #   "hooks": { "PreToolUse": [ { "matcher": "Bash|PowerShell",
-#     "hooks": [ { "type": "command", "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/block_naked_todos.py\"" } ] } ] }
+#     "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PROJECT_DIR}/.claude/hooks/block_naked_todos.py\"" } ] } ] }
 #
 # Contract: stdin = tool-call JSON; exit 0 = allow, exit 2 = block (stderr
 # becomes the reason shown to the agent). Any internal error → allow (exit 0):
