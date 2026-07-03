@@ -411,6 +411,62 @@
       }
     </cae-card>
 
+    <!-- cae-slider (#109): a single-thumb seats slider + a RANGE budget slider ([min, max] pair, the
+         mode-dependent value seam), bound to a small standalone reactive form. Deferred (#85):
+         MatSlider is a heavy Material module (~46 kB), so — like MatTree/MatTabs/MatExpansion/MatChips
+         — it's wrapped in `@defer (on idle)` to split into a lazy chunk off Forge's initial bundle
+         rather than raise the budget. Neither slider is a mat-form-field, so each thumb <input> is
+         named directly: ariaLabelledby for the single, distinct start/end per-thumb labels for the
+         range; `discrete` shows the value on the thumb as it moves. -->
+    @defer (on idle) {
+      <cae-card
+        class="forge-capacity-card"
+        title="Workspace capacity"
+        subtitle="cae-slider — a single value and a range, both bound to a reactive form"
+      >
+        <form [formGroup]="capacity" class="forge-form">
+          <!-- The accessible NAME is a STATIC label: WAI-ARIA puts the value in aria-valuenow /
+               aria-valuetext (cae-slider forwards them + the discrete bubble shows it) — folding the
+               live value into the name would re-announce it on every drag tick. The visible readout
+               sits OUTSIDE the labelledby target and is aria-hidden (the slider already announces it). -->
+          <div class="forge-field-group">
+            <span id="seats-label" class="forge-field-group__label">Seats</span>
+            <cae-slider
+              formControlName="seats"
+              ariaLabelledby="seats-label"
+              [min]="1"
+              [max]="50"
+              [step]="1"
+              discrete
+            />
+            <span aria-hidden="true">{{ capacity.controls.seats.value }} seats</span>
+          </div>
+          <!-- Range slider: the two thumbs are named per-thumb (start/endAriaLabel), so there's no
+               single group label to reference — the visible "Monthly budget" heading isn't linked.
+               displayWith puts a "$" on the thumb bubble + aria-valuetext so they match the readout. -->
+          <div class="forge-field-group">
+            <span class="forge-field-group__label">Monthly budget</span>
+            <cae-slider
+              formControlName="budget"
+              range
+              startAriaLabel="Minimum monthly budget"
+              endAriaLabel="Maximum monthly budget"
+              [min]="0"
+              [max]="1000"
+              [step]="50"
+              [displayWith]="formatDollars"
+              discrete
+            />
+            <span aria-hidden="true"
+              >${{ capacity.controls.budget.value[0] }}–${{
+                capacity.controls.budget.value[1]
+              }}</span
+            >
+          </div>
+        </form>
+      </cae-card>
+    }
+
     <!-- cae-tree (batch 3) — nested data, expandable, keyboard-navigable (roving focus +
          arrow keys from the CDK). Selecting a node announces it in a polite live region.
          Deferred (#85): below the fold, so MatTree splits into a lazy chunk off Forge's initial

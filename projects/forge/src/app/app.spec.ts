@@ -293,20 +293,24 @@ describe('App', () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     const el = fixture.nativeElement as HTMLElement;
-    // Exactly four @defer blocks — the structure tree, reference tabs, FAQ accordion, and tag row —
-    // each carrying a heavy Material module (MatTree/MatTabs/MatExpansion/MatChips) off the initial
-    // bundle. This is the regression guard for the #85 bundle win: deleting an @defer wrapper stays
-    // UNDER the 1mb budget error (so `ng build` wouldn't fail), but drops a block here → red test.
-    expect((await fixture.getDeferBlocks()).length).toBe(4);
+    // Exactly five @defer blocks — the capacity sliders, structure tree, reference tabs, FAQ
+    // accordion, and tag row — each carrying a heavy Material module (MatSlider/MatTree/MatTabs/
+    // MatExpansion/MatChips) off the initial bundle. This is the regression guard for the #85 bundle
+    // win: deleting an @defer wrapper stays UNDER the 1mb budget error (so `ng build` wouldn't fail),
+    // but drops a block here → red test. (The capacity slider card, #109, is the newest: MatSlider is
+    // heavy, so it's deferred rather than raising the budget.)
+    expect((await fixture.getDeferBlocks()).length).toBe(5);
     // The eager critical path (the create-workspace form) is present with NO defer block rendered...
     expect(el.querySelector('.forge-form-card')).not.toBeNull();
     // ...while the deferred demo sections are genuinely absent until rendered (proof they're lazy).
+    expect(el.querySelector('.forge-capacity-card')).toBeNull();
     expect(el.querySelector('cae-tree')).toBeNull();
     expect(el.querySelector('.forge-reference')).toBeNull();
     expect(el.querySelector('.forge-faq')).toBeNull();
     expect(el.querySelector('.forge-tags')).toBeNull();
     // Rendering the blocks brings each section in — so the content isn't lost, only deferred.
     await renderDeferred(fixture);
+    expect(el.querySelector('.forge-capacity-card')).not.toBeNull();
     expect(el.querySelector('cae-tree')).not.toBeNull();
     expect(el.querySelector('.forge-reference')).not.toBeNull();
     expect(el.querySelector('.forge-faq')).not.toBeNull();
@@ -406,6 +410,43 @@ describe('App', () => {
     fixture.detectChanges();
     expect(cmp['form'].getRawValue().pinned).toBe(true);
     expect(pin.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('round-trips the seats + budget cae-sliders through the deferred capacity form (#109)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    await renderDeferred(fixture); // the capacity card is @defer'd below the fold (#85, #109)
+    const cmp = fixture.componentInstance;
+    const card = (fixture.nativeElement as HTMLElement).querySelector(
+      '.forge-capacity-card',
+    ) as HTMLElement;
+    expect(card).not.toBeNull();
+
+    // Both sliders render (single seats + range budget), bound to the standalone capacity form.
+    expect(card.querySelectorAll('cae-slider').length).toBe(2);
+    // The single seats slider seeds from the model (writeValue → the rendered thumb; single-thumb
+    // reflection works in jsdom — the range thumbs need a real browser, #110).
+    const seatsThumb = card.querySelector('cae-slider input[matSliderThumb]') as HTMLInputElement;
+    expect(seatsThumb.value).toBe('10');
+    // The range budget slider renders two named thumbs bound to the [min, max] pair.
+    const startThumb = card.querySelector(
+      'cae-slider input[matSliderStartThumb]',
+    ) as HTMLInputElement;
+    const endThumb = card.querySelector('cae-slider input[matSliderEndThumb]') as HTMLInputElement;
+    expect(startThumb).not.toBeNull();
+    expect(endThumb).not.toBeNull();
+    expect(startThumb.getAttribute('aria-label')).toBe('Minimum monthly budget');
+    expect(endThumb.getAttribute('aria-label')).toBe('Maximum monthly budget');
+
+    // A programmatic setValue writes THROUGH the CVAs to the rendered controls (model → view): the
+    // single seats thumb reflects the new value in jsdom — a real CVA check, not a tautological
+    // FormGroup round-trip (range thumbs need a browser, #110). getRawValue then reads the model back,
+    // incl. the [start, end] tuple (the mode-dependent value seam).
+    cmp['capacity'].setValue({ seats: 25, budget: [150, 600] });
+    fixture.detectChanges();
+    expect(seatsThumb.value).toBe('25'); // model → view through the CVA writeValue
+    expect(cmp['capacity'].getRawValue().seats).toBe(25);
+    expect(cmp['capacity'].getRawValue().budget).toEqual([150, 600]);
   });
 
   it('shows the workspace structure as a cae-tree and announces a selection', async () => {
