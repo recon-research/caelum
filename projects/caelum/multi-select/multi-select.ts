@@ -37,13 +37,13 @@ export interface CaeMultiSelectOption {
  * doesn't ship on `mat-select`:
  * - a **chip summary trigger** (`mat-select-trigger` + `mat-chip-set`) that shows the chosen options
  *   as chips in the collapsed field — `p-multiSelect`'s signature look (removable-from-trigger chips
- *   are an additive follow-up, #136);
+ *   are an additive follow-up, #137);
  * - an **in-panel client-side filter** (a search input at the top of the panel), on by default like
  *   `p-multiSelect` (`filterable`). The default predicate is a case-insensitive label substring match;
  *   override `filterWith` for prefix/value matching. The filter input **swallows only printable keys**
  *   so mat-select's typeahead key manager doesn't hijack them, while Arrow/Enter/Escape/Tab still
  *   propagate to keep the panel keyboard-operable (real-browser focus + key behaviour is verified at
- *   the M4 a11y pass, #137).
+ *   the M4 a11y pass, #138).
  *
  * **Data-loss guard.** `mat-select` drops the selection for any option that unmounts, so a naive
  * filter would silently delete a chosen-but-filtered-out value from the form. {@link filteredOptions}
@@ -224,7 +224,7 @@ export class CaeMultiSelect extends CaeFormFieldControlBase<string[]> {
   protected onFilterKeydown(event: KeyboardEvent): void {
     // Type printable keys into the filter box instead of letting mat-select's typeahead key manager
     // hijack them; multi-character keys (ArrowDown, Enter, Escape, Tab, Home, End) still propagate to
-    // mat-select so the panel stays keyboard-operable. Real-browser focus + key behaviour: M4 (#137).
+    // mat-select so the panel stays keyboard-operable. Real-browser focus + key behaviour: M4 (#138).
     if (event.key.length === 1) event.stopPropagation();
   }
 
