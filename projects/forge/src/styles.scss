@@ -25,3 +25,123 @@ body {
   -moz-osx-font-smoothing: grayscale;
   transition: background var(--cae-motion-standard) var(--cae-easing-standard);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Forge app shell — relocated here from app.scss (#97). These rules are the page
+// FRAME (banner, main container, content panel, inline code), present regardless
+// of which cae-* demos App renders. Homing them globally (a) corrects ownership —
+// the shell is the frame, not a demo — and (b) keeps App's per-component
+// `anyComponentStyle` budget as headroom for the per-demo styles that actually
+// grow with each slice. Net-zero on the initial bundle: App is the eager root, so
+// its styles ship in the initial payload either way; this only changes which
+// budget bucket measures them. Token-driven (D-04); the only literals are the
+// hairline `1px` borders and relative `em` sizing (no width/relative-type token
+// exists) — a literal *colour* here would be a defect (Book 04 §3.6).
+// ─────────────────────────────────────────────────────────────────────────────
+app-root {
+  display: block;
+  min-height: 100dvh;
+}
+
+// The page banner is a cae-toolbar (#126) inside a <header> landmark. The toolbar
+// supplies the bar surface, height, and inline padding, so the header only needs
+// the separating hairline beneath it. Alignment note: mat-toolbar's inline padding
+// is Material's 16px = --cae-space-4 (the inline padding of .forge-main), so the
+// brand lines up with the panel content.
+.forge-bar {
+  border-block-end: 1px solid var(--cae-color-border);
+}
+
+.forge-bar__brand {
+  display: flex;
+  align-items: baseline;
+  gap: var(--cae-space-2);
+}
+
+.forge-bar__mark {
+  align-self: center;
+  inline-size: var(--cae-space-4);
+  block-size: var(--cae-space-4);
+  border-radius: var(--cae-radius-sm);
+  background: var(--cae-color-primary);
+}
+
+.forge-bar__title {
+  font-size: var(--cae-text-lg);
+  font-weight: var(--cae-weight-medium);
+}
+
+.forge-bar__sub {
+  color: var(--cae-color-on-surface-variant);
+  font-size: var(--cae-text-sm);
+}
+
+.forge-bar__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--cae-space-3);
+}
+
+.forge-help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--cae-space-5);
+  block-size: var(--cae-space-5);
+  padding: 0;
+  border: 1px solid var(--cae-color-border);
+  border-radius: var(--cae-radius-full);
+  background: var(--cae-surface-base);
+  color: var(--cae-color-on-surface-variant);
+  font-weight: var(--cae-weight-bold);
+  cursor: pointer;
+}
+
+.forge-help:focus-visible {
+  outline: var(--cae-focus-ring);
+  outline-offset: var(--cae-focus-ring-offset);
+}
+
+.forge-main {
+  display: flex;
+  justify-content: center;
+  padding: var(--cae-space-6) var(--cae-space-4);
+}
+
+.forge-panel {
+  inline-size: 100%;
+  max-inline-size: 56rem;
+  padding: var(--cae-space-6);
+  background: var(--cae-surface-base);
+  border: 1px solid var(--cae-color-border);
+  border-radius: var(--cae-radius-lg);
+  box-shadow: var(--cae-elevation-2);
+}
+
+.forge-panel__heading {
+  margin-block: 0 var(--cae-space-3);
+  font-family: var(--cae-font-heading);
+  font-size: var(--cae-text-xl);
+  font-weight: var(--cae-weight-bold);
+  line-height: var(--cae-line-heading);
+}
+
+.forge-panel__lead {
+  margin-block: 0 var(--cae-space-5);
+  max-inline-size: 52ch;
+  color: var(--cae-color-on-surface-variant);
+}
+
+.forge-panel__subheading {
+  margin-block: var(--cae-space-6) var(--cae-space-3);
+  font-size: var(--cae-text-lg);
+  font-weight: var(--cae-weight-medium);
+}
+
+code {
+  font-family: var(--cae-font-mono);
+  font-size: 0.9em;
+  padding-inline: var(--cae-space-1);
+  border-radius: var(--cae-radius-sm);
+  background: var(--cae-surface-sunken);
+}

@@ -1,101 +1,10 @@
-// Forge shell styles — token-driven (D-04). Every colour, space, and radius resolves to
+// Forge per-demo styles — token-driven (D-04). Every colour, space, and radius resolves to
 // a `--cae-*` variable; the only literals are hairline `1px` borders and relative `em`
 // sizing (no width/relative-type token exists). A literal *colour* would be a defect
-// (Book 04 §3.6).
-
-:host {
-  display: block;
-  min-height: 100dvh;
-}
-
-// The page banner is now a cae-toolbar (#126) inside this <header> landmark. The toolbar
-// supplies the bar surface, height, and inline padding, so the header only needs the
-// separating hairline beneath it (the layout — start/end groups + spacer — is the toolbar's).
-// Alignment note: mat-toolbar's inline padding is Material's 16px, which equals --cae-space-4
-// (the inline padding of .forge-main below), so the brand lines up with the panel content.
-.forge-bar {
-  border-block-end: 1px solid var(--cae-color-border);
-}
-
-.forge-bar__brand {
-  display: flex;
-  align-items: baseline;
-  gap: var(--cae-space-2);
-}
-
-.forge-bar__mark {
-  align-self: center;
-  inline-size: var(--cae-space-4);
-  block-size: var(--cae-space-4);
-  border-radius: var(--cae-radius-sm);
-  background: var(--cae-color-primary);
-}
-
-.forge-bar__title {
-  font-size: var(--cae-text-lg);
-  font-weight: var(--cae-weight-medium);
-}
-
-.forge-bar__sub {
-  color: var(--cae-color-on-surface-variant);
-  font-size: var(--cae-text-sm);
-}
-
-.forge-bar__actions {
-  display: flex;
-  align-items: center;
-  gap: var(--cae-space-3);
-}
-
-.forge-help {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  inline-size: var(--cae-space-5);
-  block-size: var(--cae-space-5);
-  padding: 0;
-  border: 1px solid var(--cae-color-border);
-  border-radius: var(--cae-radius-full);
-  background: var(--cae-surface-base);
-  color: var(--cae-color-on-surface-variant);
-  font-weight: var(--cae-weight-bold);
-  cursor: pointer;
-}
-
-.forge-help:focus-visible {
-  outline: var(--cae-focus-ring);
-  outline-offset: var(--cae-focus-ring-offset);
-}
-
-.forge-main {
-  display: flex;
-  justify-content: center;
-  padding: var(--cae-space-6) var(--cae-space-4);
-}
-
-.forge-panel {
-  inline-size: 100%;
-  max-inline-size: 56rem;
-  padding: var(--cae-space-6);
-  background: var(--cae-surface-base);
-  border: 1px solid var(--cae-color-border);
-  border-radius: var(--cae-radius-lg);
-  box-shadow: var(--cae-elevation-2);
-}
-
-.forge-panel__heading {
-  margin-block: 0 var(--cae-space-3);
-  font-family: var(--cae-font-heading);
-  font-size: var(--cae-text-xl);
-  font-weight: var(--cae-weight-bold);
-  line-height: var(--cae-line-heading);
-}
-
-.forge-panel__lead {
-  margin-block: 0 var(--cae-space-5);
-  max-inline-size: 52ch;
-  color: var(--cae-color-on-surface-variant);
-}
+// (Book 04 §3.6). The app SHELL/frame (banner, main, panel, inline code) lives in the global
+// `styles.scss` (#97) — homing it there corrects ownership and keeps this component
+// stylesheet's `anyComponentStyle` budget as headroom for the per-demo styles below, which
+// grow with each new cae-* slice.
 
 /* cae-split-button (#148) demo toolbar in the members card — lean styles only (per #97). */
 .forge-members-card__toolbar {
@@ -140,12 +49,6 @@
   color: var(--cae-color-on-surface-variant);
   text-align: center;
   cursor: context-menu;
-}
-
-.forge-panel__subheading {
-  margin-block: var(--cae-space-6) var(--cae-space-3);
-  font-size: var(--cae-text-lg);
-  font-weight: var(--cae-weight-medium);
 }
 
 .forge-reference {
@@ -369,14 +272,6 @@
   outline: var(--cae-focus-ring);
   outline-offset: var(--cae-focus-ring-offset);
   border-radius: var(--cae-radius-sm);
-}
-
-code {
-  font-family: var(--cae-font-mono);
-  font-size: 0.9em;
-  padding-inline: var(--cae-space-1);
-  border-radius: var(--cae-radius-sm);
-  background: var(--cae-surface-sunken);
 }
 
 .forge-swatches {
