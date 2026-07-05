@@ -24,14 +24,14 @@ Each milestone has a **goal**, **slices**, a verifiable **exit criterion**, a **
   - *Next slice candidates + the live resume point: the `CLAUDE.md` Status block.*
 - **Exit criterion:** a representative Forge screen renders on Material with theme parity; the provenance scan is green in CI; every rendered color/space comes from a token variable (no hardcoded values); preflight green.
 - **Leverage:** high — scaffolding, install wiring, Direct 1:1 ports, lint rules.
-- **Status:** ◐ in progress — the two prerequisites are DONE (the 20-book knowledge library, five audits green; and REPO-1 go-live — repo live at [github.com/recon-research/caelum](https://github.com/recon-research/caelum), `main` protected). The **Direct-component parity family** is the active workstream (~30 slices delivered, indexed above); the D-15 dialog/toast slice is COMPLETE. Metrics at the last merge: **292 tests** (255 lib + 37 forge), lib+Forge builds green, provenance GREEN, preflight PASS 0-skipped. Next slice candidates + the resume point live in the `CLAUDE.md` Status block; foundation decisions are `D-01..D-15` (ARCHITECTURE Appendix A).
+- **Status:** ☑ **done** (2026-07-04) — exit criterion met: a representative Forge screen renders on Material with theme parity, the provenance scan is GREEN in CI, every rendered colour/space comes from a token, and preflight is green. The **Direct-component parity family** is complete (~31 slices, indexed above); the D-15 dialog/toast slice landed; the non-form-field a11y seams (describedby #47, naming #70) are done. Metrics at M0 close: **310 tests** (272 lib + 38 forge), lib+Forge builds green, provenance GREEN, preflight PASS 0-skipped. Remaining Direct-component *parity extras* are `idea`-labelled follow-ups (not M0-blocking — they trickle in opportunistically or fold into M3). Foundation decisions are `D-01..D-15` (ARCHITECTURE Appendix A).
 
 ### M1 — Composed components
 - **Goal:** The common-case widgets that aren't drop-in but assemble from Material/CDK pieces.
-- **Slices:** ☐ ConfirmDialog wrapper · ☐ Menubar (`MatToolbar`+`MatMenu`) · ☐ MultiSelect w/ filter + chip summary · ☐ basic `MatTable` screens (sort/paginate/sticky/expandable) · ☐ TabMenu · ☐ ContextMenu (CDK Menu) · ☐ SplitButton
+- **Slices:** ☑ ConfirmDialog wrapper — delivered early as `cae-confirm` #101 (D-15) · ☐ Menubar (`MatToolbar`+`MatMenu`) · ☑ **MultiSelect** w/ filter + chip summary — `cae-multi-select` #135 (PR #136; in-panel filter opt-in/off in v1 pending accessible impl #138) · ☐ basic `MatTable` screens (sort/paginate/sticky/expandable — team's #1 dependence) · ☐ TabMenu · ☐ ContextMenu (CDK Menu) · ☐ SplitButton
 - **Exit criterion:** the common-case component set is implemented **and parity-verified** (functional + a11y + visual scenarios green per component).
 - **Leverage:** high — composition over documented Material/CDK primitives.
-- **Status:** ☐ not started.
+- **Status:** ◐ **in progress** — opened 2026-07-04 with `cae-multi-select` #135 (PR #136), the first M1 slice; ConfirmDialog wrapper already delivered as `cae-confirm` #101 (D-15). Next-slice candidates + the resume point live in the `CLAUDE.md` Status block.
 
 ### M2 — Adapters for the three gaps
 - **Goal:** Neutral interfaces + adapters for the three genuine gaps; each vetted candidate prototyped **in isolation** behind its adapter; provenance signed off (`D-07`/`D-08`/`D-09`).
