@@ -587,10 +587,28 @@
           Click a sortable header (Name, Role, Joined) to sort; the footer paginates client-side.
           The whole table is declared from a columns array and a data array.
         </p>
+
+        <!-- cae-split-button (#148, M1 composed) — a primary command joined to a secondary-action
+             dropdown, composed over MatButton + cae-menu. Composed-over-composed: activating it (or
+             any dropdown item) appends to the members signal, so the cae-table below grows live. -->
+        <div class="forge-members-card__toolbar">
+          <cae-split-button
+            label="New member"
+            [model]="memberActions"
+            ariaLabel="Add-member actions"
+            menuAriaLabel="More ways to add members"
+            (primaryClick)="addMember()"
+            (itemSelect)="runMemberAction($event)"
+          />
+          <!-- Persistent live region (text varies '' -> message) so a screen reader announces the
+               add; :empty collapses it before the first action (the cae-table empty-state pattern). -->
+          <span class="forge-members-card__note" role="status">{{ memberNote() }}</span>
+        </div>
+
         <cae-table
           caption="Workspace members"
           [columns]="memberColumns"
-          [data]="members"
+          [data]="members()"
           paginated
           [pageSize]="5"
           sortActive="name"

@@ -63,7 +63,7 @@ Below, the **current** selector is listed with the historical alias noted. Verif
 | PrimeNG (`p-*`) | Caelum (`cae-*`) | Material / CDK basis | Tier | Book |
 |---|---|---|---|---|
 | `p-button` (`pButton`) | `cae-button` | `MatButton` variants | Direct | 04 |
-| `p-splitbutton` | `cae-split-button` | `MatButton` + `MatMenu` | Compose | 09 |
+| `p-splitbutton` | `cae-split-button` | `MatButton` + `MatMenu` (via `cae-menu`; v1 #148 = required label + shared variant + optional-submit primary + data-driven dropdown; primary icon/per-half-appearance/`(dropdownClick)` → #149, rich menu items → #150) | Compose | 09 |
 | `p-speeddial` | `cae-speed-dial` | CDK overlay + animation | Build-M | 09 |
 
 ## Data

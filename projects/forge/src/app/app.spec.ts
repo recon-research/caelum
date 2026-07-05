@@ -609,6 +609,30 @@ describe('App', () => {
     expect(names[0]).toBe('Ada Lovelace');
   });
 
+  it('grows the roster live when the "New member" cae-split-button is activated (#148)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    await renderDeferred(fixture); // the split-button lives inside the deferred members card (#85, #148)
+    const card = (fixture.nativeElement as HTMLElement).querySelector(
+      '.forge-members-card',
+    ) as HTMLElement;
+
+    // The composed split-button renders, its primary command labelled.
+    const splitButton = card.querySelector('cae-split-button');
+    expect(splitButton).not.toBeNull();
+    const primary = splitButton!.querySelector('button') as HTMLButtonElement;
+    expect(primary.textContent).toContain('New member');
+
+    // Composed-over-composed: clicking the primary appends to the members signal that drives the
+    // cae-table (the roster count grows past its seven seeded rows), and the note records how.
+    const app = fixture.componentInstance;
+    const before = app['members']().length;
+    primary.click();
+    fixture.detectChanges();
+    expect(app['members']().length).toBe(before + 1);
+    expect(card.querySelector('.forge-members-card__note')?.textContent).toContain('New member');
+  });
+
   it('shows the workspace structure as a cae-tree and announces a selection', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();

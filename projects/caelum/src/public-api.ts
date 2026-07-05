@@ -73,6 +73,9 @@ export * from 'caelum/multi-select';
 // --- Composed (M1): table (#141 — declarative data table over MatTable + MatSort + MatPaginator) ---
 export * from 'caelum/table';
 
+// --- Composed (M1): split-button (#148 — primary command + secondary-action dropdown over MatButton + cae-menu) ---
+export * from 'caelum/split-button';
+
 // --- Services: toast (#96, D-15 — the first service passthrough, over MatSnackBar) ---
 export * from 'caelum/toast';
 
