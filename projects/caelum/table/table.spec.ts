@@ -103,15 +103,27 @@ describe('CaeTable', () => {
     expect(dataRows().length).toBe(2);
   });
 
-  it('shows the empty message (and no data rows) when data is empty', () => {
+  it('shows the empty message in a persistent role=status live region when data is empty', () => {
     setup({ data: [], emptyMessage: 'Nobody here.' });
     expect(dataRows().length).toBe(0);
-    expect(el.querySelector('.cae-table__empty')?.textContent!.trim()).toBe('Nobody here.');
+    const region = el.querySelector('.cae-table__empty') as HTMLElement;
+    expect(region.getAttribute('role')).toBe('status');
+    expect(region.getAttribute('aria-live')).toBe('polite');
+    expect(region.textContent!.trim()).toBe('Nobody here.');
   });
 
-  it('hides the empty message when there is data', () => {
-    setup();
-    expect(el.querySelector('.cae-table__empty')).toBeNull();
+  it('keeps the empty region mounted-but-empty with data (so a later empty transition is announced)', () => {
+    // The region persists (never @if-stamped with its text) — only its text varies. Start with
+    // data (region empty), then clear it: the SAME element gains text, which a live region announces.
+    setup({ emptyMessage: 'Nobody here.' });
+    const region = () => el.querySelector('.cae-table__empty') as HTMLElement;
+    expect(region()).not.toBeNull(); // always mounted
+    expect(region().textContent!.trim()).toBe(''); // no text while rows are present
+    const first = region();
+    ref.setInput('data', []);
+    flush();
+    expect(region()).toBe(first); // same element, not a re-stamped one
+    expect(region().textContent!.trim()).toBe('Nobody here.');
   });
 
   it('renders a visible <caption> as the table accessible name', () => {
@@ -125,6 +137,25 @@ describe('CaeTable', () => {
     expect(el.querySelector('table')?.getAttribute('aria-label')).toBe('People');
     setup();
     expect(el.querySelector('table')?.hasAttribute('aria-label')).toBe(false);
+  });
+
+  it('suppresses aria-label when a caption is set, so the visible caption wins as the name', () => {
+    setup({ caption: 'Team roster', ariaLabel: 'People' });
+    // Both set: caption is the visible accessible name; aria-label must NOT also be present (else
+    // it would override the caption — the label-in-name mismatch).
+    expect(el.querySelector('table > caption')?.textContent!.trim()).toBe('Team roster');
+    expect(el.querySelector('table')?.hasAttribute('aria-label')).toBe(false);
+  });
+
+  it('throws a clear cae-table error on a duplicate column key (dev config guard)', () => {
+    expect(() =>
+      setup({
+        columns: [
+          { key: 'name', header: 'Name' },
+          { key: 'name', header: 'Name again' },
+        ],
+      }),
+    ).toThrowError(/cae-table: duplicate column key/);
   });
 
   it('reacts to a data change, re-rendering the rows', () => {

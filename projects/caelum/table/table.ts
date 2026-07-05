@@ -5,11 +5,14 @@ import {
   computed,
   effect,
   input,
+  isDevMode,
+  OnInit,
   viewChild,
 } from '@angular/core';
 import { MatPaginator, MatPaginatorModule } from '@angular/material/paginator';
-import { MatSort, MatSortModule, SortDirection } from '@angular/material/sort';
+import { MatSort, MatSortModule } from '@angular/material/sort';
 import { MatTableDataSource, MatTableModule } from '@angular/material/table';
+import type { CaeSortDirection } from 'caelum/shared';
 
 /**
  * A column in a {@link CaeTable}. `key` indexes the row object for the displayed value and
@@ -17,7 +20,11 @@ import { MatTableDataSource, MatTableModule } from '@angular/material/table';
  * the column into click/keyboard sorting.
  */
 export interface CaeTableColumn {
-  /** Property read off each row for this column's cell text, and the column's sort id. */
+  /**
+   * A **flat** property name read off each row for this column's cell text, and the column's sort
+   * id. Dot paths (p-table `field="user.name"`) are not resolved in v1 — a nested key renders a
+   * blank cell and sorts as a no-op; flatten the row or use a future value-accessor hook (#143).
+   */
   key: string;
   /** Visible header-cell label. */
   header: string;
@@ -42,18 +49,24 @@ export interface CaeTableColumn {
  *
  * **Sort + pagination are client-side via `MatTableDataSource`** (reach-for ladder D-13 — use
  * Material's own facility rather than hand-rolling comparators/slicing). `data`/`sort`/`paginator`
- * are wired into the data source through `effect`s, so the table re-renders when any signal
- * changes. Initial sort is optional (`sortActive`/`sortDirection`).
+ * are wired into the data source through `effect`s, so the rendered rows track `data()` and the
+ * live sort. Sort and page size are **initial values**: after mount the header and the paginator's
+ * page-size menu own the live sort/page state (a programmatic `sortDirection`/`pageSize` change
+ * updates the control but is not re-applied, so it never overrides the user's own choice on a data
+ * refresh — dynamic programmatic control is out of v1 scope).
  *
  * **a11y.** Renders a native `<table>` with Material's row/cell roles; a `sortable` column's
  * header is a `mat-sort-header` (Enter/Space to sort, reflects `aria-sort`). Give the table an
- * accessible name with a visible `caption` (preferred) **or** `ariaLabel` — **not both** (an
- * `aria-label` overrides the `<caption>` as the accessible name, the "label in name" mismatch of
- * the #70 naming seam); prefer the visible caption.
+ * accessible name with a visible `caption` (preferred) **or** `ariaLabel` — **not both**: setting
+ * both keeps the caption as the accessible name (the `aria-label` is suppressed when a caption is
+ * present, avoiding the "label in name" mismatch of the #70 naming seam). The empty state is a
+ * persistent `role="status"` live region so a filter-to-empty transition is announced. Known
+ * limitation (M4 real-browser a11y, #41 family): MatPaginator does not announce the new range on a
+ * page change, and its control cluster is not named to the table.
  *
- * **v1 scope** (#141): text columns, sort, client-side pagination. Custom cell templates
- * (p-table `pTemplate` parity), sticky header/columns, expandable rows, row selection, and
- * server-side data are filed follow-ups.
+ * **v1 scope** (#141): text columns, sort, client-side pagination. Follow-ups: custom cell
+ * templates (p-table `pTemplate` parity) **#143**; sticky / expandable / row-selection **#144**;
+ * server-side/lazy data, global filter, column resize/reorder **#145**.
  *
  * Zoneless-compatible: `OnPush` + signal inputs (D-12). No `color` input — theming is free via
  * the token bridge (D-04).
@@ -74,7 +87,7 @@ export interface CaeTableColumn {
       [dataSource]="dataSource"
       [matSortActive]="sortActive()"
       [matSortDirection]="sortDirection()"
-      [attr.aria-label]="ariaLabel() || null"
+      [attr.aria-label]="(caption() ? null : ariaLabel()) || null"
     >
       @if (caption()) {
         <caption>
@@ -99,9 +112,11 @@ export interface CaeTableColumn {
       <tr mat-row *matRowDef="let row; columns: columnKeys()"></tr>
     </table>
 
-    @if (!data().length) {
-      <div class="cae-table__empty">{{ emptyMessage() }}</div>
-    }
+    <!-- Persistent live region (always mounted, text varies) so a data-becomes-empty transition is
+         ANNOUNCED (WCAG 4.1.3). A region stamped together with its text via @if is commonly not
+         announced (the Forge convention); here the text goes '' -> emptyMessage on the transition.
+         :empty hides it (no padded strip) while rows are present. -->
+    <div class="cae-table__empty" role="status" aria-live="polite">{{ emptyText() }}</div>
 
     @if (paginated()) {
       <mat-paginator [pageSize]="pageSize()" [pageSizeOptions]="pageSizeOptions()"></mat-paginator>
@@ -114,15 +129,20 @@ export interface CaeTableColumn {
     table {
       width: 100%;
     }
-    /* Neutral empty-state hint (token-only): muted text, comfortable padding. */
+    /* Neutral empty-state hint (token-only): muted text, comfortable padding. currentColor fallback
+       inherits the themed on-surface text (legible in light + dark) when the token is unresolved. */
     .cae-table__empty {
       padding: var(--cae-space-4);
-      color: var(--mat-sys-on-surface-variant, rgba(0, 0, 0, 0.6));
+      color: var(--mat-sys-on-surface-variant, currentColor);
       text-align: center;
+    }
+    /* When rows are present emptyText() is '', so the region collapses (no padded strip). */
+    .cae-table__empty:empty {
+      display: none;
     }
   `,
 })
-export class CaeTable<T = Record<string, unknown>> {
+export class CaeTable<T = Record<string, unknown>> implements OnInit {
   /** Column definitions, in display order. */
   readonly columns = input.required<readonly CaeTableColumn[]>();
   /** Row data. Copied into the internal `MatTableDataSource` whenever it changes. */
@@ -137,18 +157,25 @@ export class CaeTable<T = Record<string, unknown>> {
 
   /** Opt into a client-side paginator below the table. */
   readonly paginated = input(false, { transform: booleanAttribute });
-  /** Rows per page when {@link paginated}. */
+  /**
+   * **Initial** rows per page. After mount the user owns the live page size via the paginator's
+   * page-size menu; a later programmatic change is not re-applied (it would override that choice on
+   * a data refresh). {@link pageSizeOptions} is genuinely reactive.
+   */
   readonly pageSize = input(10);
-  /** Page-size choices offered by the paginator. */
+  /** Page-size choices offered by the paginator (reactive). */
   readonly pageSizeOptions = input<readonly number[]>([5, 10, 25, 50]);
 
   /** Initial sort column (a column `key`); empty for no initial sort. */
   readonly sortActive = input('');
-  /** Initial sort direction for {@link sortActive}. */
-  readonly sortDirection = input<SortDirection>('');
+  /** Initial sort direction for {@link sortActive} (after mount the header owns the live sort). */
+  readonly sortDirection = input<CaeSortDirection>('');
 
   /** The `mat-table` `displayedColumns` — derived from the column config order. */
   protected readonly columnKeys = computed(() => this.columns().map((c) => c.key));
+
+  /** Empty-state text: '' when there are rows (so the live region collapses), else the message. */
+  protected readonly emptyText = computed(() => (this.data().length ? '' : this.emptyMessage()));
 
   /** Client-side data source; sort + pagination are wired into it by the effects below. */
   protected readonly dataSource = new MatTableDataSource<T>([]);
@@ -170,9 +197,38 @@ export class CaeTable<T = Record<string, unknown>> {
     });
   }
 
+  /**
+   * Dev-only config validation. In `ngOnInit` (not an effect) so it runs BEFORE the first template
+   * render — a clear cae-table message then preempts the framework-internal crash a duplicate column
+   * key would otherwise cause (Angular NG0955 in the `@for` track, or MatTable's duplicate-column
+   * error). Zero prod cost. Required inputs are already set by `ngOnInit`.
+   */
+  ngOnInit(): void {
+    if (isDevMode()) this.validateConfig();
+  }
+
   /** Nullish-safe cell text: renders '' (an empty cell) rather than the string "null"/"undefined". */
   protected cellText(row: T, key: string): string {
-    const value = (row as Record<string, unknown>)[key];
+    // Guard a null/undefined row (a malformed data source that violates the declared `T[]`) so one
+    // bad row does not throw and take down the whole table.
+    const value = row == null ? undefined : (row as Record<string, unknown>)[key];
     return value == null ? '' : String(value);
+  }
+
+  /** Dev-only: fail fast (clear message) on a duplicate column key; warn on a non-sortable sort. */
+  private validateConfig(): void {
+    const keys = this.columns().map((c) => c.key);
+    const dupes = [...new Set(keys.filter((k, i) => keys.indexOf(k) !== i))];
+    if (dupes.length) {
+      throw new Error(
+        `cae-table: duplicate column key(s) "${dupes.join('", "')}" — each CaeTableColumn.key must be unique (it is the matColumnDef id, the @for track key, and the sort id).`,
+      );
+    }
+    const active = this.sortActive();
+    if (active && !this.columns().some((c) => c.key === active && c.sortable)) {
+      console.warn(
+        `cae-table: sortActive="${active}" is not a sortable column — the data sorts but no sort header (or aria-sort) renders for it.`,
+      );
+    }
   }
 }
