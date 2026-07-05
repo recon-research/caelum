@@ -31,6 +31,7 @@ import { CaeAutocomplete, type CaeAutocompleteOption } from 'caelum/autocomplete
 import { CaeInput, type CaeErrorMessages } from 'caelum/input';
 import { CaeListbox, type CaeListboxOption } from 'caelum/listbox';
 import { CaeMenu, CaeMenuItem } from 'caelum/menu';
+import { CaeMenubar, type CaeMenubarItem } from 'caelum/menubar';
 import { CaeMultiSelect, type CaeMultiSelectOption } from 'caelum/multi-select';
 import { CaeRadio, CaeRadioOption } from 'caelum/radio';
 import { CaeSelect, CaeSelectOption } from 'caelum/select';
@@ -112,6 +113,7 @@ const SWATCHES: ReadonlyArray<{ token: string; label: string }> = [
     CaeInput,
     CaeListbox,
     CaeMenu,
+    CaeMenubar,
     CaeMultiSelect,
     CaeRadio,
     CaeSelect,
@@ -365,6 +367,53 @@ export class App {
       },
     ]);
     this.lastMemberAction.set(via);
+  }
+
+  /**
+   * The "Workspace command bar" `cae-menubar` demo (#153, M1 composed) — a horizontal application
+   * menu over `MatToolbar` + `cae-menu`, with CDK roving keyboard across the top-level items.
+   * Composed-over-composed: selecting any command records it in {@link commandLog} and the live
+   * region, so the menubar drives visible Forge state. `Help` is a disabled top-level group (roving
+   * skips it); `Delete` is a disabled item inside `Edit`.
+   */
+  protected readonly commandGroups: readonly CaeMenubarItem[] = [
+    {
+      label: 'File',
+      items: [
+        { value: 'new', label: 'New workspace' },
+        { value: 'open', label: 'Open recent' },
+        { value: 'save', label: 'Save changes' },
+      ],
+    },
+    {
+      label: 'Edit',
+      items: [
+        { value: 'rename', label: 'Rename workspace' },
+        { value: 'duplicate', label: 'Duplicate' },
+        { value: 'delete', label: 'Delete', disabled: true },
+      ],
+    },
+    {
+      label: 'View',
+      items: [
+        { value: 'compact', label: 'Compact density' },
+        { value: 'comfortable', label: 'Comfortable density' },
+      ],
+    },
+    { label: 'Help', disabled: true, items: [{ value: 'docs', label: 'Documentation' }] },
+  ];
+  protected readonly lastCommand = signal('');
+  /** Recent commands, newest first, capped — a small visible history of menubar selections. */
+  protected readonly commandLog = signal<readonly string[]>([]);
+  /** Persistent live-region text (empty until the first command) so the announcement is reliable. */
+  protected readonly commandNote = computed(() =>
+    this.lastCommand() ? `Ran: ${this.lastCommand()}` : '',
+  );
+
+  /** Run a menubar command: record it in the live region and prepend it to the visible log. */
+  protected runCommand(item: CaeMenuItem): void {
+    this.lastCommand.set(item.label);
+    this.commandLog.update((log) => [item.label, ...log].slice(0, 5));
   }
 
   /**

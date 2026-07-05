@@ -76,6 +76,9 @@ export * from 'caelum/table';
 // --- Composed (M1): split-button (#148 — primary command + secondary-action dropdown over MatButton + cae-menu) ---
 export * from 'caelum/split-button';
 
+// --- Composed (M1): menubar (#153 — horizontal application menu bar over MatToolbar + cae-menu, roving keyboard) ---
+export * from 'caelum/menubar';
+
 // --- Services: toast (#96, D-15 — the first service passthrough, over MatSnackBar) ---
 export * from 'caelum/toast';
 
