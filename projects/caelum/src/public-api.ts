@@ -67,6 +67,9 @@ export * from 'caelum/listbox';
 // --- Form controls: autocomplete (#119 — typeahead combobox CVA over matAutocomplete) ---
 export * from 'caelum/autocomplete';
 
+// --- Composed (M1): multi-select (#135 — string[] CVA over mat-select[multiple] + filter + chips) ---
+export * from 'caelum/multi-select';
+
 // --- Services: toast (#96, D-15 — the first service passthrough, over MatSnackBar) ---
 export * from 'caelum/toast';
 

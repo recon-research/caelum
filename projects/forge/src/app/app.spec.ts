@@ -322,20 +322,21 @@ describe('App', () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     const el = fixture.nativeElement as HTMLElement;
-    // Exactly seven @defer blocks — the capacity sliders, modules listbox, timezone autocomplete,
-    // structure tree, reference tabs, FAQ accordion, and tag row — each carrying a heavy Material
-    // module (MatSlider/MatList/MatAutocomplete/MatTree/MatTabs/MatExpansion/MatChips) off the initial
-    // bundle. This is the regression guard for the #85 bundle win: deleting an @defer wrapper stays
-    // UNDER the 1mb budget error (so `ng build` wouldn't fail), but drops a block here → red test.
-    // (The timezone autocomplete card, #119, is the newest: matAutocomplete's overlay is heavy, so
-    // it's deferred rather than raising the budget.)
-    expect((await fixture.getDeferBlocks()).length).toBe(7);
+    // Exactly eight @defer blocks — the capacity sliders, modules listbox, timezone autocomplete,
+    // skills multi-select, structure tree, reference tabs, FAQ accordion, and tag row — each carrying
+    // a heavy Material module (MatSlider/MatList/MatAutocomplete/MatSelect+MatChips/MatTree/MatTabs/
+    // MatExpansion/MatChips) off the initial bundle. This is the regression guard for the #85 bundle
+    // win: deleting an @defer wrapper stays UNDER the 1mb budget error (so `ng build` wouldn't fail),
+    // but drops a block here → red test. (The skills multi-select card, #135, is the newest: the
+    // mat-select + mat-chips overlays are heavy, so it's deferred rather than raising the budget.)
+    expect((await fixture.getDeferBlocks()).length).toBe(8);
     // The eager critical path (the create-workspace form) is present with NO defer block rendered...
     expect(el.querySelector('.forge-form-card')).not.toBeNull();
     // ...while the deferred demo sections are genuinely absent until rendered (proof they're lazy).
     expect(el.querySelector('.forge-capacity-card')).toBeNull();
     expect(el.querySelector('.forge-modules-card')).toBeNull();
     expect(el.querySelector('.forge-timezone-card')).toBeNull();
+    expect(el.querySelector('.forge-skills-card')).toBeNull();
     expect(el.querySelector('cae-tree')).toBeNull();
     expect(el.querySelector('.forge-reference')).toBeNull();
     expect(el.querySelector('.forge-faq')).toBeNull();
@@ -345,6 +346,7 @@ describe('App', () => {
     expect(el.querySelector('.forge-capacity-card')).not.toBeNull();
     expect(el.querySelector('.forge-modules-card')).not.toBeNull();
     expect(el.querySelector('.forge-timezone-card')).not.toBeNull();
+    expect(el.querySelector('.forge-skills-card')).not.toBeNull();
     expect(el.querySelector('cae-tree')).not.toBeNull();
     expect(el.querySelector('.forge-reference')).not.toBeNull();
     expect(el.querySelector('.forge-faq')).not.toBeNull();
@@ -548,6 +550,37 @@ describe('App', () => {
     const error = card.querySelector('mat-error') as HTMLElement;
     expect(error).not.toBeNull();
     expect(error.textContent).toContain('Choose a timezone');
+  });
+
+  it('summarizes the skills cae-multi-select as chips and surfaces its required error (#135)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    await renderDeferred(fixture); // the skills card is @defer'd below the fold (#85, #135)
+    const cmp = fixture.componentInstance;
+    const card = (fixture.nativeElement as HTMLElement).querySelector(
+      '.forge-skills-card',
+    ) as HTMLElement;
+    expect(card).not.toBeNull();
+
+    // Model → view: a programmatic setValue reflects onto the collapsed field as chip summary (a real
+    // string[] round-trip through the CVA, not a tautological FormControl read).
+    cmp['skills'].setValue(['angular', 'rxjs']);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const chipText = Array.from(card.querySelectorAll('mat-chip')).map((c) =>
+      c.textContent?.trim(),
+    );
+    expect(chipText).toEqual(['Angular', 'RxJS']);
+    expect(cmp['skills'].value).toEqual(['angular', 'rxjs']);
+
+    // The required validator treats an empty array as invalid — clear + touch surfaces the message.
+    cmp['skills'].setValue([]);
+    cmp['skills'].markAsTouched();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const error = card.querySelector('mat-error') as HTMLElement;
+    expect(error).not.toBeNull();
+    expect(error.textContent).toContain('Choose at least one skill');
   });
 
   it('shows the workspace structure as a cae-tree and announces a selection', async () => {

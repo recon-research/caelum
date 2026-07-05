@@ -31,6 +31,7 @@ import { CaeAutocomplete, type CaeAutocompleteOption } from 'caelum/autocomplete
 import { CaeInput, type CaeErrorMessages } from 'caelum/input';
 import { CaeListbox, type CaeListboxOption } from 'caelum/listbox';
 import { CaeMenu, CaeMenuItem } from 'caelum/menu';
+import { CaeMultiSelect, type CaeMultiSelectOption } from 'caelum/multi-select';
 import { CaeRadio, CaeRadioOption } from 'caelum/radio';
 import { CaeSelect, CaeSelectOption } from 'caelum/select';
 import { CaeSelectButton, CaeSelectButtonOption } from 'caelum/select-button';
@@ -98,6 +99,7 @@ const SWATCHES: ReadonlyArray<{ token: string; label: string }> = [
     CaeInput,
     CaeListbox,
     CaeMenu,
+    CaeMultiSelect,
     CaeRadio,
     CaeSelect,
     CaeSelectButton,
@@ -263,6 +265,27 @@ export class App {
     { value: 'europe/london', label: 'Europe / London' },
     { value: 'europe/berlin', label: 'Europe / Berlin' },
     { value: 'asia/tokyo', label: 'Asia / Tokyo' },
+  ];
+
+  /**
+   * A standalone required control for the deferred "Required skills" cae-multi-select demo (#135) —
+   * a multi-value select round-trips the chosen `string[]` through a reactive control, with an
+   * in-panel filter, a chip summary in the collapsed field, and an inline `<mat-error>` on the
+   * required validator (an empty array is invalid). Deferred (#85): mat-select + mat-chips overlay
+   * modules are heavy, so it's `@defer (on idle)`'d off the initial bundle.
+   */
+  protected readonly skills = new FormControl<string[]>([], {
+    nonNullable: true,
+    validators: [Validators.required],
+  });
+  /** The skill options, as data (the `CaeMultiSelectOption[]` seam). */
+  protected readonly skillOptions: readonly CaeMultiSelectOption[] = [
+    { value: 'angular', label: 'Angular' },
+    { value: 'typescript', label: 'TypeScript' },
+    { value: 'rxjs', label: 'RxJS' },
+    { value: 'a11y', label: 'Accessibility' },
+    { value: 'testing', label: 'Testing' },
+    { value: 'design-systems', label: 'Design systems' },
   ];
 
   /**

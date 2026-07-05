@@ -1,12 +1,13 @@
 /**
  * Secondary entry point `caelum/form-field` (issue #46, extracted from #29/#47) — the
  * shared base for Caelum's `mat-form-field`-wrapping form controls (`cae-input`,
- * `cae-textarea`, `cae-select`). It ships the abstract `CaeFormFieldControlBase` directive:
- * the string `ControlValueAccessor` seam plus the validation-error-forwarding bridge that
- * all three controls previously carried byte-for-byte. Unlike `caelum/shared` (type-only),
- * this entry point carries runtime code, so it lives on its own so the three controls can
- * extend one copy (ng-packagr requires each source file to belong to exactly one entry
- * point). Also re-exported from the primary `caelum` barrel.
+ * `cae-textarea`, `cae-select`, `cae-autocomplete`, and `cae-multi-select`). It ships the
+ * abstract `CaeFormFieldControlBase` directive: the `ControlValueAccessor` seam (generic over
+ * the value type — `string` by default, `string[]` for `cae-multi-select`; #135) plus the
+ * validation-error-forwarding bridge the controls previously carried byte-for-byte. Unlike
+ * `caelum/shared` (type-only), this entry point carries runtime code, so it lives on its own
+ * so the controls can extend one copy (ng-packagr requires each source file to belong to
+ * exactly one entry point). Also re-exported from the primary `caelum` barrel.
  *
  * The base is thus mechanically part of the public API (the packaging model publishes every
  * entry point and the three controls import its type across entry points, so it cannot be
@@ -41,12 +42,12 @@ export type { CaeErrorMessages, CaeFormFieldAppearance } from 'caelum/shared';
 
 /**
  * `CaeFormFieldControlBase` — the abstract base for Caelum's `mat-form-field`-wrapping form
- * controls (`cae-input`, `cae-textarea`, `cae-select`). It is an *abstract directive*
- * (`@Directive()`, no selector), never used on its own; each control `extends` it and adds
- * its own `@Component` decorator, template, and inner Material control. This is Angular's
- * sanctioned way to share inputs/lifecycle/DI across components (mirroring Material's own
- * control bases), and it consolidates the two seams all three controls duplicated verbatim
- * (issue #46).
+ * controls (`cae-input`, `cae-textarea`, `cae-select`, `cae-autocomplete`, `cae-multi-select`).
+ * It is an *abstract directive* (`@Directive()`, no selector), never used on its own; each
+ * control `extends` it and adds its own `@Component` decorator, template, and inner Material
+ * control. This is Angular's sanctioned way to share inputs/lifecycle/DI across components
+ * (mirroring Material's own control bases), and it consolidates the two seams the controls
+ * duplicated verbatim (issue #46). Generic over the value type `T` (default `string`; #135).
  *
  * The `Base` suffix is deliberate: it disambiguates from Material's `MatFormFieldControl` (a
  * *different* concept — the contract a control IMPLEMENTS to sit INSIDE a `mat-form-field`,
@@ -59,12 +60,16 @@ export type { CaeErrorMessages, CaeFormFieldAppearance } from 'caelum/shared';
  * the abstract `updateInnerErrorState`) as the control set grows. Pin a version if you subclass
  * it externally (revisited by #54).
  *
- * 1. **String `ControlValueAccessor`.** These controls own an inner Material control, so the
- *    consumer binds `[(ngModel)]`/`[formControl]` to the OUTER `<cae-*>` and the value round-trips
- *    through here (Book 07 §3.1). The value seam is a `string` (not a `model()`) to match the
- *    PrimeNG migration target. Subclasses push a new value out with {@link commitValue} once they
- *    decide it is final (`cae-input`/`cae-textarea` buffer IME composition first; `cae-select`
- *    commits on each `selectionChange`).
+ * 1. **`ControlValueAccessor`, generic over the value type `T` (default `string`).** These controls
+ *    own an inner Material control, so the consumer binds `[(ngModel)]`/`[formControl]` to the OUTER
+ *    `<cae-*>` and the value round-trips through here (Book 07 §3.1). The value seam is a plain value
+ *    (not a `model()`) to match the PrimeNG migration target — a `string` for the single-value
+ *    controls (`cae-input`/`cae-textarea`/`cae-select`/`cae-autocomplete`), a `string[]` for
+ *    `cae-multi-select`. A subclass sets `T` and, for a non-string empty, overrides {@link emptyValue}
+ *    (the default `''` keeps the single-value controls source-unchanged; multi-select returns `[]`),
+ *    then pushes a new value out with {@link commitValue} once it decides the value is final
+ *    (`cae-input`/`cae-textarea` buffer IME composition first; `cae-select` commits on each
+ *    `selectionChange`; `cae-multi-select` commits the new array).
  * 2. **Validation-error forwarding (#29/#47).** Because the consumer's control binds to the outer
  *    element, the inner Material control has no `NgControl` and its error state stays inert (Book
  *    07 §3.3). This base self-injects the OUTER `NgControl` (so it drops the `NG_VALUE_ACCESSOR`
@@ -85,7 +90,7 @@ export type { CaeErrorMessages, CaeFormFieldAppearance } from 'caelum/shared';
  * API (provisional on #9; Book 01 §3.2).
  */
 @Directive()
-export abstract class CaeFormFieldControlBase implements ControlValueAccessor, DoCheck {
+export abstract class CaeFormFieldControlBase<T = string> implements ControlValueAccessor, DoCheck {
   // --- Shared form-field inputs (identical across the three controls) ---
   /** Floating label text; omitted → no label. Prefer over placeholder for a11y. */
   readonly label = input('');
@@ -116,12 +121,24 @@ export abstract class CaeFormFieldControlBase implements ControlValueAccessor, D
   readonly errorMessages = input<CaeErrorMessages>({});
 
   // --- CVA value + disabled state ---
-  /** The current string value; bound by each subclass template into its inner control. */
-  protected readonly value = signal('');
+  /**
+   * The control's empty value — `''` by default (the single-value controls), overridden to `[]` by
+   * `cae-multi-select` (#135). A protected METHOD, not a constructor arg, so a subclass sets it by
+   * override with no constructor of its own: it is called from the `value` field initializer below,
+   * and a prototype method resolves to the subclass override even during `super()` (unlike a subclass
+   * *field*, which initializes only after `super()` returns). This keeps the generic value seam
+   * DI-clean (no constructor parameter → no `prefer-inject` lint / NG2016) and leaves the string
+   * controls source-unchanged.
+   */
+  protected emptyValue(): T {
+    return '' as T;
+  }
+  /** The current value; bound by each subclass template into its inner control. */
+  protected readonly value = signal<T>(this.emptyValue());
   private readonly formDisabled = signal(false);
   /** Template disable OR a reactive-forms `setDisabledState` disable. */
   protected readonly isDisabled = computed(() => this.disabled() || this.formDisabled());
-  private onChangeFn: (value: string) => void = () => {};
+  private onChangeFn: (value: T) => void = () => {};
   /** Bound to the inner control's blur/focusout by each subclass template. */
   protected onTouched: () => void = () => {};
 
@@ -208,20 +225,20 @@ export abstract class CaeFormFieldControlBase implements ControlValueAccessor, D
   }
 
   /**
-   * Push a new string value out through the CVA. Subclasses call this from their view handler
-   * once they've decided the value is final (e.g. after IME composition ends, or on a select
-   * change) — the base stays agnostic to *when* a value is committed.
+   * Push a new value out through the CVA. Subclasses call this from their view handler once
+   * they've decided the value is final (e.g. after IME composition ends, or on a select change) —
+   * the base stays agnostic to *when* a value is committed.
    */
-  protected commitValue(value: string): void {
+  protected commitValue(value: T): void {
     this.value.set(value);
     this.onChangeFn(value);
   }
 
   // --- ControlValueAccessor ---
-  writeValue(value: string): void {
-    this.value.set(value ?? '');
+  writeValue(value: T): void {
+    this.value.set(value ?? this.emptyValue());
   }
-  registerOnChange(fn: (value: string) => void): void {
+  registerOnChange(fn: (value: T) => void): void {
     this.onChangeFn = fn;
   }
   registerOnTouched(fn: () => void): void {
