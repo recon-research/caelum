@@ -32,6 +32,7 @@ import { CaeInput, type CaeErrorMessages } from 'caelum/input';
 import { CaeListbox, type CaeListboxOption } from 'caelum/listbox';
 import { CaeMenu, CaeMenuItem } from 'caelum/menu';
 import { CaeMenubar, type CaeMenubarItem } from 'caelum/menubar';
+import { CaeContextMenu } from 'caelum/context-menu';
 import { CaeMultiSelect, type CaeMultiSelectOption } from 'caelum/multi-select';
 import { CaeRadio, CaeRadioOption } from 'caelum/radio';
 import { CaeSelect, CaeSelectOption } from 'caelum/select';
@@ -114,6 +115,7 @@ const SWATCHES: ReadonlyArray<{ token: string; label: string }> = [
     CaeListbox,
     CaeMenu,
     CaeMenubar,
+    CaeContextMenu,
     CaeMultiSelect,
     CaeRadio,
     CaeSelect,
@@ -414,6 +416,36 @@ export class App {
   protected runCommand(item: CaeMenuItem): void {
     this.lastCommand.set(item.label);
     this.commandLog.update((log) => [item.label, ...log].slice(0, 5));
+  }
+
+  /**
+   * The "Quick actions" `cae-context-menu` demo (#157, M1 composed) — a right-click menu built on
+   * the CDK Menu family (`cdkContextMenuTriggerFor`), a *different* primitive from the MatMenu-based
+   * `cae-menu`/`cae-menubar`/`cae-split-button`. Right-clicking the target panel opens a data-driven
+   * menu; selecting an action records it in {@link quickActionLog} and the live region, so the
+   * context menu drives visible Forge state. `Archive` is a disabled item (the CDK menu roves to
+   * it and announces it, but it is not activatable).
+   * Deferred (#85/#142): `@angular/cdk/menu` is new to Forge, so `@defer (on idle)` keeps the CDK
+   * menu family + this demo in their own lazy chunk off the initial bundle.
+   */
+  protected readonly quickActions: readonly CaeMenuItem[] = [
+    { value: 'refresh', label: 'Refresh data' },
+    { value: 'duplicate', label: 'Duplicate view' },
+    { value: 'export', label: 'Export as CSV' },
+    { value: 'archive', label: 'Archive', disabled: true },
+  ];
+  protected readonly lastQuickAction = signal('');
+  /** Recent quick actions, newest first, capped — a small visible history of context-menu picks. */
+  protected readonly quickActionLog = signal<readonly string[]>([]);
+  /** Persistent live-region text (empty until the first pick) so the announcement is reliable. */
+  protected readonly quickActionNote = computed(() =>
+    this.lastQuickAction() ? `Quick action: ${this.lastQuickAction()}` : '',
+  );
+
+  /** Run a context-menu quick action: record it in the live region and prepend it to the log. */
+  protected runQuickAction(item: CaeMenuItem): void {
+    this.lastQuickAction.set(item.label);
+    this.quickActionLog.update((log) => [item.label, ...log].slice(0, 5));
   }
 
   /**
