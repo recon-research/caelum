@@ -79,6 +79,9 @@ export * from 'caelum/split-button';
 // --- Composed (M1): menubar (#153 — horizontal application menu bar over MatToolbar + cae-menu, roving keyboard) ---
 export * from 'caelum/menubar';
 
+// --- Composed (M1): context-menu (#157 — right-click context menu over CDK Menu / cdkContextMenuTriggerFor) ---
+export * from 'caelum/context-menu';
+
 // --- Services: toast (#96, D-15 — the first service passthrough, over MatSnackBar) ---
 export * from 'caelum/toast';
 

@@ -322,16 +322,16 @@ describe('App', () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     const el = fixture.nativeElement as HTMLElement;
-    // Exactly ten @defer blocks — the capacity sliders, modules listbox, timezone autocomplete,
-    // skills multi-select, members table, command bar, structure tree, reference tabs, FAQ accordion,
-    // and tag row — each carrying a heavy Material module (MatSlider/MatList/MatAutocomplete/
-    // MatSelect+MatChips/MatTable+MatSort+MatPaginator/MatToolbar+MatMenu/MatTree/MatTabs/MatExpansion/
-    // MatChips) off the initial bundle. This is the regression guard for the #85 bundle win: deleting an
-    // @defer wrapper stays UNDER the 1mb budget error (so `ng build` wouldn't fail), but drops a block
-    // here → red test. (The command bar, #153, is the newest: MatToolbar + MatMenu are already eager
-    // elsewhere in Forge, so its defer keeps the cae-menubar component + demo markup — not the Material
-    // modules — off the initial bundle as an own lazy chunk.)
-    expect((await fixture.getDeferBlocks()).length).toBe(10);
+    // Exactly eleven @defer blocks — the capacity sliders, modules listbox, timezone autocomplete,
+    // skills multi-select, members table, command bar, quick-actions context menu, structure tree,
+    // reference tabs, FAQ accordion, and tag row — each carrying a heavy Material module or new CDK
+    // family (MatSlider/MatList/MatAutocomplete/MatSelect+MatChips/MatTable+MatSort+MatPaginator/
+    // MatToolbar+MatMenu/CDK-Menu/MatTree/MatTabs/MatExpansion/MatChips) off the initial bundle. This
+    // is the regression guard for the #85 bundle win: deleting an @defer wrapper stays UNDER the 1mb
+    // budget error (so `ng build` wouldn't fail), but drops a block here → red test. (The quick-actions
+    // context menu, #157, is the newest: @angular/cdk/menu is new to Forge, so its defer keeps the CDK
+    // menu family + demo in an own lazy chunk off the initial bundle — the #142 initial-budget guard.)
+    expect((await fixture.getDeferBlocks()).length).toBe(11);
     // The eager critical path (the create-workspace form) is present with NO defer block rendered...
     expect(el.querySelector('.forge-form-card')).not.toBeNull();
     // ...while the deferred demo sections are genuinely absent until rendered (proof they're lazy).
@@ -341,6 +341,7 @@ describe('App', () => {
     expect(el.querySelector('.forge-skills-card')).toBeNull();
     expect(el.querySelector('.forge-members-card')).toBeNull();
     expect(el.querySelector('.forge-commands-card')).toBeNull();
+    expect(el.querySelector('.forge-contextmenu-card')).toBeNull();
     expect(el.querySelector('cae-tree')).toBeNull();
     expect(el.querySelector('.forge-reference')).toBeNull();
     expect(el.querySelector('.forge-faq')).toBeNull();
@@ -353,6 +354,7 @@ describe('App', () => {
     expect(el.querySelector('.forge-skills-card')).not.toBeNull();
     expect(el.querySelector('.forge-members-card')).not.toBeNull();
     expect(el.querySelector('.forge-commands-card')).not.toBeNull();
+    expect(el.querySelector('.forge-contextmenu-card')).not.toBeNull();
     expect(el.querySelector('cae-tree')).not.toBeNull();
     expect(el.querySelector('.forge-reference')).not.toBeNull();
     expect(el.querySelector('.forge-faq')).not.toBeNull();
@@ -656,6 +658,29 @@ describe('App', () => {
     fixture.detectChanges();
     expect(app['commandLog']()[0]).toBe('Save changes');
     expect(card.querySelector('.forge-commands-card__note')?.textContent).toContain('Save changes');
+  });
+
+  it('logs the chosen action when a cae-context-menu item is activated (#157)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    await renderDeferred(fixture); // the quick-actions context menu lives in a deferred card (#85, #157)
+    const card = (fixture.nativeElement as HTMLElement).querySelector(
+      '.forge-contextmenu-card',
+    ) as HTMLElement;
+
+    // The context menu wraps a right-clickable target (the panel isn't opened here — that's the
+    // CDK overlay path; liveness is proven by invoking the demo's itemSelect handler directly).
+    const target = card.querySelector('cae-context-menu .cae-context-menu__target');
+    expect(target).not.toBeNull();
+    const app = fixture.componentInstance;
+    expect(app['quickActionLog']().length).toBe(0);
+
+    app['runQuickAction']({ value: 'export', label: 'Export as CSV' });
+    fixture.detectChanges();
+    expect(app['quickActionLog']()[0]).toBe('Export as CSV');
+    expect(card.querySelector('.forge-contextmenu-card__note')?.textContent).toContain(
+      'Export as CSV',
+    );
   });
 
   it('shows the workspace structure as a cae-tree and announces a selection', async () => {

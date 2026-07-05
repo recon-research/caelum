@@ -653,6 +653,37 @@
       </cae-card>
     }
 
+    <!-- cae-context-menu (#157, M1 composed) — a right-click menu over the CDK Menu family
+         (cdkContextMenuTriggerFor), a different primitive from the MatMenu-based cae-menu/menubar.
+         Selecting an action records it in a live log, so the context menu drives visible Forge
+         state. Deferred (#85/#142): the CDK menu family is new to Forge, so @defer (on idle) keeps
+         it + this demo in their own lazy chunk off the initial bundle. -->
+    @defer (on idle) {
+      <cae-card
+        class="forge-contextmenu-card"
+        title="Quick actions"
+        subtitle="cae-context-menu — a right-click menu over CDK Menu (cdkContextMenuTriggerFor)"
+      >
+        <p class="forge-panel__lead">
+          Right-click (or press the Menu key / Shift+F10) anywhere in the panel below to open a
+          context menu; the chosen action is logged. Arrow keys move between items, Escape closes.
+        </p>
+        <cae-context-menu [items]="quickActions" (itemSelect)="runQuickAction($event)">
+          <div class="forge-contextmenu-card__target" tabindex="0">Right-click this panel</div>
+        </cae-context-menu>
+        <!-- Persistent live region (text varies '' -> message) so a screen reader announces each
+             action; :empty collapses it before the first pick (the cae-table empty-state pattern). -->
+        <p class="forge-contextmenu-card__note" role="status">{{ quickActionNote() }}</p>
+        @if (quickActionLog().length) {
+          <ol class="forge-contextmenu-card__log" aria-label="Recent quick actions">
+            @for (action of quickActionLog(); track $index) {
+              <li>{{ action }}</li>
+            }
+          </ol>
+        }
+      </cae-card>
+    }
+
     <!-- cae-tree (batch 3) — nested data, expandable, keyboard-navigable (roving focus +
          arrow keys from the CDK). Selecting a node announces it in a polite live region.
          Deferred (#85): below the fold, so MatTree splits into a lazy chunk off Forge's initial

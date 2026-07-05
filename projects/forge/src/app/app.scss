@@ -112,17 +112,36 @@
   display: none;
 }
 
-.forge-commands-card__note {
+/* The command-bar (#153) and quick-actions (#157) cards share identical note/log styling —
+   grouped to keep app.scss lean while the 7kB warn budget (#97, split app.scss) is still open. */
+.forge-commands-card__note,
+.forge-contextmenu-card__note {
   margin-block-start: var(--cae-space-3);
   color: var(--cae-color-on-surface-variant);
 }
-.forge-commands-card__note:empty {
+.forge-commands-card__note:empty,
+.forge-contextmenu-card__note:empty {
   display: none;
 }
-.forge-commands-card__log {
+.forge-commands-card__log,
+.forge-contextmenu-card__log {
   margin-block-start: var(--cae-space-2);
   padding-inline-start: var(--cae-space-5);
   color: var(--cae-color-on-surface-variant);
+}
+
+.forge-contextmenu-card__target {
+  margin-block-start: var(--cae-space-3);
+  padding: var(--cae-space-5);
+  border: 1px dashed var(--cae-color-border);
+  border-radius: var(--cae-radius-md);
+  color: var(--cae-color-on-surface-variant);
+  text-align: center;
+  cursor: context-menu;
+}
+.forge-contextmenu-card__target:focus-visible {
+  outline: 2px solid var(--cae-color-primary);
+  outline-offset: 2px;
 }
 
 .forge-panel__subheading {
