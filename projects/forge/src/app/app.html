@@ -617,6 +617,43 @@
       </cae-card>
     }
 
+    <!-- cae-data-grid (#170, M2 — the first component over a neutral, engine-swappable port). Unlike
+         the cae-table above (a thin MatTable wrapper, great for a small roster), the grid renders its
+         OWN virtualized DOM over hundreds of rows and does all sort/paginate work behind the
+         CaeGridAdapter port — the client default here, TanStack behind the same interface in #171 with
+         no change to this markup. Deferred (#85): cdk-virtual-scroll rides its own lazy chunk off the
+         initial bundle. -->
+    @defer (on idle) {
+      <cae-card
+        class="forge-grid-card"
+        title="Activity log"
+        subtitle="cae-data-grid — a virtualized grid over a swappable engine (client default; TanStack in #171)"
+      >
+        <p class="forge-panel__lead">
+          Nearly 500 rows render behind a neutral engine port, yet only the visible ones are in the
+          DOM. Click a sortable header to sort the whole set; scrolling stays smooth. The engine is
+          swappable by DI without touching this markup.
+        </p>
+        <!-- Export CSV drives cae-data-grid's public exportRows() end-to-end (the whole sorted set),
+             proving the port capability is reachable from the component, not just the adapter. -->
+        <div class="forge-grid-card__toolbar">
+          <cae-button variant="outlined" (click)="exportActivity(activityGrid)"
+            >Export CSV</cae-button
+          >
+          <span class="forge-grid-card__note" role="status">{{ exportNote() }}</span>
+        </div>
+        <cae-data-grid
+          #activityGrid
+          caption="Recent workspace activity"
+          [columns]="activityColumns"
+          [data]="activity()"
+          sortActive="seq"
+          sortDirection="desc"
+          viewportHeight="20rem"
+        />
+      </cae-card>
+    }
+
     <!-- cae-menubar (#153, M1 composed) — a horizontal application menu bar over MatToolbar +
          cae-menu, with a CDK FocusKeyManager giving roving keyboard across the top-level items.
          Composed-over-composed: selecting any command records it in a live log, so the menubar
