@@ -10,10 +10,10 @@ The few metrics that each change a decision when they cross a threshold -- not a
 
 | Metric | Value | Target | What it means |
 |---|---|---|---|
-| Throughput | 5.5/wk | trend only | Merged PRs per week. A trend line, not a target -- a sudden drop flags a blocker. |
+| Throughput | 5.7/wk | trend only | Merged PRs per week. A trend line, not a target -- a sudden drop flags a blocker. |
 | Defect escape rate | 0% | &lt; 15% · alarm &gt; 25% | `bug`s filed / slices merged. Measures gate + review effectiveness; each escape should leave a guard (retrospective, #31). |
 | Rework rate | 0% | &lt; 20% · alarm &gt; 30% | Merged PRs that are themselves fixes. High = slices too big or review too shallow. |
 | Decision latency | 1 d | &le; objection window · alarm &gt; 5 d | Median days a `decision` issue stays open. Measures the human-in-loop bottleneck. |
 | Preflight&harr;CI divergence | 0% | ~0% · alarm &gt; 15% | Fraction of PR CI runs that went red. A faithful preflight keeps this ~0; a climb means preflight was skipped or isn't mirroring CI. |
 
-*Sample this window: 71 PR(s) merged, 0 `bug`(s) filed, 90 PR CI run(s), 5 decision(s) closed. Small samples are noisy -- treat single-digit windows as directional, not controlled.*
+*Sample this window: 73 PR(s) merged, 0 `bug`(s) filed, 93 PR CI run(s), 5 decision(s) closed. Small samples are noisy -- treat single-digit windows as directional, not controlled.*
