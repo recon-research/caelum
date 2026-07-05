@@ -130,6 +130,8 @@
   color: var(--cae-color-on-surface-variant);
 }
 
+/* The focus ring lives on cae-context-menu's own focusable target (it is keyboard-accessible by
+   default); this inner element only carries the demo's dashed-panel affordance. */
 .forge-contextmenu-card__target {
   margin-block-start: var(--cae-space-3);
   padding: var(--cae-space-5);
@@ -138,10 +140,6 @@
   color: var(--cae-color-on-surface-variant);
   text-align: center;
   cursor: context-menu;
-}
-.forge-contextmenu-card__target:focus-visible {
-  outline: 2px solid var(--cae-color-primary);
-  outline-offset: 2px;
 }
 
 .forge-panel__subheading {

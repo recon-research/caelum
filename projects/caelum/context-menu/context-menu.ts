@@ -15,23 +15,28 @@ import type { CaeMenuItem } from 'caelum/menu';
  * Unlike `cae-menu`/`cae-menubar`/`cae-split-button` (which wrap `MatMenu`), a context menu
  * opens on right-click at the pointer — a capability `MatMenuTrigger` lacks. The reach-for
  * ladder (Book 06 §3.1) lands on the lower-level `@angular/cdk/menu` primitives here:
- * `cdkContextMenuTriggerFor` on the target opens a `cdkMenu` panel of `cdkMenuItem`s. All of
- * the a11y is free from those primitives (Book 09 §3.4 invariants): `role="menu"`/`menuitem`,
- * arrow-key roving + typeahead, Escape closes and restores focus, focus trap. The native
- * `contextmenu` event also fires for the keyboard Menu key / Shift+F10, so keyboard users
- * reach it too. `@angular/cdk` is already vendored, so this adds no dependency (D-11 clean).
+ * `cdkContextMenuTriggerFor` on the target opens a `cdkMenu` panel of `cdkMenuItem`s. The
+ * menu-panel a11y is free from those primitives (Book 09 §3.4 invariants): `role="menu"`/`menuitem`,
+ * arrow-key roving + typeahead, Escape closes and restores focus, focus trap. `@angular/cdk` is
+ * already vendored, so this adds no dependency (D-11 clean).
  *
- * Items are data (`CaeMenuItem[]`, the same shape as `cae-menu`), so the whole family shares
- * one model. Wrap the right-clickable target as content:
+ * **Keyboard opening.** The keyboard route to a context menu is the Menu key / Shift+F10, which
+ * fire the native `contextmenu` event on the *focused* element — so the target must be focusable
+ * or a keyboard user can never reach it. This wrapper makes the projected target a focusable
+ * region by default (`tabindex="0"` + a visible focus ring) whenever there are items, so keyboard
+ * access works out of the box with no consumer plumbing. Items are data (`CaeMenuItem[]`, the same
+ * shape as `cae-menu`), so the whole family shares one model. Wrap the right-clickable target as content:
  *
  * ```html
  * <cae-context-menu [items]="rowActions" (itemSelect)="run($event)">
- *   <div class="canvas">Right-click me</div>
+ *   <div class="canvas">Right-click here</div>
  * </cae-context-menu>
  * ```
  *
- * An empty `items` disables the trigger, so right-click falls through to the browser's own
- * menu (no dead-end empty panel — the `cae-menubar` empty-items rule, applied to the target).
+ * An empty `items` disables the trigger and drops the target out of the tab order, so right-click
+ * falls through to the browser's own menu (no dead-end empty panel — the `cae-menubar` empty-items
+ * rule, applied to the target). Parity extras (nested submenus, rich items, groups,
+ * global/programmatic open, per-target data) are tracked in #158.
  *
  * CDK Menu is behaviour-only (unlike the auto-styled `MatMenu`), so the panel and items are
  * styled here, token-only. The panel renders inside a CDK overlay (outside this component's
@@ -46,6 +51,7 @@ import type { CaeMenuItem } from 'caelum/menu';
   template: `
     <div
       class="cae-context-menu__target"
+      [tabindex]="items().length ? 0 : -1"
       [cdkContextMenuTriggerFor]="panel"
       [cdkContextMenuDisabled]="items().length === 0"
     >
@@ -69,9 +75,19 @@ import type { CaeMenuItem } from 'caelum/menu';
     </ng-template>
   `,
   styles: `
-    cae-context-menu,
-    .cae-context-menu__target {
+    cae-context-menu {
       display: contents;
+    }
+
+    /* A real box (not display:contents, which is not reliably focusable) so the target can hold
+       tabindex + a focus ring — the keyboard route to the context menu (Menu key / Shift+F10). */
+    .cae-context-menu__target {
+      display: block;
+    }
+
+    .cae-context-menu__target:focus-visible {
+      outline: var(--cae-focus-ring);
+      outline-offset: var(--cae-focus-ring-offset);
     }
 
     .cae-context-menu__panel {
@@ -107,9 +123,15 @@ import type { CaeMenuItem } from 'caelum/menu';
       background: color-mix(in srgb, var(--mat-sys-on-surface) 8%, transparent);
     }
 
+    /* The CDK key manager roves onto disabled items too (skipPredicate is off), so the focus ring
+       is on every roved item; only the enabled ones also get the activatable-hover tint. */
+    .cae-context-menu__item:focus {
+      outline: var(--cae-focus-ring);
+      outline-offset: calc(-1 * var(--cae-focus-ring-width));
+    }
+
     .cae-context-menu__item:focus:not(.cdk-menu-item-disabled) {
       background: color-mix(in srgb, var(--mat-sys-on-surface) 12%, transparent);
-      outline: none;
     }
 
     .cae-context-menu__item.cdk-menu-item-disabled {

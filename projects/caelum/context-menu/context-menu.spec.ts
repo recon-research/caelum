@@ -117,4 +117,20 @@ describe('CaeContextMenu', () => {
   it('enables the trigger when items are present', () => {
     expect(directTrigger([{ label: 'A' }]).disabled).toBe(false);
   });
+
+  it('makes the target a focusable region (tabindex 0) so the Menu key can open it', () => {
+    // Keyboard opening (Menu key / Shift+F10) fires contextmenu on the FOCUSED element, so the
+    // target must be focusable for keyboard access — the wrapper provides it, no consumer tabindex.
+    expect(target().getAttribute('tabindex')).toBe('0');
+    target().focus();
+    expect(document.activeElement).toBe(target());
+  });
+
+  it('drops the target out of the tab order (tabindex -1) when items is empty', () => {
+    const ref = TestBed.createComponent(CaeContextMenu);
+    ref.componentRef.setInput('items', []);
+    ref.detectChanges();
+    const t = ref.nativeElement.querySelector('.cae-context-menu__target') as HTMLElement;
+    expect(t.getAttribute('tabindex')).toBe('-1');
+  });
 });

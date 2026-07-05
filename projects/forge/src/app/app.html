@@ -669,7 +669,7 @@
           context menu; the chosen action is logged. Arrow keys move between items, Escape closes.
         </p>
         <cae-context-menu [items]="quickActions" (itemSelect)="runQuickAction($event)">
-          <div class="forge-contextmenu-card__target" tabindex="0">Right-click this panel</div>
+          <div class="forge-contextmenu-card__target">Right-click this panel</div>
         </cae-context-menu>
         <!-- Persistent live region (text varies '' -> message) so a screen reader announces each
              action; :empty collapses it before the first pick (the cae-table empty-state pattern). -->

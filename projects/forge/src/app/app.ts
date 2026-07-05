@@ -423,7 +423,8 @@ export class App {
    * the CDK Menu family (`cdkContextMenuTriggerFor`), a *different* primitive from the MatMenu-based
    * `cae-menu`/`cae-menubar`/`cae-split-button`. Right-clicking the target panel opens a data-driven
    * menu; selecting an action records it in {@link quickActionLog} and the live region, so the
-   * context menu drives visible Forge state. `Archive` is a disabled item (skipped by roving).
+   * context menu drives visible Forge state. `Archive` is a disabled item (the CDK menu roves to
+   * it and announces it, but it is not activatable).
    * Deferred (#85/#142): `@angular/cdk/menu` is new to Forge, so `@defer (on idle)` keeps the CDK
    * menu family + this demo in their own lazy chunk off the initial bundle.
    */
