@@ -395,6 +395,26 @@ export class App {
   ];
   /** ~480 deterministic rows — far past what a plain table renders comfortably (the grid's reason to exist). */
   protected readonly activity = signal<readonly ActivityEvent[]>(buildActivity(480));
+  /** Persistent live-region text confirming an export (empty until the first one). */
+  protected readonly exportNote = signal('');
+
+  /**
+   * Export the full activity set to a CSV download — the liveness proof for cae-data-grid.exportRows()
+   * (#170). The grid comes in as a TEMPLATE REF from the deferred demo (not a viewChild — a
+   * viewChild(CaeDataGrid) locator would be an eager value reference that pulls the grid + its
+   * cdk-virtual-scroll OFF the lazy chunk and INTO the initial bundle). The param is structurally
+   * typed for the same reason (no eager CaeDataGrid value import). The consumer owns the download.
+   */
+  protected exportActivity(grid: { exportRows(format?: 'csv'): Blob }): void {
+    const blob = grid.exportRows('csv');
+    const url = URL.createObjectURL(blob);
+    const anchor = this.document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'activity-log.csv';
+    anchor.click();
+    URL.revokeObjectURL(url);
+    this.exportNote.set(`Exported ${this.activity().length} rows to activity-log.csv.`);
+  }
 
   protected readonly members = signal<readonly WorkspaceMember[]>([
     { name: 'Ada Lovelace', email: 'ada@acme.dev', role: 'Owner', joined: '2024-01-12' },

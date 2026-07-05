@@ -11,12 +11,24 @@ import {
   effect,
   inject,
   input,
+  isDevMode,
+  OnInit,
   output,
   untracked,
 } from '@angular/core';
 import { CAE_GRID, CaeGridAdapter } from './grid-adapter';
 import { defaultGridAdapterFactory } from './client-grid-adapter';
-import type { CaeColumn, CaeGridDataRequest, CaeRow, CaeSort, CaeSortDir } from './grid-types';
+import type {
+  CaeColumn,
+  CaeGridDataRequest,
+  CaeGridExportFormat,
+  CaeRow,
+  CaeSort,
+  CaeSortDir,
+} from './grid-types';
+
+/** Per-instance id source for wiring the visible caption as the table accessible name (aria-labelledby). */
+let gridInstanceCounter = 0;
 
 /**
  * `cae-data-grid` — the **first component over a neutral, engine-swappable interface** (issue #170,
@@ -28,28 +40,33 @@ import type { CaeColumn, CaeGridDataRequest, CaeRow, CaeSort, CaeSortDir } from 
  * the M2 isolation proof (Book 13 §3.1/§3.3, Book 12 §3.1). The grid-vs-table choice is by row count
  * per screen (Book 10 §2.2/§3.5); reach for `cae-table` first, this when the row count demands it.
  *
- * The public surface is deliberately **ergonomically identical to `cae-table`** — `[columns]`,
- * `[data]`, `caption`/`ariaLabel`, `[paginated]`, `[pageSize]`, `sortActive`/`sortDirection` — so a
- * team outgrowing `cae-table` swaps the element name and provider, not their bindings. Columns use a
- * `value(row)` accessor (a superset of `CaeTableColumn.key`) so computed/nested fields work.
+ * The public surface deliberately **mirrors `cae-table`** — `[columns]`, `[data]`, `caption`/
+ * `ariaLabel`, `[paginated]`, `[pageSize]` (default 10, as `cae-table`), `sortActive`/`sortDirection`
+ * — so a team outgrowing `cae-table` swaps the element name, not their bindings. Two deliberate
+ * differences: columns use a `value(row)` accessor (a superset of `CaeTableColumn.key`) so
+ * computed/nested fields work, and the pager is minimal (Prev/Next; a page-size menu is a followup).
  *
  * ```html
  * <cae-data-grid caption="Events" [columns]="cols" [data]="rows" paginated [pageSize]="50" />
  * ```
  *
- * **a11y.** An ARIA grid: `role="grid"` with `aria-rowcount`/`aria-colcount` (the *full* counts, not
- * the rendered subset — the correct pattern for a virtualized grid where most rows are not in the
- * DOM), header `role="columnheader"` cells carrying `aria-sort`, and each rendered `role="row"` /
- * `role="gridcell"` carrying `aria-rowindex`/`aria-colindex` so assistive tech conveys position even
- * across the virtual-scroll wrapper. A sortable header is a real `<button>` (Enter/Space, three-state
- * asc → desc → unsorted). The empty state is a persistent `role="status"` live region (announced on a
- * data-becomes-empty transition). Arrow-key cell navigation (roving tabindex) and real-browser
- * verification of virtual-scroll row rendering/recycling are deferred to the M4 verify family.
+ * **a11y.** A `role="table"` with `aria-rowcount`/`aria-colcount` (the *full* counts, not the rendered
+ * subset — the correct pattern for a virtualized table where most rows are not in the DOM), header
+ * `role="columnheader"` cells carrying `aria-sort`, and each rendered `role="row"` / `role="cell"`
+ * carrying `aria-rowindex`/`aria-colindex` so assistive tech conveys position even across the
+ * virtual-scroll wrapper. `role="table"` (not `role="grid"`) is deliberate for v1: the cells are
+ * read-only text with no cell-cursor, which is exactly the ARIA *table* pattern (and matches p-table,
+ * a native `<table>`); it becomes `role="grid"` when arrow-key cell navigation lands (#175). The
+ * accessible name comes from a visible `caption` (via `aria-labelledby`, preferred) **or** `ariaLabel`
+ * — set one, not both. A sortable header is a real `<button>` (Enter/Space, three-state asc → desc →
+ * unsorted). The empty state is a persistent `role="status"` live region (announced on a
+ * data-becomes-empty transition). Real-browser verification of virtual-scroll row rendering/recycling
+ * + header/body column alignment is deferred to the M4 verify family (#174).
  *
- * **v1 scope** (#170): client-side sort + client pagination + CSV export, all in the default engine.
- * Server-side/lazy data is a typed **seam only** ({@link dataRequest} + `CaeGridAdapter.applyServerResult`)
- * — the emitting server adapter, grouping/aggregation, column resize/reorder/pin, row selection, and
- * cell templates are followups.
+ * **v1 scope** (#170): client-side sort + client pagination + CSV export ({@link exportRows}), all in
+ * the default engine. Server-side/lazy data is a typed **seam only** ({@link dataRequest} +
+ * `CaeGridAdapter.applyServerResult`) — the emitting server adapter, grouping/aggregation, column
+ * resize/reorder/pin, row selection, and cell templates are followups.
  *
  * Zoneless-compatible: `OnPush` + signal inputs (D-12); token-only theming (D-04).
  *
@@ -62,13 +79,14 @@ import type { CaeColumn, CaeGridDataRequest, CaeRow, CaeSort, CaeSortDir } from 
   template: `
     <div
       class="cae-data-grid"
-      role="grid"
-      [attr.aria-label]="(caption() ? null : ariaLabel()) || null"
+      role="table"
+      [attr.aria-labelledby]="caption() ? captionId : null"
+      [attr.aria-label]="caption() ? null : ariaLabel() || null"
       [attr.aria-rowcount]="adapter.total() + 1"
       [attr.aria-colcount]="columns().length"
     >
       @if (caption()) {
-        <div class="cae-data-grid__caption">{{ caption() }}</div>
+        <div class="cae-data-grid__caption" [id]="captionId">{{ caption() }}</div>
       }
 
       <div class="cae-data-grid__head" role="rowgroup">
@@ -113,7 +131,7 @@ import type { CaeColumn, CaeGridDataRequest, CaeRow, CaeSort, CaeSortDir } from 
           @for (col of columns(); track col.id; let colIndex = $index) {
             <div
               class="cae-data-grid__cell"
-              role="gridcell"
+              role="cell"
               [attr.aria-colindex]="colIndex + 1"
               [style.text-align]="col.align === 'end' ? 'end' : 'start'"
               [style.flex]="col.width ? '0 0 ' + col.width : '1 1 0'"
@@ -249,13 +267,16 @@ import type { CaeColumn, CaeGridDataRequest, CaeRow, CaeSort, CaeSortDir } from 
     }
   `,
 })
-export class CaeDataGrid<T = Record<string, unknown>> {
+export class CaeDataGrid<T = Record<string, unknown>> implements OnInit {
   /** Column definitions, in display order (a `value(row)` accessor per column). */
   readonly columns = input.required<readonly CaeColumn<T>[]>();
   /** Row data — fed to the adapter as the client dataset. */
   readonly data = input.required<readonly T[]>();
 
-  /** Visible caption + the grid accessible name. Prefer this over {@link ariaLabel}. */
+  /**
+   * Visible caption + the table accessible name (wired as the name via `aria-labelledby`). Prefer
+   * this over {@link ariaLabel}; set one, not both.
+   */
   readonly caption = input('');
   /** Accessible name when there is no visible {@link caption}. Do not set both. */
   readonly ariaLabel = input('');
@@ -264,8 +285,8 @@ export class CaeDataGrid<T = Record<string, unknown>> {
 
   /** Opt into a client-side pager below the grid (unpaginated = virtual-scroll the whole sorted set). */
   readonly paginated = input(false, { transform: booleanAttribute });
-  /** Rows per page when {@link paginated}. */
-  readonly pageSize = input(20);
+  /** Rows per page when {@link paginated}. Defaults to 10, matching `cae-table`. */
+  readonly pageSize = input(10);
 
   /** Fixed row height in px — cdk-virtual-scroll needs a uniform item size. */
   readonly rowHeight = input(48);
@@ -289,6 +310,9 @@ export class CaeDataGrid<T = Record<string, unknown>> {
   /** The per-grid engine — from the injected {@link CAE_GRID} factory, or the built-in client default. */
   private readonly makeAdapter = inject(CAE_GRID, { optional: true }) ?? defaultGridAdapterFactory;
   protected readonly adapter: CaeGridAdapter<T> = this.makeAdapter<T>();
+
+  /** Stable per-instance id linking the visible caption to the table as its accessible name. */
+  protected readonly captionId = `cae-data-grid-caption-${++gridInstanceCounter}`;
 
   /** Offset of the current page in the full set — anchors `aria-rowindex` (0 when unpaginated). */
   protected readonly pageOffset = computed(() => {
@@ -351,6 +375,24 @@ export class CaeDataGrid<T = Record<string, unknown>> {
     });
   }
 
+  /**
+   * Dev-only config validation, in `ngOnInit` (before the first render) so a clear cae-data-grid
+   * message preempts the framework-internal NG0955 a duplicate column id would otherwise throw in
+   * the `@for` track. Zero prod cost. Mirrors `cae-table` (#141).
+   */
+  ngOnInit(): void {
+    if (isDevMode()) this.validateConfig();
+  }
+
+  /**
+   * Export the **full** (all-pages, sorted) dataset as a downloadable {@link Blob} (CSV in v1) —
+   * the public passthrough to the engine {@link CaeGridAdapter.exportRows}. The consumer owns the
+   * download (e.g. an anchor with `URL.createObjectURL`), so the grid needs no file-system access.
+   */
+  exportRows(format: CaeGridExportFormat = 'csv'): Blob {
+    return this.adapter.exportRows(format);
+  }
+
   /** cdk-virtual-scroll trackBy — the adapter row id is stable across sort/paginate. */
   protected trackRow = (_: number, row: CaeRow<T>): string | number => row.id;
 
@@ -386,5 +428,22 @@ export class CaeDataGrid<T = Record<string, unknown>> {
 
   protected nextPage(): void {
     this.adapter.setPage(this.adapter.page() + 1, this.adapter.pageSize());
+  }
+
+  /** Dev-only: fail fast on a duplicate column id; warn when the initial sort names an unsortable column. */
+  private validateConfig(): void {
+    const ids = this.columns().map((c) => c.id);
+    const dupes = [...new Set(ids.filter((id, i) => ids.indexOf(id) !== i))];
+    if (dupes.length) {
+      throw new Error(
+        `cae-data-grid: duplicate column id(s) "${dupes.join('", "')}" — each CaeColumn.id must be unique (it is the @for track key and the sort id).`,
+      );
+    }
+    const active = this.sortActive();
+    if (active && !this.columns().some((c) => c.id === active && c.sortable)) {
+      console.warn(
+        `cae-data-grid: sortActive="${active}" is not a sortable column — the data sorts but no sort header (or aria-sort) renders for it.`,
+      );
+    }
   }
 }

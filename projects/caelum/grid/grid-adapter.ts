@@ -35,7 +35,12 @@ export abstract class CaeGridAdapter<T> {
 
   /** The active sort, or `null` for the natural order. */
   abstract readonly sort: Signal<CaeSort | null>;
-  /** Set (or clear, with `null`) the sort. The component calls this from a header sort control. */
+  /**
+   * Set (or clear, with `null`) the sort. The component calls this from a header sort control.
+   * **Contract:** a sort change must reset to the first page (`page` → 0) — the row under the old
+   * page offset is meaningless once the order changes. Any engine behind this port must honour it
+   * (the component relies on it rather than resetting the page itself).
+   */
   abstract sortBy(sort: CaeSort | null): void;
 
   /** Current zero-based page index. */

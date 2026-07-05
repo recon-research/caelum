@@ -627,10 +627,14 @@ describe('App', () => {
     ) as HTMLElement;
     expect(card).not.toBeNull();
 
-    // It renders an ARIA grid (its own DOM — not a mat-table) with the full row count in aria-rowcount.
-    const g = card.querySelector('[role="grid"]') as HTMLElement;
+    // It renders an ARIA table (its own DOM — not a mat-table) with the full row count in aria-rowcount.
+    const g = card.querySelector('[role="table"]') as HTMLElement;
     expect(g).not.toBeNull();
     expect(g.getAttribute('aria-rowcount')).toBe('481'); // 480 rows + header
+    // Named by its visible caption via aria-labelledby (role=table is not name-from-content).
+    expect(g.getAttribute('aria-labelledby')).toBe(
+      card.querySelector('.cae-data-grid__caption')?.id,
+    );
     expect(card.querySelector('.cae-data-grid__caption')?.textContent).toContain(
       'Recent workspace activity',
     );

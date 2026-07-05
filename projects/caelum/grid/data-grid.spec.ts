@@ -66,7 +66,7 @@ describe('CaeDataGrid', () => {
     fixture.detectChanges();
   }
 
-  const grid = () => el.querySelector('[role="grid"]') as HTMLElement;
+  const grid = () => el.querySelector('[role="table"]') as HTMLElement;
   const headerCells = () => Array.from(el.querySelectorAll('[role="columnheader"]'));
   const headerByText = (text: string) => headerCells().find((h) => h.textContent!.includes(text))!;
   const sortButtons = () =>
@@ -74,7 +74,7 @@ describe('CaeDataGrid', () => {
   const pageBtn = (label: string) =>
     el.querySelector<HTMLButtonElement>(`.cae-data-grid__page-btn[aria-label="${label}"]`);
 
-  it('renders a role=grid with aria-rowcount (incl. header) + aria-colcount', () => {
+  it('renders a role=table with aria-rowcount (incl. header) + aria-colcount', () => {
     setup();
     const g = grid();
     expect(g).not.toBeNull();
@@ -168,17 +168,48 @@ describe('CaeDataGrid', () => {
     expect(region().textContent!.trim()).toBe('No data.');
   });
 
-  it('uses a visible caption and suppresses aria-label when both are set', () => {
+  it('names the table via aria-labelledby -> the visible caption (not a nameless role=table)', () => {
     setup({ caption: 'Team roster', ariaLabel: 'People' });
-    expect(el.querySelector('.cae-data-grid__caption')?.textContent!.trim()).toBe('Team roster');
+    const captionEl = el.querySelector('.cae-data-grid__caption') as HTMLElement;
+    expect(captionEl.textContent!.trim()).toBe('Team roster');
+    // The accessible name comes from the caption via aria-labelledby; aria-label is suppressed so
+    // the visible caption wins (role=table is NOT name-from-content, so this link is required).
+    const labelledby = grid().getAttribute('aria-labelledby');
+    expect(labelledby).toBe(captionEl.id);
+    expect(captionEl.id).toBeTruthy();
     expect(grid().hasAttribute('aria-label')).toBe(false);
   });
 
-  it('sets aria-label when there is no caption, and omits it otherwise', () => {
+  it('sets aria-label when there is no caption, and omits both label mechanisms otherwise', () => {
     setup({ ariaLabel: 'People' });
     expect(grid().getAttribute('aria-label')).toBe('People');
+    expect(grid().hasAttribute('aria-labelledby')).toBe(false);
     setup();
     expect(grid().hasAttribute('aria-label')).toBe(false);
+    expect(grid().hasAttribute('aria-labelledby')).toBe(false);
+  });
+
+  it('exposes exportRows() as a public passthrough to the engine (RFC-4180 CSV of the sorted set)', async () => {
+    setup();
+    const blob = ref.instance.exportRows();
+    expect(blob).toBeInstanceOf(Blob);
+    expect(blob.type).toContain('text/csv');
+    const text = await blob.text();
+    // Header + one line per (unsorted) row, read through the column value accessors.
+    expect(text.split('\r\n')[0]).toBe('Name,Age,Role');
+    expect(text).toContain('Bob,30,Lead');
+    expect(text.split('\r\n').length).toBe(4); // header + 3 rows
+  });
+
+  it('throws a clear cae-data-grid error on a duplicate column id (dev config guard)', () => {
+    expect(() =>
+      setup({
+        columns: [
+          { id: 'name', header: 'Name', value: (r: Person) => r.name },
+          { id: 'name', header: 'Name again', value: (r: Person) => r.role },
+        ],
+      }),
+    ).toThrowError(/cae-data-grid: duplicate column id/);
   });
 
   it('reacts to a data change, updating the aria-rowcount', () => {
@@ -190,6 +221,9 @@ describe('CaeDataGrid', () => {
   });
 
   it('drives a swapped-in engine through the CAE_GRID token (adapter isolation proof)', () => {
+    // Proves the component uses the INJECTED engine (the DI swap seam) rather than the built-in
+    // default. Full engine interchangeability (a from-scratch, non-Client engine rendering the
+    // grid) is proven end-to-end when #171 drops @tanstack/table-core behind this same port.
     setup({}, [{ provide: CAE_GRID, useValue: <T>() => new RecordingAdapter<T>() }]);
     const adapter = (fixture.componentInstance as unknown as { adapter: RecordingAdapter<Person> })
       .adapter;

@@ -634,7 +634,16 @@
           DOM. Click a sortable header to sort the whole set; scrolling stays smooth. The engine is
           swappable by DI without touching this markup.
         </p>
+        <!-- Export CSV drives cae-data-grid's public exportRows() end-to-end (the whole sorted set),
+             proving the port capability is reachable from the component, not just the adapter. -->
+        <div class="forge-grid-card__toolbar">
+          <cae-button variant="outlined" (click)="exportActivity(activityGrid)"
+            >Export CSV</cae-button
+          >
+          <span class="forge-grid-card__note" role="status">{{ exportNote() }}</span>
+        </div>
         <cae-data-grid
+          #activityGrid
           caption="Recent workspace activity"
           [columns]="activityColumns"
           [data]="activity()"
