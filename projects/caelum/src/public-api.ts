@@ -82,6 +82,9 @@ export * from 'caelum/menubar';
 // --- Composed (M1): context-menu (#157 — right-click context menu over CDK Menu / cdkContextMenuTriggerFor) ---
 export * from 'caelum/context-menu';
 
+// --- Composed (M1): tab-menu (#164 — horizontal tab-styled navigation/selection bar over mat-tab-nav-bar) ---
+export * from 'caelum/tab-menu';
+
 // --- Services: toast (#96, D-15 — the first service passthrough, over MatSnackBar) ---
 export * from 'caelum/toast';
 

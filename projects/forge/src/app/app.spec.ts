@@ -322,16 +322,17 @@ describe('App', () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     const el = fixture.nativeElement as HTMLElement;
-    // Exactly eleven @defer blocks — the capacity sliders, modules listbox, timezone autocomplete,
-    // skills multi-select, members table, command bar, quick-actions context menu, structure tree,
-    // reference tabs, FAQ accordion, and tag row — each carrying a heavy Material module or new CDK
-    // family (MatSlider/MatList/MatAutocomplete/MatSelect+MatChips/MatTable+MatSort+MatPaginator/
-    // MatToolbar+MatMenu/CDK-Menu/MatTree/MatTabs/MatExpansion/MatChips) off the initial bundle. This
-    // is the regression guard for the #85 bundle win: deleting an @defer wrapper stays UNDER the 1mb
-    // budget error (so `ng build` wouldn't fail), but drops a block here → red test. (The quick-actions
-    // context menu, #157, is the newest: @angular/cdk/menu is new to Forge, so its defer keeps the CDK
-    // menu family + demo in an own lazy chunk off the initial bundle — the #142 initial-budget guard.)
-    expect((await fixture.getDeferBlocks()).length).toBe(11);
+    // Exactly twelve @defer blocks — the capacity sliders, modules listbox, timezone autocomplete,
+    // skills multi-select, members table, command bar, quick-actions context menu, workspace-sections
+    // tab menu, structure tree, reference tabs, FAQ accordion, and tag row — each carrying a heavy
+    // Material module or new CDK family (MatSlider/MatList/MatAutocomplete/MatSelect+MatChips/
+    // MatTable+MatSort+MatPaginator/MatToolbar+MatMenu/CDK-Menu/mat-tab-nav-bar/MatTree/MatTabs/
+    // MatExpansion/MatChips) off the initial bundle. This is the regression guard for the #85 bundle
+    // win: deleting an @defer wrapper stays UNDER the 1mb budget error (so `ng build` wouldn't fail),
+    // but drops a block here → red test. (The workspace-sections tab menu, #164, is the newest: it
+    // defers mat-tab-nav-bar + this demo into their own lazy chunk off the initial bundle — the #142
+    // initial-budget guard.)
+    expect((await fixture.getDeferBlocks()).length).toBe(12);
     // The eager critical path (the create-workspace form) is present with NO defer block rendered...
     expect(el.querySelector('.forge-form-card')).not.toBeNull();
     // ...while the deferred demo sections are genuinely absent until rendered (proof they're lazy).
@@ -710,6 +711,28 @@ describe('App', () => {
     expect(tabs.length).toBe(2);
     expect(tabs[0].textContent).toContain('Design tokens');
     expect(tabs[1].textContent).toContain('In this batch');
+  });
+
+  it('swaps the projected section when a cae-tab-menu tab is chosen (#164)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    await renderDeferred(fixture); // the sections card is @defer'd below the fold (#85)
+    const card = (fixture.nativeElement as HTMLElement).querySelector('.forge-sections-card')!;
+    const tabs = Array.from(card.querySelectorAll<HTMLElement>('[role="tab"]'));
+    expect(tabs.length).toBe(4);
+    expect(tabs[0].textContent).toContain('Overview');
+    expect(tabs[3].textContent).toContain('Archived');
+    // Starts on Overview, whose projected content is inside the tabpanel.
+    expect(tabs[0].getAttribute('aria-selected')).toBe('true');
+    expect(card.querySelector('[role="tabpanel"]')?.textContent).toContain('Three services');
+    // Archived is a disabled tab — focusable but not activatable.
+    expect(tabs[3].getAttribute('aria-disabled')).toBe('true');
+    // Choosing Activity swaps the projected content end-to-end (the manual-`active` mode).
+    tabs[1].click();
+    await fixture.whenStable();
+    expect(tabs[1].getAttribute('aria-selected')).toBe('true');
+    expect(tabs[0].getAttribute('aria-selected')).toBe('false');
+    expect(card.querySelector('[role="tabpanel"]')?.textContent).toContain('Deployed api-gateway');
   });
 
   it('renders a single-expand cae-accordion FAQ that coordinates its panels (#77)', async () => {

@@ -137,6 +137,16 @@
   padding-block-start: var(--cae-space-5);
 }
 
+/* cae-tab-menu (#164) demo — the projected content region the tab bar swaps. */
+.forge-sections-card__body {
+  padding-block-start: var(--cae-space-4);
+  color: var(--cae-color-on-surface-variant);
+}
+.forge-sections-card__list {
+  margin: 0;
+  padding-inline-start: var(--cae-space-5);
+}
+
 .forge-map {
   display: flex;
   flex-direction: column;

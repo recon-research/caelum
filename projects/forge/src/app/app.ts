@@ -42,6 +42,7 @@ import { CaeSplitButton } from 'caelum/split-button';
 import { CaeStep, CaeStepper } from 'caelum/stepper';
 import { CaeSwitch } from 'caelum/switch';
 import { CaeTab, CaeTabs } from 'caelum/tabs';
+import { CaeTabMenu, type CaeTabMenuItem } from 'caelum/tab-menu';
 import { CaeTable, type CaeTableColumn } from 'caelum/table';
 import { CaeTextarea } from 'caelum/textarea';
 import { CaeToggleButton } from 'caelum/toggle-button';
@@ -73,6 +74,9 @@ import { CaeToast } from 'caelum/toast';
 import type { RenameWorkspaceDialog, RenameWorkspaceData } from './rename-workspace-dialog';
 
 type ThemeMode = 'auto' | 'light' | 'dark';
+
+/** The sections of the cae-tab-menu demo — a typed union bound as the tab-menu's value type. */
+type WorkspaceSection = 'overview' | 'activity' | 'settings' | 'archived';
 
 /**
  * A plain, typed row model for the cae-table demo — deliberately NOT `Record<string, unknown>`, to
@@ -127,6 +131,7 @@ const SWATCHES: ReadonlyArray<{ token: string; label: string }> = [
     CaeSwitch,
     CaeTab,
     CaeTabs,
+    CaeTabMenu,
     CaeTable,
     CaeTextarea,
     CaeToggleButton,
@@ -447,6 +452,28 @@ export class App {
     this.lastQuickAction.set(item.label);
     this.quickActionLog.update((log) => [item.label, ...log].slice(0, 5));
   }
+
+  /**
+   * The "Workspace sections" `cae-tab-menu` demo (#164, M1 composed — the last canonical M1
+   * slice). A horizontal, tab-styled navigation bar over `mat-tab-nav-bar` + `mat-tab-link`
+   * (the ARIA *tabs* pattern: `role=tablist/tab/tabpanel`, an ink-bar under the active tab,
+   * roving keyboard). Distinct from the `cae-tabs` reference panels below (`mat-tab-group`
+   * content tabs): here the bar *selects* a section and the content shown for it is projected
+   * into the tab-menu, swapped as {@link workspaceSection} changes — the flagship manual-`active`
+   * mode driving visible Forge state. `Archived` is a disabled tab (roved to and announced, but
+   * not activatable). v1 is manual-`active` — first-class `p-tabMenu` parity; router-linked mode
+   * is a follow-up (#165, Forge has no router). Deferred (#85): `mat-tab-nav-bar` is not otherwise
+   * eager in Forge (`cae-tabs` is itself deferred), so `@defer (on idle)` keeps it + this demo in
+   * their own lazy chunk off the initial bundle.
+   */
+  protected readonly workspaceSections: readonly CaeTabMenuItem<WorkspaceSection>[] = [
+    { label: 'Overview', value: 'overview' },
+    { label: 'Activity', value: 'activity' },
+    { label: 'Settings', value: 'settings' },
+    { label: 'Archived', value: 'archived', disabled: true },
+  ];
+  /** The active section — two-way bound to the tab-menu; `undefined` is a real "nothing" state. */
+  protected readonly workspaceSection = signal<WorkspaceSection | undefined>('overview');
 
   /**
    * A short FAQ rendered as a `cae-accordion` — the liveness proof for #77. It's single-expand
