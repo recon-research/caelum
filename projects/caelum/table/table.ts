@@ -75,7 +75,9 @@ export interface CaeTableColumn {
     >
       @if (caption()) {
         <caption>
-          {{ caption() }}
+          {{
+            caption()
+          }}
         </caption>
       }
 
