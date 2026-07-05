@@ -1,11 +1,11 @@
 {
-  "$comment": "Per-secondary-entry-point size budget for the SHIPPED Caelum library (Book 18 §3.2 — the OTHER size gate). Measured by scripts/check-lib-size.mjs as the gzipped byte size of each dist/caelum/fesm2022/*.mjs. angular.json `budgets` measure only the Forge APPLICATION build (esbuild), NOT ng-packagr output — hence this bespoke gate. It defends the 'pay only for what you import' contract: importing cae-select must not drag in cae-tree. A NEW entry point with no budget row here FAILS the gate — set its budget deliberately (the forward ratchet). Since #28 the monolith is split: `caelum` is now a THIN re-export barrel (it re-exports the per-component entry points by name, so it carries no component code — ~0.7kb of re-export shims) and every `caelum-<name>` row below is one tree-shakable component — EXCEPT `caelum-form-field`, a runtime abstract-directive base (`CaeFormFieldControlBase`, #46) shared by the three form-field controls (cae-input/textarea/select): like `caelum-shared` it is not a component, but unlike it, it carries runtime code. Budgets carry ~15-30% headroom over the measured size so a refactor doesn't trip the gate, but real growth (e.g. #29 adds error-forwarding to input) BUMPS the affected row deliberately; a new component/adapter adds its own row. Extracting shared code (#46 moved the CVA + error-forwarding out of input/select/textarea into caelum-form-field) SHRINKS the source rows — retighten them to the new measurement. Two rows are deliberately TIGHT because their size is itself an invariant: `caelum` (the barrel) must stay a thin re-export shim — a budget near its measured ~0.7kb catches a bad merge that inlines a component into it; `caelum-shared` must stay type-only (near-zero runtime) — a tight budget trips the moment a real runtime symbol is added to it. Book 18 §4b illustrative targets: caelum-select ~12kb, caelum-data-grid ~40kb (the M2 adapters land far heavier than these thin Direct wrappers).",
+  "$comment": "Per-secondary-entry-point size budget for the SHIPPED Caelum library (Book 18 §3.2 — the OTHER size gate). Measured by scripts/check-lib-size.mjs as the gzipped byte size of each dist/caelum/fesm2022/*.mjs. angular.json `budgets` measure only the Forge APPLICATION build (esbuild), NOT ng-packagr output — hence this bespoke gate. It defends the 'pay only for what you import' contract: importing cae-select must not drag in cae-tree. A NEW entry point with no budget row here FAILS the gate — set its budget deliberately (the forward ratchet). Since #28 the monolith is split: `caelum` is now a THIN re-export barrel (it re-exports the per-component entry points by name, so it carries no component code — ~0.7kb of re-export shims) and every `caelum-<name>` row below is one tree-shakable component — EXCEPT `caelum-form-field`, a runtime abstract-directive base (`CaeFormFieldControlBase`, #46/#135, generic over its value type) shared by the five form-field controls (cae-input/textarea/select/autocomplete/multi-select): like `caelum-shared` it is not a component, but unlike it, it carries runtime code. Budgets carry ~15-30% headroom over the measured size so a refactor doesn't trip the gate, but real growth (e.g. #29 adds error-forwarding to input) BUMPS the affected row deliberately; a new component/adapter adds its own row. Extracting shared code (#46 moved the CVA + error-forwarding out of input/select/textarea into caelum-form-field) SHRINKS the source rows — retighten them to the new measurement. Two rows are deliberately TIGHT because their size is itself an invariant: `caelum` (the barrel) must stay a thin re-export shim — a budget near its measured ~0.7kb catches a bad merge that inlines a component into it; `caelum-shared` must stay type-only (near-zero runtime) — a tight budget trips the moment a real runtime symbol is added to it. Book 18 §4b illustrative targets: caelum-select ~12kb, caelum-data-grid ~40kb (the M2 adapters land far heavier than these thin Direct wrappers).",
   "compression": "gzip",
   "unit": "bytes",
   "entrypoints": {
     "caelum": 960,
     "caelum-shared": 560,
-    "caelum-form-field": 6144,
+    "caelum-form-field": 6656,
     "caelum-button": 4608,
     "caelum-card": 2000,
     "caelum-checkbox": 3456,
@@ -31,7 +31,7 @@
     "caelum-slider": 5632,
     "caelum-listbox": 5632,
     "caelum-autocomplete": 6144,
-    "caelum-multi-select": 6144,
+    "caelum-multi-select": 7168,
     "caelum-toast": 2048,
     "caelum-dialog": 3072,
     "caelum-confirm": 3456

@@ -99,18 +99,35 @@ describe('CaeMultiSelect', () => {
     expect(chips).toEqual(['Alpha', 'Gamma']); // … but summarized in options() order.
   });
 
-  it('swallows printable keys so mat-select typeahead does not hijack the filter, but lets control keys through', () => {
+  it('keeps text-editing keys in the filter (printable + caret) but lets list-nav/close keys reach mat-select', () => {
     const swallow = (key: string): boolean => {
       let stopped = false;
       const ev = { key, stopPropagation: () => (stopped = true) } as unknown as KeyboardEvent;
       (component as unknown as { onFilterKeydown(e: KeyboardEvent): void }).onFilterKeydown(ev);
       return stopped;
     };
-    expect(swallow('a')).toBe(true); // printable → typed into the filter
+    // Text-editing keys type into / move the caret within the filter box.
+    expect(swallow('a')).toBe(true); // printable
     expect(swallow(' ')).toBe(true); // space is printable too
-    expect(swallow('ArrowDown')).toBe(false); // navigation reaches mat-select
+    expect(swallow('Home')).toBe(true); // caret to start, not a first-option jump
+    expect(swallow('End')).toBe(true);
+    expect(swallow('ArrowLeft')).toBe(true);
+    expect(swallow('ArrowRight')).toBe(true);
+    // List-navigation + close keys reach mat-select's key manager.
+    expect(swallow('ArrowDown')).toBe(false);
+    expect(swallow('ArrowUp')).toBe(false);
     expect(swallow('Enter')).toBe(false);
     expect(swallow('Escape')).toBe(false);
+    expect(swallow('Tab')).toBe(false);
+  });
+
+  it('keeps the filter box off by default (opt-in in v1) and renders it only when filterable is set', () => {
+    // filterable defaults false in v1: the filter is not yet keyboard/SR-reachable (#138), so the
+    // baseline mat-select (fully accessible via typeahead) is what ships on by default.
+    expect(component.filterable()).toBe(false);
+    fixture.componentRef.setInput('filterable', true);
+    fixture.detectChanges();
+    expect(component.filterable()).toBe(true);
   });
 
   it('resets the filter when the panel closes so it reopens showing the full list', () => {

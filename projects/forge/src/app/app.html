@@ -542,22 +542,23 @@
     }
 
     <!-- cae-multi-select (#135): the first M1 Composed control — mat-select[multiple] bound to a
-         standalone required reactive control whose value is a string[]. Typing in the in-panel filter
-         narrows the options, the collapsed field summarizes the chosen options as chips, and the
-         required validator (empty array = invalid) surfaces an inline <mat-error>. Deferred (#85):
-         the mat-select + mat-chips overlay modules are heavy, so it's `@defer (on idle)`'d into its
-         own lazy chunk. label (not placeholder) names the field for a11y. -->
+         standalone required reactive control whose value is a string[]. The collapsed field summarizes
+         the chosen options as chips, and the required validator (empty array = invalid) surfaces an
+         inline <mat-error>. The in-panel filter is opt-in and off in v1 (not yet keyboard/SR-reachable
+         — #138), so this canonical demo shows the fully keyboard-accessible baseline: mat-select's own
+         typeahead selects any option. Deferred (#85): the mat-select + mat-chips overlay modules are
+         heavy, so it's `@defer (on idle)`'d into its own lazy chunk. label (not placeholder) names the
+         field for a11y. -->
     @defer (on idle) {
       <cae-card
         class="forge-skills-card"
         title="Required skills"
-        subtitle="cae-multi-select — filterable, chip summary, bound to a required reactive control"
+        subtitle="cae-multi-select — chip summary, bound to a required reactive control"
       >
         <div class="forge-field-group">
           <cae-multi-select
             label="Skills"
             placeholder="Select skills…"
-            filterPlaceholder="Filter skills…"
             required
             [options]="skillOptions"
             [formControl]="skills"

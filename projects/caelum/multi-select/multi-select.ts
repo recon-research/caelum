@@ -38,17 +38,26 @@ export interface CaeMultiSelectOption {
  * - a **chip summary trigger** (`mat-select-trigger` + `mat-chip-set`) that shows the chosen options
  *   as chips in the collapsed field — `p-multiSelect`'s signature look (removable-from-trigger chips
  *   are an additive follow-up, #137);
- * - an **in-panel client-side filter** (a search input at the top of the panel), on by default like
- *   `p-multiSelect` (`filterable`). The default predicate is a case-insensitive label substring match;
- *   override `filterWith` for prefix/value matching. The filter input **swallows only printable keys**
- *   so mat-select's typeahead key manager doesn't hijack them, while Arrow/Enter/Escape/Tab still
- *   propagate to keep the panel keyboard-operable (real-browser focus + key behaviour is verified at
- *   the M4 a11y pass, #138).
+ * - an **opt-in in-panel client-side filter** (`filterable`, a search input at the top of the panel).
+ *   The default predicate is a case-insensitive label substring match; override `filterWith` for
+ *   prefix/value matching. **v1 caveat — off by default and mouse-oriented:** Material parks keyboard
+ *   focus on the `mat-select` host (a `role=combobox` driven by `aria-activedescendant` + a key
+ *   manager), never on a projected input, so a keyboard / screen-reader user cannot reach the filter
+ *   box — they select through mat-select's own typeahead, which is fully accessible. Enabling
+ *   `filterable` adds a mouse convenience without regressing that baseline. Making the filter itself
+ *   keyboard- and SR-accessible (focus-on-open + `aria-activedescendant` mirroring — the APG combobox
+ *   pattern, which needs a real browser to verify) and then defaulting it on is tracked in #138; the
+ *   filtered-empty announcement and the listbox-owned-child structure ride along there. When the
+ *   filter IS used, its input swallows text-editing keys (printable + Home/End/Left/Right) so they
+ *   edit the query, while Arrow/Enter/Escape/Tab reach mat-select to navigate/select/close.
  *
  * **Data-loss guard.** `mat-select` drops the selection for any option that unmounts, so a naive
  * filter would silently delete a chosen-but-filtered-out value from the form. {@link filteredOptions}
  * therefore **always keeps currently-selected options rendered** — a selected option survives the
- * filter even when it doesn't match the query.
+ * filter even when it doesn't match the query. (Contract: the model should hold only values present in
+ * `options()`. A value with no matching option is not rendered, not summarized as a chip, and — as with
+ * a native multi-select — not preserved once the user next changes the selection; keep `options()` a
+ * superset of the bound value.)
  *
  * The shared form-field inputs (`label`/`placeholder`/`hint`/`required`/`disabled`/`appearance`/
  * `ariaLabel`/`errorMessages`), the array `ControlValueAccessor`, and the validation-error forwarding
@@ -132,15 +141,15 @@ export interface CaeMultiSelectOption {
       display: block;
     }
     .cae-multi-select__chips {
-      --mdc-chip-container-height: 24px;
+      --mdc-chip-container-height: var(--cae-space-5);
     }
     .cae-multi-select__filter {
-      padding: 8px 16px 4px;
+      padding: var(--cae-space-2) var(--cae-space-4) var(--cae-space-1);
     }
     .cae-multi-select__filter input {
       box-sizing: border-box;
       inline-size: 100%;
-      padding: 8px 12px;
+      padding: var(--cae-space-2) var(--cae-space-3);
       border: 1px solid var(--mat-sys-outline-variant, currentColor);
       border-radius: var(--mat-sys-corner-extra-small, 4px);
       background: var(--mat-sys-surface-container-high, transparent);
@@ -151,7 +160,7 @@ export interface CaeMultiSelectOption {
       color: var(--mat-sys-on-surface-variant, currentColor);
     }
     .cae-multi-select__empty {
-      padding: 8px 16px;
+      padding: var(--cae-space-2) var(--cae-space-4);
       color: var(--mat-sys-on-surface-variant, currentColor);
     }
   `,
@@ -159,8 +168,13 @@ export interface CaeMultiSelectOption {
 export class CaeMultiSelect extends CaeFormFieldControlBase<string[]> {
   /** The selectable options, as data. */
   readonly options = input<readonly CaeMultiSelectOption[]>([]);
-  /** Show the in-panel filter box. On by default, matching `p-multiSelect`'s `filter`. */
-  readonly filterable = input(true, { transform: booleanAttribute });
+  /**
+   * Show the opt-in in-panel filter box. **Off by default in v1** — the filter is not yet keyboard- or
+   * screen-reader-reachable (Material keeps focus on the `mat-select` host), so it is a mouse
+   * convenience over the fully-accessible typeahead baseline; #138 makes it accessible and flips this
+   * default on. `p-multiSelect`'s equivalent prop is `filter` (on by default there).
+   */
+  readonly filterable = input(false, { transform: booleanAttribute });
   /** Placeholder for the filter box. */
   readonly filterPlaceholder = input('Filter');
   /** Accessible name for the filter box (it has no visible label). */
@@ -222,10 +236,17 @@ export class CaeMultiSelect extends CaeFormFieldControlBase<string[]> {
   }
 
   protected onFilterKeydown(event: KeyboardEvent): void {
-    // Type printable keys into the filter box instead of letting mat-select's typeahead key manager
-    // hijack them; multi-character keys (ArrowDown, Enter, Escape, Tab, Home, End) still propagate to
-    // mat-select so the panel stays keyboard-operable. Real-browser focus + key behaviour: M4 (#138).
-    if (event.key.length === 1) event.stopPropagation();
+    // Keep text-editing keys in the filter box; let list-navigation/close keys reach mat-select's key
+    // manager. Printable keys (length 1) type; caret keys (Home/End/Left/Right) move the text cursor
+    // rather than jumping the active option — mat-select's key manager is built withHomeAndEnd and
+    // would otherwise preventDefault the caret. Arrow up/down navigate, Enter selects, Escape/Tab close.
+    const isTextEditingKey =
+      event.key.length === 1 ||
+      event.key === 'Home' ||
+      event.key === 'End' ||
+      event.key === 'ArrowLeft' ||
+      event.key === 'ArrowRight';
+    if (isTextEditingKey) event.stopPropagation();
   }
 
   protected onOpenedChange(opened: boolean): void {
