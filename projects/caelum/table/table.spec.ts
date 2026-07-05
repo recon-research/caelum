@@ -3,9 +3,12 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { CaeTable, CaeTableColumn } from './table';
 
-interface Person extends Record<string, unknown> {
+// A plain typed interface (no index signature) — cae-table's generic is unconstrained, so an
+// ordinary row model type works without `extends Record<string, unknown>` (#141).
+interface Person {
   name: string;
   age: number | null;
+  role: string;
 }
 
 const COLUMNS: CaeTableColumn[] = [

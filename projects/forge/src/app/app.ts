@@ -71,6 +71,17 @@ import type { RenameWorkspaceDialog, RenameWorkspaceData } from './rename-worksp
 
 type ThemeMode = 'auto' | 'light' | 'dark';
 
+/**
+ * A plain, typed row model for the cae-table demo — deliberately NOT `Record<string, unknown>`, to
+ * prove cae-table's generic accepts an ordinary interface (its `T` is unconstrained; #141/#142).
+ */
+interface WorkspaceMember {
+  name: string;
+  email: string;
+  role: string;
+  joined: string;
+}
+
 /** The semantic tokens the demo surfaces as swatches — proof the bridge is live. */
 const SWATCHES: ReadonlyArray<{ token: string; label: string }> = [
   { token: '--cae-color-primary', label: 'primary' },
@@ -303,7 +314,7 @@ export class App {
     { key: 'role', header: 'Role', sortable: true },
     { key: 'joined', header: 'Joined', sortable: true },
   ];
-  protected readonly members: readonly Record<string, unknown>[] = [
+  protected readonly members: readonly WorkspaceMember[] = [
     { name: 'Ada Lovelace', email: 'ada@acme.dev', role: 'Owner', joined: '2024-01-12' },
     { name: 'Grace Hopper', email: 'grace@acme.dev', role: 'Admin', joined: '2024-03-04' },
     { name: 'Alan Turing', email: 'alan@acme.dev', role: 'Member', joined: '2024-05-21' },

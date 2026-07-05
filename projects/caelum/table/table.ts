@@ -58,7 +58,10 @@ export interface CaeTableColumn {
  * Zoneless-compatible: `OnPush` + signal inputs (D-12). No `color` input — theming is free via
  * the token bridge (D-04).
  *
- * @typeParam T - the row shape; defaults to an open record so `key` indexing type-checks.
+ * @typeParam T - the row shape. **Unconstrained** so a plain typed interface works: a declared
+ * `interface Member { name: string }` is NOT assignable to `Record<string, unknown>` (interfaces
+ * lack an implicit index signature), so a `T extends Record<string, unknown>` constraint would
+ * reject the common typed-row case at the template. Indexing is confined to `cellText`, which casts.
  */
 @Component({
   selector: 'cae-table',
@@ -119,7 +122,7 @@ export interface CaeTableColumn {
     }
   `,
 })
-export class CaeTable<T extends Record<string, unknown> = Record<string, unknown>> {
+export class CaeTable<T = Record<string, unknown>> {
   /** Column definitions, in display order. */
   readonly columns = input.required<readonly CaeTableColumn[]>();
   /** Row data. Copied into the internal `MatTableDataSource` whenever it changes. */
@@ -169,7 +172,7 @@ export class CaeTable<T extends Record<string, unknown> = Record<string, unknown
 
   /** Nullish-safe cell text: renders '' (an empty cell) rather than the string "null"/"undefined". */
   protected cellText(row: T, key: string): string {
-    const value = row[key];
+    const value = (row as Record<string, unknown>)[key];
     return value == null ? '' : String(value);
   }
 }
