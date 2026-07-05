@@ -10,7 +10,11 @@ import { MatTabsModule } from '@angular/material/tabs';
 export interface CaeTabMenuItem<TValue = string> {
   /** Visible label. */
   label: string;
-  /** Identity of this tab — matched against `activeValue`, and emitted on selection. */
+  /**
+   * Identity of this tab — matched against `activeValue`, emitted on selection, and used as the
+   * `@for` track key. Must be unique and defined across items: a duplicate throws NG0955, and an
+   * `undefined` value would spuriously match the no-selection state (rendering that tab active).
+   */
   value: TValue;
   /**
    * Disable just this tab. Per the ARIA disabled-tab pattern it stays keyboard-focusable (the
@@ -84,7 +88,7 @@ export interface CaeTabMenuItem<TValue = string> {
         </a>
       }
     </nav>
-    <mat-tab-nav-panel #tabPanel>
+    <mat-tab-nav-panel #tabPanel [attr.tabindex]="panelTabIndex()">
       <ng-content />
     </mat-tab-nav-panel>
   `,
@@ -105,6 +109,13 @@ export class CaeTabMenu<TValue = string> {
   readonly activeValue = model<TValue | undefined>(undefined);
   /** Accessible name for the tab list (`role="tablist"`). */
   readonly ariaLabel = input('');
+  /**
+   * `tabindex` for the projected content panel. Leave unset (the default) when the panel holds
+   * its own focusable elements. Set it to `0` when the panel is static but can scroll/overflow,
+   * so a keyboard-only user can focus and scroll it (WAI-ARIA APG Tabs pattern). Mirrors
+   * `mat-tab-group`'s `contentTabIndex` — opt-in, so no spurious tab stop for interactive panels.
+   */
+  readonly panelTabIndex = input<number | undefined>(undefined);
   /**
    * Emits the chosen item when a tab is activated (click or keyboard). Fires only for enabled
    * tabs — a disabled tab cannot be activated.

@@ -705,6 +705,7 @@
           ariaLabel="Workspace sections"
           [items]="workspaceSections"
           [(activeValue)]="workspaceSection"
+          [panelTabIndex]="0"
         >
           <div class="forge-sections-card__body">
             @switch (workspaceSection()) {
