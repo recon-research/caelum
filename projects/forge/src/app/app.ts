@@ -36,6 +36,7 @@ import { CaeRadio, CaeRadioOption } from 'caelum/radio';
 import { CaeSelect, CaeSelectOption } from 'caelum/select';
 import { CaeSelectButton, CaeSelectButtonOption } from 'caelum/select-button';
 import { CaeSlider } from 'caelum/slider';
+import { CaeSplitButton } from 'caelum/split-button';
 import { CaeStep, CaeStepper } from 'caelum/stepper';
 import { CaeSwitch } from 'caelum/switch';
 import { CaeTab, CaeTabs } from 'caelum/tabs';
@@ -116,6 +117,7 @@ const SWATCHES: ReadonlyArray<{ token: string; label: string }> = [
     CaeSelect,
     CaeSelectButton,
     CaeSlider,
+    CaeSplitButton,
     CaeStep,
     CaeStepper,
     CaeSwitch,
@@ -314,7 +316,7 @@ export class App {
     { key: 'role', header: 'Role', sortable: true },
     { key: 'joined', header: 'Joined', sortable: true },
   ];
-  protected readonly members: readonly WorkspaceMember[] = [
+  protected readonly members = signal<readonly WorkspaceMember[]>([
     { name: 'Ada Lovelace', email: 'ada@acme.dev', role: 'Owner', joined: '2024-01-12' },
     { name: 'Grace Hopper', email: 'grace@acme.dev', role: 'Admin', joined: '2024-03-04' },
     { name: 'Alan Turing', email: 'alan@acme.dev', role: 'Member', joined: '2024-05-21' },
@@ -322,7 +324,48 @@ export class App {
     { name: 'Edsger Dijkstra', email: 'edsger@acme.dev', role: 'Viewer', joined: '2024-08-15' },
     { name: 'Barbara Liskov', email: 'barbara@acme.dev', role: 'Admin', joined: '2024-09-02' },
     { name: 'Donald Knuth', email: 'don@acme.dev', role: 'Member', joined: '2024-11-19' },
+  ]);
+
+  /**
+   * The "New member" `cae-split-button` demo (#148, M1 composed) — a default command joined to a
+   * secondary-action dropdown, itself composed over MatButton + `cae-menu`. Composed-over-composed:
+   * the primary and every dropdown item append to the `members` signal, so the `cae-table` above
+   * grows live (the split-button drives the table). `lastMemberAction` records how the newest member
+   * was added, for a crisp liveness readout.
+   */
+  protected readonly memberActions: readonly CaeMenuItem[] = [
+    { value: 'email', label: 'Invite by email' },
+    { value: 'csv', label: 'Import from CSV' },
+    { value: 'link', label: 'Create invite link' },
   ];
+  protected readonly lastMemberAction = signal('');
+  /** Persistent live-region text (empty until the first add) so the announcement is reliable. */
+  protected readonly memberNote = computed(() =>
+    this.lastMemberAction() ? `Added via: ${this.lastMemberAction()}` : '',
+  );
+  private memberSeq = 0;
+
+  /** Primary command: add a member the default way (Forge treats it as an email invite). */
+  protected addMember(): void {
+    this.appendMember('New member');
+  }
+  /** Secondary command: add a member via the chosen dropdown action. */
+  protected runMemberAction(item: CaeMenuItem): void {
+    this.appendMember(item.label);
+  }
+  private appendMember(via: string): void {
+    this.memberSeq += 1;
+    this.members.update((roster) => [
+      ...roster,
+      {
+        name: `New Member ${this.memberSeq}`,
+        email: `new${this.memberSeq}@acme.dev`,
+        role: 'Member',
+        joined: '2025-01-01',
+      },
+    ]);
+    this.lastMemberAction.set(via);
+  }
 
   /**
    * A short FAQ rendered as a `cae-accordion` — the liveness proof for #77. It's single-expand

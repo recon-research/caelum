@@ -97,6 +97,21 @@
   color: var(--cae-color-on-surface-variant);
 }
 
+/* cae-split-button (#148) demo toolbar in the members card — lean styles only (per #97). */
+.forge-members-card__toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--cae-space-3);
+  margin-block-end: var(--cae-space-4);
+}
+
+.forge-members-card__note {
+  color: var(--cae-color-on-surface-variant);
+}
+.forge-members-card__note:empty {
+  display: none;
+}
+
 .forge-panel__subheading {
   margin-block: var(--cae-space-6) var(--cae-space-3);
   font-size: var(--cae-text-lg);
