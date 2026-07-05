@@ -39,6 +39,7 @@ import { CaeSlider } from 'caelum/slider';
 import { CaeStep, CaeStepper } from 'caelum/stepper';
 import { CaeSwitch } from 'caelum/switch';
 import { CaeTab, CaeTabs } from 'caelum/tabs';
+import { CaeTable, type CaeTableColumn } from 'caelum/table';
 import { CaeTextarea } from 'caelum/textarea';
 import { CaeToggleButton } from 'caelum/toggle-button';
 import { CaeToolbar } from 'caelum/toolbar';
@@ -69,6 +70,17 @@ import { CaeToast } from 'caelum/toast';
 import type { RenameWorkspaceDialog, RenameWorkspaceData } from './rename-workspace-dialog';
 
 type ThemeMode = 'auto' | 'light' | 'dark';
+
+/**
+ * A plain, typed row model for the cae-table demo — deliberately NOT `Record<string, unknown>`, to
+ * prove cae-table's generic accepts an ordinary interface (its `T` is unconstrained; #141/#142).
+ */
+interface WorkspaceMember {
+  name: string;
+  email: string;
+  role: string;
+  joined: string;
+}
 
 /** The semantic tokens the demo surfaces as swatches — proof the bridge is live. */
 const SWATCHES: ReadonlyArray<{ token: string; label: string }> = [
@@ -109,6 +121,7 @@ const SWATCHES: ReadonlyArray<{ token: string; label: string }> = [
     CaeSwitch,
     CaeTab,
     CaeTabs,
+    CaeTable,
     CaeTextarea,
     CaeToggleButton,
     CaeTooltip,
@@ -286,6 +299,29 @@ export class App {
     { value: 'a11y', label: 'Accessibility' },
     { value: 'testing', label: 'Testing' },
     { value: 'design-systems', label: 'Design systems' },
+  ];
+
+  /**
+   * The deferred "Workspace members" table demo (#141) — the first M1 *composed* table. A
+   * declarative `cae-table` renders a sortable, client-side-paginated member roster from a
+   * `columns` config + a `data` array, with no `matColumnDef` boilerplate (p-table parity for
+   * the common text-column case). Deferred (#85): MatTable + MatSort + MatPaginator are heavy
+   * Material modules, so it's `@defer (on idle)`'d into its own lazy chunk off the initial bundle.
+   */
+  protected readonly memberColumns: readonly CaeTableColumn[] = [
+    { key: 'name', header: 'Name', sortable: true },
+    { key: 'email', header: 'Email' },
+    { key: 'role', header: 'Role', sortable: true },
+    { key: 'joined', header: 'Joined', sortable: true },
+  ];
+  protected readonly members: readonly WorkspaceMember[] = [
+    { name: 'Ada Lovelace', email: 'ada@acme.dev', role: 'Owner', joined: '2024-01-12' },
+    { name: 'Grace Hopper', email: 'grace@acme.dev', role: 'Admin', joined: '2024-03-04' },
+    { name: 'Alan Turing', email: 'alan@acme.dev', role: 'Member', joined: '2024-05-21' },
+    { name: 'Katherine Johnson', email: 'kate@acme.dev', role: 'Member', joined: '2024-06-30' },
+    { name: 'Edsger Dijkstra', email: 'edsger@acme.dev', role: 'Viewer', joined: '2024-08-15' },
+    { name: 'Barbara Liskov', email: 'barbara@acme.dev', role: 'Admin', joined: '2024-09-02' },
+    { name: 'Donald Knuth', email: 'don@acme.dev', role: 'Member', joined: '2024-11-19' },
   ];
 
   /**

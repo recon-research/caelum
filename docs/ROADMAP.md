@@ -28,10 +28,10 @@ Each milestone has a **goal**, **slices**, a verifiable **exit criterion**, a **
 
 ### M1 — Composed components
 - **Goal:** The common-case widgets that aren't drop-in but assemble from Material/CDK pieces.
-- **Slices:** ☑ ConfirmDialog wrapper — delivered early as `cae-confirm` #101 (D-15) · ☐ Menubar (`MatToolbar`+`MatMenu`) · ☑ **MultiSelect** w/ filter + chip summary — `cae-multi-select` #135 (PR #136; in-panel filter opt-in/off in v1 pending accessible impl #138) · ☐ basic `MatTable` screens (sort/paginate/sticky/expandable — team's #1 dependence) · ☐ TabMenu · ☐ ContextMenu (CDK Menu) · ☐ SplitButton
+- **Slices:** ☑ ConfirmDialog wrapper — delivered early as `cae-confirm` #101 (D-15) · ☐ Menubar (`MatToolbar`+`MatMenu`) · ☑ **MultiSelect** w/ filter + chip summary — `cae-multi-select` #135 (PR #136; in-panel filter opt-in/off in v1 pending accessible impl #138) · ☑ **basic `MatTable` screen** — `cae-table` #141 (declarative columns/data config over MatTable + MatSort + MatPaginator, client-side sort + pagination; custom cell templates / sticky / expandable / selection are follow-ups; team's #1 dependence) · ☐ TabMenu · ☐ ContextMenu (CDK Menu) · ☐ SplitButton
 - **Exit criterion:** the common-case component set is implemented **and parity-verified** (functional + a11y + visual scenarios green per component).
 - **Leverage:** high — composition over documented Material/CDK primitives.
-- **Status:** ◐ **in progress** — opened 2026-07-04 with `cae-multi-select` #135 (PR #136), the first M1 slice; ConfirmDialog wrapper already delivered as `cae-confirm` #101 (D-15). Next-slice candidates + the resume point live in the `CLAUDE.md` Status block.
+- **Status:** ◐ **in progress** — opened 2026-07-04 with `cae-multi-select` #135 (PR #136); `cae-table` #141 (the team's #1 dependence) landed next; ConfirmDialog wrapper already delivered as `cae-confirm` #101 (D-15). A provisional Forge initial-bundle warn-budget raise (850→875 kB) rode in with #141 — `decision` #142 (reversible; shipped-lib size discipline untouched). Next-slice candidates + the resume point live in the `CLAUDE.md` Status block.
 
 ### M2 — Adapters for the three gaps
 - **Goal:** Neutral interfaces + adapters for the three genuine gaps; each vetted candidate prototyped **in isolation** behind its adapter; provenance signed off (`D-07`/`D-08`/`D-09`).

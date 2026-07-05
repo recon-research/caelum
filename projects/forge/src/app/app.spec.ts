@@ -322,14 +322,14 @@ describe('App', () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     const el = fixture.nativeElement as HTMLElement;
-    // Exactly eight @defer blocks — the capacity sliders, modules listbox, timezone autocomplete,
-    // skills multi-select, structure tree, reference tabs, FAQ accordion, and tag row — each carrying
-    // a heavy Material module (MatSlider/MatList/MatAutocomplete/MatSelect+MatChips/MatTree/MatTabs/
-    // MatExpansion/MatChips) off the initial bundle. This is the regression guard for the #85 bundle
-    // win: deleting an @defer wrapper stays UNDER the 1mb budget error (so `ng build` wouldn't fail),
-    // but drops a block here → red test. (The skills multi-select card, #135, is the newest: the
-    // mat-select + mat-chips overlays are heavy, so it's deferred rather than raising the budget.)
-    expect((await fixture.getDeferBlocks()).length).toBe(8);
+    // Exactly nine @defer blocks — the capacity sliders, modules listbox, timezone autocomplete,
+    // skills multi-select, members table, structure tree, reference tabs, FAQ accordion, and tag row —
+    // each carrying a heavy Material module (MatSlider/MatList/MatAutocomplete/MatSelect+MatChips/
+    // MatTable+MatSort+MatPaginator/MatTree/MatTabs/MatExpansion/MatChips) off the initial bundle. This
+    // is the regression guard for the #85 bundle win: deleting an @defer wrapper stays UNDER the 1mb
+    // budget error (so `ng build` wouldn't fail), but drops a block here → red test. (The members table,
+    // #141, is the newest: MatTable + MatSort + MatPaginator are heavy, so it's deferred not budgeted.)
+    expect((await fixture.getDeferBlocks()).length).toBe(9);
     // The eager critical path (the create-workspace form) is present with NO defer block rendered...
     expect(el.querySelector('.forge-form-card')).not.toBeNull();
     // ...while the deferred demo sections are genuinely absent until rendered (proof they're lazy).
@@ -337,6 +337,7 @@ describe('App', () => {
     expect(el.querySelector('.forge-modules-card')).toBeNull();
     expect(el.querySelector('.forge-timezone-card')).toBeNull();
     expect(el.querySelector('.forge-skills-card')).toBeNull();
+    expect(el.querySelector('.forge-members-card')).toBeNull();
     expect(el.querySelector('cae-tree')).toBeNull();
     expect(el.querySelector('.forge-reference')).toBeNull();
     expect(el.querySelector('.forge-faq')).toBeNull();
@@ -347,6 +348,7 @@ describe('App', () => {
     expect(el.querySelector('.forge-modules-card')).not.toBeNull();
     expect(el.querySelector('.forge-timezone-card')).not.toBeNull();
     expect(el.querySelector('.forge-skills-card')).not.toBeNull();
+    expect(el.querySelector('.forge-members-card')).not.toBeNull();
     expect(el.querySelector('cae-tree')).not.toBeNull();
     expect(el.querySelector('.forge-reference')).not.toBeNull();
     expect(el.querySelector('.forge-faq')).not.toBeNull();
@@ -581,6 +583,30 @@ describe('App', () => {
     const error = card.querySelector('mat-error') as HTMLElement;
     expect(error).not.toBeNull();
     expect(error.textContent).toContain('Choose at least one skill');
+  });
+
+  it('renders the members cae-table with a paginated, initially-sorted roster (#141)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    await renderDeferred(fixture); // the members table is @defer'd below the fold (#85, #141)
+    const card = (fixture.nativeElement as HTMLElement).querySelector(
+      '.forge-members-card',
+    ) as HTMLElement;
+    expect(card).not.toBeNull();
+
+    // The visible <caption> gives the table its accessible name.
+    expect(card.querySelector('table > caption')?.textContent).toContain('Workspace members');
+
+    // Client-side pagination limits the seven-row roster to the pageSize (5) first page.
+    const rowNames = () =>
+      Array.from(card.querySelectorAll('tr[mat-row]')).map((r) =>
+        r.querySelector('td[mat-cell]')?.textContent?.trim(),
+      );
+    expect(card.querySelector('mat-paginator')).not.toBeNull();
+    const names = rowNames();
+    expect(names.length).toBe(5);
+    // Initially sorted by name ascending (sortActive="name"), so 'Ada Lovelace' leads the page.
+    expect(names[0]).toBe('Ada Lovelace');
   });
 
   it('shows the workspace structure as a cae-tree and announces a selection', async () => {

@@ -10,4 +10,5 @@
 export * from './appearance';
 export * from './error-messages';
 export * from './menu-panel-host';
+export * from './sort-direction';
 export * from './tooltip-position';
