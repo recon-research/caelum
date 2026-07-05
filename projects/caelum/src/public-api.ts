@@ -70,6 +70,9 @@ export * from 'caelum/autocomplete';
 // --- Composed (M1): multi-select (#135 — string[] CVA over mat-select[multiple] + filter + chips) ---
 export * from 'caelum/multi-select';
 
+// --- Composed (M1): table (#141 — declarative data table over MatTable + MatSort + MatPaginator) ---
+export * from 'caelum/table';
+
 // --- Services: toast (#96, D-15 — the first service passthrough, over MatSnackBar) ---
 export * from 'caelum/toast';
 

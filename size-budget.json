@@ -32,6 +32,7 @@
     "caelum-listbox": 5632,
     "caelum-autocomplete": 6144,
     "caelum-multi-select": 7168,
+    "caelum-table": 4864,
     "caelum-toast": 2048,
     "caelum-dialog": 3072,
     "caelum-confirm": 3456
