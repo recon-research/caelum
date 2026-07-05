@@ -44,6 +44,10 @@ import { CaeSwitch } from 'caelum/switch';
 import { CaeTab, CaeTabs } from 'caelum/tabs';
 import { CaeTabMenu, type CaeTabMenuItem } from 'caelum/tab-menu';
 import { CaeTable, type CaeTableColumn } from 'caelum/table';
+// M2 grid (#170) — the first component over a neutral, engine-swappable port. Deferred like the
+// other heavy cards so cdk-virtual-scroll rides its own lazy chunk off Forge's initial bundle. The
+// value `CaeDataGrid` is used only inside a @defer block (so it code-splits); `CaeColumn` is a type.
+import { CaeDataGrid, type CaeColumn } from 'caelum/grid';
 import { CaeTextarea } from 'caelum/textarea';
 import { CaeToggleButton } from 'caelum/toggle-button';
 import { CaeToolbar } from 'caelum/toolbar';
@@ -87,6 +91,54 @@ interface WorkspaceMember {
   email: string;
   role: string;
   joined: string;
+}
+
+/** A row of the cae-data-grid "Activity log" demo (#170) — a typed model, like WorkspaceMember. */
+interface ActivityEvent {
+  seq: number;
+  actor: string;
+  action: string;
+  status: string;
+  when: string;
+}
+
+/**
+ * Deterministically build N activity rows for the cae-data-grid demo — enough to show the grid do
+ * what a table cannot: virtualize hundreds of rows and sort the whole set client-side. No
+ * Math.random / Date.now (both would break the OnPush determinism + the reproducible build).
+ */
+function buildActivity(count: number): readonly ActivityEvent[] {
+  const actors = [
+    'ada@acme.dev',
+    'grace@acme.dev',
+    'alan@acme.dev',
+    'kate@acme.dev',
+    'edsger@acme.dev',
+  ];
+  const actions = [
+    'Deployed service',
+    'Rotated API key',
+    'Invited member',
+    'Archived project',
+    'Updated billing',
+    'Ran migration',
+  ];
+  const statuses = ['ok', 'ok', 'ok', 'warning', 'failed'];
+  const rows: ActivityEvent[] = [];
+  for (let i = 0; i < count; i++) {
+    const month = String((i % 12) + 1).padStart(2, '0');
+    const day = String((i % 28) + 1).padStart(2, '0');
+    const hour = String(i % 24).padStart(2, '0');
+    const minute = String((i * 7) % 60).padStart(2, '0');
+    rows.push({
+      seq: i + 1,
+      actor: actors[i % actors.length],
+      action: actions[i % actions.length],
+      status: statuses[i % statuses.length],
+      when: `2025-${month}-${day} ${hour}:${minute}`,
+    });
+  }
+  return rows;
 }
 
 /** The semantic tokens the demo surfaces as swatches — proof the bridge is live. */
@@ -133,6 +185,7 @@ const SWATCHES: ReadonlyArray<{ token: string; label: string }> = [
     CaeTabs,
     CaeTabMenu,
     CaeTable,
+    CaeDataGrid,
     CaeTextarea,
     CaeToggleButton,
     CaeTooltip,
@@ -325,6 +378,24 @@ export class App {
     { key: 'role', header: 'Role', sortable: true },
     { key: 'joined', header: 'Joined', sortable: true },
   ];
+  /**
+   * The deferred "Activity log" `cae-data-grid` demo (#170, M2 — the first component over a neutral,
+   * engine-swappable port). Where the members `cae-table` above is great for a small roster, this
+   * grid renders its own virtualized DOM over hundreds of rows and sorts the whole set client-side
+   * behind the default {@link CaeDataGrid} engine — the exact surface #171 will drive with TanStack
+   * (via `provideCaelumGrid`) without changing this markup. `value(row)` accessors, sortable
+   * columns, fixed-width status/time columns, an initial seq-descending sort.
+   */
+  protected readonly activityColumns: readonly CaeColumn<ActivityEvent>[] = [
+    { id: 'seq', header: '#', value: (e) => e.seq, sortable: true, align: 'end', width: '4.5rem' },
+    { id: 'actor', header: 'Actor', value: (e) => e.actor, sortable: true },
+    { id: 'action', header: 'Action', value: (e) => e.action, sortable: true },
+    { id: 'status', header: 'Status', value: (e) => e.status, sortable: true, width: '7rem' },
+    { id: 'when', header: 'When', value: (e) => e.when, sortable: true, width: '11rem' },
+  ];
+  /** ~480 deterministic rows — far past what a plain table renders comfortably (the grid's reason to exist). */
+  protected readonly activity = signal<readonly ActivityEvent[]>(buildActivity(480));
+
   protected readonly members = signal<readonly WorkspaceMember[]>([
     { name: 'Ada Lovelace', email: 'ada@acme.dev', role: 'Owner', joined: '2024-01-12' },
     { name: 'Grace Hopper', email: 'grace@acme.dev', role: 'Admin', joined: '2024-03-04' },

@@ -85,6 +85,9 @@ export * from 'caelum/context-menu';
 // --- Composed (M1): tab-menu (#164 — horizontal tab-styled navigation/selection bar over mat-tab-nav-bar) ---
 export * from 'caelum/tab-menu';
 
+// --- Adapters (M2): grid (#170 — neutral engine-swappable data grid; client default here, TanStack behind the same port in #171) ---
+export * from 'caelum/grid';
+
 // --- Services: toast (#96, D-15 — the first service passthrough, over MatSnackBar) ---
 export * from 'caelum/toast';
 

@@ -322,17 +322,17 @@ describe('App', () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     const el = fixture.nativeElement as HTMLElement;
-    // Exactly twelve @defer blocks — the capacity sliders, modules listbox, timezone autocomplete,
-    // skills multi-select, members table, command bar, quick-actions context menu, workspace-sections
-    // tab menu, structure tree, reference tabs, FAQ accordion, and tag row — each carrying a heavy
-    // Material module or new CDK family (MatSlider/MatList/MatAutocomplete/MatSelect+MatChips/
-    // MatTable+MatSort+MatPaginator/MatToolbar+MatMenu/CDK-Menu/mat-tab-nav-bar/MatTree/MatTabs/
-    // MatExpansion/MatChips) off the initial bundle. This is the regression guard for the #85 bundle
-    // win: deleting an @defer wrapper stays UNDER the 1mb budget error (so `ng build` wouldn't fail),
-    // but drops a block here → red test. (The workspace-sections tab menu, #164, is the newest: it
-    // defers mat-tab-nav-bar + this demo into their own lazy chunk off the initial bundle — the #142
-    // initial-budget guard.)
-    expect((await fixture.getDeferBlocks()).length).toBe(12);
+    // Exactly thirteen @defer blocks — the capacity sliders, modules listbox, timezone autocomplete,
+    // skills multi-select, members table, activity data-grid, command bar, quick-actions context menu,
+    // workspace-sections tab menu, structure tree, reference tabs, FAQ accordion, and tag row — each
+    // carrying a heavy Material module or new CDK family (MatSlider/MatList/MatAutocomplete/
+    // MatSelect+MatChips/MatTable+MatSort+MatPaginator/CDK-VirtualScroll/MatToolbar+MatMenu/CDK-Menu/
+    // mat-tab-nav-bar/MatTree/MatTabs/MatExpansion/MatChips) off the initial bundle. This is the
+    // regression guard for the #85 bundle win: deleting an @defer wrapper stays UNDER the 1mb budget
+    // error (so `ng build` wouldn't fail), but drops a block here → red test. (The activity data-grid,
+    // #170, is the newest: it defers cdk-virtual-scroll + this demo into their own lazy chunk off the
+    // initial bundle — the #142 initial-budget guard.)
+    expect((await fixture.getDeferBlocks()).length).toBe(13);
     // The eager critical path (the create-workspace form) is present with NO defer block rendered...
     expect(el.querySelector('.forge-form-card')).not.toBeNull();
     // ...while the deferred demo sections are genuinely absent until rendered (proof they're lazy).
@@ -341,6 +341,7 @@ describe('App', () => {
     expect(el.querySelector('.forge-timezone-card')).toBeNull();
     expect(el.querySelector('.forge-skills-card')).toBeNull();
     expect(el.querySelector('.forge-members-card')).toBeNull();
+    expect(el.querySelector('.forge-grid-card')).toBeNull();
     expect(el.querySelector('.forge-commands-card')).toBeNull();
     expect(el.querySelector('.forge-contextmenu-card')).toBeNull();
     expect(el.querySelector('cae-tree')).toBeNull();
@@ -354,6 +355,7 @@ describe('App', () => {
     expect(el.querySelector('.forge-timezone-card')).not.toBeNull();
     expect(el.querySelector('.forge-skills-card')).not.toBeNull();
     expect(el.querySelector('.forge-members-card')).not.toBeNull();
+    expect(el.querySelector('.forge-grid-card')).not.toBeNull();
     expect(el.querySelector('.forge-commands-card')).not.toBeNull();
     expect(el.querySelector('.forge-contextmenu-card')).not.toBeNull();
     expect(el.querySelector('cae-tree')).not.toBeNull();
@@ -614,6 +616,36 @@ describe('App', () => {
     expect(names.length).toBe(5);
     // Initially sorted by name ascending (sortActive="name"), so 'Ada Lovelace' leads the page.
     expect(names[0]).toBe('Ada Lovelace');
+  });
+
+  it('renders the activity cae-data-grid over a swappable engine port (#170)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    await renderDeferred(fixture); // the grid demo is @defer'd below the fold (#85, #170)
+    const card = (fixture.nativeElement as HTMLElement).querySelector(
+      '.forge-grid-card',
+    ) as HTMLElement;
+    expect(card).not.toBeNull();
+
+    // It renders an ARIA grid (its own DOM — not a mat-table) with the full row count in aria-rowcount.
+    const g = card.querySelector('[role="grid"]') as HTMLElement;
+    expect(g).not.toBeNull();
+    expect(g.getAttribute('aria-rowcount')).toBe('481'); // 480 rows + header
+    expect(card.querySelector('.cae-data-grid__caption')?.textContent).toContain(
+      'Recent workspace activity',
+    );
+
+    // Five columnheaders from the value-accessor column config, in order (glyphs stripped).
+    const headers = Array.from(card.querySelectorAll('[role="columnheader"]')).map((h) =>
+      h.textContent!.replace(/[↕↑↓]/g, '').trim(),
+    );
+    expect(headers).toEqual(['#', 'Actor', 'Action', 'Status', 'When']);
+
+    // The initial sort (seq descending) is reflected on the header aria-sort.
+    const seqHeader = Array.from(card.querySelectorAll('[role="columnheader"]')).find((h) =>
+      h.textContent!.includes('#'),
+    )!;
+    expect(seqHeader.getAttribute('aria-sort')).toBe('descending');
   });
 
   it('grows the roster live when the "New member" cae-split-button is activated (#148)', async () => {
