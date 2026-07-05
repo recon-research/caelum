@@ -322,14 +322,15 @@ describe('App', () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     const el = fixture.nativeElement as HTMLElement;
-    // Exactly nine @defer blocks — the capacity sliders, modules listbox, timezone autocomplete,
-    // skills multi-select, members table, structure tree, reference tabs, FAQ accordion, and tag row —
-    // each carrying a heavy Material module (MatSlider/MatList/MatAutocomplete/MatSelect+MatChips/
-    // MatTable+MatSort+MatPaginator/MatTree/MatTabs/MatExpansion/MatChips) off the initial bundle. This
-    // is the regression guard for the #85 bundle win: deleting an @defer wrapper stays UNDER the 1mb
-    // budget error (so `ng build` wouldn't fail), but drops a block here → red test. (The members table,
-    // #141, is the newest: MatTable + MatSort + MatPaginator are heavy, so it's deferred not budgeted.)
-    expect((await fixture.getDeferBlocks()).length).toBe(9);
+    // Exactly ten @defer blocks — the capacity sliders, modules listbox, timezone autocomplete,
+    // skills multi-select, members table, command bar, structure tree, reference tabs, FAQ accordion,
+    // and tag row — each carrying a heavy Material module (MatSlider/MatList/MatAutocomplete/
+    // MatSelect+MatChips/MatTable+MatSort+MatPaginator/MatToolbar+MatMenu/MatTree/MatTabs/MatExpansion/
+    // MatChips) off the initial bundle. This is the regression guard for the #85 bundle win: deleting an
+    // @defer wrapper stays UNDER the 1mb budget error (so `ng build` wouldn't fail), but drops a block
+    // here → red test. (The command bar, #153, is the newest: MatToolbar + MatMenu are heavy, so it's
+    // deferred not budgeted.)
+    expect((await fixture.getDeferBlocks()).length).toBe(10);
     // The eager critical path (the create-workspace form) is present with NO defer block rendered...
     expect(el.querySelector('.forge-form-card')).not.toBeNull();
     // ...while the deferred demo sections are genuinely absent until rendered (proof they're lazy).
@@ -338,6 +339,7 @@ describe('App', () => {
     expect(el.querySelector('.forge-timezone-card')).toBeNull();
     expect(el.querySelector('.forge-skills-card')).toBeNull();
     expect(el.querySelector('.forge-members-card')).toBeNull();
+    expect(el.querySelector('.forge-commands-card')).toBeNull();
     expect(el.querySelector('cae-tree')).toBeNull();
     expect(el.querySelector('.forge-reference')).toBeNull();
     expect(el.querySelector('.forge-faq')).toBeNull();
@@ -349,6 +351,7 @@ describe('App', () => {
     expect(el.querySelector('.forge-timezone-card')).not.toBeNull();
     expect(el.querySelector('.forge-skills-card')).not.toBeNull();
     expect(el.querySelector('.forge-members-card')).not.toBeNull();
+    expect(el.querySelector('.forge-commands-card')).not.toBeNull();
     expect(el.querySelector('cae-tree')).not.toBeNull();
     expect(el.querySelector('.forge-reference')).not.toBeNull();
     expect(el.querySelector('.forge-faq')).not.toBeNull();
@@ -631,6 +634,27 @@ describe('App', () => {
     fixture.detectChanges();
     expect(app['members']().length).toBe(before + 1);
     expect(card.querySelector('.forge-members-card__note')?.textContent).toContain('New member');
+  });
+
+  it('logs the chosen command when a cae-menubar item is activated (#153)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    await renderDeferred(fixture); // the command bar lives inside a deferred card (#85, #153)
+    const card = (fixture.nativeElement as HTMLElement).querySelector(
+      '.forge-commands-card',
+    ) as HTMLElement;
+
+    // The composed menubar renders as a role=menubar of top-level triggers.
+    const bar = card.querySelector('cae-menubar [role="menubar"]');
+    expect(bar).not.toBeNull();
+    const app = fixture.componentInstance;
+    expect(app['commandLog']().length).toBe(0);
+
+    // Composed-over-composed: activating a dropdown command records it in the live log + region.
+    app['runCommand']({ value: 'save', label: 'Save changes' });
+    fixture.detectChanges();
+    expect(app['commandLog']()[0]).toBe('Save changes');
+    expect(card.querySelector('.forge-commands-card__note')?.textContent).toContain('Save changes');
   });
 
   it('shows the workspace structure as a cae-tree and announces a selection', async () => {
