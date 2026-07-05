@@ -112,7 +112,7 @@ Below, the **current** selector is listed with the historical alias noted. Verif
 | PrimeNG (`p-*`) | Caelum (`cae-*`) | Material / CDK basis | Tier | Book |
 |---|---|---|---|---|
 | `p-menu` | `cae-menu` | `MatMenu` | Direct | 09 |
-| `p-menubar` | `cae-menubar` | `MatToolbar` + `MatMenu` | Compose | 09 |
+| `p-menubar` | `cae-menubar` | `MatToolbar` + `MatMenu` (via `cae-menu`; v1 #153 = one-level dropdowns + CDK `FocusKeyManager` roving + Down/Up-opens + skip-disabled + empty-items guard; submenus/rich items/responsive collapse/RTL/disabled-interactive → #155) | Compose | 09 |
 | (TabMenu) | `cae-tab-menu` | `mat-tab-nav-bar` | Direct | 09 |
 | `p-contextmenu` | `cae-context-menu` | CDK Menu (`cdkContextMenuTriggerFor`) | Compose | 09 |
 | `p-tieredmenu` | `cae-tiered-menu` | CDK Menu (nested) | Compose | 09 |

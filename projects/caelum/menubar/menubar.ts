@@ -1,6 +1,5 @@
 import {
   AfterViewInit,
-  booleanAttribute,
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
@@ -8,6 +7,7 @@ import {
   ElementRef,
   inject,
   input,
+  OnDestroy,
   output,
   QueryList,
   signal,
@@ -15,6 +15,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FocusableOption, FocusKeyManager } from '@angular/cdk/a11y';
+import { DOWN_ARROW, UP_ARROW } from '@angular/cdk/keycodes';
 import { MatButtonModule } from '@angular/material/button';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { CaeMenu, CaeMenuTrigger, type CaeMenuItem } from 'caelum/menu';
@@ -39,14 +40,19 @@ export interface CaeMenubarItem {
  * skip-disabled). Not exported: it exists only to give the key manager focusable, labelled,
  * disable-aware handles onto the trigger `<button>`s.
  */
+/**
+ * @internal — Angular requires a class in a component's `imports` to be exported from its file, so
+ * this is `export`ed here, but `caelum/menubar`'s `public-api.ts` deliberately does NOT re-export it:
+ * it is not part of the public API surface (a consumer never references it).
+ */
 @Directive({
   selector: '[caeMenubarItem]',
   host: { role: 'menuitem' },
 })
 export class MenubarTriggerItem implements FocusableOption {
   private readonly el = inject<ElementRef<HTMLElement>>(ElementRef);
-  /** Mirrors the group's `disabled` flag so the key manager can skip it. */
-  readonly menubarDisabled = input(false, { transform: booleanAttribute });
+  /** Mirrors the group's effective disabled state so the key manager can skip it. */
+  readonly menubarDisabled = input(false);
   get disabled(): boolean {
     return this.menubarDisabled();
   }
@@ -77,8 +83,10 @@ export class MenubarTriggerItem implements FocusableOption {
  *
  * **a11y.** The bar is a `role="menubar"`; each trigger is a `role="menuitem"`. A CDK
  * `FocusKeyManager` gives the bar roving focus — only the active trigger is tab-focusable, and
- * Left/Right/Home/End + typeahead move between them, skipping disabled groups; Down/Enter/Space
- * opens a panel (Material) and focus enters it. Name the bar with {@link ariaLabel}.
+ * Left/Right/Home/End + typeahead move between them, skipping disabled groups. Down/Up open the
+ * active group's panel and move focus into it (Material owns the panel-side keys + Escape-restore);
+ * Enter/Space open it too via the native button. A group with no items is treated as disabled (no
+ * dead-end empty menu). Name the bar with {@link ariaLabel}.
  *
  * **v1 scope** (#153): one level of dropdown (the common File▸/Edit▸ admin case). Follow-ups —
  * tiered/nested submenus (`cae-tiered-menu`), rich items (icons/router links/commands, #150),
@@ -103,8 +111,8 @@ export class MenubarTriggerItem implements FocusableOption {
           type="button"
           caeMenubarItem
           class="cae-menubar__item"
-          [menubarDisabled]="group.disabled ?? false"
-          [disabled]="group.disabled ?? false"
+          [menubarDisabled]="disabledGroup(group)"
+          [disabled]="disabledGroup(group)"
           [tabindex]="$index === activeIndex() ? 0 : -1"
           [caeMenuTriggerFor]="groupMenu"
         >
@@ -136,7 +144,7 @@ export class MenubarTriggerItem implements FocusableOption {
     }
   `,
 })
-export class CaeMenubar implements AfterViewInit {
+export class CaeMenubar implements AfterViewInit, OnDestroy {
   /** The menubar groups (each a top-level trigger + its dropdown items), as data. */
   readonly model = input<readonly CaeMenubarItem[]>([]);
   /** Accessible name for the bar (`role="menubar"`). */
@@ -149,11 +157,21 @@ export class CaeMenubar implements AfterViewInit {
 
   private readonly destroyRef = inject(DestroyRef);
   @ViewChildren(MenubarTriggerItem) private readonly triggers!: QueryList<MenubarTriggerItem>;
+  // The menu triggers, one per group, in the same order as `triggers` — so the active roving index
+  // selects the trigger whose panel Down/Up should open.
+  @ViewChildren(CaeMenuTrigger) private readonly menuTriggers!: QueryList<CaeMenuTrigger>;
   private keyManager?: FocusKeyManager<MenubarTriggerItem>;
+
+  /** A group is effectively disabled when explicitly disabled OR it has no items (no dead-end menu). */
+  protected disabledGroup(group: CaeMenubarItem): boolean {
+    return (group.disabled ?? false) || group.items.length === 0;
+  }
 
   ngAfterViewInit(): void {
     this.keyManager = new FocusKeyManager(this.triggers)
       .withHorizontalOrientation('ltr')
+      // The bar is horizontal, so Up/Down don't rove — they open the active group's panel (below).
+      .withVerticalOrientation(false)
       .withWrap()
       .withHomeAndEnd()
       .withTypeAhead()
@@ -167,7 +185,19 @@ export class CaeMenubar implements AfterViewInit {
     this.activeIndex.set(this.keyManager.activeItemIndex ?? 0);
   }
 
+  ngOnDestroy(): void {
+    // Tear down the manager's typeahead subscription (the CDK cleanup contract).
+    this.keyManager?.destroy();
+  }
+
   protected onKeydown(event: KeyboardEvent): void {
+    // Down/Up open the active group's panel (WAI-ARIA menubar) — Material focuses the first item.
+    // Intercept before the key manager so they open rather than move focus along the bar.
+    if (event.keyCode === DOWN_ARROW || event.keyCode === UP_ARROW) {
+      event.preventDefault();
+      this.menuTriggers?.get(this.activeIndex())?.open();
+      return;
+    }
     this.keyManager?.onKeydown(event);
   }
 }

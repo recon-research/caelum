@@ -2,7 +2,7 @@ import { ComponentRef } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { OverlayContainer } from '@angular/cdk/overlay';
-import { END, HOME, LEFT_ARROW, RIGHT_ARROW } from '@angular/cdk/keycodes';
+import { DOWN_ARROW, END, HOME, LEFT_ARROW, RIGHT_ARROW } from '@angular/cdk/keycodes';
 import { CaeMenuTrigger, type CaeMenuItem } from 'caelum/menu';
 
 import { CaeMenubar, type CaeMenubarItem } from './menubar';
@@ -118,6 +118,26 @@ describe('CaeMenubar', () => {
     keydown(HOME);
     await flush();
     expect(triggers()[0].tabIndex).toBe(0);
+  });
+
+  it('opens the active group menu on ArrowDown instead of roving (#153 review)', async () => {
+    await setup();
+    keydown(DOWN_ARROW);
+    await flush();
+    // Down opens the active (first) group dropdown and focus enters it — it does NOT rove the bar.
+    expect(menuItems().length).toBe(GROUPS[0].items.length);
+    expect(menuItems()[0].textContent).toContain('New');
+    expect(triggers()[0].tabIndex).toBe(0); // roving unchanged — Down opened, it did not move focus
+  });
+
+  it('treats a group with no items as disabled — no dead-end empty menu (#153 review)', async () => {
+    await setup({
+      model: [
+        { label: 'File', items: [{ value: 'new', label: 'New' }] },
+        { label: 'Empty', items: [] },
+      ] satisfies CaeMenubarItem[],
+    });
+    expect(triggers()[1].disabled).toBe(true);
   });
 
   it('skips a disabled group when roving', async () => {

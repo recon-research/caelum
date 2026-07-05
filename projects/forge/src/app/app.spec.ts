@@ -328,8 +328,9 @@ describe('App', () => {
     // MatSelect+MatChips/MatTable+MatSort+MatPaginator/MatToolbar+MatMenu/MatTree/MatTabs/MatExpansion/
     // MatChips) off the initial bundle. This is the regression guard for the #85 bundle win: deleting an
     // @defer wrapper stays UNDER the 1mb budget error (so `ng build` wouldn't fail), but drops a block
-    // here → red test. (The command bar, #153, is the newest: MatToolbar + MatMenu are heavy, so it's
-    // deferred not budgeted.)
+    // here → red test. (The command bar, #153, is the newest: MatToolbar + MatMenu are already eager
+    // elsewhere in Forge, so its defer keeps the cae-menubar component + demo markup — not the Material
+    // modules — off the initial bundle as an own lazy chunk.)
     expect((await fixture.getDeferBlocks()).length).toBe(10);
     // The eager critical path (the create-workspace form) is present with NO defer block rendered...
     expect(el.querySelector('.forge-form-card')).not.toBeNull();

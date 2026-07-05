@@ -10,5 +10,8 @@
  * `(itemSelect)` — is re-exported here so `caelum/menubar` is self-typing (no second import;
  * identical re-exports dedupe, so the barrel `export *` does not collide — verified in #148).
  */
-export * from './menubar';
+// Named exports (not `export *`) so the internal `MenubarTriggerItem` roving directive — which must
+// be `export`ed from menubar.ts for Angular to accept it in the component's `imports` — stays OUT of
+// the public API surface. Only the component and its item type are public.
+export { CaeMenubar, type CaeMenubarItem } from './menubar';
 export type { CaeMenuItem } from 'caelum/menu';

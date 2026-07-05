@@ -620,8 +620,10 @@
     <!-- cae-menubar (#153, M1 composed) — a horizontal application menu bar over MatToolbar +
          cae-menu, with a CDK FocusKeyManager giving roving keyboard across the top-level items.
          Composed-over-composed: selecting any command records it in a live log, so the menubar
-         drives visible Forge state. Deferred (#85): MatToolbar + MatMenu are heavy, so it's
-         `@defer (on idle)`'d into its own lazy chunk off Forge's initial bundle. -->
+         drives visible Forge state. Deferred (#85): MatToolbar + MatMenu are already eager elsewhere
+         in Forge (the toolbar + the workspace-actions menu), so the win here is narrower than the
+         other cards — the `@defer (on idle)` keeps the cae-menubar component + its roving wiring +
+         this demo's markup off the initial bundle as their own lazy chunk. -->
     @defer (on idle) {
       <cae-card
         class="forge-commands-card"
