@@ -35,10 +35,10 @@ Each milestone has a **goal**, **slices**, a verifiable **exit criterion**, a **
 
 ### M2 — Adapters for the three gaps
 - **Goal:** Neutral interfaces + adapters for the three genuine gaps; each vetted candidate prototyped **in isolation** behind its adapter; provenance signed off (`D-07`/`D-08`/`D-09`).
-- **Slices:** ☐ neutral grid interface + grid adapter (TanStack candidate) · ☐ neutral chart interface + chart adapter (visx/D3 candidate) · ☐ neutral editor interface + editor adapter (Lexical candidate) · ☐ provenance sign-off record per lib (transitive tree + license)
+- **Slices** (grid track planned + ticketed 2026-07-05; charts deferred; editor later): **grid** — ☑ **provenance sign-off + ratify D-07** (#169, `docs/provenance/M2-grid-tanstack-signoff.md` — PASS) · ☐ neutral grid interface + `cae-data-grid` + client-side default adapter, vendor-free (#170, Provisional on #168) · ☐ TanStack adapter behind the interface + at-scale Forge screen = **exit criterion** (#171) — with the grid **public-API shape** as `decision` **#168** (recommended default = the library-grounded `CaeGridAdapter` port + `Cae*` value types; provisional, 48h window). **editor** — ☐ neutral editor interface + editor adapter (Lexical, D-09) + its own provenance sign-off (later in M2). **charts** — ☐ deferred (D-14 D3-direct).
 - **Exit criterion:** one real Forge screen per gap running on the chosen library, **behind the adapter only**, with provenance signed off and the ESLint isolation rule proving no leakage.
 - **Leverage:** mixed — interface design + isolation is high; the provenance/legal sign-off is ~1× (the human + compliance).
-- **Status:** ☐ not started. Directions endorsed (D-07 TanStack grid, D-09 Lexical editor); final provenance sign-off lands here. **Charts adapter (D-08) deferred** — team not using charts yet (build when the need arrives).
+- **Status:** ◐ **in progress** (kicked off 2026-07-05). Grid track planned + ticketed (#168–#171); **D-07 TanStack ratified** — transitive-provenance sign-off PASS (#169: `@tanstack/table-core@8.21.3`, MIT, US, dependency-free; allowlist row prepared, admitted with the `npm i` in #171). Next executable build slice = the neutral grid interface (#170), provisional on the grid-API decision #168. Editor (D-09 Lexical) sign-off + build come later in M2; **charts (D-14) deferred** — team not using charts yet.
 
 ### M3 — Build-S/M long tail
 - **Goal:** The individually-cheap custom widgets, ranked by general PrimeNG frequency (R7).
