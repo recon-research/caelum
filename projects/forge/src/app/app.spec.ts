@@ -8,7 +8,7 @@ import { OverlayContainer } from '@angular/cdk/overlay';
 import { MatDialog } from '@angular/material/dialog';
 import { By } from '@angular/platform-browser';
 import { firstValueFrom } from 'rxjs';
-import { CaeDataGrid, TanStackGridAdapter } from 'caelum/grid';
+import { CaeDataGrid, ServerGridAdapter, TanStackGridAdapter } from 'caelum/grid';
 import { App } from './app';
 
 /**
@@ -324,17 +324,18 @@ describe('App', () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     const el = fixture.nativeElement as HTMLElement;
-    // Exactly thirteen @defer blocks — the capacity sliders, modules listbox, timezone autocomplete,
-    // skills multi-select, members table, activity data-grid, command bar, quick-actions context menu,
-    // workspace-sections tab menu, structure tree, reference tabs, FAQ accordion, and tag row — each
-    // carrying a heavy Material module or new CDK family (MatSlider/MatList/MatAutocomplete/
-    // MatSelect+MatChips/MatTable+MatSort+MatPaginator/CDK-VirtualScroll/MatToolbar+MatMenu/CDK-Menu/
-    // mat-tab-nav-bar/MatTree/MatTabs/MatExpansion/MatChips) off the initial bundle. This is the
-    // regression guard for the #85 bundle win: deleting an @defer wrapper stays UNDER the 1mb budget
-    // error (so `ng build` wouldn't fail), but drops a block here → red test. (The activity data-grid
-    // now defers the whole app-activity-grid-demo component — cdk-virtual-scroll AND @tanstack/table-core
-    // (#171) — into its own lazy chunk off the initial bundle, the #142 initial-budget guard.)
-    expect((await fixture.getDeferBlocks()).length).toBe(13);
+    // Exactly fourteen @defer blocks — the capacity sliders, modules listbox, timezone autocomplete,
+    // skills multi-select, members table, activity data-grid, orders server-grid, command bar,
+    // quick-actions context menu, workspace-sections tab menu, structure tree, reference tabs, FAQ
+    // accordion, and tag row — each carrying a heavy Material module or new CDK family (MatSlider/
+    // MatList/MatAutocomplete/MatSelect+MatChips/MatTable+MatSort+MatPaginator/CDK-VirtualScroll×2/
+    // MatToolbar+MatMenu/CDK-Menu/mat-tab-nav-bar/MatTree/MatTabs/MatExpansion/MatChips) off the initial
+    // bundle. This is the regression guard for the #85 bundle win: deleting an @defer wrapper stays
+    // UNDER the 1mb budget error (so `ng build` wouldn't fail), but drops a block here → red test. (The
+    // activity data-grid defers the whole app-activity-grid-demo — cdk-virtual-scroll AND
+    // @tanstack/table-core (#171); the orders grid defers app-orders-grid-demo — the ServerGridAdapter
+    // engine (#176) — each into its own lazy chunk, the #142 initial-budget guard.)
+    expect((await fixture.getDeferBlocks()).length).toBe(14);
     // The eager critical path (the create-workspace form) is present with NO defer block rendered...
     expect(el.querySelector('.forge-form-card')).not.toBeNull();
     // ...while the deferred demo sections are genuinely absent until rendered (proof they're lazy).
@@ -344,6 +345,7 @@ describe('App', () => {
     expect(el.querySelector('.forge-skills-card')).toBeNull();
     expect(el.querySelector('.forge-members-card')).toBeNull();
     expect(el.querySelector('.forge-grid-card')).toBeNull();
+    expect(el.querySelector('.forge-orders-card')).toBeNull();
     expect(el.querySelector('.forge-commands-card')).toBeNull();
     expect(el.querySelector('.forge-contextmenu-card')).toBeNull();
     expect(el.querySelector('cae-tree')).toBeNull();
@@ -661,6 +663,46 @@ describe('App', () => {
       h.textContent!.includes('#'),
     )!;
     expect(seqHeader.getAttribute('aria-sort')).toBe('descending');
+  });
+
+  it('renders the orders cae-data-grid over the SERVER engine, fetching pages lazily (#176)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    await renderDeferred(fixture); // the orders demo (app-orders-grid-demo) is @defer'd below the fold (#85, #176)
+
+    const host = (fixture.nativeElement as HTMLElement).querySelector('app-orders-grid-demo');
+    expect(host).not.toBeNull();
+    const card = (fixture.nativeElement as HTMLElement).querySelector(
+      '.forge-orders-card',
+    ) as HTMLElement;
+    expect(card).not.toBeNull();
+    const rowcount = () =>
+      (card.querySelector('[role="table"]') as HTMLElement)?.getAttribute('aria-rowcount');
+
+    // The "server" is an untracked Promise, so whenStable() doesn't await it. Pump macrotasks + CD
+    // until the pushed first page lands (bounded — deterministic, since queryOrders resolves at once).
+    for (let i = 0; i < 10 && rowcount() !== '4801'; i++) {
+      await new Promise((resolve) => setTimeout(resolve));
+      fixture.detectChanges();
+    }
+
+    // The engine is genuinely the ServerGridAdapter in the full App context (the element-injector
+    // provider reaches the grid) — the third engine behind the identical port (#170/#171/#176). Scope
+    // to the orders card: the activity grid above it is a second CaeDataGrid (on the TanStack engine).
+    const ordersGrid = fixture.debugElement
+      .queryAll(By.directive(CaeDataGrid))
+      .find((g) => (g.nativeElement as HTMLElement).closest('.forge-orders-card'))!;
+    const gridCmp = ordersGrid.componentInstance as unknown as { adapter: unknown };
+    expect(gridCmp.adapter).toBeInstanceOf(ServerGridAdapter);
+
+    // aria-rowcount reflects the SERVER total (4800 + header) even though only one 25-row page was
+    // fetched into the browser — the proof the grid is genuinely lazy, not a client-side load.
+    expect(rowcount()).toBe('4801');
+    expect(card.querySelector('.cae-data-grid__range')?.textContent).toContain('1-25 of 4800');
+    // The server-side nature is announced once the first page lands.
+    expect(card.querySelector('.forge-orders-card__note')?.textContent).toContain(
+      '4800 orders on the server',
+    );
   });
 
   it('grows the roster live when the "New member" cae-split-button is activated (#148)', async () => {

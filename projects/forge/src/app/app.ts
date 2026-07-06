@@ -76,6 +76,7 @@ import type { RenameWorkspaceDialog, RenameWorkspaceData } from './rename-worksp
 // so it — and `@tanstack/table-core` behind it — code-splits into its own lazy chunk (off Forge's
 // eager initial bundle). It owns the grid, its data, and the engine provider; App just defers it in.
 import { ActivityGridDemo } from './activity-grid-demo';
+import { OrdersGridDemo } from './orders-grid-demo';
 
 type ThemeMode = 'auto' | 'light' | 'dark';
 
@@ -138,6 +139,7 @@ const SWATCHES: ReadonlyArray<{ token: string; label: string }> = [
     CaeTabMenu,
     CaeTable,
     ActivityGridDemo,
+    OrdersGridDemo,
     CaeTextarea,
     CaeToggleButton,
     CaeTooltip,

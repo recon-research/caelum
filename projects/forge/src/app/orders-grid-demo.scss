@@ -1,0 +1,10 @@
+// Orders server-side grid demo (#176) — per-demo card styles, token-driven (D-04). Only literals are
+// none — space/colour resolve to `--cae-*` (a literal colour would be a defect, Book 04 §3.6).
+
+.forge-orders-card__note {
+  color: var(--cae-color-on-surface-variant);
+  margin-block-end: var(--cae-space-4);
+}
+.forge-orders-card__note:empty {
+  display: none;
+}

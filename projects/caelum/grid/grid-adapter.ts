@@ -52,8 +52,11 @@ export abstract class CaeGridAdapter<T> {
 
   /**
    * The pending **server-side** fetch descriptor, or `null` when the adapter serves rows itself
-   * (the client default is always `null`). A server-backed adapter (followup) emits this on every
-   * sort/page change; the consumer fetches and pushes the slice back via {@link applyServerResult}.
+   * (the client + TanStack engines are always `null`). The server engine
+   * ({@link import('./server-grid-adapter').ServerGridAdapter}, #176) emits this on every sort/page
+   * change; the consumer fetches and pushes the slice back via {@link applyServerResult}. Its non-null
+   * value is also how `cae-data-grid` recognises a server engine (client-vs-server mode follows the
+   * provider, not any input).
    */
   abstract readonly dataRequest: Signal<CaeGridDataRequest | null>;
 
@@ -64,7 +67,11 @@ export abstract class CaeGridAdapter<T> {
    */
   abstract applyServerResult(rows: readonly T[], total: number): void;
 
-  /** Serialize the **full** (all-pages, sorted) dataset to a downloadable {@link Blob} (CSV in v1). */
+  /**
+   * Serialize the dataset the engine holds to a downloadable {@link Blob} (CSV in v1). A client engine
+   * holds — and exports — the **full** (all-pages, sorted) set; a server engine holds only the fetched
+   * page, so it exports **that page** (a full-fetch server export is a followup, #177).
+   */
   abstract exportRows(format?: CaeGridExportFormat): Blob;
 }
 
