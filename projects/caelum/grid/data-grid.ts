@@ -66,6 +66,9 @@ let gridInstanceCounter = 0;
  * unsorted). The empty state is a persistent `role="status"` live region (announced on a
  * data-becomes-empty transition); while {@link loading} it shows {@link loadingMessage} instead, and
  * `aria-busy="true"` on the row area holds the now-stale rows from announcement during a fetch (#188).
+ * During a load the sort headers + pager go `aria-disabled` (focusable, so focus is retained) and their
+ * handlers no-op, and an optional `[caeDataGridLoading]` slot renders a projected (decorative,
+ * `aria-hidden`) spinner/skeleton over the grid (#192).
  * When a pager button self-disables *as a direct result of a Prev/Next activation* at the first/last page,
  * focus moves to the still-enabled sibling (only if the pressed button held focus) so a keyboard user is
  * not dropped to the document body (#189); a button disabling from a later async server result — a
@@ -112,7 +115,12 @@ let gridInstanceCounter = 0;
               [style.flex]="col.width ? '0 0 ' + col.width : '1 1 0'"
             >
               @if (col.sortable) {
-                <button type="button" class="cae-data-grid__sort" (click)="toggleSort(col)">
+                <button
+                  type="button"
+                  class="cae-data-grid__sort"
+                  [attr.aria-disabled]="loading() ? 'true' : null"
+                  (click)="toggleSort(col)"
+                >
                   <span>{{ col.header }}</span>
                   <span class="cae-data-grid__sort-icon" aria-hidden="true">{{
                     sortGlyph(col)
@@ -164,6 +172,7 @@ let gridInstanceCounter = 0;
             type="button"
             class="cae-data-grid__page-btn"
             [disabled]="!canPrev()"
+            [attr.aria-disabled]="loading() ? 'true' : null"
             (click)="prevPage()"
             aria-label="Previous page"
           >
@@ -174,11 +183,18 @@ let gridInstanceCounter = 0;
             type="button"
             class="cae-data-grid__page-btn"
             [disabled]="!canNext()"
+            [attr.aria-disabled]="loading() ? 'true' : null"
             (click)="nextPage()"
             aria-label="Next page"
           >
             Next
           </button>
+        </div>
+      }
+
+      @if (loading()) {
+        <div class="cae-data-grid__busy" aria-hidden="true">
+          <ng-content select="[caeDataGridLoading]"></ng-content>
         </div>
       }
     </div>
@@ -188,6 +204,7 @@ let gridInstanceCounter = 0;
       display: block;
     }
     .cae-data-grid {
+      position: relative;
       display: flex;
       flex-direction: column;
       border: 1px solid var(--cae-color-border);
@@ -196,6 +213,14 @@ let gridInstanceCounter = 0;
       color: var(--cae-color-on-surface, currentColor);
       background: var(--cae-surface-base, transparent);
       font: var(--cae-text-md);
+    }
+    .cae-data-grid__busy {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
     }
     .cae-data-grid__caption {
       padding: var(--cae-space-2) var(--cae-space-3);
@@ -239,6 +264,10 @@ let gridInstanceCounter = 0;
       outline: var(--cae-focus-ring);
       outline-offset: var(--cae-focus-ring-offset);
     }
+    .cae-data-grid__sort[aria-disabled='true'] {
+      opacity: 0.5;
+      cursor: default;
+    }
     .cae-data-grid__sort-icon {
       opacity: 0.7;
       font-size: 0.85em;
@@ -271,7 +300,8 @@ let gridInstanceCounter = 0;
       padding: var(--cae-space-1) var(--cae-space-3);
       cursor: pointer;
     }
-    .cae-data-grid__page-btn:disabled {
+    .cae-data-grid__page-btn:disabled,
+    .cae-data-grid__page-btn[aria-disabled='true'] {
       opacity: 0.5;
       cursor: default;
     }
@@ -300,17 +330,27 @@ export class CaeDataGrid<T = Record<string, unknown>> implements OnInit {
   /**
    * Whether the grid is currently loading data — mirroring the `p-table` `[loading]` **input contract**
    * (issue #188). While true it (a) sets `aria-busy="true"` on the row area so assistive tech holds the
-   * now-stale rows during a fetch instead of announcing an incoherent target-page/old-rows snapshot, and
+   * now-stale rows during a fetch instead of announcing an incoherent target-page/old-rows snapshot,
    * (b) shows {@link loadingMessage} in the status region **instead of** the empty state — so an in-flight
-   * fetch reads as *loading*, not *empty* ("0 rows"). It is **non-blocking**: unlike p-table's overlay it
-   * does not disable the pager or sort headers or trap interaction (disable-while-loading + a spinner slot
-   * are a followup), so under rapidly overlapping fetches it is best-effort — the consumer should key on
-   * the latest request (the same responsibility noted on {@link dataRequest}). The **consumer owns it**:
-   * only the consumer knows a request is in flight (it owns the async fetch behind the server seam), so it
-   * sets this true when a {@link dataRequest} fetch starts and false when the result is applied *or the
-   * fetch fails* (a `.finally` — so a failure never strands the grid loading). The client default never
-   * needs it (it serves rows synchronously); a server grid (`provideServerGrid()`, #176) should bind it —
-   * without it a server grid briefly shows the empty state on first load until the fetch settles.
+   * fetch reads as *loading*, not *empty* ("0 rows"), and (c) makes the grid's own sort headers + pager
+   * **inert** (issue #192): they render `aria-disabled="true"` and their click handlers no-op, closing the
+   * overlapping-`dataRequest` footgun at the source (a Prev/Next or sort *during* a fetch can no longer emit
+   * a second, racing request). This deliberately uses `aria-disabled`, **not** the native `disabled`
+   * attribute — the controls stay focusable, so a keyboard user's focus is never dropped when a fetch starts,
+   * and returns to a live control when it settles (native `disabled` would strand focus at `<body>`, the very
+   * problem #189 fixes for boundary self-disable). For a visual busy affordance, project a spinner/skeleton
+   * into the `[caeDataGridLoading]` slot — rendered `aria-hidden` over the grid only while loading (the
+   * status region owns the announcement; no default spinner ships, keeping the grid dep- and motion-free).
+   * That slot is **decorative-only**: its overlay is `aria-hidden` and `pointer-events: none`, so project
+   * only non-interactive content (a spinner/skeleton) — never a focusable control such as a Cancel button
+   * (a focusable element inside an `aria-hidden` subtree is a WCAG 4.1.2 violation, and it would be
+   * unclickable anyway). A cancel/retry affordance belongs *outside* the grid, as the Forge demo does with
+   * its Retry button in the surrounding card. The
+   * **consumer owns it**: only the consumer knows a request is in flight (it owns the async fetch behind the
+   * server seam), so it sets this true when a {@link dataRequest} fetch starts and false when the result is
+   * applied *or the fetch fails* (a `.finally` — so a failure never strands the grid loading). The client
+   * default never needs it (it serves rows synchronously); a server grid (`provideServerGrid()`, #176) should
+   * bind it — without it a server grid briefly shows the empty state on first load until the fetch settles.
    */
   readonly loading = input(false, { transform: booleanAttribute });
   /** Text shown in the status region while {@link loading} (issue #188). */
@@ -488,7 +528,7 @@ export class CaeDataGrid<T = Record<string, unknown>> implements OnInit {
 
   /** Cycle a column three-state: unsorted/other -> asc -> desc -> unsorted (mat-sort parity). */
   protected toggleSort(col: CaeColumn<T>): void {
-    if (!col.sortable) return;
+    if (!col.sortable || this.loading()) return; // #192: inert while loading (the header is aria-disabled).
     const current = this.adapter.sort();
     let next: CaeSort | null;
     if (!current || current.columnId !== col.id) next = { columnId: col.id, dir: 'asc' };
@@ -503,6 +543,7 @@ export class CaeDataGrid<T = Record<string, unknown>> implements OnInit {
   private readonly injector = inject(Injector);
 
   protected prevPage(): void {
+    if (this.loading()) return; // #192: inert while loading (the pager is aria-disabled) — no overlapping fetch.
     const pressed = this.prevBtn()?.nativeElement;
     this.adapter.setPage(Math.max(0, this.adapter.page() - 1), this.adapter.pageSize());
     // #189: if this click (with Prev focused) landed on the first page, Prev is about to self-disable and
@@ -511,6 +552,7 @@ export class CaeDataGrid<T = Record<string, unknown>> implements OnInit {
   }
 
   protected nextPage(): void {
+    if (this.loading()) return; // #192: inert while loading (the pager is aria-disabled) — no overlapping fetch.
     const pressed = this.nextBtn()?.nativeElement;
     this.adapter.setPage(this.adapter.page() + 1, this.adapter.pageSize());
     // #189: symmetric — landing on the last page self-disables Next; hand focus to the enabled Prev.
