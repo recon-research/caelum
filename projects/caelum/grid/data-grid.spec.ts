@@ -1,4 +1,4 @@
-import { ComponentRef } from '@angular/core';
+import { Component, ComponentRef, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { CaeDataGrid } from './data-grid';
@@ -422,5 +422,84 @@ describe('CaeDataGrid', () => {
     flush();
     expect(next.disabled).toBe(true); // reached the last page
     expect(document.activeElement).toBe(sortBtn); // focus NOT yanked to the pager
+  });
+
+  // ---- Loading blocks interaction + busy slot (#192) ----
+  // While [loading], the grid's own sort headers + pager go aria-disabled (focusable, so focus is
+  // retained) and their handlers no-op — closing the overlapping-dataRequest footgun at the source —
+  // and an optional [caeDataGridLoading] slot renders a projected spinner over the grid.
+
+  it('loading: sort headers are aria-disabled and a sort click no-ops (no sortChange, no re-sort)', () => {
+    const emitted: (CaeSort | null)[] = [];
+    setup({ loading: true });
+    ref.instance.sortChange.subscribe((s) => emitted.push(s));
+    const btns = sortButtons();
+    expect(btns.length).toBeGreaterThan(0);
+    expect(btns.every((b) => b.getAttribute('aria-disabled') === 'true')).toBe(true);
+    btns[0].click(); // the Name header
+    flush();
+    expect(headerByText('Name').getAttribute('aria-sort')).toBe('none'); // unchanged
+    expect(emitted).toEqual([]); // inert while loading
+  });
+
+  it('loading: pager buttons are aria-disabled and Prev/Next no-op (no page change)', () => {
+    setup({ paginated: true, pageSize: 2, loading: true });
+    const next = pageBtn('Next page')!;
+    expect(next.getAttribute('aria-disabled')).toBe('true');
+    expect(pageBtn('Previous page')!.getAttribute('aria-disabled')).toBe('true');
+    next.click();
+    flush();
+    expect(el.querySelector('.cae-data-grid__range')?.textContent).toContain('1-2 of 3'); // did not advance
+  });
+
+  it('loading closes the overlapping-request footgun: a Next click during a server load emits no dataRequest', () => {
+    setup(
+      { data: [PEOPLE[0], PEOPLE[1]], total: 812, paginated: true, pageSize: 2, loading: true },
+      [provideServerGrid()],
+    );
+    const requests: CaeGridDataRequest[] = [];
+    ref.instance.dataRequest.subscribe((req) => requests.push(req)); // AFTER the initial page-0 fetch
+    const next = pageBtn('Next page')!;
+    expect(next.getAttribute('aria-disabled')).toBe('true');
+    next.click();
+    flush();
+    expect(requests).toEqual([]); // the click was inert — no second, racing fetch
+  });
+
+  it('not loading: no aria-disabled on sort or pager (interaction unblocked, client path unchanged)', () => {
+    setup({ paginated: true, pageSize: 2 });
+    expect(sortButtons().some((b) => b.hasAttribute('aria-disabled'))).toBe(false);
+    expect(pageBtn('Next page')!.hasAttribute('aria-disabled')).toBe(false);
+  });
+
+  it('busy slot: projects [caeDataGridLoading] content (aria-hidden) over the grid only while loading', () => {
+    @Component({
+      imports: [CaeDataGrid],
+      template: `<cae-data-grid [columns]="cols" [data]="rows" [loading]="loading()">
+        <div class="my-busy" caeDataGridLoading>Spinner</div>
+      </cae-data-grid>`,
+    })
+    class BusyHost {
+      cols = COLUMNS;
+      rows: Person[] = PEOPLE;
+      loading = signal(false);
+    }
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ imports: [BusyHost] });
+    const f = TestBed.createComponent(BusyHost);
+    f.detectChanges();
+    f.detectChanges();
+    const host = f.nativeElement as HTMLElement;
+    // Not loading: the overlay is unrendered, so the projected content is absent from the DOM.
+    expect(host.querySelector('.cae-data-grid__busy')).toBeNull();
+    expect(host.querySelector('.my-busy')).toBeNull();
+    // Loading: the overlay renders and the projected spinner appears inside it, aria-hidden.
+    f.componentInstance.loading.set(true);
+    f.detectChanges();
+    f.detectChanges();
+    const busy = host.querySelector('.cae-data-grid__busy') as HTMLElement;
+    expect(busy).not.toBeNull();
+    expect(busy.getAttribute('aria-hidden')).toBe('true');
+    expect(busy.querySelector('.my-busy')?.textContent).toBe('Spinner');
   });
 });

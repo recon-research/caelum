@@ -42,5 +42,10 @@
     sortDirection="asc"
     viewportHeight="20rem"
     (dataRequest)="onDataRequest($event)"
-  />
+  >
+    <!-- Optional visual busy affordance (#192): the grid renders this over itself only while [loading],
+         aria-hidden (the grid's own role=status region owns the announcement). Decorative-only — the spin/
+         motion lives here in the consumer, keeping the library dep- and motion-free. -->
+    <div class="forge-orders-card__spinner" caeDataGridLoading></div>
+  </cae-data-grid>
 </cae-card>
