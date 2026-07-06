@@ -4,8 +4,8 @@
   cae-radio/select/textarea/tabs/tooltip), batch 3 (#27, cae-menu in the header, the form laid
   out as a cae-stepper wizard, and a cae-tree for workspace structure), and batch 4 (#68 a
   cae-switch preference, #73 a cae-select-button for visibility and a cae-toggle-button
-  preference), plus a cae-accordion FAQ and a removable cae-chip tag row in the reference
-  area (#77, #83), and a live wizard-progress strip built from cae-progress-bar /
+  preference), plus a cae-accordion FAQ and a managed cae-chip-set tag row in the reference
+  area (#77, #84), and a live wizard-progress strip built from cae-progress-bar /
   cae-progress-spinner / cae-divider (#88). The form is
   a real reactive form whose every control is a Caelum wrapper over Material — here spread
   across projected stepper steps yet bound to one FormGroup. Every colour, space, and radius
@@ -844,27 +844,21 @@
       </cae-accordion>
     }
 
-    <!-- cae-chip (#83): removable tags backed by a signal list. Clicking × fires (removed) and the
-         consumer drops the tag, so the chip unrenders — a live round-trip. Deferred (#85): below
-         the fold, so MatChips splits into a lazy chunk loaded on idle. -->
+    <!-- cae-chip-set (#84): a managed removable-tag list. The set redirects focus to a sibling chip on
+         removal (while one remains), so — unlike the standalone cae-chip (#83) — the app no longer
+         hand-rolls a focus-move effect on every removal. It only handles the documented empty case: when
+         the LAST tag goes there is no in-set target, so removeTag() moves focus to the status region
+         (#202). Deferred (#85): below the fold, so MatChips splits into a lazy chunk. -->
     @defer (on idle) {
       <div class="forge-tags">
         <span class="forge-tags__label" id="tags-label">Workspace tags</span>
-        @if (tags().length) {
-          <div class="forge-tags__row" role="list" aria-labelledby="tags-label">
-            @for (tag of tags(); track tag) {
-              <cae-chip
-                role="listitem"
-                removable
-                [removeAriaLabel]="'Remove ' + tag"
-                (removed)="removeTag(tag)"
-                >{{ tag }}</cae-chip
-              >
-            }
-          </div>
-        }
-        <!-- Persistent polite live region: standalone chips don't manage focus on removal, so we
-           announce it here and move focus here (see the effect in app.ts) rather than to <body>. -->
+        <cae-chip-set
+          [items]="tags()"
+          ariaLabelledby="tags-label"
+          (removed)="removeTag($event.item)"
+        />
+        <!-- Persistent polite live region + empty-case focus target (see removeTag): announces the
+             remaining count and catches focus when the set empties. -->
         <p #tagsStatus class="forge-tags__status" role="status" aria-live="polite" tabindex="-1">
           {{ tagMessage() }}
         </p>
