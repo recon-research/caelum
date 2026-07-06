@@ -330,4 +330,44 @@ describe('CaeDataGrid', () => {
       pageSize: 2,
     });
   });
+
+  // ---- Loading / busy state (#188) ----
+  // The consumer-owned [loading] input (p-table [loading] parity): aria-busy on the row area + a
+  // loading message that suppresses the empty state, so an in-flight fetch reads as loading not empty.
+
+  const viewport = () => el.querySelector('.cae-data-grid__body') as HTMLElement;
+  const statusRegion = () => el.querySelector('.cae-data-grid__empty') as HTMLElement;
+
+  it('loading defaults off: no aria-busy on the row area (client path unchanged)', () => {
+    setup();
+    expect(viewport().hasAttribute('aria-busy')).toBe(false);
+    expect(statusRegion().textContent!.trim()).toBe(''); // rows present -> collapsed
+  });
+
+  it('loading: sets aria-busy on the row area and shows the loading message instead of the empty state', () => {
+    // No rows AND loading — this is the initial-fetch case that must read as *loading*, not "No data."
+    setup({ data: [], loading: true });
+    expect(viewport().getAttribute('aria-busy')).toBe('true');
+    expect(statusRegion().textContent!.trim()).toContain('Loading');
+  });
+
+  it('loading: renders a custom loadingMessage', () => {
+    setup({ data: [], loading: true, loadingMessage: 'Fetching orders' });
+    expect(statusRegion().textContent!.trim()).toBe('Fetching orders');
+  });
+
+  it('loading clears: aria-busy drops and the empty state announces once the fetch settles', () => {
+    setup({ data: [], loading: true });
+    expect(statusRegion().textContent!.trim()).toContain('Loading');
+    ref.setInput('loading', false);
+    flush();
+    expect(viewport().hasAttribute('aria-busy')).toBe(false);
+    expect(statusRegion().textContent!.trim()).toBe('No data.'); // now genuinely empty
+  });
+
+  it('loading with rows present (a paging fetch): aria-busy holds the stale rows, status shows loading', () => {
+    setup({ loading: true }); // PEOPLE still in the DOM while the next page is fetched
+    expect(viewport().getAttribute('aria-busy')).toBe('true');
+    expect(statusRegion().textContent!.trim()).toContain('Loading');
+  });
 });

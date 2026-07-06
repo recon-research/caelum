@@ -16,6 +16,14 @@ async function settle(fixture: { detectChanges(): void; nativeElement: unknown }
   }
 }
 
+/** Pump a fixed number of macrotasks + CD passes — for fetches whose outcome is not an aria-rowcount change. */
+async function pump(fixture: { detectChanges(): void }, times = 4): Promise<void> {
+  for (let i = 0; i < times; i++) {
+    await new Promise((resolve) => setTimeout(resolve));
+    fixture.detectChanges();
+  }
+}
+
 describe('OrdersGridDemo (#176 server-side grid)', () => {
   it('runs cae-data-grid on the ServerGridAdapter engine (element-injector provider)', () => {
     const fixture = TestBed.createComponent(OrdersGridDemo);
@@ -62,5 +70,51 @@ describe('OrdersGridDemo (#176 server-side grid)', () => {
     expect(cmp.fetchCount()).toBe(2); // a second server fetch
     expect(cmp.pageRows()[0].id).toBe(1025); // page 1: ids 1025..1049
     expect(el.querySelector('.cae-data-grid__range')?.textContent).toContain('26-50 of 4800');
+  });
+
+  // ---- Loading / error state (#188) ----
+
+  it('drives the grid [loading] state true during the initial fetch and clears it once settled', async () => {
+    const fixture = TestBed.createComponent(OrdersGridDemo);
+    const cmp = fixture.componentInstance as unknown as { loading(): boolean };
+    fixture.detectChanges(); // mount + emit the initial dataRequest
+    expect(cmp.loading()).toBe(true); // a fetch is in flight (also the starting state)
+    await settle(fixture);
+    expect(cmp.loading()).toBe(false); // .finally cleared it after the page arrived
+  });
+
+  it('surfaces a fetch failure without blanking the page, clears loading, and recovers on retry', async () => {
+    const fixture = TestBed.createComponent(OrdersGridDemo);
+    await settle(fixture);
+    const el = fixture.nativeElement as HTMLElement;
+    const cmp = fixture.componentInstance as unknown as {
+      loading(): boolean;
+      fetchError(): string | null;
+      pageRows(): readonly { id: number }[];
+      fetchCount(): number;
+      simulateFailure(): void;
+      retry(): void;
+    };
+    const loadedRows = cmp.pageRows().length;
+    const fetchesBefore = cmp.fetchCount();
+    expect(cmp.fetchError()).toBeNull();
+
+    cmp.simulateFailure();
+    await pump(fixture);
+    // The failed fetch surfaced an error banner, cleared loading via .finally (not stranded), and left
+    // the previously loaded page in place beneath the banner (a failed refresh does not blank the table).
+    expect(cmp.fetchError()).not.toBeNull();
+    expect(cmp.loading()).toBe(false);
+    expect(el.querySelector('[role="alert"]')?.textContent).toContain('Could not load');
+    expect(cmp.pageRows().length).toBe(loadedRows);
+    expect(cmp.fetchCount()).toBe(fetchesBefore); // a failed fetch does not count as served
+
+    cmp.retry();
+    await pump(fixture);
+    // Retry clears the error, re-fetches the slice, and settles loading.
+    expect(cmp.fetchError()).toBeNull();
+    expect(cmp.loading()).toBe(false);
+    expect(el.querySelector('[role="alert"]')).toBeNull();
+    expect(cmp.fetchCount()).toBe(fetchesBefore + 1); // the successful retry served a page
   });
 });
