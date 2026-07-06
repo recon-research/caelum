@@ -60,14 +60,17 @@ let gridInstanceCounter = 0;
  * accessible name comes from a visible `caption` (via `aria-labelledby`, preferred) **or** `ariaLabel`
  * — set one, not both. A sortable header is a real `<button>` (Enter/Space, three-state asc → desc →
  * unsorted). The empty state is a persistent `role="status"` live region (announced on a
- * data-becomes-empty transition). Real-browser verification of virtual-scroll row rendering/recycling
- * + header/body column alignment is deferred to the M4 verify family (#174).
+ * data-becomes-empty transition); while {@link loading} it shows {@link loadingMessage} instead, and
+ * `aria-busy="true"` on the row area holds the now-stale rows from announcement during a fetch (#188).
+ * Real-browser verification of virtual-scroll row rendering/recycling + header/body column alignment is
+ * deferred to the M4 verify family (#174).
  *
  * **Scope**: client-side sort + client pagination + CSV export ({@link exportRows}) in the default
  * engine (#170); **server-side/lazy data** (#176) via the {@link total} input + {@link dataRequest}
  * output + `provideServerGrid()` — bind `[data]` to the fetched page and `[total]` to the server
- * count and the grid renders that slice as-is. Grouping/aggregation, column resize/reorder/pin, row
- * selection, and cell templates are followups (#177).
+ * count and the grid renders that slice as-is, with a consumer-driven {@link loading} state for the
+ * fetch (#188). Grouping/aggregation, column resize/reorder/pin, row selection, and cell templates are
+ * followups (#177).
  *
  * Zoneless-compatible: `OnPush` + signal inputs (D-12); token-only theming (D-04).
  *
@@ -119,6 +122,7 @@ let gridInstanceCounter = 0;
       <cdk-virtual-scroll-viewport
         class="cae-data-grid__body"
         role="rowgroup"
+        [attr.aria-busy]="loading() ? 'true' : null"
         [itemSize]="rowHeight()"
         [style.height]="viewportHeight()"
       >
@@ -143,7 +147,7 @@ let gridInstanceCounter = 0;
         </div>
       </cdk-virtual-scroll-viewport>
 
-      <div class="cae-data-grid__empty" role="status" aria-live="polite">{{ emptyText() }}</div>
+      <div class="cae-data-grid__empty" role="status" aria-live="polite">{{ statusText() }}</div>
 
       @if (paginated()) {
         <div class="cae-data-grid__pager">
@@ -284,6 +288,25 @@ export class CaeDataGrid<T = Record<string, unknown>> implements OnInit {
   /** Message shown in the persistent live region when there are no rows. */
   readonly emptyMessage = input('No data.');
 
+  /**
+   * Whether the grid is currently loading data — mirroring the `p-table` `[loading]` **input contract**
+   * (issue #188). While true it (a) sets `aria-busy="true"` on the row area so assistive tech holds the
+   * now-stale rows during a fetch instead of announcing an incoherent target-page/old-rows snapshot, and
+   * (b) shows {@link loadingMessage} in the status region **instead of** the empty state — so an in-flight
+   * fetch reads as *loading*, not *empty* ("0 rows"). It is **non-blocking**: unlike p-table's overlay it
+   * does not disable the pager or sort headers or trap interaction (disable-while-loading + a spinner slot
+   * are a followup), so under rapidly overlapping fetches it is best-effort — the consumer should key on
+   * the latest request (the same responsibility noted on {@link dataRequest}). The **consumer owns it**:
+   * only the consumer knows a request is in flight (it owns the async fetch behind the server seam), so it
+   * sets this true when a {@link dataRequest} fetch starts and false when the result is applied *or the
+   * fetch fails* (a `.finally` — so a failure never strands the grid loading). The client default never
+   * needs it (it serves rows synchronously); a server grid (`provideServerGrid()`, #176) should bind it —
+   * without it a server grid briefly shows the empty state on first load until the fetch settles.
+   */
+  readonly loading = input(false, { transform: booleanAttribute });
+  /** Text shown in the status region while {@link loading} (issue #188). */
+  readonly loadingMessage = input('Loading…');
+
   /** Opt into a client-side pager below the grid (unpaginated = virtual-scroll the whole sorted set). */
   readonly paginated = input(false, { transform: booleanAttribute });
   /** Rows per page when {@link paginated}. Defaults to 10, matching `cae-table`. */
@@ -341,10 +364,15 @@ export class CaeDataGrid<T = Record<string, unknown>> implements OnInit {
     return size > 0 ? this.adapter.page() * size : 0;
   });
 
-  /** Empty-state text: '' while rows exist (so the live region collapses), else the message. */
-  protected readonly emptyText = computed(() =>
-    this.adapter.total() === 0 ? this.emptyMessage() : '',
-  );
+  /**
+   * Status-region text: {@link loadingMessage} while {@link loading} (an in-flight fetch), else the
+   * {@link emptyMessage} when there are no rows, else '' (the live region collapses). Suppressing the
+   * empty message during a fetch is what distinguishes *loading* from *empty* (#188).
+   */
+  protected readonly statusText = computed(() => {
+    if (this.loading()) return this.loadingMessage();
+    return this.adapter.total() === 0 ? this.emptyMessage() : '';
+  });
 
   /** Pager range label, e.g. "1-50 of 812". */
   protected readonly rangeLabel = computed(() => {

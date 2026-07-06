@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
 
+import { CaeButton } from 'caelum/button';
 import { CaeCard } from 'caelum/card';
 // The SAME neutral grid surface the client + TanStack demos use. `provideServerGrid`/
 // `serverGridAdapterFactory`/`CAE_GRID` select the SERVER engine (#176) with no markup change — the
@@ -88,9 +89,14 @@ function compareValues(a: string | number, b: string | number): number {
  * The "server" — sorts + slices the in-memory dataset to satisfy one {@link CaeGridDataRequest} and
  * returns only that page. A `Promise` stands in for the network round-trip (in a real app this is an
  * `HttpClient` call to a paginated API); it resolves deterministically so the demo + its spec are
- * stable. This is exactly the work a backend does — the browser only ever receives one page.
+ * stable. This is exactly the work a backend does — the browser only ever receives one page. Pass
+ * `shouldFail` to reject the round-trip, exercising the demo's fetch-error state (#188).
  */
-function queryOrders(req: CaeGridDataRequest): Promise<{ rows: readonly Order[]; total: number }> {
+function queryOrders(
+  req: CaeGridDataRequest,
+  shouldFail = false,
+): Promise<{ rows: readonly Order[]; total: number }> {
+  if (shouldFail) return Promise.reject(new Error('simulated server error'));
   let all: readonly Order[] = ALL_ORDERS;
   if (req.sort) {
     const col = ORDER_COLUMNS.find((c) => c.id === req.sort!.columnId);
@@ -120,7 +126,7 @@ function queryOrders(req: CaeGridDataRequest): Promise<{ rows: readonly Order[];
 @Component({
   selector: 'app-orders-grid-demo',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CaeCard, CaeDataGrid],
+  imports: [CaeButton, CaeCard, CaeDataGrid],
   providers: [{ provide: CAE_GRID, useValue: serverGridAdapterFactory }],
   templateUrl: './orders-grid-demo.html',
   styleUrl: './orders-grid-demo.scss',
@@ -134,6 +140,21 @@ export class OrdersGridDemo {
   protected readonly pageTotal = signal(0);
   /** How many page fetches the server has served — proves the grid is genuinely lazy, not client-side. */
   protected readonly fetchCount = signal(0);
+
+  /**
+   * Whether a page fetch is in flight — bound to the grid's `[loading]` (#188). The consumer owns this
+   * because it owns the async fetch; the grid can't know a request is outstanding. Starts **true** (the
+   * grid fetches its first page on mount, so the very first render already reads as *loading*, not the
+   * empty "0 rows" state). Set true when a fetch starts, cleared in the `.finally` of {@link onDataRequest}
+   * so a *failed* fetch never strands the grid loading.
+   */
+  protected readonly loading = signal(true);
+  /** A failed-fetch message (null = no error) — shown in a `role="alert"` banner with a Retry. */
+  protected readonly fetchError = signal<string | null>(null);
+  /** The last request the grid emitted — lets Retry / Simulate-failure re-issue the current slice. */
+  private readonly lastRequest = signal<CaeGridDataRequest | null>(null);
+  /** When true, the next fetch rejects — the "Simulate fetch failure" button flips it (demo only). */
+  private readonly failNext = signal(false);
 
   /**
    * A stable one-line description of the server-side nature (empty until the first fetch settles). Keyed
@@ -150,14 +171,40 @@ export class OrdersGridDemo {
    * Binding the result into `[data]`/`[total]` is how a slice reaches the grid — the consumer never
    * touches the adapter (the neutral half of the lazy seam). The signal writes land in the async
    * `.then` callback (a real `HttpClient` call is likewise async), so they never run synchronously
-   * inside the grid's emit-during-change-detection — the correct, faithful shape for a fetch. A real
-   * consumer would add a `.catch` here to surface a failed fetch; the simulated server never rejects.
+   * inside the grid's emit-during-change-detection — the correct, faithful shape for a fetch.
+   *
+   * The loading/error lifecycle (#188): flip {@link loading} on before the fetch and clear it in a
+   * `.finally` — so it clears on **success or failure**, never stranding the grid loading; a `.catch`
+   * surfaces the error in a banner. The currently loaded rows stay visible beneath the banner (a failed
+   * re-fetch of the *current* page does not blank the table); note the pager range still reflects the
+   * target page after a failed page *change* — rolling the grid page back on failure is a seam-robustness
+   * followup (#190).
    */
   protected onDataRequest(req: CaeGridDataRequest): void {
-    queryOrders(req).then((result) => {
-      this.pageRows.set(result.rows);
-      this.pageTotal.set(result.total);
-      this.fetchCount.update((n) => n + 1);
-    });
+    this.lastRequest.set(req);
+    this.loading.set(true);
+    this.fetchError.set(null);
+    const shouldFail = this.failNext();
+    this.failNext.set(false);
+    queryOrders(req, shouldFail)
+      .then((result) => {
+        this.pageRows.set(result.rows);
+        this.pageTotal.set(result.total);
+        this.fetchCount.update((n) => n + 1);
+      })
+      .catch(() => this.fetchError.set('Could not load orders. Check your connection and retry.'))
+      .finally(() => this.loading.set(false));
+  }
+
+  /** Re-issue the last request (the Retry button on the error banner). */
+  protected retry(): void {
+    const req = this.lastRequest();
+    if (req) this.onDataRequest(req);
+  }
+
+  /** Force the next fetch to fail, then re-issue the current slice — demonstrates the error state. */
+  protected simulateFailure(): void {
+    this.failNext.set(true);
+    this.retry();
   }
 }

@@ -12,11 +12,30 @@
   <!-- Persistent live region: '' before the first fetch (:empty collapses it), then the running
        server tally announced on each page fetch. -->
   <p class="forge-orders-card__note" role="status" aria-live="polite">{{ serverNote() }}</p>
+
+  <!-- Drive the grid's loading state (#188) end-to-end: this button forces the next fetch to fail so
+       the grid's aria-busy + Loading… state and this error banner are both demonstrable on demand. -->
+  <div class="forge-orders-card__toolbar">
+    <cae-button variant="outlined" [disabled]="loading()" (click)="simulateFailure()">
+      Simulate fetch failure
+    </cae-button>
+  </div>
+
+  @if (fetchError(); as error) {
+    <!-- role="alert" wraps ONLY the message (WAI-ARIA APG: no interactive controls inside an alert);
+         the Retry button sits alongside it, outside the live region. -->
+    <div class="forge-orders-card__error">
+      <span role="alert">{{ error }}</span>
+      <cae-button variant="text" (click)="retry()">Retry</cae-button>
+    </div>
+  }
+
   <cae-data-grid
     caption="Customer orders"
     [columns]="orderColumns"
     [data]="pageRows()"
     [total]="pageTotal()"
+    [loading]="loading()"
     paginated
     [pageSize]="25"
     sortActive="id"
