@@ -18,6 +18,7 @@ import {
 } from '@tanstack/table-core';
 import { CAE_GRID, CaeGridAdapter, CaeGridAdapterFactory } from './grid-adapter';
 import { toCsvBlob } from './grid-csv';
+import { compareValues } from './grid-sort';
 import type {
   CaeColumn,
   CaeGridDataRequest,
@@ -45,8 +46,10 @@ import type {
  * computed row model (Book 13 §3.2 — the adapter owns the impedance match). Only the opt-in row models
  * the grid needs are composed — `getCoreRowModel` + `getSortedRowModel` + `getPaginationRowModel` — so
  * unused engine features tree-shake away. It is behaviourally interchangeable with the client default:
- * same stable ids, same page-clamping, same sort-resets-to-page-0 contract, same CSV bytes (shared
- * {@link toCsvBlob}).
+ * same stable numeric ids, same page-clamping, same sort-resets-to-page-0 contract, and — because both
+ * engines sort through the one shared {@link compareValues} comparator and serialize through the one
+ * shared {@link toCsvBlob} writer — the same `viewRows` order and byte-identical CSV export (table-core
+ * default collation would otherwise diverge from the client for string columns).
  *
  * @typeParam T - the row model (unconstrained — a plain typed interface binds, as in the port).
  */
@@ -79,18 +82,27 @@ export class TanStackGridAdapter<T> extends CaeGridAdapter<T> {
       getCoreRowModel: getCoreRowModel(),
       getSortedRowModel: getSortedRowModel(),
       getPaginationRowModel: getPaginationRowModel(),
-      // Stable id = source index, so a row keeps its identity across sort/paginate (client parity).
+      // Stable id = source index, so a row keeps its identity across sort/paginate. Numeric (via
+      // Number() at read) to match ClientGridAdapter exactly (getRowId must return a string).
       getRowId: (_row, index) => String(index),
     });
     this.baseState = this.table.initialState;
   }
 
-  /** table-core column defs from the neutral columns; identity stable while columns are unchanged. */
+  /**
+   * table-core column defs from the neutral columns; identity stable while columns are unchanged.
+   * Every column carries the SHARED {@link compareValues} `sortingFn` so string collation matches the
+   * client engine exactly (table-core's default `auto` fn — raw code-point / natural-numeric — would
+   * diverge). No `enableSorting`: the engine may sort ANY requested column, mirroring the client engine
+   * (which sorts by id regardless of `sortable`); `sortable` gates the header control in the component,
+   * not the engine — so an identical `sortActive` config reorders identically on both.
+   */
   private readonly columnDefs = computed<ColumnDef<T, unknown>[]>(() =>
     this._columns().map((c) => ({
       id: c.id,
       accessorFn: (row: T) => c.value(row),
-      enableSorting: c.sortable === true,
+      sortingFn: (a, b, id) =>
+        compareValues(a.getValue<string | number>(id), b.getValue<string | number>(id)),
     })),
   );
 
@@ -134,8 +146,9 @@ export class TanStackGridAdapter<T> extends CaeGridAdapter<T> {
     const override = this._serverRows();
     if (override !== null) return override;
     this.sync();
-    // getRowModel() is the fully-processed (sorted, then paginated) model.
-    return this.table.getRowModel().rows.map((r) => ({ id: r.id, data: r.original }));
+    // getRowModel() is the fully-processed (sorted, then paginated) model. Numeric id (source index)
+    // for exact ClientGridAdapter parity — getRowId returns String(index), so Number() round-trips it.
+    return this.table.getRowModel().rows.map((r) => ({ id: Number(r.id), data: r.original }));
   });
 
   readonly sort: Signal<CaeSort | null> = this._sort.asReadonly();
@@ -177,7 +190,7 @@ export class TanStackGridAdapter<T> extends CaeGridAdapter<T> {
     // The full sorted set (all pages) — getPrePaginationRowModel() is sorted but not sliced.
     const sorted = this.table
       .getPrePaginationRowModel()
-      .rows.map((r) => ({ id: r.id, data: r.original }));
+      .rows.map((r) => ({ id: Number(r.id), data: r.original }));
     return toCsvBlob(this._columns(), sorted);
   }
 

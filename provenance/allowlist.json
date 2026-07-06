@@ -197,8 +197,8 @@
       "license": "MIT",
       "origin": "US",
       "maintainer": "Tanner Linsley / TanStack (Syracuse, UT — individual/community org)",
-      "shipped": "yes",
-      "note": "framework-agnostic headless grid engine behind grid.adapter.ts (D-07, M2 grid adapter #171); dependency-free — no runtime deps, no peers (verified raw package.json 8.21.3, 2026-07-05); US by maintainer residence, mirrors the rxjs/zod precedent. Sign-off: docs/provenance/M2-grid-tanstack-signoff.md"
+      "shipped": "conditional",
+      "note": "framework-agnostic headless grid engine behind grid.adapter.ts (D-07, M2 grid adapter #171). CONDITIONAL ship: an OPTIONAL peerDependency (projects/caelum/package.json), left EXTERNAL in the fesm — it enters a consumer bundle ONLY when they opt into provideTanStackGrid()/tanStackGridAdapterFactory; the client default ships zero engine bytes (mirrors @angular/compiler JIT-only). Dependency-free — no runtime deps, no peers (verified raw package.json 8.21.3, 2026-07-05); US by maintainer residence, mirrors the rxjs/zod precedent. Sign-off: docs/provenance/M2-grid-tanstack-signoff.md"
     }
   },
   "optionalPeers": {

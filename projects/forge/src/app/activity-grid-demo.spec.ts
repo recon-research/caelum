@@ -45,13 +45,32 @@ describe('ActivityGridDemo', () => {
     expect(seqHeader.getAttribute('aria-sort')).toBe('descending');
   });
 
-  it('exposes an Export CSV control wired to the grid (liveness handle)', () => {
+  it('exports the full set end-to-end on Export CSV click, announcing it in the live region', () => {
     const exportBtn = Array.from(el.querySelectorAll('button')).find((b) =>
       b.textContent!.includes('Export CSV'),
-    );
+    ) as HTMLButtonElement;
     expect(exportBtn).toBeTruthy();
-    // The empty note live-region is present (announces the export result on click).
     const note = el.querySelector('.forge-grid-card__note') as HTMLElement;
     expect(note.getAttribute('role')).toBe('status');
+    expect(note.textContent!.trim()).toBe(''); // empty until the first export
+
+    // Stub the browser download primitives jsdom does not implement, so the handler runs end-to-end
+    // (button -> grid.exportRows() -> blob -> anchor download -> note). Restored in finally.
+    const realCreate = URL.createObjectURL;
+    const realRevoke = URL.revokeObjectURL;
+    const realClick = HTMLAnchorElement.prototype.click;
+    URL.createObjectURL = () => 'blob:stub';
+    URL.revokeObjectURL = () => {};
+    HTMLAnchorElement.prototype.click = () => {};
+    try {
+      exportBtn.click();
+      fixture.detectChanges();
+      fixture.detectChanges();
+      expect(note.textContent).toContain('Exported 5000 rows');
+    } finally {
+      URL.createObjectURL = realCreate;
+      URL.revokeObjectURL = realRevoke;
+      HTMLAnchorElement.prototype.click = realClick;
+    }
   });
 });

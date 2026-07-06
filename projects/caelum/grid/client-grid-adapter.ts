@@ -14,6 +14,7 @@ import type {
   CaeSort,
 } from './grid-types';
 import { toCsvBlob } from './grid-csv';
+import { compareValues } from './grid-sort';
 
 /**
  * The **default, dependency-free** grid engine (issue #170) — plain-TypeScript client-side sort +
@@ -108,12 +109,6 @@ export class ClientGridAdapter<T> extends CaeGridAdapter<T> {
     void format;
     return toCsvBlob(this._columns(), this._serverRows() ?? this.sorted());
   }
-}
-
-/** Numbers compare numerically; anything else compares as a locale string. Null/undefined sort low. */
-function compareValues(a: string | number, b: string | number): number {
-  if (typeof a === 'number' && typeof b === 'number') return a - b;
-  return String(a ?? '').localeCompare(String(b ?? ''));
 }
 
 /** The built-in factory `cae-data-grid` falls back to when {@link CAE_GRID} is unprovided. */

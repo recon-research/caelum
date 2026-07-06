@@ -28,8 +28,10 @@ const DATA: readonly Row[] = [
 
 // The TanStack adapter must be BEHAVIOURALLY INTERCHANGEABLE with ClientGridAdapter: these assertions
 // deliberately mirror client-grid-adapter.spec.ts (same data, same expected orders), because the M2
-// isolation proof is "swap the engine, observe nothing different". Only stable-id VALUES differ by
-// engine (TanStack ids are the source index as a string); everything the port promises is identical.
+// isolation proof is "swap the engine, observe nothing different" — down to numeric ids and byte-identical
+// CSV. That parity is only literally true because both engines sort through the one shared compareValues
+// comparator (grid-sort.ts); the string-collation test below locks it (it fails under table-core's
+// default `auto` collation, which is what the pre-fix adapter used).
 describe('TanStackGridAdapter', () => {
   let adapter: TanStackGridAdapter<Row>;
 
@@ -46,10 +48,46 @@ describe('TanStackGridAdapter', () => {
     expect(adapter.dataRequest()).toBeNull();
   });
 
-  it('assigns stable source-index ids for tracking (carried with the row through sort)', () => {
-    expect(adapter.viewRows().map((r) => r.id)).toEqual(['0', '1', '2']);
+  it('assigns stable numeric source-index ids for tracking (carried with the row through sort)', () => {
+    // Numeric, matching ClientGridAdapter exactly (client-grid-adapter.spec.ts asserts [0,1,2]).
+    expect(adapter.viewRows().map((r) => r.id)).toEqual([0, 1, 2]);
     adapter.sortBy({ columnId: 'age', dir: 'asc' }); // Ann(1), Cy(2), Bob(0)
-    expect(adapter.viewRows().map((r) => r.id)).toEqual(['1', '2', '0']);
+    expect(adapter.viewRows().map((r) => r.id)).toEqual([1, 2, 0]);
+  });
+
+  it('sorts strings by the shared locale comparator, matching the client engine (not table-core auto)', () => {
+    // Locks the review-caught parity fix: with table-core's default `auto` collation, a <=10-row string
+    // column sorts by raw code-point ('Z'<'a'), giving ['Zebra','apple']. The shared compareValues uses
+    // localeCompare (case-insensitive primary level), giving ['apple','Zebra'] — identical to the client.
+    adapter.setData(
+      [
+        { name: 'Zebra', age: 1 },
+        { name: 'apple', age: 2 },
+        { name: 'Mango', age: 3 },
+      ],
+      COLUMNS,
+    );
+    adapter.sortBy({ columnId: 'name', dir: 'asc' });
+    expect(adapter.viewRows().map((r) => r.data.name)).toEqual(['apple', 'Mango', 'Zebra']);
+  });
+
+  it('sorts a column that exists but is not sortable, mirroring the client engine', () => {
+    // Parity fix: dropping enableSorting lets the engine sort ANY requested column (as the client does);
+    // `sortable` gates only the header control in the component. role is not sortable, yet sortBy works.
+    const cols: CaeColumn<Row & { role: string }>[] = [
+      { id: 'name', header: 'Name', value: (r) => r.name },
+      { id: 'role', header: 'Role', value: (r) => r.role }, // not sortable
+    ];
+    const a = new TanStackGridAdapter<Row & { role: string }>();
+    a.setData(
+      [
+        { name: 'A', age: 1, role: 'z' },
+        { name: 'B', age: 2, role: 'a' },
+      ],
+      cols,
+    );
+    a.sortBy({ columnId: 'role', dir: 'asc' });
+    expect(a.viewRows().map((r) => r.data.role)).toEqual(['a', 'z']);
   });
 
   it('sorts ascending', () => {

@@ -6,7 +6,9 @@ import {
 } from '@angular/core/testing';
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { MatDialog } from '@angular/material/dialog';
+import { By } from '@angular/platform-browser';
 import { firstValueFrom } from 'rxjs';
+import { CaeDataGrid, TanStackGridAdapter } from 'caelum/grid';
 import { App } from './app';
 
 /**
@@ -624,6 +626,12 @@ describe('App', () => {
     await renderDeferred(fixture); // the grid demo (app-activity-grid-demo) is @defer'd below the fold (#85, #171)
     const host = (fixture.nativeElement as HTMLElement).querySelector('app-activity-grid-demo');
     expect(host).not.toBeNull(); // the demo is its own deferred component now
+    // The engine is genuinely TanStack in the full App context (the element-injector provider reaches
+    // the grid) — not just engine-independent aria; this is what makes the "over the TanStack engine"
+    // claim real end-to-end (the demo's own spec proves it in isolation; this proves it after @defer).
+    const gridCmp = fixture.debugElement.query(By.directive(CaeDataGrid))
+      .componentInstance as unknown as { adapter: unknown };
+    expect(gridCmp.adapter).toBeInstanceOf(TanStackGridAdapter);
     const card = (fixture.nativeElement as HTMLElement).querySelector(
       '.forge-grid-card',
     ) as HTMLElement;
