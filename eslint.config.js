@@ -88,14 +88,18 @@ module.exports = tseslint.config(
     rules: {},
   },
   {
-    // Adapter carve-outs (D-03). Scoped to the LIBRARY source (never Forge or a
-    // consumer app), so a same-named file elsewhere is not auto-exempted. When the
-    // real adapters land at M2, pin each to its exact single path (Book 12 §3.3, the
-    // "one explicit file path" rule). Forward-declared: these match nothing until then.
+    // Adapter carve-outs (D-03) — each pinned to its EXACT single file path (Book 12
+    // §3.3, the "one explicit file path" rule), scoped to the LIBRARY source (never
+    // Forge or a consumer app) so a same-named file elsewhere is not auto-exempted.
+    // The base fence above still covers all of `projects/caelum/grid/**`, so a stray
+    // `@tanstack/*` import in the neutral port `grid-adapter.ts` (hyphen) or anywhere
+    // else in the entry point still fails lint — ONLY `grid.adapter.ts` (dot) is exempt.
+    // grid.adapter.ts is real (issue #171); charts/editor stay forward-declared (they
+    // match nothing until D-14/D-09 land, then get pinned to their own flat paths).
     files: [
-      'projects/caelum/src/**/grid.adapter.ts',
-      'projects/caelum/src/**/charts.adapter.ts',
-      'projects/caelum/src/**/editor.adapter.ts',
+      'projects/caelum/grid/grid.adapter.ts',
+      'projects/caelum/charts/charts.adapter.ts',
+      'projects/caelum/editor/editor.adapter.ts',
     ],
     rules: {
       '@typescript-eslint/no-restricted-imports': 'off',
