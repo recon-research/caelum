@@ -1,0 +1,18 @@
+// Activity-grid demo (#170/#171) — per-demo card styles, token-driven (D-04). The grid Export
+// toolbar mirrors the members split-button toolbar layout; homed here now that the demo is its own
+// deferred component (the shared members variant stays in app.scss). Only literals are none — all
+// space/colour resolve to `--cae-*` (a literal colour would be a defect, Book 04 §3.6).
+
+.forge-grid-card__toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--cae-space-3);
+  margin-block-end: var(--cae-space-4);
+}
+
+.forge-grid-card__note {
+  color: var(--cae-color-on-surface-variant);
+}
+.forge-grid-card__note:empty {
+  display: none;
+}

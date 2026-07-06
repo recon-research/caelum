@@ -1,0 +1,26 @@
+<cae-card
+  class="forge-grid-card"
+  title="Activity log"
+  subtitle="cae-data-grid — a virtualized grid, now driven by the TanStack engine behind the same port (#171)"
+>
+  <p class="forge-panel__lead">
+    Thousands of rows render behind a neutral engine port, yet only the visible ones are in the DOM.
+    Click a sortable header to sort the whole set; scrolling stays smooth. The engine here is
+    @tanstack/table-core — swapped in by DI, with no change to this markup or to cae-data-grid.
+  </p>
+  <!-- Export CSV drives cae-data-grid's public exportRows() end-to-end (the whole sorted set),
+       proving the port capability is reachable from the component regardless of which engine backs it. -->
+  <div class="forge-grid-card__toolbar">
+    <cae-button variant="outlined" (click)="exportActivity(activityGrid)">Export CSV</cae-button>
+    <span class="forge-grid-card__note" role="status">{{ exportNote() }}</span>
+  </div>
+  <cae-data-grid
+    #activityGrid
+    caption="Recent workspace activity"
+    [columns]="activityColumns"
+    [data]="activity()"
+    sortActive="seq"
+    sortDirection="desc"
+    viewportHeight="20rem"
+  />
+</cae-card>

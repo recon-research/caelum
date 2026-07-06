@@ -617,41 +617,14 @@
       </cae-card>
     }
 
-    <!-- cae-data-grid (#170, M2 — the first component over a neutral, engine-swappable port). Unlike
-         the cae-table above (a thin MatTable wrapper, great for a small roster), the grid renders its
-         OWN virtualized DOM over hundreds of rows and does all sort/paginate work behind the
-         CaeGridAdapter port — the client default here, TanStack behind the same interface in #171 with
-         no change to this markup. Deferred (#85): cdk-virtual-scroll rides its own lazy chunk off the
-         initial bundle. -->
+    <!-- cae-data-grid (#170 interface, #171 TanStack engine — the M2 grid exit criterion). Unlike the
+         cae-table above (a thin MatTable wrapper, great for a small roster), the grid renders its OWN
+         virtualized DOM over thousands of rows and does all sort/paginate work behind the CaeGridAdapter
+         port — here driven by @tanstack/table-core, swapped in by DI with no change to the markup. The
+         whole demo is its own component so it — AND the engine — @defer into a lazy chunk (#85): the
+         eager initial bundle ships zero table-core bytes. -->
     @defer (on idle) {
-      <cae-card
-        class="forge-grid-card"
-        title="Activity log"
-        subtitle="cae-data-grid — a virtualized grid over a swappable engine (client default; TanStack in #171)"
-      >
-        <p class="forge-panel__lead">
-          Nearly 500 rows render behind a neutral engine port, yet only the visible ones are in the
-          DOM. Click a sortable header to sort the whole set; scrolling stays smooth. The engine is
-          swappable by DI without touching this markup.
-        </p>
-        <!-- Export CSV drives cae-data-grid's public exportRows() end-to-end (the whole sorted set),
-             proving the port capability is reachable from the component, not just the adapter. -->
-        <div class="forge-grid-card__toolbar">
-          <cae-button variant="outlined" (click)="exportActivity(activityGrid)"
-            >Export CSV</cae-button
-          >
-          <span class="forge-grid-card__note" role="status">{{ exportNote() }}</span>
-        </div>
-        <cae-data-grid
-          #activityGrid
-          caption="Recent workspace activity"
-          [columns]="activityColumns"
-          [data]="activity()"
-          sortActive="seq"
-          sortDirection="desc"
-          viewportHeight="20rem"
-        />
-      </cae-card>
+      <app-activity-grid-demo />
     }
 
     <!-- cae-menubar (#153, M1 composed) — a horizontal application menu bar over MatToolbar +

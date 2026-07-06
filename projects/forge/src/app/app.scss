@@ -6,22 +6,20 @@
 // stylesheet's `anyComponentStyle` budget as headroom for the per-demo styles below, which
 // grow with each new cae-* slice.
 
-/* cae-split-button (#148) demo toolbar in the members card — lean styles only (per #97). */
-/* The members split-button toolbar (#148) and the grid Export toolbar (#170) share layout. */
-.forge-members-card__toolbar,
-.forge-grid-card__toolbar {
+/* cae-split-button (#148) demo toolbar in the members card — lean styles only (per #97). The grid
+   Export toolbar (#170/#171) shares this layout but now lives in its own deferred component
+   (activity-grid-demo.scss), so it is homed there rather than shared from here. */
+.forge-members-card__toolbar {
   display: flex;
   align-items: center;
   gap: var(--cae-space-3);
   margin-block-end: var(--cae-space-4);
 }
 
-.forge-members-card__note,
-.forge-grid-card__note {
+.forge-members-card__note {
   color: var(--cae-color-on-surface-variant);
 }
-.forge-members-card__note:empty,
-.forge-grid-card__note:empty {
+.forge-members-card__note:empty {
   display: none;
 }
 

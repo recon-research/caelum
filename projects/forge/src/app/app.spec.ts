@@ -6,7 +6,9 @@ import {
 } from '@angular/core/testing';
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { MatDialog } from '@angular/material/dialog';
+import { By } from '@angular/platform-browser';
 import { firstValueFrom } from 'rxjs';
+import { CaeDataGrid, TanStackGridAdapter } from 'caelum/grid';
 import { App } from './app';
 
 /**
@@ -329,9 +331,9 @@ describe('App', () => {
     // MatSelect+MatChips/MatTable+MatSort+MatPaginator/CDK-VirtualScroll/MatToolbar+MatMenu/CDK-Menu/
     // mat-tab-nav-bar/MatTree/MatTabs/MatExpansion/MatChips) off the initial bundle. This is the
     // regression guard for the #85 bundle win: deleting an @defer wrapper stays UNDER the 1mb budget
-    // error (so `ng build` wouldn't fail), but drops a block here → red test. (The activity data-grid,
-    // #170, is the newest: it defers cdk-virtual-scroll + this demo into their own lazy chunk off the
-    // initial bundle — the #142 initial-budget guard.)
+    // error (so `ng build` wouldn't fail), but drops a block here → red test. (The activity data-grid
+    // now defers the whole app-activity-grid-demo component — cdk-virtual-scroll AND @tanstack/table-core
+    // (#171) — into its own lazy chunk off the initial bundle, the #142 initial-budget guard.)
     expect((await fixture.getDeferBlocks()).length).toBe(13);
     // The eager critical path (the create-workspace form) is present with NO defer block rendered...
     expect(el.querySelector('.forge-form-card')).not.toBeNull();
@@ -618,19 +620,28 @@ describe('App', () => {
     expect(names[0]).toBe('Ada Lovelace');
   });
 
-  it('renders the activity cae-data-grid over a swappable engine port (#170)', async () => {
+  it('renders the activity cae-data-grid over the TanStack engine at scale (#170 interface, #171 engine)', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
-    await renderDeferred(fixture); // the grid demo is @defer'd below the fold (#85, #170)
+    await renderDeferred(fixture); // the grid demo (app-activity-grid-demo) is @defer'd below the fold (#85, #171)
+    const host = (fixture.nativeElement as HTMLElement).querySelector('app-activity-grid-demo');
+    expect(host).not.toBeNull(); // the demo is its own deferred component now
+    // The engine is genuinely TanStack in the full App context (the element-injector provider reaches
+    // the grid) — not just engine-independent aria; this is what makes the "over the TanStack engine"
+    // claim real end-to-end (the demo's own spec proves it in isolation; this proves it after @defer).
+    const gridCmp = fixture.debugElement.query(By.directive(CaeDataGrid))
+      .componentInstance as unknown as { adapter: unknown };
+    expect(gridCmp.adapter).toBeInstanceOf(TanStackGridAdapter);
     const card = (fixture.nativeElement as HTMLElement).querySelector(
       '.forge-grid-card',
     ) as HTMLElement;
     expect(card).not.toBeNull();
 
     // It renders an ARIA table (its own DOM — not a mat-table) with the full row count in aria-rowcount.
+    // 5000 rows drive the TanStack engine behind the unchanged component (the at-scale isolation proof).
     const g = card.querySelector('[role="table"]') as HTMLElement;
     expect(g).not.toBeNull();
-    expect(g.getAttribute('aria-rowcount')).toBe('481'); // 480 rows + header
+    expect(g.getAttribute('aria-rowcount')).toBe('5001'); // 5000 rows + header
     // Named by its visible caption via aria-labelledby (role=table is not name-from-content).
     expect(g.getAttribute('aria-labelledby')).toBe(
       card.querySelector('.cae-data-grid__caption')?.id,

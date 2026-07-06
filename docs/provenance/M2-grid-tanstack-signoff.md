@@ -14,7 +14,7 @@ The grid is built on the **headless zero-dep core `@tanstack/table-core` only** 
 
 | Package | Ver | License | Permissive+Free | Maintainer / Entity | HQ / residence | US/allied origin | Shipped-runtime | Runtime deps |
 |---|---|---|---|---|---|---|---|---|
-| **@tanstack/table-core** | 8.21.3 | MIT | Yes | Tanner Linsley / TanStack (individual/community org) | US (Syracuse, UT) | **Yes** *(indiv. maintainer — mirrors rxjs/zod, M0-2 §5)* | yes (behind `grid.adapter.ts`) | **none — dependency-free** |
+| **@tanstack/table-core** | 8.21.3 | MIT | Yes | Tanner Linsley / TanStack (individual/community org) | US (Syracuse, UT) | **Yes** *(indiv. maintainer — mirrors rxjs/zod, M0-2 §5)* | conditional (opt-in engine, behind `grid.adapter.ts`) | **none — dependency-free** |
 
 **Full transitive runtime closure of the shipped grid stack:** `@tanstack/table-core` (MIT, US) → **leaf**. No copyleft, no paid, no non-allied node anywhere. `table-core@8.21.3` declares **no `dependencies` and no `peerDependencies`** (verified from the raw published package.json, 2026-07-05) — the "dependency-free" reputation holds.
 
@@ -45,10 +45,12 @@ TanStack is the individually-led open-source org of **Tanner Linsley, resident i
   "license": "MIT",
   "origin": "US",
   "maintainer": "Tanner Linsley / TanStack (Syracuse, UT — individual/community org)",
-  "shipped": "yes",
-  "note": "framework-agnostic headless grid engine behind grid.adapter.ts (D-07, M2 grid adapter #171); dependency-free — no runtime deps, no peers (verified raw package.json 8.21.3, 2026-07-05); US by maintainer residence, mirrors the rxjs/zod precedent. Sign-off: docs/provenance/M2-grid-tanstack-signoff.md"
+  "shipped": "conditional",
+  "note": "framework-agnostic headless grid engine behind grid.adapter.ts (D-07, M2 grid adapter #171). CONDITIONAL ship: an OPTIONAL peerDependency, left EXTERNAL in the fesm — enters a consumer bundle ONLY on opt-in via provideTanStackGrid(); the client default ships zero engine bytes. Dependency-free — no runtime deps, no peers (verified raw package.json 8.21.3, 2026-07-05); US by maintainer residence, mirrors the rxjs/zod precedent. Sign-off: docs/provenance/M2-grid-tanstack-signoff.md"
 }
 ```
+
+> **Shipped classification refined in #171 (`yes` → `conditional`).** table-core is an *optional* peerDependency left external in the fesm: it reaches a consumer bundle only when they opt into `provideTanStackGrid()`, so it is `conditional` (the `@angular/compiler` JIT-only precedent), not unconditionally shipped. License + origin vetting is unchanged; the gate treats `conditional` and `yes` identically for the license/origin axes.
 
 ## 7. Sources (accessed 2026-07-05)
 

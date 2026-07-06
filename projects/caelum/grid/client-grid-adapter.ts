@@ -13,6 +13,8 @@ import type {
   CaeRow,
   CaeSort,
 } from './grid-types';
+import { toCsvBlob } from './grid-csv';
+import { compareValues } from './grid-sort';
 
 /**
  * The **default, dependency-free** grid engine (issue #170) — plain-TypeScript client-side sort +
@@ -102,28 +104,11 @@ export class ClientGridAdapter<T> extends CaeGridAdapter<T> {
   }
 
   exportRows(format: CaeGridExportFormat = 'csv'): Blob {
-    // v1 supports CSV only; the signature is future-proofed for xlsx/etc. (a followup).
+    // v1 supports CSV only; the signature is future-proofed for xlsx/etc. (a followup). Export
+    // the full sorted set (or the server override) through the shared writer both engines use.
     void format;
-    const columns = this._columns();
-    const source = this._serverRows() ?? this.sorted();
-    const header = columns.map((c) => csvCell(c.header)).join(',');
-    const lines = source.map((row) => columns.map((c) => csvCell(c.value(row.data))).join(','));
-    // RFC 4180 CRLF line breaks.
-    const csv = [header, ...lines].join('\r\n');
-    return new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    return toCsvBlob(this._columns(), this._serverRows() ?? this.sorted());
   }
-}
-
-/** Numbers compare numerically; anything else compares as a locale string. Null/undefined sort low. */
-function compareValues(a: string | number, b: string | number): number {
-  if (typeof a === 'number' && typeof b === 'number') return a - b;
-  return String(a ?? '').localeCompare(String(b ?? ''));
-}
-
-/** RFC 4180 field escaping: wrap in quotes and double any embedded quote when it contains "/,/newline. */
-function csvCell(value: string | number): string {
-  const text = String(value ?? '');
-  return /["\n\r,]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
 /** The built-in factory `cae-data-grid` falls back to when {@link CAE_GRID} is unprovided. */
