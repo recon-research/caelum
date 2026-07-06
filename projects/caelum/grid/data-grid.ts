@@ -4,17 +4,21 @@ import {
   CdkVirtualScrollViewport,
 } from '@angular/cdk/scrolling';
 import {
+  afterNextRender,
   booleanAttribute,
   ChangeDetectionStrategy,
   Component,
   computed,
   effect,
+  ElementRef,
   inject,
+  Injector,
   input,
   isDevMode,
   OnInit,
   output,
   untracked,
+  viewChild,
 } from '@angular/core';
 import { CAE_GRID, CaeGridAdapter } from './grid-adapter';
 import { defaultGridAdapterFactory } from './client-grid-adapter';
@@ -62,8 +66,11 @@ let gridInstanceCounter = 0;
  * unsorted). The empty state is a persistent `role="status"` live region (announced on a
  * data-becomes-empty transition); while {@link loading} it shows {@link loadingMessage} instead, and
  * `aria-busy="true"` on the row area holds the now-stale rows from announcement during a fetch (#188).
- * Real-browser verification of virtual-scroll row rendering/recycling + header/body column alignment is
- * deferred to the M4 verify family (#174).
+ * When a pager button self-disables *as a direct result of a Prev/Next activation* at the first/last page,
+ * focus moves to the still-enabled sibling (only if the pressed button held focus) so a keyboard user is
+ * not dropped to the document body (#189); a button disabling from a later async server result — a
+ * total-shrink — is #190 seam-robustness territory. Real-browser verification of virtual-scroll row
+ * rendering/recycling + header/body column alignment is deferred to the M4 verify family (#174).
  *
  * **Scope**: client-side sort + client pagination + CSV export ({@link exportRows}) in the default
  * engine (#170); **server-side/lazy data** (#176) via the {@link total} input + {@link dataRequest}
@@ -153,6 +160,7 @@ let gridInstanceCounter = 0;
         <div class="cae-data-grid__pager">
           <span class="cae-data-grid__range" aria-live="polite">{{ rangeLabel() }}</span>
           <button
+            #prevBtn
             type="button"
             class="cae-data-grid__page-btn"
             [disabled]="!canPrev()"
@@ -162,6 +170,7 @@ let gridInstanceCounter = 0;
             Prev
           </button>
           <button
+            #nextBtn
             type="button"
             class="cae-data-grid__page-btn"
             [disabled]="!canNext()"
@@ -489,12 +498,48 @@ export class CaeDataGrid<T = Record<string, unknown>> implements OnInit {
     this.sortChange.emit(next);
   }
 
+  private readonly prevBtn = viewChild<ElementRef<HTMLButtonElement>>('prevBtn');
+  private readonly nextBtn = viewChild<ElementRef<HTMLButtonElement>>('nextBtn');
+  private readonly injector = inject(Injector);
+
   protected prevPage(): void {
+    const pressed = this.prevBtn()?.nativeElement;
     this.adapter.setPage(Math.max(0, this.adapter.page() - 1), this.adapter.pageSize());
+    // #189: if this click (with Prev focused) landed on the first page, Prev is about to self-disable and
+    // would drop focus to <body>. Hand focus to the still-enabled Next so the user keeps their place.
+    if (!this.canPrev() && this.canNext()) this.rescuePagerFocus(pressed, this.nextBtn);
   }
 
   protected nextPage(): void {
+    const pressed = this.nextBtn()?.nativeElement;
     this.adapter.setPage(this.adapter.page() + 1, this.adapter.pageSize());
+    // #189: symmetric — landing on the last page self-disables Next; hand focus to the enabled Prev.
+    if (!this.canNext() && this.canPrev()) this.rescuePagerFocus(pressed, this.prevBtn);
+  }
+
+  /**
+   * Move focus to the still-enabled sibling pager button after the pressed one self-disables at a page
+   * boundary (#189) — but **only when the pressed button actually held focus** (a keyboard, or a Blink
+   * mouse, activation). If focus was elsewhere — a mouse click in Safari/Firefox, which do **not** focus a
+   * clicked `<button>`; a programmatic click; or the user has already Tabbed away — moving it would be an
+   * unexpected focus change (WCAG 3.2.x), so we leave it. Deferred to `afterNextRender` because the sibling
+   * may still carry the previous page's `disabled` attribute synchronously (the `[disabled]` binding
+   * updates in the pending change detection; focusing a disabled element is a no-op) and re-checked there
+   * in case focus moved meanwhile; `preventScroll` keeps an off-screen pager from scroll-jumping.
+   */
+  private rescuePagerFocus(
+    pressed: HTMLButtonElement | undefined,
+    sibling: () => ElementRef<HTMLButtonElement> | undefined,
+  ): void {
+    if (!pressed || document.activeElement !== pressed) return;
+    afterNextRender(
+      () => {
+        if (document.activeElement === pressed || document.activeElement === document.body) {
+          sibling()?.nativeElement.focus({ preventScroll: true });
+        }
+      },
+      { injector: this.injector },
+    );
   }
 
   /** Dev-only: fail fast on a duplicate column id; warn when the initial sort names an unsortable column. */

@@ -67,6 +67,11 @@ describe('CaeDataGrid', () => {
     fixture.detectChanges();
   }
 
+  // Focus assertions (document.activeElement) require the host to be connected to the live document.
+  afterEach(() => {
+    if (el?.parentNode) el.parentNode.removeChild(el);
+  });
+
   const grid = () => el.querySelector('[role="table"]') as HTMLElement;
   const headerCells = () => Array.from(el.querySelectorAll('[role="columnheader"]'));
   const headerByText = (text: string) => headerCells().find((h) => h.textContent!.includes(text))!;
@@ -369,5 +374,53 @@ describe('CaeDataGrid', () => {
     setup({ loading: true }); // PEOPLE still in the DOM while the next page is fetched
     expect(viewport().getAttribute('aria-busy')).toBe('true');
     expect(statusRegion().textContent!.trim()).toContain('Loading');
+  });
+
+  // ---- Pager focus preservation (#189) ----
+  // Clicking Prev/Next to the first/last page self-disables the pressed button; without this, focus
+  // falls to <body>. Focus should move to the still-enabled sibling so a keyboard user keeps their place.
+
+  it('advancing to the last page moves focus off the disabling Next to the enabled Prev', () => {
+    setup({ paginated: true, pageSize: 2 }); // 3 rows -> pages 0, 1
+    document.body.appendChild(el);
+    const prev = pageBtn('Previous page')!;
+    const next = pageBtn('Next page')!;
+    next.focus();
+    expect(document.activeElement).toBe(next);
+    next.click(); // -> last page: Next disables
+    flush();
+    expect(next.disabled).toBe(true);
+    expect(document.activeElement).toBe(prev); // not dropped to <body>
+  });
+
+  it('returning to the first page moves focus off the disabling Prev to the enabled Next', () => {
+    setup({ paginated: true, pageSize: 2 });
+    document.body.appendChild(el);
+    const prev = pageBtn('Previous page')!;
+    const next = pageBtn('Next page')!;
+    next.focus();
+    next.click(); // to the last page: focus handed to Prev by the component (keyboard path)
+    flush();
+    expect(document.activeElement).toBe(prev);
+    prev.click(); // Prev owns focus -> first page: Prev disables
+    flush();
+    expect(prev.disabled).toBe(true);
+    expect(document.activeElement).toBe(next);
+  });
+
+  it('does not steal focus when the pager did not own it (mouse / programmatic click)', () => {
+    // Safari/Firefox do not focus a clicked <button>, and a programmatic .click() never does — moving
+    // focus then would be an unexpected change (WCAG 3.2.x). The rescue must fire ONLY if the pressed
+    // button held focus.
+    setup({ paginated: true, pageSize: 2 });
+    document.body.appendChild(el);
+    const sortBtn = sortButtons()[0]; // a focusable element OUTSIDE the pager
+    const next = pageBtn('Next page')!;
+    sortBtn.focus();
+    expect(document.activeElement).toBe(sortBtn);
+    next.click(); // Next never received focus
+    flush();
+    expect(next.disabled).toBe(true); // reached the last page
+    expect(document.activeElement).toBe(sortBtn); // focus NOT yanked to the pager
   });
 });
