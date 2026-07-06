@@ -63,10 +63,11 @@ let gridInstanceCounter = 0;
  * data-becomes-empty transition). Real-browser verification of virtual-scroll row rendering/recycling
  * + header/body column alignment is deferred to the M4 verify family (#174).
  *
- * **v1 scope** (#170): client-side sort + client pagination + CSV export ({@link exportRows}), all in
- * the default engine. Server-side/lazy data is a typed **seam only** ({@link dataRequest} +
- * `CaeGridAdapter.applyServerResult`) — the emitting server adapter, grouping/aggregation, column
- * resize/reorder/pin, row selection, and cell templates are followups.
+ * **Scope**: client-side sort + client pagination + CSV export ({@link exportRows}) in the default
+ * engine (#170); **server-side/lazy data** (#176) via the {@link total} input + {@link dataRequest}
+ * output + `provideServerGrid()` — bind `[data]` to the fetched page and `[total]` to the server
+ * count and the grid renders that slice as-is. Grouping/aggregation, column resize/reorder/pin, row
+ * selection, and cell templates are followups (#177).
  *
  * Zoneless-compatible: `OnPush` + signal inputs (D-12); token-only theming (D-04).
  *
@@ -288,6 +289,16 @@ export class CaeDataGrid<T = Record<string, unknown>> implements OnInit {
   /** Rows per page when {@link paginated}. Defaults to 10, matching `cae-table`. */
   readonly pageSize = input(10);
 
+  /**
+   * **Server-mode** total row count (issue #176). Leave unset (`null`) for the default client engine,
+   * which derives the total from `[data]` and sorts/paginates in-memory. Set it — alongside a server
+   * engine ({@link import('./server-grid-adapter').provideServerGrid}) and a {@link dataRequest}
+   * handler — to drive a lazy/remote grid: bind `[data]` to the **fetched page** and `[total]` to the
+   * server's full count, and the grid renders that slice as-is (the server did the sort/paginate). The
+   * `p-table` `[totalRecords]` analogue; the seam is Book 13 §3.4.
+   */
+  readonly total = input<number | null>(null);
+
   /** Fixed row height in px — cdk-virtual-scroll needs a uniform item size. */
   readonly rowHeight = input(48);
   /** Scroll viewport height (any CSS length) — the window the virtual scroller renders within. */
@@ -345,8 +356,22 @@ export class CaeDataGrid<T = Record<string, unknown>> implements OnInit {
   private seeded = false;
 
   constructor() {
-    // Feed the raw dataset + columns into the engine whenever either input changes (client mode).
-    effect(() => this.adapter.setData(this.data(), this.columns()));
+    // Feed the engine whenever data/columns/total change. Two paths, one seam: the client engine gets
+    // the raw dataset (it sorts/paginates in-memory); a server engine (#176, signalled by a non-null
+    // [total]) gets only the columns via setData (for header/export) and the fetched page + count via
+    // applyServerResult — the neutral half of the lazy-data contract (Book 13 §3.4). The consumer
+    // never touches the adapter; binding [data]/[total] is how the fetched slice reaches the grid.
+    effect(() => {
+      const columns = this.columns();
+      const data = this.data();
+      const total = this.total();
+      if (total === null) {
+        this.adapter.setData(data, columns);
+      } else {
+        this.adapter.setData([], columns);
+        this.adapter.applyServerResult(data, total);
+      }
+    });
 
     // Sync pagination config; a config change returns to the first page. User Prev/Next call the
     // adapter directly (below) and do not re-trigger this effect (it depends only on the inputs).

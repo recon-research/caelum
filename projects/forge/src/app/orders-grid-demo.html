@@ -1,0 +1,27 @@
+<cae-card
+  class="forge-orders-card"
+  title="Orders (server-side)"
+  subtitle="cae-data-grid — lazy/remote data: the grid emits (dataRequest); the app fetches each page (#176)"
+>
+  <p class="forge-panel__lead">
+    Only the current page is ever in the browser. Sorting or paging emits a dataRequest; the app
+    fetches the matching slice from a simulated server and pushes it back via [data]/[total] — the
+    grid never holds all the rows. The engine is ServerGridAdapter, swapped in by DI behind the same
+    port as the client and TanStack engines, with no change to this markup.
+  </p>
+  <!-- Persistent live region: '' before the first fetch (:empty collapses it), then the running
+       server tally announced on each page fetch. -->
+  <p class="forge-orders-card__note" role="status" aria-live="polite">{{ serverNote() }}</p>
+  <cae-data-grid
+    caption="Customer orders"
+    [columns]="orderColumns"
+    [data]="pageRows()"
+    [total]="pageTotal()"
+    paginated
+    [pageSize]="25"
+    sortActive="id"
+    sortDirection="asc"
+    viewportHeight="20rem"
+    (dataRequest)="onDataRequest($event)"
+  />
+</cae-card>

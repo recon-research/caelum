@@ -1,0 +1,125 @@
+import { CAE_GRID } from './grid-adapter';
+import {
+  ServerGridAdapter,
+  provideServerGrid,
+  serverGridAdapterFactory,
+} from './server-grid-adapter';
+import { CaeColumn } from './grid-types';
+
+interface Row {
+  name: string;
+  age: number;
+}
+
+const COLUMNS: CaeColumn<Row>[] = [
+  { id: 'name', header: 'Name', value: (r) => r.name, sortable: true },
+  { id: 'age', header: 'Age', value: (r) => r.age, sortable: true, align: 'end' },
+];
+
+/** A single server "page" — the slice the server would return for the current request. */
+const PAGE: readonly Row[] = [
+  { name: 'Bob', age: 30 },
+  { name: 'Ann', age: 20 },
+];
+
+describe('ServerGridAdapter', () => {
+  let adapter: ServerGridAdapter<Row>;
+
+  beforeEach(() => {
+    adapter = new ServerGridAdapter<Row>();
+    // The component feeds only columns (an empty dataset) in server mode; rows arrive via applyServerResult.
+    adapter.setData([], COLUMNS);
+  });
+
+  it('emits a non-null dataRequest from the start (the server-engine marker)', () => {
+    expect(adapter.dataRequest()).toEqual({ sort: null, page: 0, pageSize: 0 });
+  });
+
+  it('renders exactly the server-pushed slice, unsorted + unsliced client-side', () => {
+    adapter.applyServerResult(PAGE, 812);
+    // The order is the server's order — NOT re-sorted client-side even though no sort is set.
+    expect(adapter.viewRows().map((r) => r.data.name)).toEqual(['Bob', 'Ann']);
+    // Total is the SERVER count (all pages), not the slice length.
+    expect(adapter.total()).toBe(812);
+  });
+
+  it('assigns stable positional ids to the pushed slice for tracking', () => {
+    adapter.applyServerResult(PAGE, 812);
+    expect(adapter.viewRows().map((r) => r.id)).toEqual([0, 1]);
+  });
+
+  it('does not client-sort — sortBy only records the sort + emits a new request', () => {
+    adapter.applyServerResult(PAGE, 812); // Bob(30), Ann(20) — server order
+    adapter.sortBy({ columnId: 'age', dir: 'asc' });
+    // The view is UNCHANGED (still the last server slice) until the consumer pushes a new one.
+    expect(adapter.viewRows().map((r) => r.data.name)).toEqual(['Bob', 'Ann']);
+    expect(adapter.sort()).toEqual({ columnId: 'age', dir: 'asc' });
+    // ...but the request now carries the new sort for the consumer to fetch.
+    expect(adapter.dataRequest().sort).toEqual({ columnId: 'age', dir: 'asc' });
+  });
+
+  it('emits a fresh dataRequest object on every sort + page change', () => {
+    const initial = adapter.dataRequest();
+    adapter.setPage(2, 25);
+    const paged = adapter.dataRequest();
+    expect(paged).toEqual({ sort: null, page: 2, pageSize: 25 });
+    expect(paged).not.toBe(initial); // new reference so the component's forward effect re-emits
+
+    adapter.sortBy({ columnId: 'name', dir: 'desc' });
+    expect(adapter.dataRequest()).toEqual({
+      sort: { columnId: 'name', dir: 'desc' },
+      page: 0, // sort reset the page (port contract)
+      pageSize: 25,
+    });
+  });
+
+  it('returns to the first page on a sort change (port contract)', () => {
+    adapter.setPage(3, 25);
+    adapter.sortBy({ columnId: 'name', dir: 'asc' });
+    expect(adapter.dataRequest().page).toBe(0);
+  });
+
+  it('clamps the displayed page to the server total, but requests the raw page', () => {
+    adapter.setPage(9, 25);
+    adapter.applyServerResult(PAGE, 60); // 60 rows / 25 = 3 pages (0,1,2) -> last page is 2
+    expect(adapter.page()).toBe(2); // clamped for the pager display
+  });
+
+  it('applyServerResult NEVER re-triggers a request (no fetch loop)', () => {
+    adapter.setPage(1, 25);
+    const before = adapter.dataRequest();
+    // Pushing a result must not change the request descriptor — else the component would re-fetch.
+    adapter.applyServerResult(PAGE, 400);
+    adapter.applyServerResult(PAGE, 400);
+    expect(adapter.dataRequest()).toBe(before); // same computed value, not recomputed
+  });
+
+  it('exports the current server page as RFC-4180 CSV', async () => {
+    adapter.applyServerResult(
+      [
+        { name: 'Ann, A.', age: 20 },
+        { name: 'Bob "B"', age: 30 },
+      ],
+      999,
+    );
+    const blob = adapter.exportRows('csv');
+    expect(blob.type).toContain('text/csv');
+    const text = await blob.text();
+    expect(text).toBe('Name,Age\r\n"Ann, A.",20\r\n"Bob ""B""",30');
+  });
+
+  it('setData with rows seeds a self-consistent view (standalone use)', () => {
+    const standalone = new ServerGridAdapter<Row>();
+    standalone.setData(PAGE, COLUMNS);
+    expect(standalone.viewRows().map((r) => r.data.name)).toEqual(['Bob', 'Ann']);
+    expect(standalone.total()).toBe(2); // fallback total until a server result refines it
+  });
+
+  it('the factory + provider build a working server adapter under CAE_GRID', () => {
+    const instance = serverGridAdapterFactory<Row>();
+    expect(instance).toBeInstanceOf(ServerGridAdapter);
+    expect(instance.dataRequest()).not.toBeNull(); // a server engine always has a pending request
+    expect(typeof provideServerGrid).toBe('function');
+    expect(CAE_GRID.toString()).toContain('CAE_GRID');
+  });
+});

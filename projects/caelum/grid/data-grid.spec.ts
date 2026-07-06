@@ -4,7 +4,8 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { CaeDataGrid } from './data-grid';
 import { CAE_GRID } from './grid-adapter';
 import { ClientGridAdapter } from './client-grid-adapter';
-import { CaeColumn, CaeSort } from './grid-types';
+import { ServerGridAdapter, provideServerGrid } from './server-grid-adapter';
+import { CaeColumn, CaeGridDataRequest, CaeSort } from './grid-types';
 
 // A plain typed interface (no index signature) — the grid generic is unconstrained (like cae-table).
 interface Person {
@@ -233,5 +234,69 @@ describe('CaeDataGrid', () => {
     nameBtn.click();
     flush();
     expect(adapter.sortCalls).toEqual([{ columnId: 'name', dir: 'asc' }]);
+  });
+
+  // ---- Server-side / lazy mode (#176) ----
+  // A server engine (provideServerGrid) + a non-null [total] switches the grid to lazy mode: [data]
+  // is the fetched PAGE, [total] the server's full count, and (dataRequest) drives the fetch.
+
+  it('server mode: routes [data]/[total] through applyServerResult (renders the slice, reports the server total)', () => {
+    setup({ data: [PEOPLE[0], PEOPLE[1]], total: 812, paginated: true, pageSize: 2 }, [
+      provideServerGrid(),
+    ]);
+    const adapter = (fixture.componentInstance as unknown as { adapter: unknown }).adapter;
+    expect(adapter).toBeInstanceOf(ServerGridAdapter);
+    // aria-rowcount + pager reflect the SERVER total (812), not the 2-row fetched slice.
+    expect(grid().getAttribute('aria-rowcount')).toBe('813'); // 812 + header
+    expect(el.querySelector('.cae-data-grid__range')?.textContent).toContain('1-2 of 812');
+    expect(pageBtn('Next page')?.disabled).toBe(false); // 812 rows remain past this page
+    expect(pageBtn('Previous page')?.disabled).toBe(true);
+  });
+
+  it('server mode: emits the initial dataRequest (page 0) so the consumer fetches the first slice', () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ imports: [CaeDataGrid], providers: [provideServerGrid()] });
+    const f = TestBed.createComponent(CaeDataGrid<Person>);
+    const r = f.componentRef;
+    r.setInput('columns', COLUMNS);
+    r.setInput('data', []);
+    r.setInput('total', 0);
+    r.setInput('paginated', true);
+    r.setInput('pageSize', 25);
+    const requests: CaeGridDataRequest[] = [];
+    r.instance.dataRequest.subscribe((req) => requests.push(req)); // subscribe BEFORE the effects flush
+    f.detectChanges();
+    f.detectChanges();
+    // The initial request fires once, with the configured page size (not a stray pageSize-0 request).
+    expect(requests).toContainEqual({ sort: null, page: 0, pageSize: 25 });
+    expect(requests.filter((q) => q.pageSize === 0)).toEqual([]);
+  });
+
+  it('server mode: a Next-page click emits a new dataRequest for the next slice', () => {
+    setup({ data: [PEOPLE[0], PEOPLE[1]], total: 812, paginated: true, pageSize: 2 }, [
+      provideServerGrid(),
+    ]);
+    const requests: CaeGridDataRequest[] = [];
+    ref.instance.dataRequest.subscribe((req) => requests.push(req));
+    pageBtn('Next page')!.click();
+    flush();
+    expect(requests).toContainEqual({ sort: null, page: 1, pageSize: 2 });
+  });
+
+  it('server mode: a sort click emits a request carrying the sort with the page reset to 0', () => {
+    setup({ data: [PEOPLE[0], PEOPLE[1]], total: 812, paginated: true, pageSize: 2 }, [
+      provideServerGrid(),
+    ]);
+    pageBtn('Next page')!.click(); // advance so the sort's page-reset is observable
+    flush();
+    const requests: CaeGridDataRequest[] = [];
+    ref.instance.dataRequest.subscribe((req) => requests.push(req));
+    (headerByText('Name').querySelector('button') as HTMLButtonElement).click();
+    flush();
+    expect(requests).toContainEqual({
+      sort: { columnId: 'name', dir: 'asc' },
+      page: 0,
+      pageSize: 2,
+    });
   });
 });

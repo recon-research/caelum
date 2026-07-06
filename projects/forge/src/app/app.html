@@ -627,6 +627,15 @@
       <app-activity-grid-demo />
     }
 
+    <!-- cae-data-grid server-side / lazy mode (#176, M2 grid server seam). The SAME component, now on
+         a THIRD engine (ServerGridAdapter) behind the identical port: the grid holds one page, emits
+         (dataRequest) on sort/page, and the demo fetches each slice from a simulated server and pushes
+         it back via [data]/[total]. Its own @defer'd component keeps the server engine off the eager
+         bundle, like the other grid demos (#85). -->
+    @defer (on idle) {
+      <app-orders-grid-demo />
+    }
+
     <!-- cae-menubar (#153, M1 composed) — a horizontal application menu bar over MatToolbar +
          cae-menu, with a CDK FocusKeyManager giving roving keyboard across the top-level items.
          Composed-over-composed: selecting any command records it in a live log, so the menubar
