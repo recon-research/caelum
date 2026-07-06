@@ -25,7 +25,7 @@ import { CaeAccordion, CaeExpansionPanel } from 'caelum/accordion';
 import { CaeBadge } from 'caelum/badge';
 import { CaeButton } from 'caelum/button';
 import { CaeCard } from 'caelum/card';
-import { CaeChip } from 'caelum/chip';
+import { CaeChipSet } from 'caelum/chip-set';
 import { CaeCheckbox } from 'caelum/checkbox';
 import { CaeAutocomplete, type CaeAutocompleteOption } from 'caelum/autocomplete';
 import { CaeInput, type CaeErrorMessages } from 'caelum/input';
@@ -116,7 +116,7 @@ const SWATCHES: ReadonlyArray<{ token: string; label: string }> = [
     CaeBadge,
     CaeButton,
     CaeCard,
-    CaeChip,
+    CaeChipSet,
     CaeToolbar,
     CaeCheckbox,
     CaeAutocomplete,
@@ -232,17 +232,25 @@ export class App {
   ];
 
   /**
-   * Removable `cae-chip`s backed by a signal list — the liveness proof for #83. Clicking a chip's
-   * × fires `(removed)`; the consumer owns the removal, so we drop the tag from the signal and the
-   * chip unrenders.
+   * A `cae-chip-set` (#84) backed by a signal list — the managed removable-tag list. A chip's ×
+   * fires `(removed)` with the item; the consumer owns the removal, so we drop the tag and the chip
+   * unrenders. Unlike the standalone `cae-chip` (#83), the set redirects focus to a sibling chip on
+   * removal, so the app no longer hand-rolls a focus-move effect on every removal — it announces the
+   * count and only manages focus for the documented empty case (see removeTag, #202).
    */
   protected readonly tags = signal<readonly string[]>(['design', 'frontend', 'a11y']);
-  /** Announcement for a removed tag — read by a persistent polite live region (a11y, #83). */
+  /** Announcement for a removed tag — read by a persistent polite live region (a11y, #84). */
   protected readonly tagMessage = signal('');
   protected removeTag(tag: string): void {
     this.tags.update((list) => list.filter((t) => t !== tag));
     const n = this.tags().length;
     this.tagMessage.set(`Removed ${tag}. ${n} ${n === 1 ? 'tag' : 'tags'} remaining.`);
+    // cae-chip-set redirects focus to a sibling chip while chips remain; when the list is now EMPTY
+    // there is no in-set target (#202), so we place focus on the status region rather than lose it.
+    if (n === 0) {
+      const el = this.tagsStatusRegion()?.nativeElement;
+      if (el) queueMicrotask(() => el.focus());
+    }
   }
 
   /**
@@ -635,6 +643,7 @@ export class App {
   private readonly formDir = viewChild<FormGroupDirective>('createFormDir');
   /** The invite demo's persistent live region + focus target — mirrors `statusRegion`. */
   private readonly inviteStatusRegion = viewChild<ElementRef<HTMLElement>>('inviteStatus');
+  /** Empty-case focus target for the tag set (#84/#202): where focus lands when the last tag is removed. */
   private readonly tagsStatusRegion = viewChild<ElementRef<HTMLElement>>('tagsStatus');
 
   constructor() {
@@ -653,14 +662,6 @@ export class App {
     effect(() => {
       if (this.inviteSent() || this.inviteError()) {
         const el = this.inviteStatusRegion()?.nativeElement;
-        if (el) queueMicrotask(() => el.focus());
-      }
-    });
-    // A standalone cae-chip doesn't redirect focus on removal (no MatChipSet), so on a tag removal
-    // move focus to the tag status region and announce it — the same guard the form/invite use (#83).
-    effect(() => {
-      if (this.tagMessage()) {
-        const el = this.tagsStatusRegion()?.nativeElement;
         if (el) queueMicrotask(() => el.focus());
       }
     });

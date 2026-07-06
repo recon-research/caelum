@@ -24,6 +24,7 @@
     "caelum-accordion": 4096,
     "caelum-toolbar": 2048,
     "caelum-chip": 3200,
+    "caelum-chip-set": 5120,
     "caelum-badge": 1920,
     "caelum-progress-bar": 2176,
     "caelum-progress-spinner": 2304,

@@ -843,12 +843,13 @@ describe('App', () => {
     expect(headers()[0].getAttribute('aria-expanded')).toBe('false');
   });
 
-  it('removes a cae-chip tag from the signal list when its × is clicked (#83)', async () => {
+  it('removes a cae-chip-set tag from the signal list when its × is clicked (#84)', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     await renderDeferred(fixture); // the tag row is @defer'd below the fold (#85)
     const el = fixture.nativeElement as HTMLElement;
-    const chips = (): HTMLElement[] => Array.from(el.querySelectorAll('.forge-tags cae-chip'));
+    const chips = (): HTMLElement[] =>
+      Array.from(el.querySelectorAll('.forge-tags cae-chip-set mat-chip-row'));
     expect(chips().length).toBe(3);
 
     // Click the first chip's remove button → (removed) drops the tag → the chip unrenders.
@@ -858,11 +859,34 @@ describe('App', () => {
     await fixture.whenStable();
     expect(chips().length).toBe(2);
     expect(chips().map((c) => c.textContent?.trim())).not.toContain(firstLabel);
-    // The removal is announced in a live region (standalone chips don't self-manage focus/announce).
+    // The removal is announced in a live region (the set redirects focus; the app announces the count).
     const status = el.querySelector('.forge-tags__status')!;
     expect(status.getAttribute('aria-live')).toBe('polite');
     expect(status.textContent).toContain('Removed');
     expect(status.textContent).toContain('2 tags remaining');
+  });
+
+  it('moves focus to the tag status region when the LAST tag is removed (#84 empty-case, #202)', async () => {
+    const fixture = TestBed.createComponent(App);
+    const el = fixture.nativeElement as HTMLElement;
+    document.body.appendChild(el); // focus assertions need a connected host
+    try {
+      await fixture.whenStable();
+      await renderDeferred(fixture);
+      const chips = (): HTMLElement[] =>
+        Array.from(el.querySelectorAll('.forge-tags cae-chip-set mat-chip-row'));
+      while (chips().length) {
+        chips()[0].querySelector('button')!.click(); // remove every tag, ending empty
+        await fixture.whenStable();
+      }
+      await new Promise((r) => setTimeout(r)); // let removeTag's queueMicrotask focus fire
+      const status = el.querySelector('.forge-tags__status') as HTMLElement;
+      // The set can't retain focus on an emptied collection, so the consumer places it on the status region.
+      expect(document.activeElement).toBe(status);
+      expect(status.textContent).toContain('0 tags remaining');
+    } finally {
+      if (el.parentNode) el.parentNode.removeChild(el);
+    }
   });
 
   it('renders a live wizard-progress strip from the display primitives (#88)', async () => {

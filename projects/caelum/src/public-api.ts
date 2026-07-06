@@ -49,8 +49,9 @@ export * from 'caelum/toggle-button';
 export * from 'caelum/accordion';
 export * from 'caelum/toolbar';
 
-// --- Data display: chip (#83), badge (#126) ---
+// --- Data display: chip (#83), chip-set (#84), badge (#126) ---
 export * from 'caelum/chip';
+export * from 'caelum/chip-set';
 export * from 'caelum/badge';
 
 // --- Display primitives: progress-bar, progress-spinner, divider (#88) ---
