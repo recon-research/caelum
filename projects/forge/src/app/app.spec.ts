@@ -699,8 +699,10 @@ describe('App', () => {
     // fetched into the browser — the proof the grid is genuinely lazy, not a client-side load.
     expect(rowcount()).toBe('4801');
     expect(card.querySelector('.cae-data-grid__range')?.textContent).toContain('1-25 of 4800');
-    // The simulated server was actually hit (the live note tallies fetches).
-    expect(card.querySelector('.forge-orders-card__note')?.textContent).toContain('page fetch');
+    // The server-side nature is announced once the first page lands.
+    expect(card.querySelector('.forge-orders-card__note')?.textContent).toContain(
+      '4800 orders on the server',
+    );
   });
 
   it('grows the roster live when the "New member" cae-split-button is activated (#148)', async () => {

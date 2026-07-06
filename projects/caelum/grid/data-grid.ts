@@ -290,12 +290,13 @@ export class CaeDataGrid<T = Record<string, unknown>> implements OnInit {
   readonly pageSize = input(10);
 
   /**
-   * **Server-mode** total row count (issue #176). Leave unset (`null`) for the default client engine,
-   * which derives the total from `[data]` and sorts/paginates in-memory. Set it — alongside a server
-   * engine ({@link import('./server-grid-adapter').provideServerGrid}) and a {@link dataRequest}
-   * handler — to drive a lazy/remote grid: bind `[data]` to the **fetched page** and `[total]` to the
-   * server's full count, and the grid renders that slice as-is (the server did the sort/paginate). The
-   * `p-table` `[totalRecords]` analogue; the seam is Book 13 §3.4.
+   * **Server-mode** total row count (issue #176). Bind it *with* a server engine
+   * ({@link import('./server-grid-adapter').provideServerGrid}) + a {@link dataRequest} handler to drive
+   * a lazy/remote grid: `[data]` is the **fetched page**, `[total]` the server's full count, and the grid
+   * renders that slice as-is (the server did the sort/paginate). The `p-table` `[totalRecords]` analogue;
+   * the seam is Book 13 §3.4. Mode is chosen by the **engine**, not this input: with the client engine
+   * `[total]` is **ignored** (the client derives the total from `[data]`) and dev-mode warns; with a
+   * server engine, leaving it unset falls back to the fetched page length and dev-mode warns.
    */
   readonly total = input<number | null>(null);
 
@@ -312,15 +313,24 @@ export class CaeDataGrid<T = Record<string, unknown>> implements OnInit {
   /** Fires with the new sort (or `null` for unsorted) whenever a header sort control is used. */
   readonly sortChange = output<CaeSort | null>();
   /**
-   * The server-side fetch seam — fires when the engine needs a remote slice. Inert with the client
-   * default (which serves rows itself); a server adapter (followup) drives it. Typed here so wiring
-   * it needs no API change.
+   * The server-side fetch seam — fires (with the sort/page to fetch) whenever a server engine needs a
+   * remote slice. Inert with the client default (which serves rows itself); the {@link import('./server-grid-adapter').ServerGridAdapter}
+   * (`provideServerGrid()`, #176) drives it. The consumer owns the fetch and, if requests can overlap,
+   * is responsible for ignoring out-of-order responses (e.g. keying on the latest request).
    */
   readonly dataRequest = output<CaeGridDataRequest>();
 
   /** The per-grid engine — from the injected {@link CAE_GRID} factory, or the built-in client default. */
   private readonly makeAdapter = inject(CAE_GRID, { optional: true }) ?? defaultGridAdapterFactory;
   protected readonly adapter: CaeGridAdapter<T> = this.makeAdapter<T>();
+
+  /**
+   * Whether the injected engine is **server-backed** — single-sourced from the engine itself (only a
+   * server adapter has a non-null {@link CaeGridAdapter.dataRequest}; the client + TanStack engines
+   * are always `null`). Fixed per grid instance (the adapter is created once), so client-vs-server mode
+   * follows the *provider*, never the consumer's {@link total} input — the two cannot silently disagree.
+   */
+  private readonly isServerEngine = this.adapter.dataRequest() !== null;
 
   /** Stable per-instance id linking the visible caption to the table as its accessible name. */
   protected readonly captionId = `cae-data-grid-caption-${++gridInstanceCounter}`;
@@ -356,20 +366,22 @@ export class CaeDataGrid<T = Record<string, unknown>> implements OnInit {
   private seeded = false;
 
   constructor() {
-    // Feed the engine whenever data/columns/total change. Two paths, one seam: the client engine gets
-    // the raw dataset (it sorts/paginates in-memory); a server engine (#176, signalled by a non-null
-    // [total]) gets only the columns via setData (for header/export) and the fetched page + count via
-    // applyServerResult — the neutral half of the lazy-data contract (Book 13 §3.4). The consumer
-    // never touches the adapter; binding [data]/[total] is how the fetched slice reaches the grid.
+    // Feed the engine whenever data/columns/total change. Two paths, one seam, keyed on the ENGINE (not
+    // the [total] input, so mode can never silently disagree with the provider): the client engine gets
+    // the raw dataset (it sorts/paginates in-memory, [total] ignored); a server engine (#176) gets only
+    // the columns via setData (for header/export) and the fetched page + count via applyServerResult —
+    // the neutral half of the lazy-data contract (Book 13 §3.4). The consumer never touches the adapter;
+    // binding [data]/[total] is how the fetched slice reaches the grid. A missing server [total] falls
+    // back to the page length (dev-warned in validateConfig).
     effect(() => {
       const columns = this.columns();
       const data = this.data();
       const total = this.total();
-      if (total === null) {
-        this.adapter.setData(data, columns);
-      } else {
+      if (this.isServerEngine) {
         this.adapter.setData([], columns);
-        this.adapter.applyServerResult(data, total);
+        this.adapter.applyServerResult(data, total ?? data.length);
+      } else {
+        this.adapter.setData(data, columns);
       }
     });
 
@@ -410,9 +422,11 @@ export class CaeDataGrid<T = Record<string, unknown>> implements OnInit {
   }
 
   /**
-   * Export the **full** (all-pages, sorted) dataset as a downloadable {@link Blob} (CSV in v1) —
-   * the public passthrough to the engine {@link CaeGridAdapter.exportRows}. The consumer owns the
-   * download (e.g. an anchor with `URL.createObjectURL`), so the grid needs no file-system access.
+   * Export the engine's dataset as a downloadable {@link Blob} (CSV in v1) — the public passthrough to
+   * {@link CaeGridAdapter.exportRows}. The consumer owns the download (e.g. an anchor with
+   * `URL.createObjectURL`), so the grid needs no file-system access. **Scope depends on the engine:** a
+   * client engine exports the full (all-pages, sorted) set; a **server engine exports only the currently
+   * fetched page** (it has not loaded the other pages — a full-fetch server export is a followup, #177).
    */
   exportRows(format: CaeGridExportFormat = 'csv'): Blob {
     return this.adapter.exportRows(format);
@@ -468,6 +482,16 @@ export class CaeDataGrid<T = Record<string, unknown>> implements OnInit {
     if (active && !this.columns().some((c) => c.id === active && c.sortable)) {
       console.warn(
         `cae-data-grid: sortActive="${active}" is not a sortable column — the data sorts but no sort header (or aria-sort) renders for it.`,
+      );
+    }
+    // Guard the engine/[total] mismatch so a misconfig fails loudly instead of silently degrading.
+    if (this.isServerEngine && this.total() === null) {
+      console.warn(
+        'cae-data-grid: a server grid engine (provideServerGrid) is active but [total] is unset — the pager and aria-rowcount will report only the fetched page size. Bind [total] to the server row count.',
+      );
+    } else if (!this.isServerEngine && this.total() !== null) {
+      console.warn(
+        'cae-data-grid: [total] is set but the client grid engine is active, so [total] is ignored (the client engine derives the total from [data]). Use provideServerGrid() for server-side/lazy data.',
       );
     }
   }

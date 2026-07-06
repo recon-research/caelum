@@ -73,7 +73,12 @@ function buildOrders(count: number): readonly Order[] {
 /** The full dataset — lives outside the component, standing in for a remote source. */
 const ALL_ORDERS = buildOrders(ORDER_ROWS);
 
-/** Neutral comparator matching the library's own (numbers numerically, strings by locale). */
+/**
+ * Neutral comparator the fake server sorts by. Deliberately mirrors the library's own collation
+ * (numbers numerically, strings by locale) so this server-sorted order matches what the client engine
+ * would produce — the demo is the sort authority in server mode, and this keeps the three engines
+ * visibly consistent.
+ */
 function compareValues(a: string | number, b: string | number): number {
   if (typeof a === 'number' && typeof b === 'number') return a - b;
   return String(a ?? '').localeCompare(String(b ?? ''));
@@ -130,11 +135,14 @@ export class OrdersGridDemo {
   /** How many page fetches the server has served — proves the grid is genuinely lazy, not client-side. */
   protected readonly fetchCount = signal(0);
 
-  /** Live-region text confirming the server round-trips (empty until the first fetch settles). */
+  /**
+   * A stable one-line description of the server-side nature (empty until the first fetch settles). Keyed
+   * on {@link pageTotal} (constant after the first load) rather than the per-fetch count, so this
+   * `role="status"` region is NOT re-announced on every page/sort change — the pager's own live region
+   * already announces the range, and two live regions repeating on each page turn is noise.
+   */
   protected readonly serverNote = computed(() =>
-    this.fetchCount()
-      ? `Served ${this.fetchCount()} page fetch(es); ${this.pageTotal()} orders on the server, one page in the browser.`
-      : '',
+    this.pageTotal() ? `${this.pageTotal()} orders on the server — one page loaded at a time.` : '',
   );
 
   /**
@@ -142,7 +150,8 @@ export class OrdersGridDemo {
    * Binding the result into `[data]`/`[total]` is how a slice reaches the grid — the consumer never
    * touches the adapter (the neutral half of the lazy seam). The signal writes land in the async
    * `.then` callback (a real `HttpClient` call is likewise async), so they never run synchronously
-   * inside the grid's emit-during-change-detection — the correct, faithful shape for a fetch.
+   * inside the grid's emit-during-change-detection — the correct, faithful shape for a fetch. A real
+   * consumer would add a `.catch` here to surface a failed fetch; the simulated server never rejects.
    */
   protected onDataRequest(req: CaeGridDataRequest): void {
     queryOrders(req).then((result) => {

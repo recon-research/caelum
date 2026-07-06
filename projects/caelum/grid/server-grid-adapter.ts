@@ -2,6 +2,7 @@ import {
   EnvironmentProviders,
   Signal,
   computed,
+  isDevMode,
   makeEnvironmentProviders,
   signal,
 } from '@angular/core';
@@ -86,7 +87,7 @@ export class ServerGridAdapter<T> extends CaeGridAdapter<T> {
   setData(data: readonly T[], columns: readonly CaeColumn<T>[]): void {
     this._columns.set(columns);
     if (data.length) {
-      this._slice.set(data.map((datum, index) => ({ id: index, data: datum })));
+      this._slice.set(this.wrap(data));
       this._total.set(data.length);
     }
   }
@@ -104,15 +105,33 @@ export class ServerGridAdapter<T> extends CaeGridAdapter<T> {
   }
 
   applyServerResult(rows: readonly T[], total: number): void {
-    this._slice.set(rows.map((datum, index) => ({ id: index, data: datum })));
+    this._slice.set(this.wrap(rows));
     this._total.set(total);
   }
 
   exportRows(format: CaeGridExportFormat = 'csv'): Blob {
-    // v1 exports the CURRENT page only — a server engine cannot serialize pages it has not fetched
-    // (a fetch-all "styled export" is #177). Uses the same RFC-4180 writer both other engines use.
+    // The CURRENT page only — a server engine cannot serialize pages it has not fetched (a full-fetch
+    // export is #177). The port + component docstrings say so; a dev-mode warn stops a caller silently
+    // downloading a partial file. Uses the same RFC-4180 writer both other engines use.
     void format;
+    if (isDevMode()) {
+      console.warn(
+        'cae-data-grid: exportRows() on the server engine serializes only the currently fetched page, not all rows — a full-fetch server export is a followup (#177).',
+      );
+    }
     return toCsvBlob(this._columns(), this._slice());
+  }
+
+  /**
+   * Wrap the pushed rows as view rows with **page-global** ids (`page * pageSize + index`) so an id is
+   * unique across pages — the {@link import('./grid-types').CaeRow} contract (page-local `0..n` ids
+   * would repeat every page and break `@for`/`cdkVirtualFor` recycling on a page swap). Uses the clamped
+   * {@link page} so the ids track the displayed page. (True *datum*-stable ids across a server sort need
+   * a consumer-supplied key — a followup, #177.)
+   */
+  private wrap(rows: readonly T[]): readonly CaeRow<T>[] {
+    const offset = this.page() * this._pageSize();
+    return rows.map((datum, index) => ({ id: offset + index, data: datum }));
   }
 }
 

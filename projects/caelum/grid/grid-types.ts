@@ -67,17 +67,17 @@ export type CaeGridExportFormat = 'csv';
 
 /**
  * What a **server-side** data source is being asked to return — the neutral seam for lazy/remote
- * grids (Book 13 §3.4, the p-table `onLazyLoad` analogue). The default client adapter computes
- * everything in-memory and never emits one of these; a server-backed adapter (a followup) emits it
- * on every sort/page change so the consumer can fetch the matching slice and push it back via
- * {@link CaeGridAdapter.applyServerResult}. Typed here in #170 so that seam needs no interface
- * change when it is wired.
+ * grids (Book 13 §3.4, the p-table `onLazyLoad` analogue). The client + TanStack engines compute
+ * everything in-memory and never emit one of these; the server engine
+ * ({@link import('./server-grid-adapter').ServerGridAdapter}, #176) emits it on every sort/page change
+ * so the consumer can fetch the matching slice and push it back via
+ * {@link CaeGridAdapter.applyServerResult}. Typed in #170; wired in #176.
  */
 export interface CaeGridDataRequest {
   /** The requested sort, or `null` for the natural order. */
   sort: CaeSort | null;
   /** Zero-based page index. */
   page: number;
-  /** Rows per page. */
+  /** Rows per page. `0` means unpaginated — the server should return the whole set. */
   pageSize: number;
 }

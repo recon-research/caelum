@@ -283,6 +283,37 @@ describe('CaeDataGrid', () => {
     expect(requests).toContainEqual({ sort: null, page: 1, pageSize: 2 });
   });
 
+  it('mode follows the ENGINE, not [total]: the client engine ignores [total] and dev-warns', () => {
+    const warnings: string[] = [];
+    const realWarn = console.warn;
+    console.warn = (msg?: unknown) => warnings.push(String(msg));
+    try {
+      // Default CLIENT engine + a stray server-style [total]. Pre-fix this silently killed client
+      // sort/paginate (applyServerResult override); now [total] is ignored — the client still derives
+      // its own total from [data], so aria-rowcount is the 3 client rows (+header), not 999.
+      setup({ total: 999 });
+      expect(grid().getAttribute('aria-rowcount')).toBe('4');
+      expect(warnings.some((w) => w.includes('[total] is set but the client grid engine'))).toBe(
+        true,
+      );
+    } finally {
+      console.warn = realWarn;
+    }
+  });
+
+  it('mode follows the ENGINE: a server engine with [total] unset falls back to page length + dev-warns', () => {
+    const warnings: string[] = [];
+    const realWarn = console.warn;
+    console.warn = (msg?: unknown) => warnings.push(String(msg));
+    try {
+      setup({ data: [PEOPLE[0], PEOPLE[1]] }, [provideServerGrid()]); // server engine, no [total]
+      expect(grid().getAttribute('aria-rowcount')).toBe('3'); // 2-row page fallback + header
+      expect(warnings.some((w) => w.includes('[total] is unset'))).toBe(true);
+    } finally {
+      console.warn = realWarn;
+    }
+  });
+
   it('server mode: a sort click emits a request carrying the sort with the page reset to 0', () => {
     setup({ data: [PEOPLE[0], PEOPLE[1]], total: 812, paginated: true, pageSize: 2 }, [
       provideServerGrid(),

@@ -43,9 +43,13 @@ describe('ServerGridAdapter', () => {
     expect(adapter.total()).toBe(812);
   });
 
-  it('assigns stable positional ids to the pushed slice for tracking', () => {
+  it('assigns page-global ids so they stay unique across pages (not page-local 0..n)', () => {
+    adapter.setPage(0, 25);
     adapter.applyServerResult(PAGE, 812);
-    expect(adapter.viewRows().map((r) => r.id)).toEqual([0, 1]);
+    expect(adapter.viewRows().map((r) => r.id)).toEqual([0, 1]); // page 0: offset 0
+    adapter.setPage(3, 25);
+    adapter.applyServerResult(PAGE, 812);
+    expect(adapter.viewRows().map((r) => r.id)).toEqual([75, 76]); // page 3: offset 3*25
   });
 
   it('does not client-sort — sortBy only records the sort + emits a new request', () => {
