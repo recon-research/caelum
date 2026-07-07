@@ -72,6 +72,31 @@ describe('OrdersGridDemo (#176 server-side grid)', () => {
     expect(el.querySelector('.cae-data-grid__range')?.textContent).toContain('26-50 of 4800');
   });
 
+  it('rows-per-page menu: choosing a larger size re-fetches a bigger page (#177 dogfood)', async () => {
+    const fixture = TestBed.createComponent(OrdersGridDemo);
+    await settle(fixture); // initial page settles → loading cleared, so the menu is live (not snapped-back)
+    const el = fixture.nativeElement as HTMLElement;
+    const cmp = fixture.componentInstance as unknown as {
+      pageRows(): readonly { id: number }[];
+      fetchCount(): number;
+    };
+    expect(el.querySelector('.cae-data-grid__range')?.textContent).toContain('1-25 of 4800');
+    const fetchesBefore = cmp.fetchCount();
+
+    const select = el.querySelector<HTMLSelectElement>('.cae-data-grid__page-size-select')!;
+    select.value = '50';
+    select.dispatchEvent(new Event('change'));
+    await pump(fixture, 10);
+
+    // A fresh 50-row slice — the full port round-trip driven purely by the rows-per-page menu (no
+    // consumer wiring beyond [pageSizeOptions]); the reset-to-page-0 on a size change is unit-tested in
+    // data-grid.spec.ts.
+    expect(el.querySelector('.cae-data-grid__range')?.textContent).toContain('1-50 of 4800');
+    expect(cmp.pageRows().length).toBe(50);
+    expect(cmp.pageRows()[0].id).toBe(1000);
+    expect(cmp.fetchCount()).toBe(fetchesBefore + 1);
+  });
+
   // ---- Loading / error state (#188) ----
 
   it('drives the grid [loading] state true during the initial fetch and clears it once settled', async () => {

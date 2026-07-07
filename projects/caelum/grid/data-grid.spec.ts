@@ -154,6 +154,121 @@ describe('CaeDataGrid', () => {
     expect(pageBtn('Previous page')?.disabled).toBe(false);
   });
 
+  // ---- Rows-per-page menu ([pageSizeOptions], #177) ----
+  const pageSizeSelect = () =>
+    el.querySelector<HTMLSelectElement>('.cae-data-grid__page-size-select');
+
+  it('rows-per-page menu: renders a labelled select and re-paginates on change (client, #177)', () => {
+    setup({ paginated: true, pageSize: 2, pageSizeOptions: [2, 5] });
+    const select = pageSizeSelect()!;
+    expect(select).not.toBeNull();
+    expect(select.closest('label')?.textContent).toContain('Rows per page'); // the accessible name
+    expect(el.querySelector('.cae-data-grid__range')?.textContent).toContain('1-2 of 3');
+    select.value = '5';
+    select.dispatchEvent(new Event('change'));
+    flush();
+    // 5 > 3 rows -> a single page of all rows.
+    expect(el.querySelector('.cae-data-grid__range')?.textContent).toContain('1-3 of 3');
+  });
+
+  it('rows-per-page menu: a size change resets to the first page (#177)', () => {
+    setup({ paginated: true, pageSize: 2, pageSizeOptions: [2, 5] });
+    pageBtn('Next page')!.click(); // -> page 1 ("3-3 of 3")
+    flush();
+    expect(el.querySelector('.cae-data-grid__range')?.textContent).toContain('3-3 of 3');
+    const select = pageSizeSelect()!;
+    select.value = '5';
+    select.dispatchEvent(new Event('change'));
+    flush();
+    expect(el.querySelector('.cae-data-grid__range')?.textContent).toContain('1-3 of 3'); // back to page 0
+  });
+
+  it('shows no rows-per-page menu unless [pageSizeOptions] is set', () => {
+    setup({ paginated: true, pageSize: 2 });
+    expect(pageSizeSelect()).toBeNull();
+  });
+
+  it('rows-per-page menu: always shows the size in effect even if [pageSize] is not among the options (#177)', () => {
+    const warnings: string[] = [];
+    const realWarn = console.warn;
+    console.warn = (msg?: unknown) => warnings.push(String(msg));
+    try {
+      setup({ paginated: true, pageSize: 25, pageSizeOptions: [10, 50] }); // 25 is not listed
+      const select = pageSizeSelect()!;
+      // renderedPageSizes appends the effective size so the control can never show a size the grid isn't
+      // using (WCAG 4.1.2) — it is present AND selected, and the range confirms the grid paginates by 25.
+      expect(Array.from(select.options).map((o) => o.value)).toContain('25');
+      expect(select.value).toBe('25'); // the effective size is shown + selected (no false Value to AT)
+      expect(el.querySelector('.cae-data-grid__range')?.textContent).toContain('1-3 of 3'); // 25 >= 3 rows
+      expect(warnings.some((w) => w.includes('is not among [pageSizeOptions]'))).toBe(true);
+    } finally {
+      console.warn = realWarn;
+    }
+  });
+
+  it('rows-per-page menu: dedupes [pageSizeOptions] (no NG0955 track-key crash) and dev-warns (#177)', () => {
+    const warnings: string[] = [];
+    const realWarn = console.warn;
+    console.warn = (msg?: unknown) => warnings.push(String(msg));
+    try {
+      // A duplicate value would crash the @for track with NG0955 if not deduped first (this test would throw).
+      setup({ paginated: true, pageSize: 10, pageSizeOptions: [10, 25, 25] });
+      expect(Array.from(pageSizeSelect()!.options).map((o) => o.value)).toEqual(['10', '25']);
+      expect(warnings.some((w) => w.includes('unique positive integers'))).toBe(true);
+    } finally {
+      console.warn = realWarn;
+    }
+  });
+
+  it('rows-per-page menu: emits (pageSizeChange) so a client consumer can observe the pick (#177)', () => {
+    setup({ paginated: true, pageSize: 2, pageSizeOptions: [2, 5] });
+    const sizes: number[] = [];
+    ref.instance.pageSizeChange.subscribe((n) => sizes.push(n));
+    const select = pageSizeSelect()!;
+    select.value = '5';
+    select.dispatchEvent(new Event('change'));
+    flush();
+    expect(sizes).toEqual([5]);
+  });
+
+  it('server mode: a rows-per-page change emits a dataRequest with the new size, page reset to 0 (#177)', () => {
+    setup(
+      {
+        data: [PEOPLE[0], PEOPLE[1]],
+        total: 812,
+        paginated: true,
+        pageSize: 2,
+        pageSizeOptions: [2, 25],
+      },
+      [provideServerGrid()],
+    );
+    const requests: CaeGridDataRequest[] = [];
+    ref.instance.dataRequest.subscribe((req) => requests.push(req));
+    const select = pageSizeSelect()!;
+    select.value = '25';
+    select.dispatchEvent(new Event('change'));
+    flush();
+    expect(requests).toContainEqual({ sort: null, page: 0, pageSize: 25 });
+  });
+
+  it('rows-per-page menu: the select is natively disabled while loading — genuinely inert, no racing request (#177/#192)', () => {
+    setup(
+      {
+        data: [PEOPLE[0], PEOPLE[1]],
+        total: 812,
+        paginated: true,
+        pageSize: 2,
+        pageSizeOptions: [2, 25],
+        loading: true,
+      },
+      [provideServerGrid()],
+    );
+    // Native [disabled] (not aria-disabled): a real user cannot change it, so no racing dataRequest is
+    // possible, and AT hears an honest "disabled" (the select would otherwise complete its whole announced
+    // interaction before any handler no-op could revert it — the #192 pager-button trick does not translate).
+    expect(pageSizeSelect()!.disabled).toBe(true);
+  });
+
   it('announces the empty state in a persistent role=status live region', () => {
     setup({ data: [], emptyMessage: 'Nobody here.' });
     const region = el.querySelector('.cae-data-grid__empty') as HTMLElement;

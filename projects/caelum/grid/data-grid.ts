@@ -17,6 +17,7 @@ import {
   isDevMode,
   OnInit,
   output,
+  signal,
   untracked,
   viewChild,
 } from '@angular/core';
@@ -48,7 +49,8 @@ let gridInstanceCounter = 0;
  * `ariaLabel`, `[paginated]`, `[pageSize]` (default 10, as `cae-table`), `sortActive`/`sortDirection`
  * — so a team outgrowing `cae-table` swaps the element name, not their bindings. Two deliberate
  * differences: columns use a `value(row)` accessor (a superset of `CaeTableColumn.key`) so
- * computed/nested fields work, and the pager is minimal (Prev/Next; a page-size menu is a followup).
+ * computed/nested fields work, and the pager is minimal (Prev/Next, plus an optional
+ * {@link pageSizeOptions} rows-per-page menu — #177).
  *
  * ```html
  * <cae-data-grid caption="Events" [columns]="cols" [data]="rows" paginated [pageSize]="50" />
@@ -167,6 +169,26 @@ let gridInstanceCounter = 0;
       @if (paginated()) {
         <div class="cae-data-grid__pager">
           <span class="cae-data-grid__range" aria-live="polite">{{ rangeLabel() }}</span>
+          @if (pageSizeOptions().length) {
+            <label class="cae-data-grid__page-size">
+              <span>Rows per page</span>
+              <!-- Native [disabled] (not aria-disabled) while loading: unlike the pager buttons — whose
+                   no-op'd click makes them genuinely inert, so aria-disabled keeps them focusable (#192) —
+                   a <select> completes its whole announced interaction before any handler runs, so
+                   aria-disabled would be a false state to AT; native disabled makes it truly inert (no
+                   racing dataRequest). The one-off focus consequence is acceptable here (the pager's
+                   repeated keyboard nav is what drove #192's choice). -->
+              <select
+                class="cae-data-grid__page-size-select"
+                [disabled]="loading()"
+                (change)="onPageSizeChange($any($event.target))"
+              >
+                @for (opt of renderedPageSizes(); track opt) {
+                  <option [value]="opt" [selected]="opt === effectivePageSize()">{{ opt }}</option>
+                }
+              </select>
+            </label>
+          }
           <button
             #prevBtn
             type="button"
@@ -291,6 +313,29 @@ let gridInstanceCounter = 0;
       margin-right: auto;
       color: var(--cae-color-on-surface-variant, currentColor);
     }
+    .cae-data-grid__page-size {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--cae-space-2);
+      color: var(--cae-color-on-surface-variant, currentColor);
+    }
+    .cae-data-grid__page-size-select {
+      font: inherit;
+      color: inherit;
+      background: var(--cae-surface-base, transparent);
+      border: 1px solid var(--cae-color-border);
+      border-radius: var(--cae-radius-sm);
+      padding: var(--cae-space-1) var(--cae-space-2);
+      cursor: pointer;
+    }
+    .cae-data-grid__page-size-select:focus-visible {
+      outline: var(--cae-focus-ring);
+      outline-offset: var(--cae-focus-ring-offset);
+    }
+    .cae-data-grid__page-size-select:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
     .cae-data-grid__page-btn {
       font: inherit;
       color: var(--cae-color-primary, currentColor);
@@ -362,6 +407,19 @@ export class CaeDataGrid<T = Record<string, unknown>> implements OnInit {
   readonly pageSize = input(10);
 
   /**
+   * Optional rows-per-page choices (the `p-table` `rowsPerPageOptions` analogue, #177). When set (and
+   * {@link paginated}), a "Rows per page" `<select>` renders in the pager; choosing a value re-paginates
+   * from **page 1** (the offset is meaningless at a new size, as with a sort change) and emits
+   * {@link pageSizeChange}. **Until the user picks a size the menu follows {@link pageSize}** (a `[pageSize]`
+   * change is honoured and resets to page 1); **after the first pick the menu owns the size** and later
+   * `[pageSize]` changes are ignored. Include the initial {@link pageSize} among the options (else it is
+   * still shown — the control always reflects the size in effect — but dev-warned). Empty ⇒ no menu (fixed
+   * {@link pageSize}). Works across every engine via the one port ({@link CaeGridAdapter.setPage}): the
+   * client re-slices, a server engine emits a fresh {@link dataRequest}.
+   */
+  readonly pageSizeOptions = input<readonly number[]>([]);
+
+  /**
    * **Server-mode** total row count (issue #176). Bind it *with* a server engine
    * ({@link import('./server-grid-adapter').provideServerGrid}) + a {@link dataRequest} handler to drive
    * a lazy/remote grid: `[data]` is the **fetched page**, `[total]` the server's full count, and the grid
@@ -384,6 +442,13 @@ export class CaeDataGrid<T = Record<string, unknown>> implements OnInit {
 
   /** Fires with the new sort (or `null` for unsorted) whenever a header sort control is used. */
   readonly sortChange = output<CaeSort | null>();
+  /**
+   * Fires with the new rows-per-page whenever the {@link pageSizeOptions} menu is used (#177) — the
+   * counterpart to {@link sortChange}, so a **client-engine** consumer (which has no {@link dataRequest})
+   * can still observe/persist the choice (e.g. to a URL param or `localStorage`); a server consumer also
+   * sees it via `dataRequest.pageSize`.
+   */
+  readonly pageSizeChange = output<number>();
   /**
    * The server-side fetch seam — fires (with the sort/page to fetch) whenever a server engine needs a
    * remote slice. Inert with the client default (which serves rows itself); the {@link import('./server-grid-adapter').ServerGridAdapter}
@@ -411,6 +476,32 @@ export class CaeDataGrid<T = Record<string, unknown>> implements OnInit {
   protected readonly pageOffset = computed(() => {
     const size = this.adapter.pageSize();
     return size > 0 ? this.adapter.page() * size : 0;
+  });
+
+  /** User-selected rows-per-page (via the {@link pageSizeOptions} menu); null ⇒ follow the {@link pageSize} input. */
+  private readonly userPageSize = signal<number | null>(null);
+  /** The live rows-per-page: the menu selection once made, else the {@link pageSize} input (#177). */
+  protected readonly effectivePageSize = computed(() => this.userPageSize() ?? this.pageSize());
+
+  /**
+   * The options actually rendered in the rows-per-page `<select>` (#177): {@link pageSizeOptions} with
+   * non-positive and duplicate values dropped (a duplicate would crash the `@for track` with NG0955, and
+   * a non-positive size is invalid), and the size **currently in effect always present** — so the control
+   * can never display a size the grid is not using (a WCAG 4.1.2 value mismatch) even if the consumer
+   * omitted the initial {@link pageSize} from the options. Misconfigurations are also dev-warned.
+   */
+  protected readonly renderedPageSizes = computed(() => {
+    const eff = this.effectivePageSize();
+    const seen = new Set<number>();
+    const out: number[] = [];
+    for (const o of this.pageSizeOptions()) {
+      if (o > 0 && !seen.has(o)) {
+        seen.add(o);
+        out.push(o);
+      }
+    }
+    if (eff > 0 && !seen.has(eff)) out.push(eff);
+    return out;
   });
 
   /**
@@ -462,10 +553,11 @@ export class CaeDataGrid<T = Record<string, unknown>> implements OnInit {
       }
     });
 
-    // Sync pagination config; a config change returns to the first page. User Prev/Next call the
-    // adapter directly (below) and do not re-trigger this effect (it depends only on the inputs).
+    // Sync pagination config; a config change (including a rows-per-page menu pick via effectivePageSize,
+    // #177) returns to the first page. User Prev/Next call the adapter directly (below) and do not
+    // re-trigger this effect (it depends only on the inputs + the menu signal).
     effect(() => {
-      const size = this.paginated() ? this.pageSize() : 0;
+      const size = this.paginated() ? this.effectivePageSize() : 0;
       this.adapter.setPage(0, size);
     });
 
@@ -524,6 +616,18 @@ export class CaeDataGrid<T = Record<string, unknown>> implements OnInit {
     const sort = this.adapter.sort();
     if (!sort || sort.columnId !== col.id) return '↕'; // up-down
     return sort.dir === 'asc' ? '↑' : '↓'; // up / down
+  }
+
+  /**
+   * Rows-per-page menu handler (#177). Sets the live page size (the pagination effect then re-paginates
+   * from page 0) and emits {@link pageSizeChange}. No guard needed: the `<select>` is natively
+   * `[disabled]` while {@link loading} (so no racing `dataRequest`), and {@link renderedPageSizes} only
+   * ever emits positive options, so `el.value` is always a valid size.
+   */
+  protected onPageSizeChange(el: HTMLSelectElement): void {
+    const size = Number(el.value);
+    this.userPageSize.set(size);
+    this.pageSizeChange.emit(size);
   }
 
   /** Cycle a column three-state: unsorted/other -> asc -> desc -> unsorted (mat-sort parity). */
@@ -598,6 +702,19 @@ export class CaeDataGrid<T = Record<string, unknown>> implements OnInit {
       console.warn(
         `cae-data-grid: sortActive="${active}" is not a sortable column — the data sorts but no sort header (or aria-sort) renders for it.`,
       );
+    }
+    const options = this.pageSizeOptions();
+    if (this.paginated() && options.length) {
+      if (options.some((o) => o <= 0) || new Set(options).size !== options.length) {
+        console.warn(
+          `cae-data-grid: [pageSizeOptions]=[${options.join(', ')}] should be unique positive integers — duplicate and non-positive values are dropped from the rows-per-page menu.`,
+        );
+      }
+      if (!options.includes(this.pageSize())) {
+        console.warn(
+          `cae-data-grid: [pageSize]=${this.pageSize()} is not among [pageSizeOptions]=[${options.join(', ')}] — it is added to the menu so the control always matches the grid, but include it (in your preferred order) to avoid the surprise.`,
+        );
+      }
     }
     // Guard the engine/[total] mismatch so a misconfig fails loudly instead of silently degrading.
     if (this.isServerEngine && this.total() === null) {
