@@ -289,6 +289,25 @@ describe('CaeDataGrid', () => {
     expect(region().textContent!.trim()).toBe('No data.');
   });
 
+  it('#194: statusText is born empty so the first status message is an announced live-region mutation', () => {
+    // An aria-live region announces LATER mutations, not text present at creation; a region born already
+    // holding "Loading…" is silent. Read the computed directly (no render-timing flakiness): with
+    // loading=true it must still be '' before the after-render flag flips, then the message once settled.
+    // Removing the born-empty guard makes the pre-render value 'Loading…' and fails the first expectation.
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ imports: [CaeDataGrid] });
+    fixture = TestBed.createComponent(CaeDataGrid<Person>);
+    ref = fixture.componentRef;
+    ref.setInput('columns', COLUMNS);
+    ref.setInput('data', []);
+    ref.setInput('loading', true);
+    el = fixture.nativeElement as HTMLElement;
+    const statusText = () => (ref.instance as unknown as { statusText(): string }).statusText();
+    expect(statusText()).toBe(''); // born empty even though loading=true (no render yet)
+    flush();
+    expect(statusText()).toContain('Loading'); // after the first render the message is present (announced)
+  });
+
   it('names the table via aria-labelledby -> the visible caption (not a nameless role=table)', () => {
     setup({ caption: 'Team roster', ariaLabel: 'People' });
     const captionEl = el.querySelector('.cae-data-grid__caption') as HTMLElement;

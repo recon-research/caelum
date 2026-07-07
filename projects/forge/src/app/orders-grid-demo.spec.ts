@@ -142,4 +142,78 @@ describe('OrdersGridDemo (#176 server-side grid)', () => {
     expect(el.querySelector('[role="alert"]')).toBeNull();
     expect(cmp.fetchCount()).toBe(fetchesBefore + 1); // the successful retry served a page
   });
+
+  // ---- Retry-banner focus management (#194) ----
+  // A successful retry clears the error banner, destroying the Retry button. If it held focus, focus
+  // must move to the persistent Simulate button — never dropped to <body> (the #189 pattern, consumer-
+  // owned per #192). document.activeElement requires the fixture attached to the live document.
+
+  const toolbarBtn = (el: HTMLElement) =>
+    el.querySelector<HTMLButtonElement>('.forge-orders-card__toolbar button')!;
+  const retryInnerBtn = (el: HTMLElement) =>
+    el.querySelector<HTMLButtonElement>('.forge-orders-card__error button');
+
+  it('rescues focus off the destroyed Retry button to the Simulate button on a successful retry', async () => {
+    const fixture = TestBed.createComponent(OrdersGridDemo);
+    const el = fixture.nativeElement as HTMLElement;
+    document.body.appendChild(el);
+    try {
+      await settle(fixture);
+      (fixture.componentInstance as unknown as { simulateFailure(): void }).simulateFailure();
+      await pump(fixture);
+      const retryBtn = retryInnerBtn(el)!;
+      expect(retryBtn).toBeTruthy(); // the banner is showing
+      retryBtn.focus(); // Retry holds focus (a keyboard user)
+      expect(document.activeElement).toBe(retryBtn);
+      retryBtn.click(); // retry -> banner cleared -> Retry destroyed
+      await pump(fixture);
+      expect(el.querySelector('[role="alert"]')).toBeNull(); // banner gone
+      expect(document.activeElement).toBe(toolbarBtn(el)); // focus rescued, not dropped to <body>
+    } finally {
+      if (el.parentNode) el.parentNode.removeChild(el);
+    }
+  });
+
+  it('does not steal focus when the Retry button did not hold it (programmatic retry)', async () => {
+    // Safari/Firefox do not focus a clicked <button>, and a programmatic retry never does — moving focus
+    // then would be an unexpected change (WCAG 3.2.x). Focus a DIFFERENT element than the rescue target
+    // (a grid sort header, not the Simulate button) so a wrongful steal to Simulate is observable: the
+    // rescue must leave this focus untouched. (Removing both no-steal gates moves focus -> Simulate here.)
+    const fixture = TestBed.createComponent(OrdersGridDemo);
+    const el = fixture.nativeElement as HTMLElement;
+    document.body.appendChild(el);
+    try {
+      await settle(fixture);
+      const cmp = fixture.componentInstance as unknown as {
+        simulateFailure(): void;
+        retry(): void;
+      };
+      cmp.simulateFailure();
+      await pump(fixture);
+      const sortHeader = el.querySelector<HTMLButtonElement>('.cae-data-grid__sort')!;
+      expect(sortHeader).toBeTruthy();
+      sortHeader.focus(); // focus on a real control OUTSIDE the retry button and != the rescue target
+      expect(document.activeElement).toBe(sortHeader);
+      cmp.retry(); // programmatic — Retry never held focus
+      await pump(fixture);
+      expect(document.activeElement).toBe(sortHeader); // focus left untouched (no steal to Simulate)
+    } finally {
+      if (el.parentNode) el.parentNode.removeChild(el);
+    }
+  });
+
+  it('keeps the Simulate button focusable (aria-disabled, not native-disabled) while loading', () => {
+    // The retry focus-rescue targets the Simulate button — which is disabled while loading. If it were
+    // NATIVE-disabled it would be unfocusable, and a rescue during a still-in-flight fetch (a slow/real
+    // network, where loading is still true when the focus move fires) would drop focus to <body>.
+    // disabledInteractive keeps it aria-disabled but focusable — a valid rescue target. Removing
+    // disabledInteractive puts the native `disabled` attribute back and fails this.
+    const fixture = TestBed.createComponent(OrdersGridDemo);
+    const el = fixture.nativeElement as HTMLElement;
+    fixture.detectChanges(); // mount: loading starts true (the initial fetch is in flight)
+    expect((fixture.componentInstance as unknown as { loading(): boolean }).loading()).toBe(true);
+    const simulateBtn = toolbarBtn(el);
+    expect(simulateBtn.hasAttribute('disabled')).toBe(false); // not native-disabled -> focusable
+    expect(simulateBtn.getAttribute('aria-disabled')).toBe('true'); // aria-disabled instead
+  });
 });
