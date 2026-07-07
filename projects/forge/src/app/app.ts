@@ -43,7 +43,7 @@ import { CaeStep, CaeStepper } from 'caelum/stepper';
 import { CaeSwitch } from 'caelum/switch';
 import { CaeTab, CaeTabs } from 'caelum/tabs';
 import { CaeTabMenu, type CaeTabMenuItem } from 'caelum/tab-menu';
-import { CaeTable, type CaeTableColumn } from 'caelum/table';
+import { CaeCellDef, CaeTable, type CaeTableColumn } from 'caelum/table';
 import { CaeTextarea } from 'caelum/textarea';
 import { CaeToggleButton } from 'caelum/toggle-button';
 import { CaeToolbar } from 'caelum/toolbar';
@@ -138,6 +138,7 @@ const SWATCHES: ReadonlyArray<{ token: string; label: string }> = [
     CaeTabs,
     CaeTabMenu,
     CaeTable,
+    CaeCellDef,
     ActivityGridDemo,
     OrdersGridDemo,
     CaeTextarea,
@@ -335,6 +336,15 @@ export class App {
     { key: 'role', header: 'Role', sortable: true },
     { key: 'joined', header: 'Joined', sortable: true },
   ];
+
+  /**
+   * A caeCellDef context `value` is typed `unknown` (the template is keyed by a string column, so a
+   * precise per-column type is not available) — the consumer narrows it. Here the Email column's cell
+   * template (#143) builds a `mailto:` href from it.
+   */
+  protected mailtoHref(value: unknown): string {
+    return `mailto:${value}`;
+  }
   protected readonly members = signal<readonly WorkspaceMember[]>([
     { name: 'Ada Lovelace', email: 'ada@acme.dev', role: 'Owner', joined: '2024-01-12' },
     { name: 'Grace Hopper', email: 'grace@acme.dev', role: 'Admin', joined: '2024-03-04' },

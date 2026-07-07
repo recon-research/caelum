@@ -1,7 +1,8 @@
-import { ComponentRef } from '@angular/core';
+import { Component, ComponentRef, signal, Type } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { CaeTable, CaeTableColumn } from './table';
+import { CaeCellDef } from './cell-def';
 
 // A plain typed interface (no index signature) — cae-table's generic is unconstrained, so an
 // ordinary row model type works without `extends Record<string, unknown>` (#141).
@@ -165,5 +166,210 @@ describe('CaeTable', () => {
     const rows = dataRows();
     expect(rows.length).toBe(1);
     expect(cellText(rows[0])).toEqual(['Solo', '1', 'X']);
+  });
+});
+
+// ---- Custom cell templates (#143, p-table pTemplate="body" parity) ----
+
+// A host projecting a caeCellDef for the `role` column: renders a button with the raw value, the
+// row (implicit), and the index — proving the full CaeCellContext reaches the template.
+@Component({
+  imports: [CaeTable, CaeCellDef],
+  template: `
+    <cae-table [columns]="columns()" [data]="data()">
+      <ng-template caeCellDef="role" let-row let-value="value" let-i="index">
+        <button type="button" class="role-btn" [attr.data-idx]="i">
+          {{ value }}::{{ asPerson(row).name }}
+        </button>
+      </ng-template>
+    </cae-table>
+  `,
+})
+class TemplatedHost {
+  // Signals (not plain fields): a plain-field host binding does not propagate to the OnPush cae-table
+  // in zoneless.
+  readonly columns = signal<CaeTableColumn[]>(COLUMNS);
+  readonly data = signal<Person[]>(PEOPLE);
+  // The row context is typed `unknown` (T cannot be inferred from projected content) — the consumer
+  // narrows it, the documented v1 pattern.
+  asPerson(row: unknown): Person {
+    return row as Person;
+  }
+}
+
+// A host whose caeCellDef key matches no column — the dev-warn path.
+@Component({
+  imports: [CaeTable, CaeCellDef],
+  template: `
+    <cae-table [columns]="columns" [data]="data">
+      <ng-template caeCellDef="nope"><span>x</span></ng-template>
+    </cae-table>
+  `,
+})
+class MismatchedHost {
+  columns: CaeTableColumn[] = COLUMNS;
+  data: Person[] = PEOPLE;
+}
+
+// Two caeCellDef templates for the SAME column key — the last-wins dev-warn path.
+@Component({
+  imports: [CaeTable, CaeCellDef],
+  template: `
+    <cae-table [columns]="columns" [data]="data">
+      <ng-template caeCellDef="role"><span class="dup-a">A</span></ng-template>
+      <ng-template caeCellDef="role"><span class="dup-b">B</span></ng-template>
+    </cae-table>
+  `,
+})
+class DuplicateHost {
+  columns: CaeTableColumn[] = COLUMNS;
+  data: Person[] = PEOPLE;
+}
+
+// A host that adds/removes a caeCellDef at runtime (behind @if) — exercises the reactive
+// contentChildren -> cellTemplates -> cell text<->template swap.
+@Component({
+  imports: [CaeTable, CaeCellDef],
+  template: `
+    <cae-table [columns]="columns()" [data]="data()">
+      @if (showTemplate()) {
+        <ng-template caeCellDef="role" let-value="value">
+          <button type="button" class="role-btn">{{ value }}</button>
+        </ng-template>
+      }
+    </cae-table>
+  `,
+})
+class ToggleHost {
+  readonly columns = signal<CaeTableColumn[]>(COLUMNS);
+  readonly data = signal<Person[]>(PEOPLE);
+  readonly showTemplate = signal(true);
+}
+
+describe('CaeTable — custom cell templates (#143)', () => {
+  function make<H>(type: Type<H>): { fixture: ComponentFixture<H>; el: HTMLElement } {
+    const fixture = TestBed.createComponent(type);
+    fixture.detectChanges();
+    fixture.detectChanges();
+    return { fixture, el: fixture.nativeElement as HTMLElement };
+  }
+
+  const rowsOf = (el: HTMLElement) => Array.from(el.querySelectorAll('tr[mat-row]'));
+  const cellsOf = (row: Element) => Array.from(row.querySelectorAll('td[mat-cell]'));
+
+  it('renders a caeCellDef template for its column, plain text for the rest', async () => {
+    await TestBed.configureTestingModule({ imports: [TemplatedHost] }).compileComponents();
+    const { el } = make(TemplatedHost);
+    const cells = cellsOf(rowsOf(el)[0]);
+    // Columns WITHOUT a template keep the zero-boilerplate text default.
+    expect(cells[0].textContent!.trim()).toBe('Bob'); // name
+    expect(cells[1].textContent!.trim()).toBe('30'); // age
+    // The `role` column renders the projected template, not the text default.
+    const btn = cells[2].querySelector('button.role-btn') as HTMLButtonElement;
+    expect(btn).not.toBeNull();
+  });
+
+  it('passes the full CaeCellContext — value (raw), $implicit (row), index — into the template', async () => {
+    await TestBed.configureTestingModule({ imports: [TemplatedHost] }).compileComponents();
+    const { el } = make(TemplatedHost);
+    const rows = rowsOf(el);
+    const btn0 = cellsOf(rows[0])[2].querySelector('button.role-btn') as HTMLButtonElement;
+    // value="Lead" (raw row.role), row.name="Bob" via let-row, index 0 via let-i.
+    expect(btn0.textContent!.trim()).toBe('Lead::Bob');
+    expect(btn0.getAttribute('data-idx')).toBe('0');
+    // Second row gets its own row + the next index.
+    const btn1 = cellsOf(rows[1])[2].querySelector('button.role-btn') as HTMLButtonElement;
+    expect(btn1.textContent!.trim()).toBe('Eng::Ann');
+    expect(btn1.getAttribute('data-idx')).toBe('1');
+  });
+
+  it('re-renders the templated cell when the row data changes', async () => {
+    await TestBed.configureTestingModule({ imports: [TemplatedHost] }).compileComponents();
+    const { fixture, el } = make(TemplatedHost);
+    fixture.componentInstance.data.set([{ name: 'Solo', age: 1, role: 'X' }]);
+    fixture.detectChanges();
+    fixture.detectChanges();
+    const btn = cellsOf(rowsOf(el)[0])[2].querySelector('button.role-btn') as HTMLButtonElement;
+    expect(btn.textContent!.trim()).toBe('X::Solo');
+  });
+
+  it('dev-warns on a caeCellDef whose key matches no column (the template is ignored)', async () => {
+    const warnings: string[] = [];
+    const realWarn = console.warn;
+    console.warn = (msg?: unknown) => warnings.push(String(msg));
+    try {
+      await TestBed.configureTestingModule({ imports: [MismatchedHost] }).compileComponents();
+      make(MismatchedHost);
+      expect(
+        warnings.some((w) => w.includes('caeCellDef="nope"') && w.includes('no column key')),
+      ).toBe(true);
+    } finally {
+      console.warn = realWarn;
+    }
+  });
+
+  it('does NOT dev-warn when the caeCellDef key matches a real column (guard precision)', async () => {
+    const warnings: string[] = [];
+    const realWarn = console.warn;
+    console.warn = (msg?: unknown) => warnings.push(String(msg));
+    try {
+      await TestBed.configureTestingModule({ imports: [TemplatedHost] }).compileComponents();
+      make(TemplatedHost); // caeCellDef="role" is a real column
+      // A valid key must produce no caeCellDef warning (locks the guard against an over-broad condition).
+      expect(warnings.some((w) => w.includes('caeCellDef'))).toBe(false);
+    } finally {
+      console.warn = realWarn;
+    }
+  });
+
+  it('dev-warns on two caeCellDef templates for the same column key (last wins)', async () => {
+    const warnings: string[] = [];
+    const realWarn = console.warn;
+    console.warn = (msg?: unknown) => warnings.push(String(msg));
+    try {
+      await TestBed.configureTestingModule({ imports: [DuplicateHost] }).compileComponents();
+      make(DuplicateHost);
+      expect(warnings.some((w) => w.includes('duplicate') && w.includes('caeCellDef="role"'))).toBe(
+        true,
+      );
+    } finally {
+      console.warn = realWarn;
+    }
+  });
+
+  it('reports the RENDERED row index (post-sort), not the source index', async () => {
+    await TestBed.configureTestingModule({ imports: [TemplatedHost] }).compileComponents();
+    const { fixture, el } = make(TemplatedHost);
+    // Sort by Age asc: Ann(20), Cy(25), Bob(30). The rendered first row becomes Ann (source index 1).
+    const ageHeader = Array.from(el.querySelectorAll('th[mat-header-cell]')).find(
+      (h) => h.textContent!.trim() === 'Age',
+    ) as HTMLElement;
+    ageHeader.click();
+    fixture.detectChanges();
+    fixture.detectChanges();
+    const btn0 = cellsOf(rowsOf(el)[0])[2].querySelector('button.role-btn') as HTMLButtonElement;
+    // Rendered index 0 pairs with the rendered row (Ann) — proving index/$implicit follow render order,
+    // not the source array order (Ann is source index 1).
+    expect(btn0.textContent!.trim()).toBe('Eng::Ann');
+    expect(btn0.getAttribute('data-idx')).toBe('0');
+  });
+
+  it('adds/removes a caeCellDef at runtime, swapping the cell between template and text', async () => {
+    await TestBed.configureTestingModule({ imports: [ToggleHost] }).compileComponents();
+    const { fixture, el } = make(ToggleHost);
+    const roleCell = () => cellsOf(rowsOf(el)[0])[2];
+    // Template present: the role cell renders the button.
+    expect(roleCell().querySelector('button.role-btn')).not.toBeNull();
+    // Remove the caeCellDef → contentChildren update → the cell falls back to the text default.
+    fixture.componentInstance.showTemplate.set(false);
+    fixture.detectChanges();
+    fixture.detectChanges();
+    expect(roleCell().querySelector('button.role-btn')).toBeNull();
+    expect(roleCell().textContent!.trim()).toBe('Lead'); // Bob's role, as plain text
+    // Re-add it → the template returns.
+    fixture.componentInstance.showTemplate.set(true);
+    fixture.detectChanges();
+    fixture.detectChanges();
+    expect(roleCell().querySelector('button.role-btn')).not.toBeNull();
   });
 });

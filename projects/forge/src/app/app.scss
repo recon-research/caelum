@@ -23,6 +23,11 @@
   display: none;
 }
 
+/* The Email column's caeCellDef cell template (#143): a themed mailto: link (token-only colour). */
+.forge-members-card__email {
+  color: var(--cae-color-primary);
+}
+
 /* The command-bar (#153) and quick-actions (#157) cards share identical note/log styling —
    grouped to keep app.scss lean while the 7kB warn budget (#97, split app.scss) is still open. */
 .forge-commands-card__note,
