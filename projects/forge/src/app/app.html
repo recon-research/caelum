@@ -600,6 +600,19 @@
             (primaryClick)="addMember()"
             (itemSelect)="runMemberAction($event)"
           />
+          <!-- Row selection (#144): a "Remove selected" cae-button driven by cae-table's two-way
+               [(selection)] — the projected text (with the live count) IS the accessible name, so no
+               ariaLabel (which would override it and hide the count — WCAG 2.5.3). disabledInteractive
+               keeps it aria-disabled-but-focusable, so activating it (which clears the selection and
+               re-disables it) never strands keyboard focus to <body> (the #189/#192 convention). -->
+          <cae-button
+            variant="outlined"
+            disabledInteractive
+            [disabled]="!selectedMembers().length"
+            (click)="removeSelected()"
+          >
+            Remove selected ({{ selectedMembers().length }})
+          </cae-button>
           <!-- Persistent live region (text varies '' -> message) so a screen reader announces the
                add; :empty collapses it before the first action (the cae-table empty-state pattern). -->
           <span class="forge-members-card__note" role="status">{{ memberNote() }}</span>
@@ -609,6 +622,10 @@
           caption="Workspace members"
           [columns]="memberColumns"
           [data]="members()"
+          selectionMode="multiple"
+          [selection]="selectedMembers()"
+          (selectionChange)="selectedMembers.set($event)"
+          [rowSelectionLabel]="memberSelectionLabel"
           paginated
           [pageSize]="5"
           sortActive="name"
