@@ -403,6 +403,25 @@ describe('CaeDataGrid', () => {
     expect(requests).toContainEqual({ sort: null, page: 1, pageSize: 2 });
   });
 
+  it('server mode: a shrunk [total] re-clamps the page and emits a fresh dataRequest for it (#190)', () => {
+    setup({ data: [PEOPLE[0], PEOPLE[1]], total: 812, paginated: true, pageSize: 2 }, [
+      provideServerGrid(),
+    ]);
+    const requests: CaeGridDataRequest[] = [];
+    ref.instance.dataRequest.subscribe((req) => requests.push(req));
+    pageBtn('Next page')!.click(); // advance to page 1 (of 406)
+    flush();
+    requests.length = 0; // focus on what the shrink emits next
+    // The server now reports far fewer rows (a deletion between fetches): the new slice + count arrive
+    // via [data]/[total] — the applyServerResult seam. Page 1 no longer exists (1 row = 1 page), so the
+    // grid must re-fetch page 0 rather than sit on a stranded slice.
+    ref.setInput('data', [PEOPLE[0]]);
+    ref.setInput('total', 1);
+    flush();
+    expect(requests).toContainEqual({ sort: null, page: 0, pageSize: 2 });
+    expect(el.querySelector('.cae-data-grid__range')?.textContent).toContain('1-1 of 1');
+  });
+
   it('mode follows the ENGINE, not [total]: the client engine ignores [total] and dev-warns', () => {
     const warnings: string[] = [];
     const realWarn = console.warn;
