@@ -299,8 +299,22 @@ let gridInstanceCounter = 0;
       color: var(--cae-color-on-surface-variant, currentColor);
       text-align: center;
     }
+    /* When empty, collapse VISUALLY but stay in the accessibility tree — a clip-based visually-hidden
+       hide, NOT display:none (which prunes the node from the a11y tree and un-watches the live region).
+       Keeping role=status registered while empty is what makes the first Loading…/No data. text an
+       announced mutation of a *watched* region rather than the insertion of a region already holding
+       text (which screen readers do not reliably announce). Pairs with the born-empty statusText (#194).
+       Real-SR announcement is an M4 verify (#228); jsdom cannot observe the a11y tree. */
     .cae-data-grid__empty:empty {
-      display: none;
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
     }
     .cae-data-grid__pager {
       display: flex;
@@ -505,11 +519,23 @@ export class CaeDataGrid<T = Record<string, unknown>> implements OnInit {
   });
 
   /**
+   * Flips true after the first render so {@link statusText} is born empty — see its note (#194).
+   */
+  private readonly rendered = signal(false);
+
+  /**
    * Status-region text: {@link loadingMessage} while {@link loading} (an in-flight fetch), else the
    * {@link emptyMessage} when there are no rows, else '' (the live region collapses). Suppressing the
    * empty message during a fetch is what distinguishes *loading* from *empty* (#188).
+   *
+   * Returns '' until the first render ({@link rendered}): an `aria-live` region only announces *later*
+   * mutations, not text present when the region is created, so a status region born already holding
+   * "Loading…"/"No data." is silent to a screen reader. Rendering it empty first and the real message
+   * on the next CD makes that first message an announced change — covering the server first-load
+   * (`[loading]` true on mount) and initial-empty cases (#194).
    */
   protected readonly statusText = computed(() => {
+    if (!this.rendered()) return '';
     if (this.loading()) return this.loadingMessage();
     return this.adapter.total() === 0 ? this.emptyMessage() : '';
   });
@@ -579,6 +605,10 @@ export class CaeDataGrid<T = Record<string, unknown>> implements OnInit {
       const request = this.adapter.dataRequest();
       if (request) this.dataRequest.emit(request);
     });
+
+    // The status region must be BORN EMPTY to announce its first message (see statusText, #194); flip
+    // the flag after the first render so the initial "Loading…"/"No data." arrives as an announced change.
+    afterNextRender(() => this.rendered.set(true));
   }
 
   /**

@@ -1,4 +1,14 @@
-import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
+import {
+  afterNextRender,
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  ElementRef,
+  inject,
+  Injector,
+  signal,
+  viewChild,
+} from '@angular/core';
 
 import { CaeButton } from 'caelum/button';
 import { CaeCard } from 'caelum/card';
@@ -156,6 +166,14 @@ export class OrdersGridDemo {
   /** When true, the next fetch rejects — the "Simulate fetch failure" button flips it (demo only). */
   private readonly failNext = signal(false);
 
+  private readonly injector = inject(Injector);
+  /** The Retry button — present only while the error banner shows; used to detect whether it held focus
+   * before a retry tears the banner down (see {@link retry}). */
+  private readonly retryButton = viewChild('retryButton', { read: ElementRef });
+  /** The persistent "Simulate fetch failure" button — the stable focus target when the transient Retry
+   * button is removed on a successful retry (#194). */
+  private readonly simulateButton = viewChild('simulateButton', { read: ElementRef });
+
   /**
    * A stable one-line description of the server-side nature (empty until the first fetch settles). Keyed
    * on {@link pageTotal} (constant after the first load) rather than the per-fetch count, so this
@@ -196,14 +214,46 @@ export class OrdersGridDemo {
       .finally(() => this.loading.set(false));
   }
 
-  /** Re-issue the last request (the Retry button on the error banner). */
+  /**
+   * Re-issue the last request (the Retry button on the error banner). {@link onDataRequest} clears
+   * {@link fetchError} synchronously, so the `@if(fetchError)` banner — and the Retry button inside it —
+   * is about to be destroyed. If Retry held focus, move it to the persistent Simulate button after the
+   * render so a keyboard user's focus is never dropped to `<body>` (WCAG 3.2.x / 2.4.3 — the #189
+   * pattern). This is consumer-owned focus management, as #192 prescribes: the retry control lives
+   * OUTSIDE the grid, so the grid cannot do it for us. Gated on held-focus — a Safari/Firefox
+   * non-focusing click or a programmatic retry must not steal focus.
+   */
   protected retry(): void {
     const req = this.lastRequest();
-    if (req) this.onDataRequest(req);
+    if (!req) return;
+    const retryHost = this.retryButton()?.nativeElement as HTMLElement | undefined;
+    const heldFocus = !!retryHost && retryHost.contains(document.activeElement);
+    this.onDataRequest(req);
+    if (heldFocus) {
+      afterNextRender(
+        () => {
+          // Re-check inside the deferred callback (matching the grid's own rescuePagerFocus): rescue only
+          // if focus actually dropped to <body> when the banner was destroyed — never yank focus that
+          // legitimately moved elsewhere during the intervening CD.
+          if (document.activeElement !== document.body) return;
+          (this.simulateButton()?.nativeElement as HTMLElement | undefined)
+            ?.querySelector('button')
+            ?.focus();
+        },
+        { injector: this.injector },
+      );
+    }
   }
 
-  /** Force the next fetch to fail, then re-issue the current slice — demonstrates the error state. */
+  /**
+   * Force the next fetch to fail, then re-issue the current slice — demonstrates the error state.
+   * No-ops while a fetch is in flight: the Simulate button is `disabledInteractive` (aria-disabled but
+   * still focusable — so {@link retry} can rescue focus onto it even mid-fetch, when a native-`disabled`
+   * button would be unfocusable and drop focus to `<body>`; the #189/#192 pattern). Interactive-disabled
+   * keeps the button clickable, so the handler must guard itself.
+   */
   protected simulateFailure(): void {
+    if (this.loading()) return;
     this.failNext.set(true);
     this.retry();
   }
