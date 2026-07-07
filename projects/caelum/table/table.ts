@@ -16,10 +16,19 @@ import {
 } from '@angular/core';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatPaginator, MatPaginatorModule } from '@angular/material/paginator';
+import { MatRadioModule } from '@angular/material/radio';
 import { MatSort, MatSortModule } from '@angular/material/sort';
 import { MatTableDataSource, MatTableModule } from '@angular/material/table';
 import type { CaeSortDirection } from 'caelum/shared';
 import { CaeCellContext, CaeCellDef } from './cell-def';
+
+/**
+ * Process-global counter for the single-select radio-group `name`. Per-render *distinctness* is what
+ * matters (two `cae-table`s on one page get distinct radio groups), not a per-request reset: radios
+ * group intra-instance and the `[name]` binding re-applies on the client, so grouping stays correct
+ * regardless of any SSR server/client value difference. Module-scoped, never rendered as visible text.
+ */
+let nextTableSelectId = 0;
 
 /**
  * A column in a {@link CaeTable}. `key` indexes the row object for the displayed value and
@@ -81,17 +90,17 @@ export interface CaeTableColumn {
  * (full-row templating is out of v1 scope). Columns without a template keep the zero-boilerplate text
  * default. See {@link CaeCellDef}.
  *
- * **Row selection** (#144): set `selectionMode="multiple"` to prepend a checkbox column with a
- * select-all header, and bind `[(selection)]` for the selected rows as a **vendor-neutral `T[]`**
- * (or `(selectionChange)` to observe) — no Material `SelectionModel` in the public API. Selection is
- * by **reference identity** (a `[data]` refresh with new object instances drops it; a stable-identity
- * `dataKey` is a follow-up). Give each row checkbox a semantic accessible name via
- * {@link rowSelectionLabel}. Single-select (radio) is a #144 follow-up.
+ * **Row selection** (#144): set `selectionMode="multiple"` (checkbox column + a select-all header) or
+ * `"single"` (radio column, one row at a time — no select-all), and bind `[(selection)]` for the
+ * selected rows as a **vendor-neutral `T[]`** (or `(selectionChange)` to observe) — no Material
+ * `SelectionModel` in the public API. Selection is by **reference identity** (a `[data]` refresh with
+ * new object instances drops it; a stable-identity `dataKey` is a follow-up). Give each row control a
+ * semantic accessible name via {@link rowSelectionLabel}.
  *
  * **v1 scope** (#141): text columns, sort, client-side pagination, custom body-cell templates (#143,
- * with a page-relative + absolute row index, #213), multi-select (#144). Follow-ups: sticky /
- * expandable-rows / single-select **#144**; server-side/lazy data, global filter, column
- * resize/reorder **#145**. Header/footer/full-row templating is a future enhancement (not yet requested).
+ * with a page-relative + absolute row index, #213), multi- and single-select (#144). Follow-ups:
+ * sticky / expandable-rows **#144**; server-side/lazy data, global filter, column resize/reorder
+ * **#145**. Header/footer/full-row templating is a future enhancement (not yet requested).
  *
  * Zoneless-compatible: `OnPush` + signal inputs (D-12). No `color` input — theming is free via
  * the token bridge (D-04).
@@ -104,7 +113,14 @@ export interface CaeTableColumn {
 @Component({
   selector: 'cae-table',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MatTableModule, MatSortModule, MatPaginatorModule, MatCheckboxModule, NgTemplateOutlet],
+  imports: [
+    MatTableModule,
+    MatSortModule,
+    MatPaginatorModule,
+    MatCheckboxModule,
+    MatRadioModule,
+    NgTemplateOutlet,
+  ],
   template: `
     <table
       mat-table
@@ -125,24 +141,48 @@ export interface CaeTableColumn {
       @if (selectionMode() !== 'none') {
         <ng-container [matColumnDef]="selectColumnKey">
           <th mat-header-cell *matHeaderCellDef class="cae-table__select-cell">
-            <!-- disabledInteractive: on empty data the select-all is aria-disabled (announced
-                 unavailable) but stays focusable, so an external data-clear never strands keyboard
-                 focus to <body> — the pager's #189/#192 focus-preservation convention. -->
-            <mat-checkbox
-              [checked]="allSelected()"
-              [indeterminate]="someSelected()"
-              [disabled]="!data().length"
-              disabledInteractive
-              (change)="toggleAll()"
-              [aria-label]="selectAllLabel()"
-            ></mat-checkbox>
+            <!-- Name the selection column for AT (both modes): the header holds a control (or nothing,
+                 in single mode), not text, so a visually-hidden label gives the column an accessible
+                 name and every selection cell a header association (WCAG 1.3.1). -->
+            <span class="cae-visually-hidden">{{ selectColumnHeader() }}</span>
+            @if (selectionMode() === 'multiple') {
+              <!-- disabledInteractive: on empty data the select-all is aria-disabled (announced
+                   unavailable) but stays focusable, so an external data-clear never strands keyboard
+                   focus to <body> — the pager's #189/#192 focus-preservation convention. -->
+              <mat-checkbox
+                [checked]="allSelected()"
+                [indeterminate]="someSelected()"
+                [disabled]="!data().length"
+                disabledInteractive
+                (change)="toggleAll()"
+                [aria-label]="selectAllLabel()"
+              ></mat-checkbox>
+            }
+            <!-- single mode: no header control — a radio group has no "select all". -->
           </th>
           <td mat-cell *matCellDef="let row; let i = index" class="cae-table__select-cell">
-            <mat-checkbox
-              [checked]="isSelected(row)"
-              (change)="toggleRow(row)"
-              [aria-label]="rowSelectionLabel()(row, i)"
-            ></mat-checkbox>
+            @if (selectionMode() === 'multiple') {
+              <mat-checkbox
+                [checked]="isSelected(row)"
+                (change)="toggleRow(row)"
+                [aria-label]="rowSelectionLabel()(row, i)"
+              ></mat-checkbox>
+            } @else {
+              <!-- Single-select: standalone radios sharing one [name] form a native radio group (role
+                   radio, "N of M", mutual deselect via Material's UniqueSelectionDispatcher) — no
+                   MatRadioGroup (a group element can't wrap table rows). We manage the roving
+                   [tabIndex] ourselves (exactly one tab stop — see radioTabIndex) because a group-less
+                   MatRadioButton otherwise defaults every radio to tabindex 0 (N tab stops). Arrow-key
+                   roving+select between the radios then rests on native same-name-radio behaviour
+                   (real-browser verify #223); no arrow clash since cae-table is role=table, not grid. -->
+              <mat-radio-button
+                [name]="radioName"
+                [tabIndex]="radioTabIndex(row)"
+                [checked]="isSelected(row)"
+                (change)="selectOne(row)"
+                [aria-label]="rowSelectionLabel()(row, i)"
+              ></mat-radio-button>
+            }
           </td>
         </ng-container>
       }
@@ -211,6 +251,18 @@ export interface CaeTableColumn {
     .cae-table__empty:empty {
       display: none;
     }
+    /* Visually-hidden but AT-readable (the standard sr-only recipe) — names the selection column. */
+    .cae-visually-hidden {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      padding: 0;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+      border: 0;
+    }
   `,
 })
 export class CaeTable<T = Record<string, unknown>> implements OnInit {
@@ -244,24 +296,28 @@ export class CaeTable<T = Record<string, unknown>> implements OnInit {
 
   /**
    * Row-selection mode. `'multiple'` prepends a checkbox column with a select-all header checkbox;
-   * `'none'` (default) renders no selection column. Single-select (radio) is a #144 follow-up.
+   * `'single'` prepends a **radio** column (one row selected at a time, no select-all — a radio group
+   * has no "all"); `'none'` (default) renders no selection column. Both modes drive the same
+   * vendor-neutral {@link selection} model (a `readonly T[]`; single-select holds 0 or 1 rows).
    */
-  readonly selectionMode = input<'none' | 'multiple'>('none');
+  readonly selectionMode = input<'none' | 'multiple' | 'single'>('none');
   /**
    * Two-way selected rows, a **vendor-neutral `T[]`** (not a Material `SelectionModel`). Selection is
    * by **reference identity** — a row is selected iff the same object instance is in this array — so a
    * `[data]` refresh yielding new instances drops the visual selection (a stable-identity `dataKey` is
    * a #144 follow-up). Bind `[(selection)]` for two-way, or `(selectionChange)` to observe.
    *
-   * **Select-all scope**: the header checkbox selects **all bound rows, across every page** (p-table's
-   * default; a page-only option — cf. p-table `selectionPageOnly` — is a follow-up). A future
-   * `selectionMode="single"` keeps this **same `readonly T[]` shape** (a 0- or 1-length array), not a
-   * bare `T`, so the binding type stays stable across modes.
+   * **Select-all scope**: in `'multiple'` mode the header checkbox selects **all bound rows, across
+   * every page** (p-table's default; a page-only option — cf. p-table `selectionPageOnly` — is a
+   * follow-up). `selectionMode="single"` uses this **same `readonly T[]` shape** (a 0- or 1-length
+   * array), not a bare `T`, so the binding type stays stable across modes.
    */
   readonly selection = model<readonly T[]>([]);
   /**
-   * Accessible name for a row's selection checkbox — supply a semantic label (e.g. the row's name).
-   * The default is the **1-based position within the current page** (`index` is page-relative and
+   * Accessible name for a row's selection control (a checkbox in `'multiple'` mode, a radio in
+   * `'single'`) — supply a semantic label (e.g. the row's name). Especially important in single mode,
+   * whose radio group has no visible per-row text to fall back on. The default is the **1-based
+   * position within the current page** (`index` is page-relative and
    * post-sort, exactly like {@link CaeCellContext.index} — this callback is not given an absolute
    * index), so with pagination the default names **repeat across pages** and shift under a sort — a
    * poor default. Prefer a semantic, row-derived name (as Forge does); note that a name built from a
@@ -273,9 +329,22 @@ export class CaeTable<T = Record<string, unknown>> implements OnInit {
   );
   /** Accessible name for the select-all header checkbox (`'multiple'` mode). */
   readonly selectAllLabel = input('Select all rows');
+  /**
+   * Visually-hidden accessible name for the selection **column** header — in both modes the header
+   * holds a control (or nothing, in single mode) rather than text, so this names the column for AT and
+   * gives every selection cell a header association (WCAG 1.3.1). Distinct from {@link selectAllLabel}
+   * (which names the select-all *checkbox*).
+   */
+  readonly selectColumnHeader = input('Select');
 
   /** The reserved `matColumnDef` id for the selection column — kept out of the consumer's key space. */
   protected readonly selectColumnKey = '__caeSelect';
+
+  /**
+   * The shared `name` for this table's single-select radios — a unique per-instance group id so the
+   * radios mutually deselect (native radio-group semantics) without cross-grouping a second table.
+   */
+  protected readonly radioName = `cae-table-select-${nextTableSelectId++}`;
 
   /**
    * The `mat-table` `displayedColumns` — the column config order, with the selection column prepended
@@ -317,6 +386,35 @@ export class CaeTable<T = Record<string, unknown>> implements OnInit {
   }
 
   /**
+   * Select exactly one row (single-select mode) — replaces the selection with `[row]`. The radio
+   * `(change)` fires only when a radio *becomes* checked (native radios emit nothing on re-selecting
+   * the checked one), so this is never called for an already-selected row and never re-emits
+   * redundantly. To *clear* a single-select choice, reset `[(selection)]` — native radios don't
+   * uncheck on re-click (in-grid click-to-deselect is a #224 follow-up). A stray `>1`-length selection
+   * (a consumer seeding multiple rows in single mode) self-heals to length 1 on the first pick.
+   */
+  protected selectOne(row: T): void {
+    this.selection.set([row]);
+  }
+
+  /**
+   * Roving `tabindex` for a single-select radio: exactly one radio is in the tab order — the selected
+   * row when it is on the current page, else the first rendered row — and every other radio is `-1`.
+   * A group-less {@link MatRadioButton} otherwise defaults *every* radio to `tabindex 0` (N tab stops);
+   * this gives the radio group one tab stop (never zero, even when the selection is on another page),
+   * with arrow keys roving within it (native same-name-radio behaviour; real-browser verify #223).
+   */
+  protected radioTabIndex(row: T): number {
+    return row === this.singleSelectTabStop() ? 0 : -1;
+  }
+
+  /** The single-select radio that owns the tab stop: the selected rendered row, else the first. */
+  private readonly singleSelectTabStop = computed<T | undefined>(() => {
+    const rows = this.renderedRows();
+    return rows.find((r) => this.isSelected(r)) ?? rows[0];
+  });
+
+  /**
    * Custom cell renderers projected as `<ng-template caeCellDef="<key>">` content (#143). Captured
    * as content children; {@link cellTemplates} indexes them by column key so a templated column
    * renders the template and the rest keep the text default.
@@ -340,6 +438,13 @@ export class CaeTable<T = Record<string, unknown>> implements OnInit {
    * unpaginated (a single page, where the absolute index equals the page-relative one).
    */
   protected readonly pageOffset = signal(0);
+
+  /**
+   * The current page's rendered rows (post-sort, post-paginate), captured off the data-source render
+   * stream (see the constructor effect). Feeds {@link singleSelectTabStop} so the single-select roving
+   * tabindex always lands on a row that is actually on screen.
+   */
+  private readonly renderedRows = signal<readonly T[]>([]);
 
   /** Empty-state text: '' when there are rows (so the live region collapses), else the message. */
   protected readonly emptyText = computed(() => (this.data().length ? '' : this.emptyMessage()));
@@ -379,7 +484,12 @@ export class CaeTable<T = Record<string, unknown>> implements OnInit {
       const update = () =>
         this.pageOffset.set(paginator ? paginator.pageIndex * paginator.pageSize : 0);
       update();
-      const sub = this.dataSource.connect().subscribe(update);
+      // Also capture the current page's rendered rows (post-sort, post-paginate) so single-select can
+      // place its roving tabindex on a row that is actually on screen (see singleSelectTabStop).
+      const sub = this.dataSource.connect().subscribe((rows) => {
+        update();
+        this.renderedRows.set(rows);
+      });
       onCleanup(() => sub.unsubscribe());
     });
 

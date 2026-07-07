@@ -657,3 +657,143 @@ describe('CaeTable — row selection (#144)', () => {
     expect(hostFixture.componentInstance.selected()).toEqual([PEOPLE[0]]);
   });
 });
+
+// ---- Single-select row selection (#144, p-table selectionMode="single" parity) ----
+
+@Component({
+  imports: [CaeTable],
+  template: `
+    <cae-table
+      [columns]="columns"
+      [data]="data"
+      selectionMode="single"
+      [selection]="selected()"
+      (selectionChange)="selected.set($event)"
+    />
+  `,
+})
+class SingleSelectionHost {
+  columns = COLUMNS;
+  data = PEOPLE;
+  readonly selected = signal<readonly Person[]>([]);
+}
+
+describe('CaeTable — single-select row selection (#144)', () => {
+  let fixture: ComponentFixture<CaeTable<Person>>;
+  let ref: ComponentRef<CaeTable<Person>>;
+  let el: HTMLElement;
+
+  function setup(inputs: Record<string, unknown> = {}): void {
+    fixture = TestBed.createComponent(CaeTable<Person>);
+    ref = fixture.componentRef;
+    ref.setInput('columns', COLUMNS);
+    ref.setInput('data', PEOPLE);
+    ref.setInput('selectionMode', 'single');
+    for (const [k, v] of Object.entries(inputs)) ref.setInput(k, v);
+    el = fixture.nativeElement as HTMLElement;
+    fixture.detectChanges();
+    fixture.detectChanges();
+  }
+
+  const radios = () =>
+    Array.from(
+      el.querySelectorAll<HTMLInputElement>('td.cae-table__select-cell input[type="radio"]'),
+    );
+  const radio = (i: number) => radios()[i];
+  const headerCells = () => Array.from(el.querySelectorAll('th[mat-header-cell]'));
+  const nameOf = (i: number) => {
+    const dataRow = Array.from(el.querySelectorAll('tr[mat-row]'))[i];
+    return dataRow.querySelector('td[mat-cell]:not(.cae-table__select-cell)')!.textContent!.trim();
+  };
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [CaeTable, SingleSelectionHost],
+    }).compileComponents();
+  });
+
+  it('prepends a radio column (one per row) with NO select-all header control', () => {
+    setup();
+    expect(headerCells().length).toBe(4); // 3 data columns + the prepended select column
+    expect(radios().length).toBe(3);
+    // A radio group has no "select all" — the header select-cell holds no control.
+    expect(el.querySelector('th.cae-table__select-cell input')).toBeNull();
+    // ...and no checkbox anywhere (single mode renders radios, not checkboxes).
+    expect(el.querySelector('input[type="checkbox"]')).toBeNull();
+  });
+
+  it('selects exactly one row, switching (not accumulating) on a second pick', () => {
+    setup();
+    radio(0).click(); // Bob (data order)
+    fixture.detectChanges();
+    expect(ref.instance.selection()).toEqual([PEOPLE[0]]);
+    expect(radio(0).checked).toBe(true);
+    // Pick another row -> selection switches, length stays 1.
+    radio(2).click(); // Cy
+    fixture.detectChanges();
+    expect(ref.instance.selection()).toEqual([PEOPLE[2]]);
+    expect(radio(2).checked).toBe(true);
+    expect(radio(0).checked).toBe(false);
+  });
+
+  it('groups the radios under one shared name (native radio-group a11y) and names each for AT', () => {
+    setup();
+    const names = radios().map((r) => r.getAttribute('name'));
+    expect(new Set(names).size).toBe(1); // all one group -> mutual exclusion + "N of M"
+    expect(names[0]).toMatch(/^cae-table-select-/);
+    // The accessible name is on the internal radio <input>, forwarded from mat-radio-button aria-label.
+    expect(radio(0).getAttribute('aria-label')).toBe('Select row 1');
+  });
+
+  it('names the selection column for AT via a visually-hidden header label', () => {
+    setup();
+    const th = el.querySelector('th.cae-table__select-cell') as HTMLElement;
+    const label = th.querySelector('.cae-visually-hidden');
+    expect(label?.textContent!.trim()).toBe('Select'); // default selectColumnHeader
+  });
+
+  it('keeps exactly ONE radio in the tab order (roving tabindex), never N tab stops', () => {
+    setup();
+    const tabindexes = () => radios().map((r) => r.getAttribute('tabindex'));
+    // None selected -> the FIRST rendered radio is the single tab stop; the rest are -1.
+    expect(tabindexes()).toEqual(['0', '-1', '-1']);
+    // Pick the 3rd row -> the tab stop moves to it (still exactly one 0), proving we override the
+    // group-less MatRadioButton default of tabindex 0 on every radio.
+    radio(2).click();
+    fixture.detectChanges();
+    fixture.detectChanges();
+    expect(tabindexes()).toEqual(['-1', '-1', '0']);
+  });
+
+  it('reflects a programmatic [selection] input in the radios', () => {
+    setup({ selection: [PEOPLE[1]] });
+    expect(radio(1).checked).toBe(true);
+    expect(radio(0).checked).toBe(false);
+  });
+
+  it('keeps the selected row across a sort (reference identity, not row position)', () => {
+    setup();
+    radio(0).click(); // Bob
+    fixture.detectChanges();
+    const ageHeader = headerCells().find((h) => h.textContent!.trim() === 'Age') as HTMLElement;
+    ageHeader.click(); // sort by Age asc -> Ann, Cy, Bob
+    fixture.detectChanges();
+    fixture.detectChanges();
+    const bobIndex = [0, 1, 2].find((i) => nameOf(i) === 'Bob')!;
+    expect(radio(bobIndex).checked).toBe(true); // still checked in its new position
+    expect(ref.instance.selection()).toEqual([PEOPLE[0]]);
+  });
+
+  it('propagates the single selection to a host via the (selectionChange) two-way output', () => {
+    const hostFixture = TestBed.createComponent(SingleSelectionHost);
+    hostFixture.detectChanges();
+    hostFixture.detectChanges();
+    const hostEl = hostFixture.nativeElement as HTMLElement;
+    const firstRadio = hostEl.querySelector(
+      'td.cae-table__select-cell input[type="radio"]',
+    ) as HTMLInputElement;
+    firstRadio.click();
+    hostFixture.detectChanges();
+    expect(hostFixture.componentInstance.selected()).toEqual([PEOPLE[0]]);
+  });
+});
