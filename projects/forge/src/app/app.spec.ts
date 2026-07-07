@@ -620,6 +620,15 @@ describe('App', () => {
     expect(names.length).toBe(5);
     // Initially sorted by name ascending (sortActive="name"), so 'Ada Lovelace' leads the page.
     expect(names[0]).toBe('Ada Lovelace');
+
+    // The Email column dogfoods a caeCellDef custom cell template (#143): it renders a mailto: link
+    // (not plain text) built from the cell's raw value. The first row is Ada Lovelace.
+    const emailLink = card.querySelector(
+      'td[mat-cell] a.forge-members-card__email',
+    ) as HTMLAnchorElement;
+    expect(emailLink).not.toBeNull();
+    expect(emailLink.getAttribute('href')).toBe('mailto:ada@acme.dev');
+    expect(emailLink.textContent!.trim()).toBe('ada@acme.dev');
   });
 
   it('renders the activity cae-data-grid over the TanStack engine at scale (#170 interface, #171 engine)', async () => {

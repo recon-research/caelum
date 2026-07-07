@@ -1,18 +1,22 @@
+import { NgTemplateOutlet } from '@angular/common';
 import {
   booleanAttribute,
   ChangeDetectionStrategy,
   Component,
   computed,
+  contentChildren,
   effect,
   input,
   isDevMode,
   OnInit,
+  TemplateRef,
   viewChild,
 } from '@angular/core';
 import { MatPaginator, MatPaginatorModule } from '@angular/material/paginator';
 import { MatSort, MatSortModule } from '@angular/material/sort';
 import { MatTableDataSource, MatTableModule } from '@angular/material/table';
 import type { CaeSortDirection } from 'caelum/shared';
+import { CaeCellContext, CaeCellDef } from './cell-def';
 
 /**
  * A column in a {@link CaeTable}. `key` indexes the row object for the displayed value and
@@ -22,8 +26,10 @@ import type { CaeSortDirection } from 'caelum/shared';
 export interface CaeTableColumn {
   /**
    * A **flat** property name read off each row for this column's cell text, and the column's sort
-   * id. Dot paths (p-table `field="user.name"`) are not resolved in v1 — a nested key renders a
-   * blank cell and sorts as a no-op; flatten the row or use a future value-accessor hook (#143).
+   * id. Dot paths (p-table `field="user.name"`) are not resolved — a nested key renders a blank
+   * default cell and sorts as a no-op. To *render* a nested value, project a `caeCellDef` template
+   * (the row is in scope: `{{ row.user.name }}`); sorting on a nested field still needs a flattened
+   * key (or a future value-accessor hook).
    */
   key: string;
   /** Visible header-cell label. */
@@ -64,9 +70,18 @@ export interface CaeTableColumn {
  * limitation (M4 real-browser a11y, #41 family): MatPaginator does not announce the new range on a
  * page change, and its control cluster is not named to the table.
  *
- * **v1 scope** (#141): text columns, sort, client-side pagination. Follow-ups: custom cell
- * templates (p-table `pTemplate` parity) **#143**; sticky / expandable / row-selection **#144**;
- * server-side/lazy data, global filter, column resize/reorder **#145**.
+ * **Custom cell content** (#143): per-cell body-content parity with p-table `pTemplate="body"` —
+ * project an `<ng-template caeCellDef="<column-key>">` per column to render a badge/button/formatted
+ * value instead of text, with the {@link CaeCellContext} (`$implicit` = row, `value`, `index`) in
+ * scope. The library still owns the `<tr>`/`<td>` structure so the table's a11y semantics are
+ * preserved — this customizes cell *content*, not the row/cell wrapper (full-row templating is out
+ * of v1 scope). Columns without a template keep the zero-boilerplate text default. See
+ * {@link CaeCellDef}.
+ *
+ * **v1 scope** (#141): text columns, sort, client-side pagination, custom body-cell templates (#143).
+ * Follow-ups: sticky / expandable / row-selection **#144**; server-side/lazy data, global filter,
+ * column resize/reorder **#145**; an absolute row-index context field **#213**. Header/footer/full-row
+ * templating is a future enhancement (not yet requested).
  *
  * Zoneless-compatible: `OnPush` + signal inputs (D-12). No `color` input — theming is free via
  * the token bridge (D-04).
@@ -79,7 +94,7 @@ export interface CaeTableColumn {
 @Component({
   selector: 'cae-table',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MatTableModule, MatSortModule, MatPaginatorModule],
+  imports: [MatTableModule, MatSortModule, MatPaginatorModule, NgTemplateOutlet],
   template: `
     <table
       mat-table
@@ -104,7 +119,20 @@ export interface CaeTableColumn {
           } @else {
             <th mat-header-cell *matHeaderCellDef>{{ col.header }}</th>
           }
-          <td mat-cell *matCellDef="let row">{{ cellText(row, col.key) }}</td>
+          <td mat-cell *matCellDef="let row; let i = index">
+            @if (cellTemplates().get(col.key); as tpl) {
+              <ng-container
+                [ngTemplateOutlet]="tpl"
+                [ngTemplateOutletContext]="{
+                  $implicit: row,
+                  value: cellValue(row, col.key),
+                  index: i,
+                }"
+              ></ng-container>
+            } @else {
+              {{ cellText(row, col.key) }}
+            }
+          </td>
         </ng-container>
       }
 
@@ -174,6 +202,20 @@ export class CaeTable<T = Record<string, unknown>> implements OnInit {
   /** The `mat-table` `displayedColumns` — derived from the column config order. */
   protected readonly columnKeys = computed(() => this.columns().map((c) => c.key));
 
+  /**
+   * Custom cell renderers projected as `<ng-template caeCellDef="<key>">` content (#143). Captured
+   * as content children; {@link cellTemplates} indexes them by column key so a templated column
+   * renders the template and the rest keep the text default.
+   */
+  private readonly cellDefs = contentChildren(CaeCellDef);
+
+  /** Column key → its custom cell {@link CaeCellDef} template (empty when none are projected). */
+  protected readonly cellTemplates = computed(() => {
+    const map = new Map<string, TemplateRef<CaeCellContext<T>>>();
+    for (const def of this.cellDefs()) map.set(def.caeCellDef(), def.template);
+    return map;
+  });
+
   /** Empty-state text: '' when there are rows (so the live region collapses), else the message. */
   protected readonly emptyText = computed(() => (this.data().length ? '' : this.emptyMessage()));
 
@@ -195,6 +237,36 @@ export class CaeTable<T = Record<string, unknown>> implements OnInit {
     effect(() => {
       this.dataSource.paginator = this.paginator() ?? null;
     });
+
+    // Dev-only: warn on a caeCellDef that is a typo (matches no column → silently ignored) or a
+    // duplicate (two templates for one column → the last silently wins). An effect (not
+    // validateConfig/ngOnInit) because content children resolve only after ngAfterContentInit;
+    // reactive so it catches a later columns/template change. Zero prod cost.
+    if (isDevMode()) {
+      effect(() => {
+        const columns = this.columns();
+        // Skip while columns is still empty — a common `[columns]="cols()"` async-load window where
+        // every caeCellDef would transiently "match no column" though the config is correct and
+        // resolves a tick later; warning then would only train consumers to ignore the warning.
+        if (columns.length === 0) return;
+        const keys = new Set(columns.map((c) => c.key));
+        const seen = new Set<string>();
+        for (const def of this.cellDefs()) {
+          const key = def.caeCellDef();
+          if (!keys.has(key)) {
+            console.warn(
+              `cae-table: <ng-template caeCellDef="${key}"> matches no column key — the template is ignored (check the key against your columns config).`,
+            );
+          } else if (seen.has(key)) {
+            console.warn(
+              `cae-table: duplicate <ng-template caeCellDef="${key}"> — the last one wins and the earlier template(s) are ignored (one caeCellDef per column key).`,
+            );
+          } else {
+            seen.add(key);
+          }
+        }
+      });
+    }
   }
 
   /**
@@ -207,11 +279,21 @@ export class CaeTable<T = Record<string, unknown>> implements OnInit {
     if (isDevMode()) this.validateConfig();
   }
 
+  /**
+   * The raw cell value (`row[key]`) for a column — passed to a {@link CaeCellDef} template as
+   * `value` and used by {@link cellText}. Nullish-safe against a malformed row (a `null`/`undefined`
+   * datum that violates the declared `T[]`), so this accessor never throws and the text default
+   * renders `''`. NOTE: this guard covers only `value`/the text path — the template context also
+   * hands over the **raw** row as `$implicit`, so a consumer template that dereferences a null datum
+   * (`{{ row.x }}`) can still throw; guarding the row is the consumer's responsibility.
+   */
+  protected cellValue(row: T, key: string): unknown {
+    return row == null ? undefined : (row as Record<string, unknown>)[key];
+  }
+
   /** Nullish-safe cell text: renders '' (an empty cell) rather than the string "null"/"undefined". */
   protected cellText(row: T, key: string): string {
-    // Guard a null/undefined row (a malformed data source that violates the declared `T[]`) so one
-    // bad row does not throw and take down the whole table.
-    const value = row == null ? undefined : (row as Record<string, unknown>)[key];
+    const value = this.cellValue(row, key);
     return value == null ? '' : String(value);
   }
 

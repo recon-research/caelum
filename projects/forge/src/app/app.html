@@ -613,7 +613,14 @@
           [pageSize]="5"
           sortActive="name"
           sortDirection="asc"
-        />
+        >
+          <!-- Custom cell template (#143, p-table pTemplate="body" parity): the Email column renders a
+               mailto: link instead of plain text. The other columns have no caeCellDef, so they keep the
+               zero-boilerplate text default. `value` is the cell's raw value (narrowed by mailtoHref). -->
+          <ng-template caeCellDef="email" let-value="value">
+            <a class="forge-members-card__email" [href]="mailtoHref(value)">{{ value }}</a>
+          </ng-template>
+        </cae-table>
       </cae-card>
     }
 

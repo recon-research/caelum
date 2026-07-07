@@ -5,3 +5,4 @@
  * the primary `caelum` barrel, which stays intact (this split is additive).
  */
 export * from './table';
+export * from './cell-def';
