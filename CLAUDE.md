@@ -6,7 +6,7 @@ Caelum is an open-source, **US-origin-clean** Angular 22 component library — A
 
 > ~10 lines of "where are we". Per-slice detail lives in the merged PRs, [`docs/ROADMAP.md`](docs/ROADMAP.md), and the issue tracker — never here.
 
-**As of:** 2026-07-07 · main @ `4eefef0` · CI green · **repo LIVE + protected** ([github.com/recon-research/caelum](https://github.com/recon-research/caelum)) · **Phase 2** · **M0 ☑ · M1 ☑ Composed** · **M2 ◐ Adapters** — grid track ☑ (exit criterion met #171). Recipe + gotchas → [`docs/PATTERNS.md`](docs/PATTERNS.md); full slice index → [`docs/ROADMAP.md`](docs/ROADMAP.md).
+**As of:** 2026-07-07 · main @ `21eda59` · CI green · **repo LIVE + protected** ([github.com/recon-research/caelum](https://github.com/recon-research/caelum)) · **Phase 2** · **M0 ☑ · M1 ☑ Composed** · **M2 ◐ Adapters** — grid track ☑ (exit criterion met #171). Recipe + gotchas → [`docs/PATTERNS.md`](docs/PATTERNS.md); full slice index → [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 **Where we are:** the grid is a swappable-engine adapter (client default / TanStack / server) behind one neutral `CaeGridAdapter` port, consumer-tree-shake-guarded (#182), extended with loading/busy a11y, pager focus management, a rows-per-page menu, server total-shrink recovery, and first-load live-region announcement (#176/#188/#189/#192/#177/#190/#194). Breadth continues on cae-table — custom body-cell templates (#143), absolute row-index (#213), multi- + single-select row selection (#144 partial) — and cae-chip-set (#84/#202). **535 tests** (475 caelum + 60 forge); provenance GREEN.
 
@@ -14,7 +14,7 @@ Caelum is an open-source, **US-origin-clean** Angular 22 component library — A
 
 **Open decisions** (must mirror `gh issue list --label decision`): **#185** M2 scope · **#142** Forge warn-budget (provisional 850→875→890 kB) · **#168** grid public-API shape (every grid PR shipped on the recommended default). All provisional — silence ratifies; windows close #142/#168 2026-07-07T23:21Z, #185 2026-07-08T01:20Z. **56 open issues** = 3 decisions + 53 followups/debt/ideas.
 
-**Resume:** `main` @ `4eefef0`, tree clean · next action = pick the next independent slice (see **Next**) or make the #185 scope call · verify: `PATH="$HOME/nodejs/bin:$PATH" npm ci && npm run build:lib && npx ng build forge && CI=true npx ng test caelum && CI=true npx ng test` (535 pass) · `python3 scripts/check_provenance.py` (GREEN) · `PATH="$HOME/nodejs/bin:$PATH" bash scripts/preflight.sh` (PASS 0-skipped).
+**Resume:** `main` @ `21eda59`, tree clean · next action = **slice #224** — cae-table single-select click-to-deselect (p-table parity): either an opt-in `[allowDeselect]` that clears the selection when the checked radio is re-activated (native radios swallow the re-click → needs a click handler), or document a consumer "Clear selection" control + a `textbooks/reference/COMPARISON.md` divergence note (the issue lists both); a11y/API-touching → 2-lens review · verify: `PATH="$HOME/nodejs/bin:$PATH" npm ci && npm run build:lib && npx ng build forge && CI=true npx ng test caelum && CI=true npx ng test` (535 pass) · `python3 scripts/check_provenance.py` (GREEN) · `PATH="$HOME/nodejs/bin:$PATH" bash scripts/preflight.sh` (PASS 0-skipped).
 
 ## Read these first (in order)
 
