@@ -64,6 +64,12 @@ export abstract class CaeGridAdapter<T> {
    * Push a server-fetched slice into the grid: replace {@link viewRows} with exactly `rows` and set
    * {@link total} to the server count, **bypassing** client sort/paginate (the server did it). The
    * neutral half of the lazy-data seam — the client default implements it as a manual view override.
+   *
+   * A server engine may re-clamp the current page here — and thereby re-emit {@link dataRequest} — when
+   * the pushed `total` shrinks the set so the current page no longer exists, re-fetching the corrected
+   * (last) page (issue #190). This is the **only** path by which pushing a result triggers a fetch, and
+   * it is **server-only**: the client + TanStack engines keep {@link dataRequest} `null` and are inert
+   * here (a manual view override, never a re-fetch).
    */
   abstract applyServerResult(rows: readonly T[], total: number): void;
 

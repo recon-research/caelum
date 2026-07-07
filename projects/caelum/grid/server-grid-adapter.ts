@@ -66,10 +66,13 @@ export class ServerGridAdapter<T> extends CaeGridAdapter<T> {
   /**
    * The always-present fetch descriptor (never `null` — that is what marks this a server engine and
    * makes the component forward it). It reads the **raw** `_page` (not the clamped {@link page}) on
-   * purpose: it must depend only on `_sort`/`_page`/`_pageSize` so that {@link applyServerResult}
-   * (which touches only `_slice`/`_total`) can never recompute it — otherwise pushing a result would
-   * re-emit a request and trigger a redundant second fetch. The component only ever calls
-   * {@link setPage} with clamped-derived indices, so `_page` stays in range in practice.
+   * purpose: it must depend only on `_sort`/`_page`/`_pageSize` so that an ordinary {@link applyServerResult}
+   * (touching only `_slice`/`_total`) does not recompute it — otherwise pushing an *in-range* result would
+   * re-emit a request and trigger a redundant second fetch. The component only ever calls {@link setPage}
+   * with clamped-derived indices, so `_page` stays in range under normal navigation. The **one** deliberate
+   * exception (issue #190): when a pushed `total` shrinks the set so the current page no longer exists,
+   * {@link applyServerResult} re-clamps `_page` to the last valid page — which *does* recompute this and
+   * re-fetch the corrected page. That is the desired recovery, not a redundant fetch.
    */
   readonly dataRequest = computed<CaeGridDataRequest>(() => ({
     sort: this._sort(),
@@ -104,9 +107,32 @@ export class ServerGridAdapter<T> extends CaeGridAdapter<T> {
     this._pageSize.set(pageSize);
   }
 
+  /**
+   * Push a fetched page + the server's total back into the engine. Normally this touches only the
+   * slice and the count, leaving the request descriptor untouched (no redundant re-fetch — see
+   * {@link dataRequest}). The **one** case it intentionally does more (issue #190): if the new `total`
+   * shrinks the set so the current `_page` is past the new last page — a server-side deletion between
+   * fetches — the raw `_page` is re-clamped to the last valid page. That is the sole path that moves
+   * `_page` here, so `dataRequest` recomputes and the component re-fetches the corrected page; otherwise
+   * the pager would clamp only the *display* and leave the grid showing a slice for a page that no longer
+   * exists, with nothing to refresh it. Recovery converges: the re-fetched page is in range, so its
+   * `applyServerResult` leaves `_page` alone and emits no further request. There is a one-round-trip
+   * window during recovery where the pager range already reads the corrected page while the rows are
+   * still the stale in-flight slice; it self-heals when the re-fetch lands. Bind `[loading]` (#188) to
+   * mask it — the loading state suppresses the row area until the corrected slice arrives.
+   */
   applyServerResult(rows: readonly T[], total: number): void {
-    this._slice.set(this.wrap(rows));
     this._total.set(total);
+    // Re-clamp the raw page ONLY when a shrunk total strands it (the #190 recovery). The `page` computed
+    // already yields the last valid page against the just-set total, so reuse it rather than re-derive the
+    // clamp formula (it also handles the unpaginated `size <= 0` case, returning 0). The explicit
+    // `> clamped` guard keeps the no-redundant-refetch invariant obvious: an in-range apply never writes
+    // `_page`, so `dataRequest` stays cached and re-emits nothing.
+    const clamped = this.page();
+    if (this._page() > clamped) this._page.set(clamped);
+    // `_slice` is set last so `wrap`'s page-global ids read the offset from the just-set `_total` (the
+    // `page` computed clamps internally); the re-clamp above is for `dataRequest`'s raw `_page`, not ids.
+    this._slice.set(this.wrap(rows));
   }
 
   exportRows(format: CaeGridExportFormat = 'csv'): Blob {

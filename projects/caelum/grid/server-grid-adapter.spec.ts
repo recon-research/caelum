@@ -83,19 +83,44 @@ describe('ServerGridAdapter', () => {
     expect(adapter.dataRequest().page).toBe(0);
   });
 
-  it('clamps the displayed page to the server total, but requests the raw page', () => {
-    adapter.setPage(9, 25);
-    adapter.applyServerResult(PAGE, 60); // 60 rows / 25 = 3 pages (0,1,2) -> last page is 2
-    expect(adapter.page()).toBe(2); // clamped for the pager display
-  });
-
-  it('applyServerResult NEVER re-triggers a request (no fetch loop)', () => {
+  it('does not re-trigger a request while the current page stays in range (no fetch loop)', () => {
     adapter.setPage(1, 25);
     const before = adapter.dataRequest();
-    // Pushing a result must not change the request descriptor — else the component would re-fetch.
+    // Pushing an IN-RANGE result must not change the request descriptor — else the component re-fetches.
+    // (1 of 400/25=16 pages is in range.) The shrink exception is the next test.
     adapter.applyServerResult(PAGE, 400);
     adapter.applyServerResult(PAGE, 400);
     expect(adapter.dataRequest()).toBe(before); // same computed value, not recomputed
+  });
+
+  it('re-clamps the raw page and re-emits a request when a shrunk total strands it (#190)', () => {
+    adapter.setPage(9, 25);
+    const stale = adapter.dataRequest();
+    expect(stale.page).toBe(9); // the request that was in flight when the set shrank
+    adapter.applyServerResult(PAGE, 60); // total shrinks to 60/25 = 3 pages (0,1,2) -> last page is 2
+    // The display clamps AND the raw page is re-clamped, so a fresh request goes out for the last page
+    // (page 9 no longer exists) — the recovery that stops a stranded, un-refetched slice.
+    expect(adapter.page()).toBe(2);
+    expect(adapter.dataRequest().page).toBe(2);
+    expect(adapter.dataRequest()).not.toBe(stale); // a new descriptor -> the component re-fetches
+  });
+
+  it('recovery converges: the corrected in-range page applies without a further re-emit (#190)', () => {
+    adapter.setPage(9, 25);
+    adapter.applyServerResult(PAGE, 60); // strands page 9 -> re-clamps to page 2, re-emits
+    const corrected = adapter.dataRequest();
+    expect(corrected.page).toBe(2);
+    // The consumer fetches page 2 (now in range) and pushes it back: no further re-clamp, no re-emit.
+    adapter.applyServerResult(PAGE, 60);
+    expect(adapter.dataRequest()).toBe(corrected);
+  });
+
+  it('a total that shrinks to zero rows re-clamps to page 0 and re-fetches (#190)', () => {
+    adapter.setPage(9, 25);
+    adapter.applyServerResult([], 0); // every row deleted server-side
+    expect(adapter.page()).toBe(0);
+    expect(adapter.dataRequest().page).toBe(0);
+    expect(adapter.total()).toBe(0);
   });
 
   it('exports the current server page as RFC-4180 CSV', async () => {
