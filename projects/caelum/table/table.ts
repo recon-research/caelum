@@ -10,6 +10,7 @@ import {
   isDevMode,
   model,
   OnInit,
+  signal,
   TemplateRef,
   viewChild,
 } from '@angular/core';
@@ -74,11 +75,11 @@ export interface CaeTableColumn {
  *
  * **Custom cell content** (#143): per-cell body-content parity with p-table `pTemplate="body"` —
  * project an `<ng-template caeCellDef="<column-key>">` per column to render a badge/button/formatted
- * value instead of text, with the {@link CaeCellContext} (`$implicit` = row, `value`, `index`) in
- * scope. The library still owns the `<tr>`/`<td>` structure so the table's a11y semantics are
- * preserved — this customizes cell *content*, not the row/cell wrapper (full-row templating is out
- * of v1 scope). Columns without a template keep the zero-boilerplate text default. See
- * {@link CaeCellDef}.
+ * value instead of text, with the {@link CaeCellContext} (`$implicit` = row, `value`, page-relative
+ * `index`, absolute `absoluteIndex`) in scope. The library still owns the `<tr>`/`<td>` structure so
+ * the table's a11y semantics are preserved — this customizes cell *content*, not the row/cell wrapper
+ * (full-row templating is out of v1 scope). Columns without a template keep the zero-boilerplate text
+ * default. See {@link CaeCellDef}.
  *
  * **Row selection** (#144): set `selectionMode="multiple"` to prepend a checkbox column with a
  * select-all header, and bind `[(selection)]` for the selected rows as a **vendor-neutral `T[]`**
@@ -87,10 +88,10 @@ export interface CaeTableColumn {
  * `dataKey` is a follow-up). Give each row checkbox a semantic accessible name via
  * {@link rowSelectionLabel}. Single-select (radio) is a #144 follow-up.
  *
- * **v1 scope** (#141): text columns, sort, client-side pagination, custom body-cell templates (#143),
- * multi-select (#144). Follow-ups: sticky / expandable-rows / single-select **#144**; server-side/lazy
- * data, global filter, column resize/reorder **#145**; an absolute row-index context field **#213**.
- * Header/footer/full-row templating is a future enhancement (not yet requested).
+ * **v1 scope** (#141): text columns, sort, client-side pagination, custom body-cell templates (#143,
+ * with a page-relative + absolute row index, #213), multi-select (#144). Follow-ups: sticky /
+ * expandable-rows / single-select **#144**; server-side/lazy data, global filter, column
+ * resize/reorder **#145**. Header/footer/full-row templating is a future enhancement (not yet requested).
  *
  * Zoneless-compatible: `OnPush` + signal inputs (D-12). No `color` input — theming is free via
  * the token bridge (D-04).
@@ -161,6 +162,7 @@ export interface CaeTableColumn {
                   $implicit: row,
                   value: cellValue(row, col.key),
                   index: i,
+                  absoluteIndex: pageOffset() + i,
                 }"
               ></ng-container>
             } @else {
@@ -260,9 +262,11 @@ export class CaeTable<T = Record<string, unknown>> implements OnInit {
   /**
    * Accessible name for a row's selection checkbox — supply a semantic label (e.g. the row's name).
    * The default is the **1-based position within the current page** (`index` is page-relative and
-   * post-sort, exactly like {@link CaeCellContext.index}; an absolute index is #213), so with
-   * pagination the default names **repeat across pages** and shift under a sort — a poor default.
-   * Override it with a row-derived name (as Forge does).
+   * post-sort, exactly like {@link CaeCellContext.index} — this callback is not given an absolute
+   * index), so with pagination the default names **repeat across pages** and shift under a sort — a
+   * poor default. Prefer a semantic, row-derived name (as Forge does); note that a name built from a
+   * row's position in your own `data()` is the *unsorted* index and will not match a `caeCellDef`
+   * cell's live {@link CaeCellContext.absoluteIndex} once a sort or page change is in play.
    */
   readonly rowSelectionLabel = input<(row: T, index: number) => string>(
     (_row, i) => `Select row ${i + 1}`,
@@ -326,6 +330,17 @@ export class CaeTable<T = Record<string, unknown>> implements OnInit {
     return map;
   });
 
+  /**
+   * The client paginator's live page offset (`pageIndex * pageSize`), feeding
+   * {@link CaeCellContext.absoluteIndex} (#213). Recomputed on every data-source render emission (see
+   * the constructor effect), so it follows the user's real page, the page-size *menu*, and the data
+   * source's internal page clamp — not the initial inputs. Like the rendered slice, it does NOT follow
+   * a post-mount `[pageSize]` **input** change (that neither re-slices the rows nor re-emits, per the
+   * initial-only page-size contract), so the offset and the rows stay consistent. Stays 0 when
+   * unpaginated (a single page, where the absolute index equals the page-relative one).
+   */
+  protected readonly pageOffset = signal(0);
+
   /** Empty-state text: '' when there are rows (so the live region collapses), else the message. */
   protected readonly emptyText = computed(() => (this.data().length ? '' : this.emptyMessage()));
 
@@ -346,6 +361,26 @@ export class CaeTable<T = Record<string, unknown>> implements OnInit {
     });
     effect(() => {
       this.dataSource.paginator = this.paginator() ?? null;
+    });
+
+    // Track the paginator's live page offset (pageIndex * pageSize) so a caeCellDef template can
+    // render an ABSOLUTE row index across pages (CaeCellContext.absoluteIndex, #213). Recomputed on
+    // every render emission of the data source — which merges paginator.page AND the data source's
+    // OWN _internalPageChanges. The latter is essential: when a [data] shrink strands a later page,
+    // MatTableDataSource clamps pageIndex via _internalPageChanges WITHOUT emitting paginator.page, so
+    // a page-only subscription would leave the offset stale on the re-rendered rows. Reading the render
+    // stream (not the paginator.page event) catches the clamp too; the signal write then schedules CD
+    // so the rendered absoluteIndex updates. No paginator (unpaginated) -> offset stays 0 ->
+    // absoluteIndex === index. (A plain method/computed reading the paginator is NOT equivalent — a
+    // computed would memoize on the paginator's signal identity and miss its mutable pageIndex, and a
+    // plain read would lose this signal-write CD trigger on the clamp; the explicit signal is load-bearing.)
+    effect((onCleanup) => {
+      const paginator = this.paginator();
+      const update = () =>
+        this.pageOffset.set(paginator ? paginator.pageIndex * paginator.pageSize : 0);
+      update();
+      const sub = this.dataSource.connect().subscribe(update);
+      onCleanup(() => sub.unsubscribe());
     });
 
     // Dev-only: warn on a caeCellDef that is a typo (matches no column → silently ignored) or a

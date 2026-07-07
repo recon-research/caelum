@@ -1,5 +1,7 @@
 import { Component, ComponentRef, signal, Type } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { MatPaginator } from '@angular/material/paginator';
+import { By } from '@angular/platform-browser';
 
 import { CaeTable, CaeTableColumn } from './table';
 import { CaeCellDef } from './cell-def';
@@ -371,6 +373,117 @@ describe('CaeTable — custom cell templates (#143)', () => {
     fixture.detectChanges();
     fixture.detectChanges();
     expect(roleCell().querySelector('button.role-btn')).not.toBeNull();
+  });
+});
+
+// ---- Absolute row index (#213, p-table body-template rowIndex parity) ----
+
+// A host projecting a caeCellDef for `role` that renders the ABSOLUTE row index as the cell text and
+// stashes the page-relative index in an attr — so a test can prove CaeCellContext.absoluteIndex tracks
+// the page offset while `index` stays page-relative (#213). `paginated` is a signal so one host covers
+// the unpaginated (single-page) case too.
+@Component({
+  imports: [CaeTable, CaeCellDef],
+  template: `
+    <cae-table [columns]="columns()" [data]="data()" [paginated]="paginated()" [pageSize]="2">
+      <ng-template caeCellDef="role" let-i="index" let-n="absoluteIndex">
+        <span class="idx" [attr.data-rel]="i">{{ n }}</span>
+      </ng-template>
+    </cae-table>
+  `,
+})
+class AbsoluteIndexHost {
+  readonly columns = signal<CaeTableColumn[]>(COLUMNS);
+  readonly data = signal<Person[]>(PEOPLE);
+  readonly paginated = signal(true);
+}
+
+describe('CaeTable — absolute row index (#213)', () => {
+  async function make(paginated: boolean): Promise<{
+    fixture: ComponentFixture<AbsoluteIndexHost>;
+    el: HTMLElement;
+  }> {
+    const fixture = TestBed.createComponent(AbsoluteIndexHost);
+    fixture.componentInstance.paginated.set(paginated); // set before first CD
+    fixture.detectChanges();
+    fixture.detectChanges();
+    // MatTableDataSource sets paginator.length in an async Promise.resolve().then() (untracked — not
+    // awaited by whenStable in zoneless); pump a macrotask so hasNextPage() reflects the real length.
+    await new Promise((resolve) => setTimeout(resolve));
+    fixture.detectChanges();
+    return { fixture, el: fixture.nativeElement as HTMLElement };
+  }
+
+  const idxCells = (el: HTMLElement) =>
+    Array.from(el.querySelectorAll('span.idx')) as HTMLElement[];
+  const absOf = (el: HTMLElement) => idxCells(el).map((s) => s.textContent!.trim());
+  const relOf = (el: HTMLElement) => idxCells(el).map((s) => s.getAttribute('data-rel'));
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({ imports: [AbsoluteIndexHost] }).compileComponents();
+  });
+
+  it('equals the page-relative index when unpaginated (a single page)', async () => {
+    const { el } = await make(false);
+    // All 3 rows on one page: absoluteIndex === index === 0,1,2.
+    expect(relOf(el)).toEqual(['0', '1', '2']);
+    expect(absOf(el)).toEqual(['0', '1', '2']);
+  });
+
+  it('offsets by the page on page 1 (offset 0): absolute === relative', async () => {
+    const { el } = await make(true);
+    // Page 1, pageSize 2: rows 0,1. Offset 0 -> absolute 0,1; relative 0,1.
+    expect(relOf(el)).toEqual(['0', '1']);
+    expect(absOf(el)).toEqual(['0', '1']);
+  });
+
+  it('adds the page offset on page 2: relative resets, absolute continues across the page boundary', async () => {
+    const { fixture, el } = await make(true);
+    // Advance to page 2 via the paginator's own public API: nextPage() -> its `page` event -> the
+    // tracked pageOffset signal updates (and MatTableDataSource re-slices to the new page), then render.
+    const paginator = fixture.debugElement.query(By.directive(MatPaginator))
+      .componentInstance as MatPaginator;
+    expect(paginator.hasNextPage()).toBe(true); // page 1 of 2 -> Next is live
+    paginator.nextPage();
+    fixture.detectChanges();
+    fixture.detectChanges();
+    // Page 2 holds the 3rd row (Cy): page-relative index resets to 0; absolute continues at 2 (offset 2).
+    expect(relOf(el)).toEqual(['0']);
+    expect(absOf(el)).toEqual(['2']);
+  });
+
+  it('re-clamps the offset when a data-shrink strands a later page (internal page-clamp path)', async () => {
+    // MatTableDataSource clamps a now-out-of-range page via _internalPageChanges, which does NOT emit
+    // paginator.page. A page-only offset subscription would miss it and leave absoluteIndex stale at
+    // the pre-clamp offset; the offset must track the render stream so it recomputes on the clamp too.
+    const five: Person[] = [
+      { name: 'A', age: 1, role: 'r' },
+      { name: 'B', age: 2, role: 'r' },
+      { name: 'C', age: 3, role: 'r' },
+      { name: 'D', age: 4, role: 'r' },
+      { name: 'E', age: 5, role: 'r' },
+    ];
+    const { fixture, el } = await make(true);
+    fixture.componentInstance.data.set(five);
+    fixture.detectChanges();
+    await new Promise((resolve) => setTimeout(resolve)); // paginator.length -> 5
+    fixture.detectChanges();
+    const paginator = fixture.debugElement.query(By.directive(MatPaginator))
+      .componentInstance as MatPaginator;
+    paginator.nextPage(); // page 1
+    paginator.nextPage(); // page 2 (row E), offset 4
+    fixture.detectChanges();
+    fixture.detectChanges();
+    expect(absOf(el)).toEqual(['4']); // row E at absolute index 4
+
+    // Shrink to 3 rows -> page 2 no longer exists -> the data source clamps to page 1 (offset 2).
+    fixture.componentInstance.data.set(five.slice(0, 3));
+    fixture.detectChanges();
+    await new Promise((resolve) => setTimeout(resolve)); // flush the clamp microtask
+    fixture.detectChanges();
+    // Clamped page 1, size 2: slice(2,4) of [A,B,C] = [C], page-relative 0, absolute 2 — NOT stale 4.
+    expect(relOf(el)).toEqual(['0']);
+    expect(absOf(el)).toEqual(['2']);
   });
 });
 
