@@ -2,7 +2,9 @@ import { Directive, TemplateRef, inject, input } from '@angular/core';
 
 /**
  * The context bound into a {@link CaeCellDef} template — the values a custom cell renderer receives.
- * Vendor-neutral (no Material type): the consumer never touches `mat-table` internals.
+ * Vendor-neutral (no Material type): the consumer never touches `mat-table` internals. This context is
+ * **library-produced** — a consumer only ever *reads* it via `let-` bindings, never constructs it — so
+ * adding a field (e.g. `absoluteIndex`, #213) is a non-breaking enhancement, not a breaking change.
  *
  * ```html
  * <ng-template caeCellDef="status" let-row let-value="value" let-i="index">
@@ -26,10 +28,18 @@ export interface CaeCellContext<T> {
   value: unknown;
   /**
    * The rendered row index — post-sort and **page-relative** (0..pageSize-1 within the current page,
-   * as the row appears). NOTE: unlike p-table's body-template `rowIndex`, which is *absolute* across
-   * pages, this resets each page; an absolute-index context field is a non-breaking follow-up (#213).
+   * as the row appears), so it resets each page. For a continuous number across pages (p-table's
+   * body-template `rowIndex`, which is *absolute*) use {@link absoluteIndex}. Bind `let-i="index"`.
    */
   index: number;
+  /**
+   * The **absolute** rendered row index across all pages (`pageIndex * pageSize + index`), post-sort —
+   * the p-table body-template `rowIndex` semantics. Unlike {@link index} it does *not* reset per page,
+   * so an absolute "row #N" numbering column reads continuously (page 2 of a 10-row page starts at 10,
+   * not 0). Equal to {@link index} when the table is unpaginated (a single page). Follows the user's
+   * live page + page-size choice, not the initial inputs. Bind `let-n="absoluteIndex"`.
+   */
+  absoluteIndex: number;
 }
 
 /**
