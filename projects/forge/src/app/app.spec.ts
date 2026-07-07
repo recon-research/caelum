@@ -876,12 +876,15 @@ describe('App', () => {
       const chips = (): HTMLElement[] =>
         Array.from(el.querySelectorAll('.forge-tags cae-chip-set mat-chip-row'));
       while (chips().length) {
-        chips()[0].querySelector('button')!.click(); // remove every tag, ending empty
+        const btn = chips()[0].querySelector('button')!;
+        btn.focus(); // a real keyboard user's focus is on the × they activate (the set's anti-steal gate)
+        btn.click(); // remove every tag, ending empty
         await fixture.whenStable();
       }
-      await new Promise((r) => setTimeout(r)); // let removeTag's queueMicrotask focus fire
+      await new Promise((r) => setTimeout(r)); // let the set's afterNextRender empty-focus move fire
       const status = el.querySelector('.forge-tags__status') as HTMLElement;
-      // The set can't retain focus on an emptied collection, so the consumer places it on the status region.
+      // The set can't retain focus on an emptied collection, so its [emptyFocusTarget] hook (#202) lands
+      // focus on the status region — no consumer focus code (the old removeTag guard was deleted).
       expect(document.activeElement).toBe(status);
       expect(status.textContent).toContain('0 tags remaining');
     } finally {

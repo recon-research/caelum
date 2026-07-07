@@ -1,4 +1,4 @@
-import { Component, signal } from '@angular/core';
+import { Component, ElementRef, signal, viewChild } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { CaeChipSet, CaeChipRemoveEvent } from './chip-set';
@@ -49,6 +49,29 @@ class ObjectHost {
   labelFn = (t: Tag): string => t.name;
   removeFn = (t: Tag): string => `Delete tag ${t.name}`;
   removed = 0;
+}
+
+// Exercises [emptyFocusTarget] (#202): an outside button to steal-test against, the set, and a
+// focusable status region the set should land focus on when the LAST chip is removed by the user.
+@Component({
+  imports: [CaeChipSet],
+  template: `
+    <button #ext type="button">outside</button>
+    <cae-chip-set
+      [items]="items()"
+      [emptyFocusTarget]="statusRef()"
+      (removed)="onRemoved($event)"
+    />
+    <p #status tabindex="-1">status</p>
+  `,
+})
+class TargetHost {
+  items = signal<readonly string[]>(['solo']);
+  readonly statusRef = viewChild<ElementRef<HTMLElement>>('status');
+  readonly extRef = viewChild<ElementRef<HTMLButtonElement>>('ext');
+  onRemoved(e: CaeChipRemoveEvent<string>): void {
+    this.items.update((l) => l.filter((t) => t !== e.item));
+  }
 }
 
 describe('CaeChipSet', () => {
@@ -157,6 +180,59 @@ describe('CaeChipSet', () => {
     await settle(f);
     expect(rows(f).length).toBe(0);
     expect(grid(f).contains(document.activeElement)).toBe(false); // not retained in the emptied set
+  });
+
+  async function makeTarget(): Promise<ComponentFixture<TargetHost>> {
+    await TestBed.configureTestingModule({ imports: [TargetHost] }).compileComponents();
+    const f = TestBed.createComponent(TargetHost);
+    el = f.nativeElement as HTMLElement;
+    document.body.appendChild(el);
+    f.detectChanges();
+    await f.whenStable();
+    return f;
+  }
+
+  it('moves focus to [emptyFocusTarget] when the last chip is removed while focus was in the set (#202)', async () => {
+    // The first-class hook for the empty case: bind an element and the set lands focus there after the
+    // emptying render, so a keyboard user who removes the final chip is not dropped to <body>.
+    const f = await makeTarget();
+    const soloRemove = removeBtn(rows(f)[0])!;
+    soloRemove.focus();
+    expect(grid(f).contains(document.activeElement)).toBe(true); // focus is in the set at removal
+    soloRemove.click(); // remove 'solo' -> the set empties
+    await settle(f);
+    expect(rows(f).length).toBe(0);
+    expect(document.activeElement).toBe(f.componentInstance.statusRef()!.nativeElement);
+  });
+
+  it('does NOT steal focus to [emptyFocusTarget] on a programmatic clear (focus was outside the set) (#202)', async () => {
+    // The steal guard (WCAG 3.2.x, the #189 principle): emptying the set by any path OTHER than a
+    // focus-holding removal must leave the user's focus where it is. Here focus is on an outside button
+    // and the list is cleared directly (not via a chip ×) — focus must stay on the button.
+    const f = await makeTarget();
+    const extBtn = f.componentInstance.extRef()!.nativeElement;
+    extBtn.focus();
+    expect(document.activeElement).toBe(extBtn);
+    f.componentInstance.items.set([]); // programmatic clear — never routes through onRemoved
+    await settle(f);
+    expect(rows(f).length).toBe(0);
+    expect(document.activeElement).toBe(extBtn); // untouched
+  });
+
+  it('does NOT steal focus when the last chip is removed while focus is OUTSIDE the set (heldFocus gate, #202)', async () => {
+    // Locks the WCAG-3.2.x anti-steal guard `if (!heldFocus) return;`. A real chip removal that did NOT
+    // hold focus in the set (here a non-focusing pointer × — the Safari/Firefox case — with focus parked
+    // on an outside button) must leave focus where it is. This test FAILS if the guard is deleted (the set
+    // would then move focus to emptyFocusTarget). Distinct from the programmatic-clear test above, which
+    // bypasses onRemoved entirely and so never exercises the guard.
+    const f = await makeTarget();
+    const extBtn = f.componentInstance.extRef()!.nativeElement;
+    extBtn.focus();
+    expect(document.activeElement).toBe(extBtn);
+    removeBtn(rows(f)[0])!.click(); // removes the last chip; the click does not focus the × (focus stays on extBtn)
+    await settle(f);
+    expect(rows(f).length).toBe(0);
+    expect(document.activeElement).toBe(extBtn); // not yanked to the empty-focus target
   });
 
   it('names the set via aria-label', async () => {

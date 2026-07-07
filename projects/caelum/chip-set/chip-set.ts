@@ -1,6 +1,10 @@
 import {
+  afterNextRender,
   ChangeDetectionStrategy,
   Component,
+  ElementRef,
+  inject,
+  Injector,
   input,
   isDevMode,
   OnInit,
@@ -21,10 +25,10 @@ export interface CaeChipRemoveEvent<T> {
  * keyboard navigation** across chips (arrow keys + Home/End) and, crucially, **focus redirect to an
  * adjacent chip when the focused chip is removed** *while a sibling remains* (so a keyboard user is not
  * dropped to `<body>` — the bug a plain chip hits even when siblings exist). Removing the **last** chip
- * leaves no in-set target, so focus is not managed for the now-empty set — the consumer should place it
- * (e.g. on a status region), as the Forge demo does. Maps to a removable chip **list** (`p-chip` rows);
- * a text-entry tag field (`p-chips` over an input), a selectable listbox, and **per-item
- * `removable`/`disabled`** (#201) are deferred follow-ups.
+ * leaves no in-set target; bind {@link emptyFocusTarget} to place focus on the now-empty set (e.g. a
+ * status region) — else the consumer manages it, as the Forge demo did (#202). Maps to a removable chip
+ * **list** (`p-chip` rows); a text-entry tag field (`p-chips` over an input), a selectable listbox, and
+ * **per-item `removable`/`disabled`** (#201) are deferred follow-ups.
  *
  * **Why `mat-chip-grid`/`mat-chip-row` (not `mat-chip-set`/`mat-chip`).** Material's roving
  * `FocusKeyManager` and focus-redirect both live in the base `MatChipSet`, but the redirect calls
@@ -64,7 +68,7 @@ export interface CaeChipRemoveEvent<T> {
       [attr.aria-labelledby]="ariaLabelledby() || null"
     >
       @for (item of items(); track item; let i = $index) {
-        <mat-chip-row removable (removed)="removed.emit({ item, index: i })">
+        <mat-chip-row removable (removed)="onRemoved(item, i)">
           {{ label()(item) }}
           <button matChipRemove type="button" [attr.aria-label]="removeAriaLabelFor(item)">
             <svg
@@ -92,6 +96,9 @@ export interface CaeChipRemoveEvent<T> {
   `,
 })
 export class CaeChipSet<T = string> implements OnInit {
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly injector = inject(Injector);
+
   /** The chips to render, in order. Values must be **unique** (they are the `@for` track key). */
   readonly items = input.required<readonly T[]>();
 
@@ -113,11 +120,61 @@ export class CaeChipSet<T = string> implements OnInit {
   readonly ariaLabelledby = input('');
 
   /**
+   * Optional focus landing spot for when the **last** chip is removed. While a sibling remains the set
+   * redirects focus to it; the emptied set has no in-set target, so focus would otherwise fall to
+   * `<body>`. Point this at a **focusable** element — a non-interactive one (e.g. a heading or a
+   * `role="status"` region) needs `tabindex="-1"` — and the set moves focus there after the emptying
+   * render.
+   *
+   * The move fires **only when the removal left focus inside the set**: a keyboard remove, or a pointer
+   * remove in a browser that focuses the clicked button. A pointer remove that does *not* focus the button
+   * (Safari/Firefox) leaves focus untouched — as does any *programmatic* `[items]` clear, which never runs
+   * this path at all — so the hook never steals focus from elsewhere (WCAG 3.2.x, the #189 principle). It
+   * also assumes the consumer drops the removed item **synchronously** in the `(removed)` handler (the
+   * standard request pattern, as Forge does); an async drop leaves the empty case unmanaged (follow-up).
+   *
+   * If the target is itself a live region being updated (as Forge's count is) its text may be announced a
+   * second time when focus lands — a plain heading/container avoids that. Accepts a raw `HTMLElement` (a
+   * `#ref` template variable), an `ElementRef`, or a `viewChild()` result (bind it directly — `undefined`
+   * is tolerated). Unset ⇒ unchanged: the consumer owns the empty case.
+   */
+  readonly emptyFocusTarget = input<HTMLElement | ElementRef<HTMLElement> | null | undefined>(null);
+
+  /**
    * Fires when a chip's remove affordance is activated (× click, Enter/Space, or Backspace/Delete on the
    * focused chip). Removal is a **request**: the consumer owns it — drop `event.item` from `[items]`, which
    * destroys the chip and lets the set redirect focus to the adjacent chip.
    */
   readonly removed = output<CaeChipRemoveEvent<T>>();
+
+  /**
+   * Chip-removal request handler. Captures whether focus was inside the set **at removal time** (before
+   * the consumer drops the item), emits {@link removed}, then — if that removal held focus and the set is
+   * now empty after the render — moves focus to {@link emptyFocusTarget}. The move is deferred to
+   * `afterNextRender` because the chip is destroyed during the pending CD (a synchronous focus would land
+   * on the doomed DOM and be undone), and the post-render `length` check means a declined removal or a
+   * surviving sibling (which the set redirects to itself) never triggers it — mirroring the grid pager's
+   * focus-on-disable (#189, #202). Assumes a synchronous item drop (see {@link emptyFocusTarget}).
+   */
+  protected onRemoved(item: T, index: number): void {
+    const heldFocus = this.host.nativeElement.contains(document.activeElement);
+    this.removed.emit({ item, index });
+    // Anti-steal gate (WCAG 3.2.x, the #189 principle): move focus for the emptied set ONLY when this
+    // removal held focus inside the set. A pointer × that didn't focus the button (Safari/Firefox), or a
+    // remove while focus is elsewhere, must not yank focus to emptyFocusTarget. (A programmatic [items]
+    // clear is safe by construction — it never calls this method.) Locked by the "outside the set" test —
+    // do not drop this line.
+    if (!heldFocus) return;
+    afterNextRender(
+      () => {
+        if (this.items().length > 0) return;
+        const target = this.emptyFocusTarget();
+        const el = target instanceof ElementRef ? target.nativeElement : target;
+        el?.focus({ preventScroll: true });
+      },
+      { injector: this.injector },
+    );
+  }
 
   /** The remove button's accessible name: the {@link removeAriaLabel} override, else `"Remove <label>"`. */
   protected removeAriaLabelFor(item: T): string {

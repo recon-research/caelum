@@ -235,8 +235,9 @@ export class App {
    * A `cae-chip-set` (#84) backed by a signal list — the managed removable-tag list. A chip's ×
    * fires `(removed)` with the item; the consumer owns the removal, so we drop the tag and the chip
    * unrenders. Unlike the standalone `cae-chip` (#83), the set redirects focus to a sibling chip on
-   * removal, so the app no longer hand-rolls a focus-move effect on every removal — it announces the
-   * count and only manages focus for the documented empty case (see removeTag, #202).
+   * removal; and for the EMPTY case the app now binds the set's first-class `[emptyFocusTarget]` hook
+   * (#202) to the status region — so `removeTag` only drops the tag and announces the count, with no
+   * hand-rolled focus effect at all (the earlier empty-case guard was deleted when #202 landed).
    */
   protected readonly tags = signal<readonly string[]>(['design', 'frontend', 'a11y']);
   /** Announcement for a removed tag — read by a persistent polite live region (a11y, #84). */
@@ -245,12 +246,6 @@ export class App {
     this.tags.update((list) => list.filter((t) => t !== tag));
     const n = this.tags().length;
     this.tagMessage.set(`Removed ${tag}. ${n} ${n === 1 ? 'tag' : 'tags'} remaining.`);
-    // cae-chip-set redirects focus to a sibling chip while chips remain; when the list is now EMPTY
-    // there is no in-set target (#202), so we place focus on the status region rather than lose it.
-    if (n === 0) {
-      const el = this.tagsStatusRegion()?.nativeElement;
-      if (el) queueMicrotask(() => el.focus());
-    }
   }
 
   /**
@@ -643,8 +638,6 @@ export class App {
   private readonly formDir = viewChild<FormGroupDirective>('createFormDir');
   /** The invite demo's persistent live region + focus target — mirrors `statusRegion`. */
   private readonly inviteStatusRegion = viewChild<ElementRef<HTMLElement>>('inviteStatus');
-  /** Empty-case focus target for the tag set (#84/#202): where focus lands when the last tag is removed. */
-  private readonly tagsStatusRegion = viewChild<ElementRef<HTMLElement>>('tagsStatus');
 
   constructor() {
     // Move focus to the status region whenever it gains a message (success OR error), so a
