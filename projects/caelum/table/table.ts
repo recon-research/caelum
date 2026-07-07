@@ -8,10 +8,12 @@ import {
   effect,
   input,
   isDevMode,
+  model,
   OnInit,
   TemplateRef,
   viewChild,
 } from '@angular/core';
+import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatPaginator, MatPaginatorModule } from '@angular/material/paginator';
 import { MatSort, MatSortModule } from '@angular/material/sort';
 import { MatTableDataSource, MatTableModule } from '@angular/material/table';
@@ -78,10 +80,17 @@ export interface CaeTableColumn {
  * of v1 scope). Columns without a template keep the zero-boilerplate text default. See
  * {@link CaeCellDef}.
  *
- * **v1 scope** (#141): text columns, sort, client-side pagination, custom body-cell templates (#143).
- * Follow-ups: sticky / expandable / row-selection **#144**; server-side/lazy data, global filter,
- * column resize/reorder **#145**; an absolute row-index context field **#213**. Header/footer/full-row
- * templating is a future enhancement (not yet requested).
+ * **Row selection** (#144): set `selectionMode="multiple"` to prepend a checkbox column with a
+ * select-all header, and bind `[(selection)]` for the selected rows as a **vendor-neutral `T[]`**
+ * (or `(selectionChange)` to observe) — no Material `SelectionModel` in the public API. Selection is
+ * by **reference identity** (a `[data]` refresh with new object instances drops it; a stable-identity
+ * `dataKey` is a follow-up). Give each row checkbox a semantic accessible name via
+ * {@link rowSelectionLabel}. Single-select (radio) is a #144 follow-up.
+ *
+ * **v1 scope** (#141): text columns, sort, client-side pagination, custom body-cell templates (#143),
+ * multi-select (#144). Follow-ups: sticky / expandable-rows / single-select **#144**; server-side/lazy
+ * data, global filter, column resize/reorder **#145**; an absolute row-index context field **#213**.
+ * Header/footer/full-row templating is a future enhancement (not yet requested).
  *
  * Zoneless-compatible: `OnPush` + signal inputs (D-12). No `color` input — theming is free via
  * the token bridge (D-04).
@@ -94,7 +103,7 @@ export interface CaeTableColumn {
 @Component({
   selector: 'cae-table',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MatTableModule, MatSortModule, MatPaginatorModule, NgTemplateOutlet],
+  imports: [MatTableModule, MatSortModule, MatPaginatorModule, MatCheckboxModule, NgTemplateOutlet],
   template: `
     <table
       mat-table
@@ -110,6 +119,31 @@ export interface CaeTableColumn {
             caption()
           }}
         </caption>
+      }
+
+      @if (selectionMode() !== 'none') {
+        <ng-container [matColumnDef]="selectColumnKey">
+          <th mat-header-cell *matHeaderCellDef class="cae-table__select-cell">
+            <!-- disabledInteractive: on empty data the select-all is aria-disabled (announced
+                 unavailable) but stays focusable, so an external data-clear never strands keyboard
+                 focus to <body> — the pager's #189/#192 focus-preservation convention. -->
+            <mat-checkbox
+              [checked]="allSelected()"
+              [indeterminate]="someSelected()"
+              [disabled]="!data().length"
+              disabledInteractive
+              (change)="toggleAll()"
+              [aria-label]="selectAllLabel()"
+            ></mat-checkbox>
+          </th>
+          <td mat-cell *matCellDef="let row; let i = index" class="cae-table__select-cell">
+            <mat-checkbox
+              [checked]="isSelected(row)"
+              (change)="toggleRow(row)"
+              [aria-label]="rowSelectionLabel()(row, i)"
+            ></mat-checkbox>
+          </td>
+        </ng-container>
       }
 
       @for (col of columns(); track col.key) {
@@ -157,6 +191,13 @@ export interface CaeTableColumn {
     table {
       width: 100%;
     }
+    /* Selection column: shrink to the checkbox (the width:1% shrink trick, matching the table's
+       own width:100% literal — no width token exists). */
+    .cae-table__select-cell {
+      width: 1%;
+      padding-inline-end: var(--cae-space-2);
+      white-space: nowrap;
+    }
     /* Neutral empty-state hint (token-only): muted text, comfortable padding. currentColor fallback
        inherits the themed on-surface text (legible in light + dark) when the token is unresolved. */
     .cae-table__empty {
@@ -199,8 +240,77 @@ export class CaeTable<T = Record<string, unknown>> implements OnInit {
   /** Initial sort direction for {@link sortActive} (after mount the header owns the live sort). */
   readonly sortDirection = input<CaeSortDirection>('');
 
-  /** The `mat-table` `displayedColumns` — derived from the column config order. */
-  protected readonly columnKeys = computed(() => this.columns().map((c) => c.key));
+  /**
+   * Row-selection mode. `'multiple'` prepends a checkbox column with a select-all header checkbox;
+   * `'none'` (default) renders no selection column. Single-select (radio) is a #144 follow-up.
+   */
+  readonly selectionMode = input<'none' | 'multiple'>('none');
+  /**
+   * Two-way selected rows, a **vendor-neutral `T[]`** (not a Material `SelectionModel`). Selection is
+   * by **reference identity** — a row is selected iff the same object instance is in this array — so a
+   * `[data]` refresh yielding new instances drops the visual selection (a stable-identity `dataKey` is
+   * a #144 follow-up). Bind `[(selection)]` for two-way, or `(selectionChange)` to observe.
+   *
+   * **Select-all scope**: the header checkbox selects **all bound rows, across every page** (p-table's
+   * default; a page-only option — cf. p-table `selectionPageOnly` — is a follow-up). A future
+   * `selectionMode="single"` keeps this **same `readonly T[]` shape** (a 0- or 1-length array), not a
+   * bare `T`, so the binding type stays stable across modes.
+   */
+  readonly selection = model<readonly T[]>([]);
+  /**
+   * Accessible name for a row's selection checkbox — supply a semantic label (e.g. the row's name).
+   * The default is the **1-based position within the current page** (`index` is page-relative and
+   * post-sort, exactly like {@link CaeCellContext.index}; an absolute index is #213), so with
+   * pagination the default names **repeat across pages** and shift under a sort — a poor default.
+   * Override it with a row-derived name (as Forge does).
+   */
+  readonly rowSelectionLabel = input<(row: T, index: number) => string>(
+    (_row, i) => `Select row ${i + 1}`,
+  );
+  /** Accessible name for the select-all header checkbox (`'multiple'` mode). */
+  readonly selectAllLabel = input('Select all rows');
+
+  /** The reserved `matColumnDef` id for the selection column — kept out of the consumer's key space. */
+  protected readonly selectColumnKey = '__caeSelect';
+
+  /**
+   * The `mat-table` `displayedColumns` — the column config order, with the selection column prepended
+   * in a selectable mode.
+   */
+  protected readonly columnKeys = computed(() => {
+    const keys = this.columns().map((c) => c.key);
+    return this.selectionMode() === 'none' ? keys : [this.selectColumnKey, ...keys];
+  });
+
+  /** O(1) selection membership derived from the two-way {@link selection} model. */
+  private readonly selectedSet = computed(() => new Set<T>(this.selection()));
+
+  /** Whether a row is currently selected (by reference). Drives its checkbox `checked` state. */
+  protected isSelected(row: T): boolean {
+    return this.selectedSet().has(row);
+  }
+  /** True when every row in `data()` (across all pages, not just the visible page) is selected — the select-all `checked` state. */
+  protected readonly allSelected = computed(() => {
+    const data = this.data();
+    const set = this.selectedSet();
+    return data.length > 0 && data.every((r) => set.has(r));
+  });
+  /** True when some but not all rows in `data()` (across all pages) are selected — the select-all `indeterminate` state. */
+  protected readonly someSelected = computed(() => {
+    if (this.allSelected()) return false;
+    const set = this.selectedSet();
+    return this.data().some((r) => set.has(r));
+  });
+
+  /** Toggle one row in/out of the selection (updates the two-way {@link selection} model). */
+  protected toggleRow(row: T): void {
+    const cur = this.selection();
+    this.selection.set(cur.includes(row) ? cur.filter((r) => r !== row) : [...cur, row]);
+  }
+  /** Select every row in `data()` (across all pages), or clear the selection if all are already selected. */
+  protected toggleAll(): void {
+    this.selection.set(this.allSelected() ? [] : [...this.data()]);
+  }
 
   /**
    * Custom cell renderers projected as `<ng-template caeCellDef="<key>">` content (#143). Captured
@@ -310,6 +420,11 @@ export class CaeTable<T = Record<string, unknown>> implements OnInit {
     if (active && !this.columns().some((c) => c.key === active && c.sortable)) {
       console.warn(
         `cae-table: sortActive="${active}" is not a sortable column — the data sorts but no sort header (or aria-sort) renders for it.`,
+      );
+    }
+    if (this.selectionMode() !== 'none' && keys.includes(this.selectColumnKey)) {
+      throw new Error(
+        `cae-table: a column uses the reserved selection key "${this.selectColumnKey}" — rename it (this id is used internally for the selection checkbox column when selectionMode is set).`,
       );
     }
   }

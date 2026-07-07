@@ -397,6 +397,25 @@ export class App {
   }
 
   /**
+   * Row selection over the members table (#144) — the selected rows as a **vendor-neutral**
+   * `WorkspaceMember[]` via cae-table's two-way `[(selection)]` (bound here as the explicit
+   * `[selection]` + `(selectionChange)` pair, a signal-safe two-way). Drives the "Remove selected"
+   * `cae-button` below (composed-over-composed), which deletes them and clears the selection.
+   */
+  protected readonly selectedMembers = signal<readonly WorkspaceMember[]>([]);
+  /** A semantic accessible name for each row's checkbox (better than the default row number). */
+  protected readonly memberSelectionLabel = (m: WorkspaceMember): string => `Select ${m.name}`;
+  /** Remove the selected members and clear the selection (the #144 selection dogfood). */
+  protected removeSelected(): void {
+    // No-op guard: the button is aria-disabled (not native-disabled) when nothing is selected, so a
+    // click can still fire — guard it here rather than let it clear an already-empty selection.
+    if (!this.selectedMembers().length) return;
+    const chosen = new Set(this.selectedMembers());
+    this.members.update((roster) => roster.filter((m) => !chosen.has(m)));
+    this.selectedMembers.set([]);
+  }
+
+  /**
    * The "Workspace command bar" `cae-menubar` demo (#153, M1 composed) — a horizontal application
    * menu over `MatToolbar` + `cae-menu`, with CDK roving keyboard across the top-level items.
    * Composed-over-composed: selecting any command records it in {@link commandLog} and the live

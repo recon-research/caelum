@@ -373,3 +373,174 @@ describe('CaeTable — custom cell templates (#143)', () => {
     expect(roleCell().querySelector('button.role-btn')).not.toBeNull();
   });
 });
+
+// ---- Row selection (#144, p-table selectionMode="multiple" parity) ----
+
+// A host binding [(selection)] via the explicit [selection] + (selectionChange) form (a signal-safe
+// two-way) — proves the vendor-neutral T[] round-trips out through the model's change output.
+@Component({
+  imports: [CaeTable],
+  template: `
+    <cae-table
+      [columns]="columns"
+      [data]="data"
+      selectionMode="multiple"
+      [selection]="selected()"
+      (selectionChange)="selected.set($event)"
+    />
+  `,
+})
+class SelectionHost {
+  columns = COLUMNS;
+  data = PEOPLE;
+  readonly selected = signal<readonly Person[]>([]);
+}
+
+describe('CaeTable — row selection (#144)', () => {
+  let fixture: ComponentFixture<CaeTable<Person>>;
+  let ref: ComponentRef<CaeTable<Person>>;
+  let el: HTMLElement;
+
+  function setup(inputs: Record<string, unknown> = {}): void {
+    fixture = TestBed.createComponent(CaeTable<Person>);
+    ref = fixture.componentRef;
+    ref.setInput('columns', COLUMNS);
+    ref.setInput('data', PEOPLE);
+    ref.setInput('selectionMode', 'multiple');
+    for (const [k, v] of Object.entries(inputs)) ref.setInput(k, v);
+    el = fixture.nativeElement as HTMLElement;
+    fixture.detectChanges();
+    fixture.detectChanges();
+  }
+
+  const headerCells = () => Array.from(el.querySelectorAll('th[mat-header-cell]'));
+  const rowCheckboxes = () =>
+    Array.from(
+      el.querySelectorAll<HTMLInputElement>('td.cae-table__select-cell input[type="checkbox"]'),
+    );
+  const rowCheckbox = (i: number) => rowCheckboxes()[i];
+  const selectAll = () =>
+    el.querySelector('th.cae-table__select-cell input[type="checkbox"]') as HTMLInputElement;
+  const dataRow = (i: number) => Array.from(el.querySelectorAll('tr[mat-row]'))[i];
+  const nameOf = (i: number) =>
+    dataRow(i).querySelector('td[mat-cell]:not(.cae-table__select-cell)')!.textContent!.trim();
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [CaeTable, SelectionHost],
+    }).compileComponents();
+  });
+
+  it('renders no selection column by default (selectionMode="none")', () => {
+    fixture = TestBed.createComponent(CaeTable<Person>);
+    ref = fixture.componentRef;
+    ref.setInput('columns', COLUMNS);
+    ref.setInput('data', PEOPLE);
+    el = fixture.nativeElement as HTMLElement;
+    fixture.detectChanges();
+    fixture.detectChanges();
+    expect(el.querySelector('.cae-table__select-cell')).toBeNull();
+    expect(el.querySelectorAll('th[mat-header-cell]').length).toBe(3);
+  });
+
+  it('prepends a checkbox column with a select-all header + one checkbox per row (multiple)', () => {
+    setup();
+    expect(headerCells().length).toBe(4); // 3 data columns + the prepended select column
+    expect(selectAll()).not.toBeNull();
+    expect(el.querySelectorAll('td.cae-table__select-cell input[type="checkbox"]').length).toBe(3);
+  });
+
+  it('toggling a row checkbox selects then deselects that row (updates [(selection)])', () => {
+    setup();
+    // rendered order = data order: Bob, Ann, Cy
+    rowCheckbox(0).click();
+    fixture.detectChanges();
+    expect(ref.instance.selection()).toEqual([PEOPLE[0]]);
+    expect(rowCheckbox(0).checked).toBe(true);
+    rowCheckbox(0).click();
+    fixture.detectChanges();
+    expect(ref.instance.selection()).toEqual([]);
+    expect(rowCheckbox(0).checked).toBe(false);
+  });
+
+  it('select-all selects every row, and clears when toggled while all selected', () => {
+    setup();
+    selectAll().click();
+    fixture.detectChanges();
+    expect(ref.instance.selection().length).toBe(3);
+    expect(selectAll().checked).toBe(true);
+    selectAll().click();
+    fixture.detectChanges();
+    expect(ref.instance.selection()).toEqual([]);
+    expect(selectAll().checked).toBe(false);
+  });
+
+  it('shows the select-all as indeterminate when some but not all rows are selected', () => {
+    setup();
+    rowCheckbox(1).click();
+    fixture.detectChanges();
+    expect(selectAll().indeterminate).toBe(true);
+    expect(selectAll().checked).toBe(false);
+  });
+
+  it('reflects a programmatic [selection] input in the row checkboxes', () => {
+    setup({ selection: [PEOPLE[1]] });
+    expect(rowCheckbox(1).checked).toBe(true);
+    expect(rowCheckbox(0).checked).toBe(false);
+  });
+
+  it('names each checkbox for assistive tech (rowSelectionLabel default + selectAllLabel)', () => {
+    setup();
+    // The name is on the internal <input> (the checkbox role), forwarded from mat-checkbox's aria-label.
+    expect(selectAll().getAttribute('aria-label')).toBe('Select all rows');
+    expect(rowCheckbox(0).getAttribute('aria-label')).toBe('Select row 1');
+    expect(rowCheckbox(1).getAttribute('aria-label')).toBe('Select row 2');
+  });
+
+  it('uses a custom rowSelectionLabel accessor when provided', () => {
+    setup({ rowSelectionLabel: (row: Person) => `Select ${row.name}` });
+    expect(rowCheckbox(0).getAttribute('aria-label')).toBe('Select Bob');
+  });
+
+  it('keeps a row selected across a sort (reference identity, not row position)', () => {
+    setup();
+    rowCheckbox(0).click(); // Bob, in data order
+    fixture.detectChanges();
+    expect(ref.instance.selection()).toEqual([PEOPLE[0]]); // Bob
+    // Sort by Age asc → Ann(20), Cy(25), Bob(30): Bob moves to the last rendered row.
+    const ageHeader = headerCells().find((h) => h.textContent!.trim() === 'Age') as HTMLElement;
+    ageHeader.click();
+    fixture.detectChanges();
+    fixture.detectChanges();
+    const bobIndex = [0, 1, 2].find((i) => nameOf(i) === 'Bob')!;
+    expect(rowCheckbox(bobIndex).checked).toBe(true); // still checked in its new position
+    expect(ref.instance.selection()).toEqual([PEOPLE[0]]);
+  });
+
+  it('marks the select-all aria-disabled (not native-disabled) on empty data, keeping it focusable', () => {
+    setup({ data: [] });
+    // disabledInteractive: aria-disabled instead of native disabled, so an external data-clear never
+    // strands keyboard focus to <body> (#189/#192). The control stays focusable and its toggle no-ops.
+    expect(selectAll().getAttribute('aria-disabled')).toBe('true');
+    expect(selectAll().disabled).toBe(false);
+  });
+
+  it('throws a clear error when a column uses the reserved selection key (dev guard)', () => {
+    expect(() =>
+      setup({ columns: [...COLUMNS, { key: '__caeSelect', header: 'Oops' }] }),
+    ).toThrowError(/reserved selection key/);
+  });
+
+  it('propagates selection to a host via the (selectionChange) two-way output', () => {
+    const hostFixture = TestBed.createComponent(SelectionHost);
+    hostFixture.detectChanges();
+    hostFixture.detectChanges();
+    const hostEl = hostFixture.nativeElement as HTMLElement;
+    const firstRowCb = hostEl.querySelector(
+      'td.cae-table__select-cell input[type="checkbox"]',
+    ) as HTMLInputElement;
+    firstRowCb.click();
+    hostFixture.detectChanges();
+    expect(hostFixture.componentInstance.selected()).toEqual([PEOPLE[0]]);
+  });
+});

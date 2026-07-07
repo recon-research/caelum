@@ -613,7 +613,8 @@ describe('App', () => {
     // Client-side pagination limits the seven-row roster to the pageSize (5) first page.
     const rowNames = () =>
       Array.from(card.querySelectorAll('tr[mat-row]')).map((r) =>
-        r.querySelector('td[mat-cell]')?.textContent?.trim(),
+        // Skip the prepended selection checkbox cell (#144) — the Name column is the first DATA cell.
+        r.querySelector('td[mat-cell]:not(.cae-table__select-cell)')?.textContent?.trim(),
       );
     expect(card.querySelector('mat-paginator')).not.toBeNull();
     const names = rowNames();
@@ -629,6 +630,49 @@ describe('App', () => {
     expect(emailLink).not.toBeNull();
     expect(emailLink.getAttribute('href')).toBe('mailto:ada@acme.dev');
     expect(emailLink.textContent!.trim()).toBe('ada@acme.dev');
+  });
+
+  it('multi-selects members and removes them via the Remove-selected cae-button (#144)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    await renderDeferred(fixture); // the members table is @defer'd below the fold (#85, #141)
+    const card = (fixture.nativeElement as HTMLElement).querySelector(
+      '.forge-members-card',
+    ) as HTMLElement;
+
+    // The selection column (selectionMode="multiple"): a select-all header + one checkbox per row.
+    expect(card.querySelector('th.cae-table__select-cell input[type="checkbox"]')).not.toBeNull();
+    const rowChecks = () =>
+      Array.from(
+        card.querySelectorAll('td.cae-table__select-cell input[type="checkbox"]'),
+      ) as HTMLInputElement[];
+    expect(rowChecks().length).toBe(5); // pageSize 5
+
+    // The Remove-selected cae-button starts aria-disabled (nothing selected) but stays focusable
+    // (disabledInteractive, not native disabled) so activation never strands focus (#189/#192).
+    const removeBtn = () =>
+      Array.from(card.querySelectorAll('cae-button button')).find((b) =>
+        b.textContent!.includes('Remove selected'),
+      ) as HTMLButtonElement;
+    expect(removeBtn().getAttribute('aria-disabled')).toBe('true');
+    expect(removeBtn().disabled).toBe(false); // focusable, not native-disabled
+
+    // Selecting the first row (Ada, sorted-first) enables the button and updates its live count.
+    rowChecks()[0].click();
+    fixture.detectChanges();
+    fixture.detectChanges();
+    expect(removeBtn().getAttribute('aria-disabled')).not.toBe('true');
+    expect(removeBtn().textContent).toContain('(1)');
+
+    // Removing deletes that member: Ada leaves the roster and the button returns to aria-disabled.
+    removeBtn().click();
+    fixture.detectChanges();
+    fixture.detectChanges();
+    const names = Array.from(
+      card.querySelectorAll('tr[mat-row] td[mat-cell]:not(.cae-table__select-cell)'),
+    ).map((c) => c.textContent!.trim());
+    expect(names).not.toContain('Ada Lovelace');
+    expect(removeBtn().getAttribute('aria-disabled')).toBe('true');
   });
 
   it('renders the activity cae-data-grid over the TanStack engine at scale (#170 interface, #171 engine)', async () => {
