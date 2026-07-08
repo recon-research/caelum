@@ -109,13 +109,20 @@ stage "research audit" python3 research/tools/_audit_research.py
 # in every posture and mirrors CI's static-gates job.
 stage "provenance (deps license + US-origin, D-11)" python3 scripts/check_provenance.py
 
+# Doc-drift budgets (#67), ops-config three-way-mirror integrity (#71), and the
+# repo-docs relative-link audit (#73) — gates from the pyxis template sync (#245),
+# mirroring ci.yml's static-gates steps and preflight.ps1 (same stage names).
+stage "doc budgets" python3 scripts/audit_docs.py
+stage "ops-config audit" python3 scripts/audit_ops_config.py
+stage "repo-docs links" python3 scripts/audit_repo_links.py
+
 todo_hygiene() {
     # Mirrors ci.yml's hygiene step (same pathspecs, same regex — change both together).
     git rev-parse --verify -q origin/main >/dev/null 2>&1 \
         || { echo "(no origin/main yet — skipped)"; return 0; }
     local naked
     naked=$(git diff origin/main...HEAD -- . ':!*.md' ':!.github' ':!textbooks' \
-        ':!scripts/preflight.sh' ':!scripts/preflight.ps1' ':!.claude' \
+        ':!scripts/preflight.sh' ':!scripts/preflight.ps1' ':!.claude' ':!scripts/audit_ops_config.py' \
         | grep -E '^\+' | grep -vE '^\+\+\+' \
         | sed -E 's/(todo|fixme)\(#[0-9]+\)//gI' | grep -iE '\b(todo|fixme)\b' || true)
     [ -z "$naked" ] || { echo "$naked"; echo "naked TODO/FIXME — file a ticket and write TODO(#NN)"; return 1; }

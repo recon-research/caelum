@@ -182,6 +182,29 @@ jobs:
       - name: Dependency provenance (license + US-origin, D-11)
         run: python3 scripts/check_provenance.py
 
+      # Doc-drift budgets (#67): the docs are state caches of the tracker; this caps
+      # Status/ARCHITECTURE/ROADMAP growth so session journaling cannot creep in.
+      # Mirrored by the `doc budgets` stage in scripts/preflight.{sh,ps1}.
+      - name: Doc budgets (anti-drift)
+        env: { PYTHONIOENCODING: utf-8, PYTHONUTF8: "1" }
+        run: python3 scripts/audit_docs.py
+
+      # Ops-config integrity (#71): the preflight.sh <-> preflight.ps1 <-> ci.yml
+      # three-way mirror and the settings/hook wiring must not rot; the canonical
+      # stage<->step map lives in the script — a gate added to one file goes red
+      # until all three (and the map) agree. Mirrored by the `ops-config audit` stage.
+      - name: Ops-config audit (preflight/CI mirror, settings sanity)
+        env: { PYTHONIOENCODING: utf-8, PYTHONUTF8: "1" }
+        run: python3 scripts/audit_ops_config.py
+
+      # Repo-docs link audit (#73): the relative links agents navigate every session
+      # (root docs, docs/, .claude skills->agents/docs, _intake) were checked by
+      # nothing; textbooks/ and research/ own their own link audits. Mirrored by the
+      # `repo-docs links` stage in scripts/preflight.{sh,ps1}.
+      - name: Repo-docs link audit (root/docs/.claude/_intake)
+        env: { PYTHONIOENCODING: utf-8, PYTHONUTF8: "1" }
+        run: python3 scripts/audit_repo_links.py
+
       # Skills load ONLY as .claude/skills/<name>/SKILL.md directories — a flat
       # .md file in skills/ silently fails to load (the layer becomes inert docs).
       - name: Skills are directories
@@ -213,7 +236,7 @@ jobs:
         run: |
           git fetch origin "${{ github.base_ref }}" --quiet
           naked=$(git diff "origin/${{ github.base_ref }}...HEAD" -- . ':!*.md' ':!.github' ':!textbooks' \
-            ':!scripts/preflight.sh' ':!scripts/preflight.ps1' ':!.claude' \
+            ':!scripts/preflight.sh' ':!scripts/preflight.ps1' ':!.claude' ':!scripts/audit_ops_config.py' \
             | grep -E '^\+' | grep -vE '^\+\+\+' \
             | sed -E 's/(todo|fixme)\(#[0-9]+\)//gI' | grep -iE '\b(todo|fixme)\b' || true)
           if [ -n "$naked" ]; then
@@ -222,6 +245,28 @@ jobs:
             exit 1
           fi
           echo "No naked TODOs."
+
+      # Ticket-first enforcement (#75, PROJECT_CONVENTIONS.md > Tracker & Hygiene):
+      # a PR's title OR body must carry a #NN issue reference ("closes #NN", "refs
+      # #NN", "Addresses #NN", "Provisional on #NN" all qualify). The `no-ticket`
+      # label skips it (rare, and itself review surface). PR-only BY NATURE:
+      # preflight runs pre-PR, so there is nothing to mirror — audit_ops_config
+      # lists it in CI_ONLY_STEPS. Title/body flow through env vars, never
+      # interpolated into the script (untrusted input).
+      - name: PR references a ticket
+        if: >-
+          github.event_name == 'pull_request' &&
+          !contains(github.event.pull_request.labels.*.name, 'no-ticket')
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if printf '%s %s' "$PR_TITLE" "$PR_BODY" | grep -qE '#[0-9]+'; then
+            echo "Ticket reference found."
+          else
+            echo "::error::PR references no issue — put a #NN reference in the title or body (closes/refs/Addresses #NN), or apply the 'no-ticket' label. See PROJECT_CONVENTIONS.md > Tracker & Hygiene."
+            exit 1
+          fi
 
   # ── Heavy jobs — full posture (blocking on PRs / advisory post-merge on main),
   #    or on demand (`full-ci` label / dispatch / tag). Skipped for doc-only changes

@@ -1,0 +1,223 @@
+#!/usr/bin/env python3
+"""audit_ops_config.py -- ops-config integrity (#71; exits non-zero).
+
+The three-way mirror rule -- ci.yml <-> preflight.sh <-> preflight.ps1, stated
+in all three file headers ("change one -> change the other") -- had zero
+enforcement: a stage added to one and forgotten in another drifts silently
+until a gate that "ran" locally never runs in CI (or vice versa). This script
+is the enforcement:
+
+  1. sh <-> ps1 exact mirror: the stage names defined by preflight.sh
+     (`stage` / `skip_stage`) and preflight.ps1 (`Invoke-Stage` / `Skip-Stage`)
+     must be string-identical sets.
+  2. preflight <-> ci.yml mapping: the canonical stage-name -> step-name map
+     is PREFLIGHT_TO_CI below -- single-homed HERE. A stage missing from the
+     map, a map entry with no preflight stage, a mapped step absent from
+     ci.yml, or a named ci.yml step that is neither mapped nor declared in
+     CI_ONLY_STEPS all fail. Adding a stage anywhere forces an edit here or
+     goes red -- that is the point.
+  3. Settings sanity (ops config that must not rot): .claude/settings.json
+     parses; every hook/statusLine command that references a repo file
+     references one that exists; the deny tripwires (git push --force /
+     gh pr merge --admin, in BOTH shells) are present.
+
+Mirrored three ways itself: ci.yml > static gates > "Ops-config audit" ==
+preflight.{sh,ps1} "ops-config audit" stage (the map below includes it).
+"""
+import argparse
+import json
+import re
+import sys
+from pathlib import Path
+
+# The canonical preflight-stage -> ci.yml-step map. Single-homed: when you add,
+# rename, or drop a gate, this dict is the third file you must touch (after the
+# two preflights or ci.yml) -- the audit goes red until all three agree.
+PREFLIGHT_TO_CI = {
+    "format --check": "Format check",
+    "lint (adapter isolation + angular-eslint)": "Lint (adapter isolation + angular-eslint)",
+    "build library (+ US-origin attestation + size budget)": "Build library (+ US-origin attestation + size gate)",
+    "build Forge (production budgets)": "Build Forge (production budgets)",
+    "test (caelum + Forge)": "Test (caelum + Forge)",
+    "library audits": "Library audits (refs / routing / links)",
+    "research audit": "Research audit (citations / structure / links)",
+    "provenance (deps license + US-origin, D-11)": "Dependency provenance (license + US-origin, D-11)",
+    "doc budgets": "Doc budgets (anti-drift)",
+    "ops-config audit": "Ops-config audit (preflight/CI mirror, settings sanity)",
+    "repo-docs links": "Repo-docs link audit (root/docs/.claude/_intake)",
+    "todo hygiene (vs origin/main)": "No naked TODO/FIXME in added lines",
+}
+
+# Named ci.yml steps with deliberately no preflight stage. Everything else
+# named in ci.yml must be a PREFLIGHT_TO_CI value.
+CI_ONLY_STEPS = {
+    "Install",                 # `npm ci` per-job; preflight runs in the already-set-up dev env
+    "Skills are directories",  # cheap CI structural check; locally covered by the library audits' skills catalog
+    "Require heavy jobs to have passed or been skipped",  # the heavy-matrix gate job; CI-only by nature
+    "PR references a ticket",  # ticket-first gate (#75) is PR-only by nature; preflight runs pre-PR
+}
+
+# The two deny tripwires the shipped settings must keep, in both shell tools
+# (prefix match -- the shipped rules carry a :* suffix).
+DENY_TRIPWIRES = ("git push --force", "gh pr merge --admin")
+SHELLS = ("Bash", "PowerShell")
+
+
+def read(path):
+    return path.read_text(encoding="utf-8", errors="replace")
+
+
+def parse_sh_stages(path):
+    # `stage "name"` / `skip_stage "name"`, plus Caelum's Node-gated wrapper
+    # `run_if_node "name" cmd` (project deviation #15 — the Node stages only run
+    # with $HOME/nodejs on PATH). The wrapper's own body calls `stage "$name"` /
+    # `skip_stage "$name"` with a variable, so names containing `$` are filtered.
+    names = re.findall(r'^\s*(?:skip_stage|stage|run_if_node)\s+"([^"]+)"', read(path), re.M)
+    return [n for n in names if "$" not in n]
+
+
+def parse_ps1_stages(path):
+    # `Invoke-Stage 'name'` / `Skip-Stage 'name'`, plus Caelum's Node-gated
+    # wrapper `Invoke-StageIfNode 'name' {...}` (project deviation #15). The
+    # wrapper body calls `Invoke-Stage $Name` with a variable -> `$` filtered.
+    names = re.findall(
+        r"^\s*(?:Invoke-StageIfNode|Invoke-Stage|Skip-Stage)\s+'([^']+)'", read(path), re.M
+    )
+    return [n for n in names if "$" not in n]
+
+
+def parse_ci_steps(path):
+    # Step names only (`- name: X`); job- and workflow-level `name:` lines
+    # have no leading dash, commented-out steps start with '#'.
+    names = re.findall(r"^\s*-\s+name:\s*(.+?)\s*$", read(path), re.M)
+    return [n.strip("'\"") for n in names]
+
+
+def check_mirror(sh_stages, ps1_stages, problems):
+    sh, ps1 = set(sh_stages), set(ps1_stages)
+    print(f"preflight.sh stages: {len(sh)} | preflight.ps1 stages: {len(ps1)}")
+    for name in sorted(sh - ps1):
+        problems.append(
+            f"stage '{name}' exists in preflight.sh but not preflight.ps1 -- "
+            "the two scripts must define string-identical stage names."
+        )
+    for name in sorted(ps1 - sh):
+        problems.append(
+            f"stage '{name}' exists in preflight.ps1 but not preflight.sh -- "
+            "the two scripts must define string-identical stage names."
+        )
+
+
+def check_ci_map(preflight_stages, ci_steps, problems):
+    ci = set(ci_steps)
+    print(f"ci.yml named steps: {len(ci)} | canonical map entries: {len(PREFLIGHT_TO_CI)}")
+    for name in sorted(preflight_stages - set(PREFLIGHT_TO_CI)):
+        problems.append(
+            f"preflight stage '{name}' is not in PREFLIGHT_TO_CI -- add it to the "
+            "map (and to ci.yml) or remove the stage; a new gate touches all three files."
+        )
+    for name in sorted(set(PREFLIGHT_TO_CI) - preflight_stages):
+        problems.append(
+            f"PREFLIGHT_TO_CI maps stage '{name}' but no preflight script defines it -- "
+            "stale map entry or a stage was renamed/removed in only some files."
+        )
+    for stage_name, step in sorted(PREFLIGHT_TO_CI.items()):
+        if step not in ci:
+            problems.append(
+                f"stage '{stage_name}' maps to ci.yml step '{step}', which ci.yml does not "
+                "define -- the gate runs locally but never in CI."
+            )
+    for step in sorted(ci - set(PREFLIGHT_TO_CI.values()) - CI_ONLY_STEPS):
+        problems.append(
+            f"ci.yml step '{step}' is neither mapped from a preflight stage nor declared "
+            "in CI_ONLY_STEPS -- the gate runs in CI but never locally (or the map is stale)."
+        )
+
+
+def check_settings(path, root, problems):
+    try:
+        data = json.loads(read(path))
+    except json.JSONDecodeError as e:
+        problems.append(
+            f"{path.name} does not parse as JSON ({e}) -- a malformed settings file "
+            "silently disables EVERY rule and hook in it."
+        )
+        return
+    print(f"{path.name}: parses OK")
+
+    commands = []
+    for entries in (data.get("hooks") or {}).values():
+        for entry in entries:
+            for hook in entry.get("hooks", []):
+                if hook.get("type") == "command" and hook.get("command"):
+                    commands.append(hook["command"])
+    status_line = (data.get("statusLine") or {}).get("command")
+    if status_line:
+        commands.append(status_line)
+
+    checked = 0
+    for cmd in commands:
+        paths = re.findall(r"\$\{CLAUDE_PROJECT_DIR\}/([^\"']+)", cmd)
+        for tok in cmd.split():
+            tok = tok.strip("\"'")
+            if "${" not in tok and tok.endswith(".py") and "/" in tok:
+                paths.append(tok)
+        for rel in paths:
+            checked += 1
+            if not (root / rel).is_file():
+                problems.append(
+                    f"settings command references '{rel}' but that file does not exist -- "
+                    f"the hook/statusLine fails silently every time it fires. Command: {cmd}"
+                )
+    print(f"hook/statusLine repo-file references checked: {checked}")
+
+    deny = (data.get("permissions") or {}).get("deny") or []
+    for shell in SHELLS:
+        for tripwire in DENY_TRIPWIRES:
+            prefix = f"{shell}({tripwire}"
+            if not any(rule.startswith(prefix) for rule in deny):
+                problems.append(
+                    f"deny tripwire missing: no permissions.deny rule starts with '{prefix}' -- "
+                    "the canonical flag-first spelling must stay denied in both shells "
+                    "(settings $comment > honest limitation)."
+                )
+    print(f"deny tripwires checked: {len(SHELLS) * len(DENY_TRIPWIRES)}")
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--root", default=".", help="repo root to audit (default: cwd)")
+    args = ap.parse_args()
+    root = Path(args.root)
+
+    problems = []
+    sh_path = root / "scripts" / "preflight.sh"
+    ps1_path = root / "scripts" / "preflight.ps1"
+    ci_path = root / ".github" / "workflows" / "ci.yml"
+    settings_path = root / ".claude" / "settings.json"
+
+    missing = [p for p in (sh_path, ps1_path, ci_path, settings_path) if not p.is_file()]
+    if missing:
+        for p in missing:
+            problems.append(f"ops-config file missing: {p}")
+    else:
+        sh_stages = parse_sh_stages(sh_path)
+        ps1_stages = parse_ps1_stages(ps1_path)
+        check_mirror(sh_stages, ps1_stages, problems)
+        check_ci_map(set(sh_stages) | set(ps1_stages), parse_ci_steps(ci_path), problems)
+        check_settings(settings_path, root, problems)
+
+    if problems:
+        print()
+        for p in problems:
+            print(f"OPS-CONFIG FAIL: {p}")
+        print(f"\naudit_ops_config: {len(problems)} problem(s) -- a gate must exist in "
+              "preflight.sh, preflight.ps1, AND ci.yml (via PREFLIGHT_TO_CI), and the "
+              "settings wiring must point at real files.")
+        return 1
+    print("audit_ops_config: OK")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
