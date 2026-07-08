@@ -1188,3 +1188,294 @@ describe('CaeTable — expandable rows (#144)', () => {
     }
   });
 });
+
+// `name` frozen to the inline-start edge, `role` to the inline-end edge, `age` free in between.
+const STICKY_COLUMNS: CaeTableColumn[] = [
+  { key: 'name', header: 'Name', sticky: true },
+  { key: 'age', header: 'Age' },
+  { key: 'role', header: 'Role', stickyEnd: true },
+];
+
+// A sticky table that also projects a detail template, so the built-in expand-toggle column renders and
+// must freeze alongside the sticky leading data column (#252).
+@Component({
+  imports: [CaeTable, CaeRowDetailDef],
+  template: `
+    <cae-table [columns]="columns" [data]="data">
+      <ng-template caeRowDetailDef let-row>
+        <span class="detail">{{ asPerson(row).role }}</span>
+      </ng-template>
+    </cae-table>
+  `,
+})
+class StickyExpandableHost {
+  columns: CaeTableColumn[] = STICKY_COLUMNS;
+  data: Person[] = PEOPLE;
+  asPerson(row: unknown): Person {
+    return row as Person;
+  }
+}
+
+/**
+ * Sticky header + sticky columns (#144). The CDK's sticky styler defers its writes into
+ * `afterNextRender`, so every setup here awaits `whenStable()` to flush them.
+ *
+ * **What jsdom can and cannot prove.** jsdom has no layout: every `getBoundingClientRect()` is 0,
+ * so the *offsets* the styler computes are all `0px` and prove nothing about real placement. What is
+ * fully deterministic — and what these tests lock — is the **wiring**: that the input reaches the CDK,
+ * that the styler marks exactly the intended cells with the sticky class, and *which edge* each cell is
+ * pinned to (`top` for a sticky header, `left`/`right` for a sticky start/end column in LTR — the styler
+ * writes the edge property regardless of the measured distance). Real positioning is verified in the M4
+ * real-browser pass (#240).
+ *
+ * The marker is `mat-mdc-table-sticky`, **not** the CDK's own `cdk-table-sticky`: MatTable overrides
+ * `stickyCssClass`, and its stylesheet is what actually applies `position: sticky` to that class.
+ */
+describe('CaeTable — sticky header + columns (#144)', () => {
+  let fixture: ComponentFixture<CaeTable<Person>>;
+  let el: HTMLElement;
+
+  async function setup(inputs: Record<string, unknown> = {}): Promise<void> {
+    fixture = TestBed.createComponent(CaeTable<Person>);
+    const ref = fixture.componentRef;
+    ref.setInput('columns', COLUMNS);
+    ref.setInput('data', PEOPLE);
+    for (const [k, v] of Object.entries(inputs)) ref.setInput(k, v);
+    el = fixture.nativeElement as HTMLElement;
+    fixture.detectChanges();
+    fixture.detectChanges();
+    // The sticky styler writes its class + offsets inside afterNextRender — flush those hooks.
+    await fixture.whenStable();
+  }
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({ imports: [CaeTable] }).compileComponents();
+  });
+
+  /** Every cell (header + body) of one column — Material stamps `mat-column-<key>` on each. */
+  const columnCells = (key: string) =>
+    Array.from(el.querySelectorAll<HTMLElement>(`.mat-column-${key}`));
+  const headerCells = () => Array.from(el.querySelectorAll<HTMLElement>('th[mat-header-cell]'));
+  const bodyCells = () => Array.from(el.querySelectorAll<HTMLElement>('td[mat-cell]'));
+  const stuck = (c: HTMLElement) => c.classList.contains('mat-mdc-table-sticky');
+
+  it('sticks no header or body cell by default — the pre-sticky render is untouched', async () => {
+    await setup();
+    expect(headerCells().some(stuck)).toBe(false);
+    expect(bodyCells().some(stuck)).toBe(false);
+    // Scoped to cells on purpose, and TFOOT is FILTERED rather than asserted. CdkTable stamps a native
+    // table with an empty <tfoot>, then calls updateStickyFooterContainer([]) — and `[].some(s => !s)` is
+    // false, so the CDK takes its "all footer rows are sticky" branch and marks that tfoot sticky. It is
+    // empty and display:none (out of the a11y tree, inert), and predates this feature: cae-table declares
+    // no footer row def. Asserting `toEqual(['TFOOT'])` would pin an upstream bug and go red the day
+    // Angular fixes it — a failure for a change we did not make. Filtering keeps the real coverage.
+    const stuckTags = Array.from(el.querySelectorAll('.mat-mdc-table-sticky')).map(
+      (e) => e.tagName,
+    );
+    expect(stuckTags.filter((t) => t !== 'TFOOT')).toEqual([]);
+  });
+
+  it('stickyHeader pins every header cell to the top edge, leaving body cells unstuck', async () => {
+    await setup({ stickyHeader: true });
+    expect(headerCells().length).toBe(3);
+    expect(headerCells().every(stuck)).toBe(true);
+    expect(headerCells().every((h) => h.style.top === '0px')).toBe(true);
+    // No column is sticky, so the body stays free — sticky header is a row-axis concern only.
+    expect(bodyCells().some(stuck)).toBe(false);
+  });
+
+  it('a sticky column pins to the inline-start edge across BOTH its header and body cells', async () => {
+    await setup({ columns: STICKY_COLUMNS });
+    const name = columnCells('name');
+    expect(name.length).toBe(1 + PEOPLE.length); // 1 header + 1 body cell per datum
+    expect(name.every(stuck)).toBe(true);
+    expect(name.every((c) => c.style.left === '0px')).toBe(true);
+    expect(name.every((c) => !c.style.right)).toBe(true);
+  });
+
+  it('a stickyEnd column pins to the inline-end edge (right in LTR), not the start edge', async () => {
+    await setup({ columns: STICKY_COLUMNS });
+    const role = columnCells('role');
+    expect(role.every(stuck)).toBe(true);
+    expect(role.every((c) => c.style.right === '0px')).toBe(true);
+    expect(role.every((c) => !c.style.left)).toBe(true);
+  });
+
+  it('leaves an unmarked column between two frozen ones completely unstuck', async () => {
+    await setup({ columns: STICKY_COLUMNS });
+    expect(columnCells('age').some(stuck)).toBe(false);
+  });
+
+  it('combines a sticky header with a sticky column — the corner cell freezes on both axes', async () => {
+    await setup({ columns: STICKY_COLUMNS, stickyHeader: true });
+    const corner = columnCells('name')[0];
+    expect(corner.tagName).toBe('TH');
+    expect(corner.style.top).toBe('0px'); // frozen by the header row
+    expect(corner.style.left).toBe('0px'); // and by its own column
+  });
+
+  it('keeps the sticky column frozen after a sort re-renders the rows', async () => {
+    await setup({ columns: STICKY_COLUMNS, sortActive: 'age', sortDirection: 'asc' });
+    // Ascending by age → Ann (20) first: the rows really did re-render under the sticky column.
+    expect(columnCells('name')[1].textContent!.trim()).toBe('Ann');
+    expect(columnCells('name').every(stuck)).toBe(true);
+  });
+
+  it('dev-warns when one column sets both sticky and stickyEnd (it cannot freeze to both edges)', async () => {
+    const warnings: string[] = [];
+    const realWarn = console.warn;
+    console.warn = (msg?: unknown) => warnings.push(String(msg));
+    try {
+      await setup({
+        columns: [
+          { key: 'name', header: 'Name', sticky: true, stickyEnd: true },
+          { key: 'age', header: 'Age' },
+          { key: 'role', header: 'Role' },
+        ] satisfies CaeTableColumn[],
+      });
+      expect(warnings.some((w) => w.includes('both sticky and stickyEnd'))).toBe(true);
+    } finally {
+      console.warn = realWarn;
+    }
+  });
+
+  it('does NOT dev-warn for the ordinary one-edge-per-column config (guard precision)', async () => {
+    const warnings: string[] = [];
+    const realWarn = console.warn;
+    console.warn = (msg?: unknown) => warnings.push(String(msg));
+    try {
+      await setup({ columns: STICKY_COLUMNS });
+      // STICKY_COLUMNS is a valid config on every axis: one edge per column, `name` a start-edge prefix,
+      // `role` an end-edge suffix. No sticky guard may fire.
+      expect(warnings.filter((w) => w.includes('cae-table:'))).toEqual([]);
+    } finally {
+      console.warn = realWarn;
+    }
+  });
+
+  // ---- The built-in expand/select columns freeze with the leading data column (#252, WCAG 2.4.11) ----
+  //
+  // They are rendered BEFORE the consumer's columns. The CDK offsets a sticky column by the summed widths
+  // of the sticky columns before it, so a loose built-in contributes 0 and the frozen data cell pins at
+  // left:0 — directly over the checkbox/radio/toggle, which stays in the tab order while invisible. These
+  // lock the propagation that prevents it.
+
+  const selectCells = () => Array.from(el.querySelectorAll<HTMLElement>('.cae-table__select-cell'));
+  const expandCells = () => Array.from(el.querySelectorAll<HTMLElement>('.cae-table__expand-cell'));
+
+  it('freezes the selection column when the leading data column is sticky', async () => {
+    await setup({ columns: STICKY_COLUMNS, selectionMode: 'multiple' });
+    expect(selectCells().length).toBe(1 + PEOPLE.length);
+    expect(selectCells().every(stuck)).toBe(true);
+    expect(selectCells().every((c) => c.style.left === '0px')).toBe(true);
+  });
+
+  it('leaves the selection column loose when the leading data column is NOT sticky', async () => {
+    // Guard precision: `age` alone is sticky, so there is no start-edge run for the built-in to join —
+    // freezing it would only add a second gap. (This config is itself non-contiguous, hence the warn.)
+    const realWarn = console.warn;
+    console.warn = () => {};
+    try {
+      await setup({
+        columns: [
+          { key: 'name', header: 'Name' },
+          { key: 'age', header: 'Age', sticky: true },
+          { key: 'role', header: 'Role' },
+        ] satisfies CaeTableColumn[],
+        selectionMode: 'multiple',
+      });
+      expect(selectCells().some(stuck)).toBe(false);
+    } finally {
+      console.warn = realWarn;
+    }
+  });
+
+  it('freezes the expand-toggle column when the leading data column is sticky', async () => {
+    const f = TestBed.createComponent(StickyExpandableHost);
+    f.detectChanges();
+    f.detectChanges();
+    await f.whenStable();
+    el = f.nativeElement as HTMLElement;
+    expect(expandCells().length).toBe(1 + PEOPLE.length);
+    expect(expandCells().every(stuck)).toBe(true);
+    expect(expandCells().every((c) => c.style.left === '0px')).toBe(true);
+  });
+
+  // ---- Non-contiguous runs are the HARMFUL misconfiguration (they hide focusable content) ----
+
+  it('dev-warns on a sticky run that does not reach the inline-start edge', async () => {
+    const warnings: string[] = [];
+    const realWarn = console.warn;
+    console.warn = (msg?: unknown) => warnings.push(String(msg));
+    try {
+      // `role` is sticky but `age` before it is not → `role` pins on top of `age`, hiding it.
+      await setup({
+        columns: [
+          { key: 'name', header: 'Name', sticky: true },
+          { key: 'age', header: 'Age' },
+          { key: 'role', header: 'Role', sticky: true },
+        ] satisfies CaeTableColumn[],
+      });
+      const warn = warnings.find((w) => w.includes('contiguous run to the inline-start edge'));
+      expect(warn).toBeDefined();
+      expect(warn).toContain('"role"'); // names the offender, not the innocent prefix column
+      expect(warn).not.toContain('"name"');
+    } finally {
+      console.warn = realWarn;
+    }
+  });
+
+  it('dev-warns on a stickyEnd run that does not reach the inline-end edge', async () => {
+    const warnings: string[] = [];
+    const realWarn = console.warn;
+    console.warn = (msg?: unknown) => warnings.push(String(msg));
+    try {
+      // `name` is stickyEnd but `age` after it is not → `name` pins on top of `age`.
+      await setup({
+        columns: [
+          { key: 'name', header: 'Name', stickyEnd: true },
+          { key: 'age', header: 'Age' },
+          { key: 'role', header: 'Role', stickyEnd: true },
+        ] satisfies CaeTableColumn[],
+      });
+      const warn = warnings.find((w) => w.includes('contiguous run to the inline-end edge'));
+      expect(warn).toBeDefined();
+      expect(warn).toContain('"name"');
+      expect(warn).not.toContain('"role"'); // `role` is the valid suffix
+    } finally {
+      console.warn = realWarn;
+    }
+  });
+
+  it('re-validates sticky config on a RUNTIME [columns] swap (the guard is reactive, not ngOnInit-only)', async () => {
+    // The whole point: a column-freeze/reorder UI mutates `columns` after mount, and the CDK really does
+    // re-wire sticky on that swap. A once-only ngOnInit guard would never see the bad config.
+    await setup({ columns: STICKY_COLUMNS });
+    const warnings: string[] = [];
+    const realWarn = console.warn;
+    console.warn = (msg?: unknown) => warnings.push(String(msg));
+    try {
+      fixture.componentRef.setInput('columns', [
+        { key: 'name', header: 'Name', sticky: true, stickyEnd: true },
+        { key: 'age', header: 'Age' },
+        { key: 'role', header: 'Role' },
+      ] satisfies CaeTableColumn[]);
+      fixture.detectChanges();
+      expect(warnings.some((w) => w.includes('both sticky and stickyEnd'))).toBe(true);
+    } finally {
+      console.warn = realWarn;
+    }
+  });
+
+  it('documents the upstream CDK no-op: stickyEnd on the FIRST displayed column never pins', async () => {
+    // A canary, not an endorsement. CDK's _getStickyEndColumnPositions runs `i = widths.length; i > 0; i--`
+    // so it never visits index 0 → positions[0] is undefined → `style.right = "undefinedpx"` → rejected by
+    // the CSSOM. The cell is class-marked sticky but carries no inset, so it never actually freezes. A
+    // single-column table is the only contiguous way to reach it (hence no contiguity warn here). If this
+    // test ever fails, Angular fixed the off-by-one — delete the caveat on CaeTableColumn.stickyEnd.
+    await setup({ columns: [{ key: 'name', header: 'Name', stickyEnd: true }] });
+    const name = columnCells('name');
+    expect(name.every(stuck)).toBe(true); // the class IS applied
+    expect(name.every((c) => c.style.right === '')).toBe(true); // ...but no offset is ever written
+  });
+});
