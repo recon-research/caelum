@@ -4,7 +4,7 @@
 # template from `sha` to its HEAD to know what changed — without this stamp, every
 # template update is hand archaeology.
 source: https://github.com/recon-research/pyxis (upstream identified + first synced 2026-07-08, template-sync #245)
-sha: 86f842763d4af72335ad1f3df72718c8a0bddaae
+sha: b263b94f615619b88852cd123407ded05c9ef8cc (onboard Mode A split → read-on-demand MODE_A.md, #102; synced 2026-07-08)
 baseline: 276a2d6 (reconstructed — the copy-day HEAD; the original copy recorded no sha, see #245)
 copied: 2026-06-25
 last_update: 2026-07-08
