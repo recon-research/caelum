@@ -9,8 +9,9 @@ The mechanics of landing work. Read the merge policy, branch naming, and PR titl
 
 ## Procedure
 
+0. **Claim check, then claim** (conventions › Concurrent writers) — run at slice **start**, before implementation; re-verify here if the slice somehow reached landing unclaimed. For ticket `#NN`: `git ls-remote --heads origin "slice/<NN>-*"` · `gh pr list --search "<NN>" --state all` · `gh issue view <NN> --json state,assignees` + scan its comments for a foreign `claim:` with no matching `unclaim:`. A foreign remote branch or claim, an existing PR, a foreign assignee, or a **closed** state (a concurrent writer may have just finished it — open-state listings won't show that) ⇒ the ticket is claimed or done: pick another. Clear ⇒ `git checkout -b slice/<NN>-<slug>` from up-to-date `main`, **push it immediately** — the remote branch *is* the claim — then post the claim comment: `claim: <machine>/<session8> · <UTC ISO> · <branch>` (identity from `.claude/metrics/session.json`). Parking the slice later ⇒ post the matching `unclaim:` comment.
 1. **Preflight** — `scripts/preflight.sh` (or `scripts\preflight.ps1`) must PASS. Re-run after *any* edit, however small — the classic CI failure is an edit made after the format check ran.
-2. **Branch** — from up-to-date `main`: `git checkout -b <branch per conventions>` (e.g. `slice/<issue#>-<slug>`). Never commit on `main`.
+2. **Branch** — created and pushed at step 0 (the claim); if it somehow doesn't exist yet, create it now from up-to-date `main`: `git checkout -b <branch per conventions>` (e.g. `slice/<issue#>-<slug>`). Never commit on `main`.
 3. **Commit** — stage explicitly (`git add <paths>`; check `git status` for strays). Multiline message via the **Bash tool** with a here-doc (PowerShell here-string quoting mangles git args):
    ```bash
    git commit -F - <<'EOF'
@@ -42,3 +43,4 @@ The PR URL, the merged commit hash on `main`, and the CI result (which checks ra
 - Don't `gh pr merge --admin` — it bypasses the required checks; if a green PR won't merge, merge `main` *into* the branch, re-preflight, wait for green.
 - Don't merge with a failing or still-running check "because it's probably fine".
 - Don't inline multiline bodies/messages on PowerShell — body-file / here-doc only (conventions › PR / commit mechanics).
+- Don't push through a permission/classifier denial of the merge — that's the owner's call, not an error to engineer around: run the denial protocol (`CLAUDE.md` › Working style — survey the owner with approve-retry / standing-rule / merge-it-yourself choices) and continue with independent work meanwhile.

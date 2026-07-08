@@ -28,6 +28,9 @@ __pycache__/
 # Session-local runtime artifacts (scheduling lock carries a live sessionId/pid) — never versioned
 .claude/scheduled_tasks.lock
 
+# Local telemetry — statusline session snapshots + skill-usage ledger; one machine's view, never shared
+.claude/metrics/
+
 # OS / editor
 .DS_Store
 Thumbs.db

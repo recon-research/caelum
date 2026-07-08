@@ -1,19 +1,19 @@
 ---
 name: prepare_compaction
-description: Checkpoint the session before context is compacted or the session ends, so the next session resumes from the docs alone. Use when the user says "let's prepare for compaction", "prepare to compact", "checkpoint", or "wrap up the session". Rewrites and stamps the Status block, VERIFIES its claims against the tracker, updates roadmap/decision log, sweeps deferrals into tickets, and leaves the tree clean and pushed.
+description: Checkpoint the session before context is compacted or the session ends, so the next session resumes from the docs alone. Use when the user says "let's prepare for compaction", "prepare to compact", "checkpoint", or "wrap up the session" — and PROACTIVELY, without being asked, at a clean checkpoint (just merged, tree pushed, no slice in flight) once the session has grown heavy or context is running low — run the full procedure and end with the ready-to-paste /compact block; pasting it is the user's call, so never ask "want me to compact?" first. Rewrites and stamps the Status block, VERIFIES its claims against the tracker, updates roadmap/decision log, sweeps deferrals into tickets, and leaves the tree clean and pushed.
 ---
 
 # Prepare For Compaction
 
 The durable memory is the docs + the issue tracker, not the chat. This skill flushes everything in-flight to those — and **verifies** the result, because a stale checkpoint is worse than none. If you've checkpointed at every merge (the standing rule), this is mostly verification, not archaeology.
 
-## When to recommend it (proactive — don't wait to be asked)
+## When to run it unprompted (proactive — asking first is the failure mode)
 
-Compaction quality is set by *when* you compact. The agent watches for the moment and **recommends it in one line**, rather than letting the context window fill until the harness force-compacts (a forced auto-compaction keeps only a generic summary — it can't name a focus, so the Resume point is exactly what it tends to drop).
+Compaction quality is set by *when* you compact. The agent watches for the moment and **runs the procedure itself**, rather than letting the context window fill until the harness force-compacts (a forced auto-compaction keeps only a generic summary — it can't name a focus, so the Resume point is exactly what it tends to drop).
 
 - **Best moment = a clean checkpoint:** just merged, tree pushed, **no in-flight slice**. Compacting here loses nothing; compacting mid-slice risks stranding uncheckpointed work. If you're mid-slice when the window gets tight, first reach a checkpoint — land the slice, or rescue-branch it (`onboard` Mode B's dirty-tree path) — *then* compact.
 - **Signals it's time:** the session has run several slices / a long exploration / large file reads; you're about to start a big new slice that deserves a fresh window; or the human's context indicator is nearing the auto-compaction threshold. Beat the threshold — a chosen compaction with a named focus beats a forced one.
-- **How to recommend — carry the paste-able command with it:** at such a moment say so plainly *and, in the same message, emit the ready-to-paste `/compact` block* (step 8) — so the human can compact with a single paste, never a bare *"want me to prepare it?"* that forces another round-trip. At a clean checkpoint the readiness gate is essentially already met (tree pushed, Status fresh from merge-time checkpointing), so the block is cheap: do the quick step-2 tracker cross-check, then emit it. Withhold the block *only* if Status genuinely needs reconciliation first — then say so and offer to run the full procedure before emitting. Don't nag every turn; raise it once per clean checkpoint when the session is genuinely heavy.
+- **How to hand it over:** don't ask *"want me to compact?"* and wait — that round-trip is the documented field failure (#45): the block arrives one message too late or not at all. At the moment, say in one line why now (*"clean checkpoint + heavy session — preparing compaction"*), run the procedure, and end the message with the readiness-gate line and the fenced `/compact` block (step 8). The human pastes it when they choose — an unused block costs nothing; a missed checkpoint costs the Resume point. Don't nag: at most once per clean checkpoint when the session is genuinely heavy.
 
 ## Procedure
 
@@ -42,6 +42,8 @@ Compaction quality is set by *when* you compact. The agent watches for the momen
    ```
    ````
 
+   **Handoff budget — hard cap, anti-ratchet (#67):** the argument stays **under ~100 words, one paragraph, exactly this format** — pointers, never content. No session narrative, no accomplishment lists, no restated policy: standing constraints live in durable homes (`CLAUDE.md`, the settings `$comment`, conventions) and are *referenced*, not inlined. Write it fresh from the format every time, **never by extending the previous session's handoff** — that ratchet is the documented field failure: a sibling project's handoff grew at every compaction until it crowded out the summary it was steering. If the block wants more words, the overflow is **un-checkpointed state**: put it in Status / ROADMAP / a ticket (steps 1–5), then the pointer suffices.
+
 ## Output
 
 - The one-line readiness-gate result (or what was fixed to pass it).
@@ -55,6 +57,7 @@ Compaction quality is set by *when* you compact. The agent watches for the momen
 - `gh issue list` shows every deferred item; nothing actionable lives only in this conversation.
 - `git status` clean; pushed; CI state recorded honestly.
 - The readiness gate passed and the `/compact` block was emitted in a fenced code block (copyable), with a Resume point specific enough to need nothing else.
+- The `/compact` argument is under ~100 words, matches the step-8 format, and repeats nothing that now lives in Status / the tracker.
 
 ## Don't
 
@@ -64,4 +67,5 @@ Compaction quality is set by *when* you compact. The agent watches for the momen
 - Don't push failing work silently — note it, or don't push it.
 - Don't emit the `/compact` block before the readiness gate passes — a copy-paste handoff over an unprepared tree just compacts the mess.
 - Don't run `/compact` yourself — print the command for the human and let them choose when to paste it; they may want to keep working in this window.
-- Don't write a novel — the Status block is ~10 lines; detail belongs in the ROADMAP and the tracker.
+- Don't write a novel — the Status block is ~10 lines (≤ 15 non-blank is CI-gated by `scripts/audit_docs.py`); detail belongs in the ROADMAP and the tracker.
+- Don't grow the handoff — the ~100-word cap is hard: regenerate from the format each time; never carry the prior session's block forward.

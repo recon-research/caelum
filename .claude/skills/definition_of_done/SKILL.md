@@ -1,6 +1,6 @@
 ---
 name: definition_of_done
-description: Run the full definition-of-done verification gate for a subsystem or change — build, tests, domain checks, liveness, anti-patterns, determinism, profile, milestone exit — and report pass/fail per gate with evidence before declaring work complete. Use when the user says "is this done", "verify the subsystem", "run the gates", "definition of done", or before claiming a feature is finished. Broader than build_and_test (which is only build + test).
+description: Run the full definition-of-done verification gate for a subsystem or change — build, tests, domain checks, liveness, anti-patterns, determinism, profile, milestone exit, review cadence (adversarial_review ran when the cadence requires), merge-time checkpoint — and report pass/fail per gate with evidence before declaring work complete. Use when the user says "is this done", "verify the subsystem", "run the gates", "definition of done", or before claiming a feature is finished. Broader than build_and_test (which is only build + test).
 ---
 
 # Definition Of Done (Verification Gate)

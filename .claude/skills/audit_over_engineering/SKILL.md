@@ -1,6 +1,6 @@
 ---
 name: audit_over_engineering
-description: Sweep the WHOLE repository (or a subsystem) for accumulated over-engineering — dead code, hand-rolled stdlib, single-use abstractions, one-caller layers, speculative flags — and produce a ranked, biggest-cut-first ledger with a `net: -N lines, -M deps` tally and a filed `debt` ticket per finding. Use on a maturing codebase when the user says "audit for over-engineering", "what can we delete", "find dead code / bloat", "is this over-engineered", "simplification sweep", "tech-debt sweep", "what's unused". Repo-scoped + on-demand — the complement to adversarial_review's diff-scoped over-engineering lens. Inspired by the ponytail project.
+description: Sweep the WHOLE repository (or a subsystem) for accumulated over-engineering — dead code, hand-rolled stdlib, single-use abstractions, one-caller layers, speculative flags — and produce a ranked, biggest-cut-first ledger with a net-savings tally (-N lines, -M deps) and a filed `debt` ticket per finding. Use on a maturing codebase when the user says "audit for over-engineering", "what can we delete", "find dead code / bloat", "is this over-engineered", "simplification sweep", "tech-debt sweep", "what's unused". Repo-scoped + on-demand — the complement to adversarial_review's diff-scoped over-engineering lens. Inspired by the ponytail project.
 ---
 
 # Audit Over-Engineering (whole-repo simplification sweep)
@@ -11,7 +11,7 @@ Catches what no per-diff review can see: cruft that accrued across many individu
 
 ## Procedure
 
-1. **Frame the sweep.** Whole repo, or a subsystem (`PROJECT_CONVENTIONS.md` › Source Layout). Delegate the broad read to read-only subagents — a cheap/fast model for the mechanical inventory, the stronger model only where judgment bites — and keep **conclusions, not file dumps**. This is a fan-out, not one linear read.
+1. **Frame the sweep.** Whole repo, or a subsystem (`PROJECT_CONVENTIONS.md` › Source Layout). Delegate the broad read to read-only subagents — [`mech-sweeper`](../../agents/mech-sweeper.md) (haiku) for the mechanical inventory, the session model only where judgment bites (the three-tier table: [`README`](../README.md) › Model & effort routing) — and keep **conclusions, not file dumps**. This is a fan-out, not one linear read.
 2. **Hunt, by tag** (the vocabulary shared with `adversarial_review`'s lens), capturing `file:line` for each:
    - **delete** — dead / unreachable / unused code, types, flags, or dependencies nothing imports.
    - **stdlib** — hand-rolled what the language's standard library already ships.
