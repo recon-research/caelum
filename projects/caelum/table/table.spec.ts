@@ -5,6 +5,7 @@ import { By } from '@angular/platform-browser';
 
 import { CaeTable, CaeTableColumn } from './table';
 import { CaeCellDef } from './cell-def';
+import { CaeRowDetailDef } from './row-detail-def';
 
 // A plain typed interface (no index signature) — cae-table's generic is unconstrained, so an
 // ordinary row model type works without `extends Record<string, unknown>` (#141).
@@ -844,5 +845,346 @@ describe('CaeTable — single-select row selection (#144)', () => {
     );
     fixture.detectChanges();
     expect(ref.instance.selection()).toEqual([]);
+  });
+});
+
+// ---- Expandable rows (#144, p-table rowexpansion parity) ----
+
+// A host projecting a caeRowDetailDef and binding [(expanded)] via the signal-safe explicit form
+// ([expanded] + (expandedChange)) — proves the vendor-neutral T[] round-trips through the model.
+@Component({
+  imports: [CaeTable, CaeRowDetailDef],
+  template: `
+    <cae-table
+      [columns]="columns()"
+      [data]="data()"
+      [expanded]="expanded()"
+      (expandedChange)="expanded.set($event)"
+    >
+      <ng-template caeRowDetailDef let-row>
+        <p class="detail-body">Detail: {{ asPerson(row).name }} / {{ asPerson(row).role }}</p>
+      </ng-template>
+    </cae-table>
+  `,
+})
+class ExpandableHost {
+  readonly columns = signal<CaeTableColumn[]>(COLUMNS);
+  readonly data = signal<Person[]>(PEOPLE);
+  readonly expanded = signal<readonly Person[]>([]);
+  asPerson(row: unknown): Person {
+    return row as Person;
+  }
+}
+
+// A host combining expandable rows AND a selection column — proves the prepended-column order.
+@Component({
+  imports: [CaeTable, CaeRowDetailDef],
+  template: `
+    <cae-table [columns]="columns" [data]="data" selectionMode="multiple">
+      <ng-template caeRowDetailDef let-row>
+        <span class="detail-body">{{ asPerson(row).name }}</span>
+      </ng-template>
+    </cae-table>
+  `,
+})
+class ExpandableSelectableHost {
+  columns = COLUMNS;
+  data = PEOPLE;
+  asPerson(row: unknown): Person {
+    return row as Person;
+  }
+}
+
+// A host combining a caeCellDef (rendering its index + absoluteIndex) AND a caeRowDetailDef — the
+// regression guard that multiTemplateDataRows doesn't corrupt the #143/#213 cell-index context to NaN.
+@Component({
+  imports: [CaeTable, CaeCellDef, CaeRowDetailDef],
+  template: `
+    <cae-table [columns]="columns" [data]="data">
+      <ng-template caeCellDef="role" let-i="index" let-n="absoluteIndex">
+        <span class="idx-cell">{{ i }}:{{ n }}</span>
+      </ng-template>
+      <ng-template caeRowDetailDef let-row>
+        <span class="detail-body">{{ asPerson(row).name }}</span>
+      </ng-template>
+    </cae-table>
+  `,
+})
+class ExpandableWithCellIndexHost {
+  columns = COLUMNS;
+  data = PEOPLE;
+  asPerson(row: unknown): Person {
+    return row as Person;
+  }
+}
+
+// A host that adds/removes the caeRowDetailDef at runtime (behind @if) — exercises the reactive
+// contentChildren → rowDetailDef → columnKeys/multiTemplateDataRows transition in both directions.
+@Component({
+  imports: [CaeTable, CaeRowDetailDef],
+  template: `
+    <cae-table [columns]="columns()" [data]="data()">
+      @if (showDetail()) {
+        <ng-template caeRowDetailDef let-row>
+          <span class="detail-body">{{ asPerson(row).name }}</span>
+        </ng-template>
+      }
+    </cae-table>
+  `,
+})
+class ToggleExpandableHost {
+  readonly columns = signal<CaeTableColumn[]>(COLUMNS);
+  readonly data = signal<Person[]>(PEOPLE);
+  readonly showDetail = signal(true);
+  asPerson(row: unknown): Person {
+    return row as Person;
+  }
+}
+
+// Two caeRowDetailDef templates — the first-wins dev-warn path.
+@Component({
+  imports: [CaeTable, CaeRowDetailDef],
+  template: `
+    <cae-table [columns]="columns" [data]="data">
+      <ng-template caeRowDetailDef><span class="detail-a">A</span></ng-template>
+      <ng-template caeRowDetailDef><span class="detail-b">B</span></ng-template>
+    </cae-table>
+  `,
+})
+class DuplicateDetailHost {
+  columns = COLUMNS;
+  data = PEOPLE;
+}
+
+describe('CaeTable — expandable rows (#144)', () => {
+  function make<H>(type: Type<H>): { fixture: ComponentFixture<H>; el: HTMLElement } {
+    const fixture = TestBed.createComponent(type);
+    fixture.detectChanges();
+    fixture.detectChanges();
+    return { fixture, el: fixture.nativeElement as HTMLElement };
+  }
+
+  // The main (data) rows and the detail rows are distinguished by the detail-row class — with
+  // multiTemplateDataRows the DOM order is main0, detail0, main1, detail1, … so indices align.
+  const mainRows = (el: HTMLElement) =>
+    Array.from(el.querySelectorAll('tr[mat-row]:not(.cae-table__detail-row)'));
+  const detailRows = (el: HTMLElement) =>
+    Array.from(el.querySelectorAll('tr.cae-table__detail-row'));
+  const toggle = (el: HTMLElement, i: number) =>
+    mainRows(el)[i].querySelector('button.cae-table__expand-toggle') as HTMLButtonElement;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [
+        CaeTable,
+        CaeRowDetailDef,
+        ExpandableHost,
+        ExpandableSelectableHost,
+        ExpandableWithCellIndexHost,
+        ToggleExpandableHost,
+        DuplicateDetailHost,
+      ],
+    }).compileComponents();
+  });
+
+  it('renders no expand column and no detail rows without a caeRowDetailDef (off by default)', () => {
+    const fixture = TestBed.createComponent(CaeTable<Person>);
+    const ref = fixture.componentRef;
+    ref.setInput('columns', COLUMNS);
+    ref.setInput('data', PEOPLE);
+    fixture.detectChanges();
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('.cae-table__expand-cell')).toBeNull();
+    expect(el.querySelectorAll('tr.cae-table__detail-row').length).toBe(0);
+    expect(el.querySelectorAll('th[mat-header-cell]').length).toBe(3);
+  });
+
+  it('prepends an expand-toggle column with one disclosure button per row, collapsed initially', () => {
+    const { el } = make(ExpandableHost);
+    const headers = Array.from(el.querySelectorAll('th[mat-header-cell]'));
+    expect(headers[0].classList.contains('cae-table__expand-cell')).toBe(true);
+    // A visually-hidden name on the expand column header (WCAG 1.3.1).
+    expect(headers[0].querySelector('.cae-visually-hidden')!.textContent!.trim()).toBe('Details');
+    const buttons = mainRows(el).map((r) => r.querySelector('button.cae-table__expand-toggle'));
+    expect(buttons.length).toBe(3);
+    expect(buttons.every((b) => b !== null)).toBe(true);
+    // Disclosure pattern: each button starts collapsed and names itself with a DISTINCT, correct index.
+    // Regression guard: under multiTemplateDataRows the CDK populates dataIndex, not index — a naive
+    // `let i = index` would render "Toggle details for row NaN" on every button (see the i ?? di coalesce).
+    expect(toggle(el, 0).getAttribute('aria-expanded')).toBe('false');
+    expect(toggle(el, 0).getAttribute('aria-label')).toBe('Toggle details for row 1');
+    expect(toggle(el, 1).getAttribute('aria-label')).toBe('Toggle details for row 2');
+    // No detail content is rendered while collapsed…
+    expect(el.querySelector('.detail-body')).toBeNull();
+    // …though the detail rows exist (one per datum), collapsed out of the a11y tree.
+    expect(detailRows(el).length).toBe(3);
+    expect(
+      detailRows(el).every((r) => r.classList.contains('cae-table__detail-row--collapsed')),
+    ).toBe(true);
+  });
+
+  it('points the toggle aria-controls at its detail region id (a valid, distinct IDREF)', () => {
+    const { el } = make(ExpandableHost);
+    const controls = toggle(el, 0).getAttribute('aria-controls');
+    expect(controls).toBeTruthy();
+    const region = el.querySelector(`[id="${controls}"]`);
+    expect(region).not.toBeNull();
+    expect(region!.classList.contains('cae-table__detail')).toBe(true);
+    // Distinct rows get distinct region ids (no aria-controls collision).
+    expect(toggle(el, 1).getAttribute('aria-controls')).not.toBe(controls);
+  });
+
+  it('expands a row on click: aria-expanded flips, detail renders with the row, model updates', () => {
+    const { fixture, el } = make(ExpandableHost);
+    const host = fixture.componentInstance;
+    toggle(el, 0).click();
+    fixture.detectChanges();
+    fixture.detectChanges();
+    expect(toggle(el, 0).getAttribute('aria-expanded')).toBe('true');
+    const body = detailRows(el)[0].querySelector('.detail-body');
+    expect(body).not.toBeNull();
+    // The projected template received the row as $implicit (name + role rendered).
+    expect(body!.textContent).toContain('Bob');
+    expect(body!.textContent).toContain('Lead');
+    expect(detailRows(el)[0].classList.contains('cae-table__detail-row--collapsed')).toBe(false);
+    // The two-way expanded model carries the row out as a vendor-neutral T[].
+    expect(host.expanded()).toEqual([PEOPLE[0]]);
+  });
+
+  it('collapses a row on a second click (empty model, no rendered detail)', () => {
+    const { fixture, el } = make(ExpandableHost);
+    const host = fixture.componentInstance;
+    toggle(el, 0).click();
+    fixture.detectChanges();
+    fixture.detectChanges();
+    toggle(el, 0).click();
+    fixture.detectChanges();
+    fixture.detectChanges();
+    expect(toggle(el, 0).getAttribute('aria-expanded')).toBe('false');
+    expect(el.querySelector('.detail-body')).toBeNull();
+    expect(host.expanded()).toEqual([]);
+  });
+
+  it('expands rows independently — opening one leaves the others collapsed', () => {
+    const { fixture, el } = make(ExpandableHost);
+    toggle(el, 0).click();
+    fixture.detectChanges();
+    fixture.detectChanges();
+    toggle(el, 2).click();
+    fixture.detectChanges();
+    fixture.detectChanges();
+    expect(toggle(el, 0).getAttribute('aria-expanded')).toBe('true');
+    expect(toggle(el, 1).getAttribute('aria-expanded')).toBe('false');
+    expect(toggle(el, 2).getAttribute('aria-expanded')).toBe('true');
+    // Two detail bodies rendered (rows 0 and 2); row 1 stays collapsed.
+    expect(el.querySelectorAll('.detail-body').length).toBe(2);
+    expect(detailRows(el)[1].classList.contains('cae-table__detail-row--collapsed')).toBe(true);
+  });
+
+  it('is keyboard-operable — the toggle is a native <button> activated by click (WCAG 2.1.1)', () => {
+    const { fixture, el } = make(ExpandableHost);
+    const b0 = toggle(el, 0);
+    // A native <button> turns Enter/Space into a click itself — no custom keydown handler needed, so
+    // asserting the button element + the click path is the keyboard-operability proof.
+    expect(b0.tagName).toBe('BUTTON');
+    b0.click();
+    fixture.detectChanges();
+    fixture.detectChanges();
+    expect(toggle(el, 0).getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('spans the detail cell across every displayed column (colspan)', () => {
+    const { el } = make(ExpandableHost);
+    const detailCell = detailRows(el)[0].querySelector('td[mat-cell]') as HTMLElement;
+    // 1 expand column + 3 data columns = 4.
+    expect(detailCell.getAttribute('colspan')).toBe('4');
+  });
+
+  it('honors a two-way [(expanded)] seeded from outside — rendering that row’s detail', () => {
+    const { fixture, el } = make(ExpandableHost);
+    fixture.componentInstance.expanded.set([PEOPLE[1]]);
+    fixture.detectChanges();
+    fixture.detectChanges();
+    expect(toggle(el, 1).getAttribute('aria-expanded')).toBe('true');
+    expect(detailRows(el)[1].querySelector('.detail-body')!.textContent).toContain('Ann');
+  });
+
+  it('coexists with a selection column — order is expander, then select, then data columns', () => {
+    const { el } = make(ExpandableSelectableHost);
+    const headers = Array.from(el.querySelectorAll('th[mat-header-cell]'));
+    // 1 expand + 1 select + 3 data = 5 header cells, expander first.
+    expect(headers.length).toBe(5);
+    expect(headers[0].classList.contains('cae-table__expand-cell')).toBe(true);
+    expect(headers[1].classList.contains('cae-table__select-cell')).toBe(true);
+    // The detail cell now spans all 5 displayed columns.
+    const detailCell = el.querySelector('tr.cae-table__detail-row td[mat-cell]') as HTMLElement;
+    expect(detailCell.getAttribute('colspan')).toBe('5');
+  });
+
+  it('throws a clear error when a column uses a reserved expand/detail key (dev guard)', () => {
+    const fixture = TestBed.createComponent(CaeTable<Person>);
+    const ref = fixture.componentRef;
+    ref.setInput('columns', [...COLUMNS, { key: '__caeExpand', header: 'Oops' }]);
+    ref.setInput('data', PEOPLE);
+    expect(() => {
+      fixture.detectChanges();
+      fixture.detectChanges();
+    }).toThrowError(/reserved key "__caeExpand"/);
+  });
+
+  it('does not regress selection labels under expansion — the row index stays correct (not NaN)', () => {
+    const { el } = make(ExpandableSelectableHost);
+    const rowCheckboxes = Array.from(
+      el.querySelectorAll<HTMLInputElement>('td.cae-table__select-cell input[type="checkbox"]'),
+    );
+    expect(rowCheckboxes.length).toBe(3);
+    // With multiTemplateDataRows on (a detail template is present), a naive `index` is undefined →
+    // "Select row NaN"; the i ?? di coalesce keeps the 1-based page position correct.
+    expect(rowCheckboxes[0].getAttribute('aria-label')).toBe('Select row 1');
+    expect(rowCheckboxes[2].getAttribute('aria-label')).toBe('Select row 3');
+  });
+
+  it('does not regress the caeCellDef index/absoluteIndex context under expansion (not NaN)', () => {
+    const { el } = make(ExpandableWithCellIndexHost);
+    const idxCells = mainRows(el).map((r) => r.querySelector('.idx-cell')!.textContent!.trim());
+    // Unpaginated: absoluteIndex === index. Per row index:absoluteIndex is correct (0:0, 1:1, 2:2),
+    // proving multiTemplateDataRows didn't corrupt the #143/#213 cell-index context to NaN.
+    expect(idxCells).toEqual(['0:0', '1:1', '2:2']);
+  });
+
+  it('adds/removes the expand column reactively as the caeRowDetailDef is projected/removed', () => {
+    const { fixture, el } = make(ToggleExpandableHost);
+    // On (detail template present): expand column + one detail row per datum.
+    expect(el.querySelector('.cae-table__expand-cell')).not.toBeNull();
+    expect(detailRows(el).length).toBe(3);
+    // Remove it → expand column gone, no detail rows, back to 3 data-column headers (no crash on the
+    // multiTemplateDataRows true→false transition — the one path a stray multiple-default-rowDef could hit).
+    fixture.componentInstance.showDetail.set(false);
+    fixture.detectChanges();
+    fixture.detectChanges();
+    expect(el.querySelector('.cae-table__expand-cell')).toBeNull();
+    expect(detailRows(el).length).toBe(0);
+    expect(el.querySelectorAll('th[mat-header-cell]').length).toBe(3);
+    // Re-project → expand column returns.
+    fixture.componentInstance.showDetail.set(true);
+    fixture.detectChanges();
+    fixture.detectChanges();
+    expect(el.querySelector('.cae-table__expand-cell')).not.toBeNull();
+    expect(detailRows(el).length).toBe(3);
+  });
+
+  it('dev-warns when more than one caeRowDetailDef is projected (first wins)', () => {
+    const warnings: string[] = [];
+    const realWarn = console.warn;
+    console.warn = (msg?: unknown) => warnings.push(String(msg));
+    try {
+      make(DuplicateDetailHost);
+      expect(
+        warnings.some((w) => w.includes('caeRowDetailDef') && w.includes('only the first')),
+      ).toBe(true);
+    } finally {
+      console.warn = realWarn;
+    }
   });
 });

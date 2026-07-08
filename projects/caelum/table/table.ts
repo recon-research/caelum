@@ -14,6 +14,7 @@ import {
   TemplateRef,
   viewChild,
 } from '@angular/core';
+import { MatButtonModule } from '@angular/material/button';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatPaginator, MatPaginatorModule } from '@angular/material/paginator';
 import { MatRadioModule } from '@angular/material/radio';
@@ -21,6 +22,7 @@ import { MatSort, MatSortModule } from '@angular/material/sort';
 import { MatTableDataSource, MatTableModule } from '@angular/material/table';
 import type { CaeSortDirection } from 'caelum/shared';
 import { CaeCellContext, CaeCellDef } from './cell-def';
+import { CaeRowDetailDef } from './row-detail-def';
 
 /**
  * Process-global counter for the single-select radio-group `name`. Per-render *distinctness* is what
@@ -29,6 +31,12 @@ import { CaeCellContext, CaeCellDef } from './cell-def';
  * regardless of any SSR server/client value difference. Module-scoped, never rendered as visible text.
  */
 let nextTableSelectId = 0;
+
+/**
+ * Process-global counter seeding a unique per-instance prefix for expandable-row detail-region ids
+ * (`aria-controls` targets). Distinctness across tables is what matters — never rendered as text.
+ */
+let nextTableExpandId = 0;
 
 /**
  * A column in a {@link CaeTable}. `key` indexes the row object for the displayed value and
@@ -97,10 +105,18 @@ export interface CaeTableColumn {
  * new object instances drops it; a stable-identity `dataKey` is a follow-up). Give each row control a
  * semantic accessible name via {@link rowSelectionLabel}.
  *
+ * **Expandable rows** (#144): project an `<ng-template caeRowDetailDef let-row>` (see
+ * {@link CaeRowDetailDef}) to turn on p-table `rowexpansion` parity — the table prepends an accessible
+ * expand-toggle button column (the disclosure pattern: a real `<button>`, `aria-expanded` +
+ * `aria-controls` to the detail region) and renders a full-width detail row beneath each **expanded**
+ * row. Bind `[(expanded)]` for the expanded rows as a vendor-neutral `T[]` (reference identity, like
+ * {@link selection}). Expansion is **view state**, held in the model, never in the row data (Book 10 §3.2).
+ *
  * **v1 scope** (#141): text columns, sort, client-side pagination, custom body-cell templates (#143,
- * with a page-relative + absolute row index, #213), multi- and single-select (#144). Follow-ups:
- * sticky / expandable-rows **#144**; server-side/lazy data, global filter, column resize/reorder
- * **#145**. Header/footer/full-row templating is a future enhancement (not yet requested).
+ * with a page-relative + absolute row index, #213), multi- and single-select (#144), expandable detail
+ * rows (#144). Follow-ups: sticky header/columns/footer **#144** (positioning verified in the M4
+ * real-browser pass, #240); server-side/lazy data, global filter, column resize/reorder **#145**.
+ * Header/footer/full-row templating is a future enhancement (not yet requested).
  *
  * Zoneless-compatible: `OnPush` + signal inputs (D-12). No `color` input — theming is free via
  * the token bridge (D-04).
@@ -119,6 +135,7 @@ export interface CaeTableColumn {
     MatPaginatorModule,
     MatCheckboxModule,
     MatRadioModule,
+    MatButtonModule,
     NgTemplateOutlet,
   ],
   template: `
@@ -126,6 +143,7 @@ export interface CaeTableColumn {
       mat-table
       matSort
       [dataSource]="dataSource"
+      [multiTemplateDataRows]="!!rowDetailDef()"
       [matSortActive]="sortActive()"
       [matSortDirection]="sortDirection()"
       [attr.aria-label]="(caption() ? null : ariaLabel()) || null"
@@ -136,6 +154,45 @@ export interface CaeTableColumn {
             caption()
           }}
         </caption>
+      }
+
+      @if (rowDetailDef()) {
+        <ng-container [matColumnDef]="expandColumnKey">
+          <th mat-header-cell *matHeaderCellDef class="cae-table__expand-cell">
+            <!-- The expand column's header holds no text — a visually-hidden label names it for AT and
+                 gives every toggle cell a header association (WCAG 1.3.1). -->
+            <span class="cae-visually-hidden">{{ expandColumnHeader() }}</span>
+          </th>
+          <!-- i ?? di: under multiTemplateDataRows the CDK populates dataIndex, not index (it sets only
+               one, table.mjs _updateRowIndexContext), and dataIndex carries the same page-relative datum
+               index — so coalescing keeps the row index correct whether or not a detail template is on.
+               Same pattern in the selection + data cells below. -->
+          <td
+            mat-cell
+            *matCellDef="let row; let i = index; let di = dataIndex"
+            class="cae-table__expand-cell"
+          >
+            <!-- A real <button> (mat-icon-button) — keyboard-operable natively (Enter/Space). The
+                 disclosure pattern: aria-expanded reflects open/closed, aria-controls points at this
+                 row's detail region id, aria-label names the control (state is on aria-expanded, so a
+                 stable name is fine). The chevron is decorative (aria-hidden). -->
+            <button
+              mat-icon-button
+              type="button"
+              class="cae-table__expand-toggle"
+              [attr.aria-expanded]="isExpanded(row)"
+              [attr.aria-controls]="detailId(row)"
+              [attr.aria-label]="rowExpandLabel()(row, i ?? di)"
+              (click)="toggleExpand(row)"
+            >
+              <span
+                class="cae-table__chevron"
+                [class.cae-table__chevron--open]="isExpanded(row)"
+                aria-hidden="true"
+              ></span>
+            </button>
+          </td>
+        </ng-container>
       }
 
       @if (selectionMode() !== 'none') {
@@ -160,12 +217,16 @@ export interface CaeTableColumn {
             }
             <!-- single mode: no header control — a radio group has no "select all". -->
           </th>
-          <td mat-cell *matCellDef="let row; let i = index" class="cae-table__select-cell">
+          <td
+            mat-cell
+            *matCellDef="let row; let i = index; let di = dataIndex"
+            class="cae-table__select-cell"
+          >
             @if (selectionMode() === 'multiple') {
               <mat-checkbox
                 [checked]="isSelected(row)"
                 (change)="toggleRow(row)"
-                [aria-label]="rowSelectionLabel()(row, i)"
+                [aria-label]="rowSelectionLabel()(row, i ?? di)"
               ></mat-checkbox>
             } @else {
               <!-- Single-select: standalone radios sharing one [name] form a native radio group (role
@@ -182,7 +243,7 @@ export interface CaeTableColumn {
                 (change)="selectOne(row)"
                 (click)="onRadioActivate(row, $event)"
                 (keydown.space)="onRadioActivate(row, $event)"
-                [aria-label]="rowSelectionLabel()(row, i)"
+                [aria-label]="rowSelectionLabel()(row, i ?? di)"
               ></mat-radio-button>
             }
           </td>
@@ -196,15 +257,15 @@ export interface CaeTableColumn {
           } @else {
             <th mat-header-cell *matHeaderCellDef>{{ col.header }}</th>
           }
-          <td mat-cell *matCellDef="let row; let i = index">
+          <td mat-cell *matCellDef="let row; let i = index; let di = dataIndex">
             @if (cellTemplates().get(col.key); as tpl) {
               <ng-container
                 [ngTemplateOutlet]="tpl"
                 [ngTemplateOutletContext]="{
                   $implicit: row,
                   value: cellValue(row, col.key),
-                  index: i,
-                  absoluteIndex: pageOffset() + i,
+                  index: i ?? di,
+                  absoluteIndex: pageOffset() + (i ?? di),
                 }"
               ></ng-container>
             } @else {
@@ -214,8 +275,42 @@ export interface CaeTableColumn {
         </ng-container>
       }
 
+      @if (rowDetailDef()) {
+        <!-- The full-width detail column: one cell spanning every displayed column. Its wrapper always
+             carries the region id (so the toggle's aria-controls always resolves); the projected detail
+             renders only while the row is expanded, so a collapsed detail costs nothing. -->
+        <ng-container [matColumnDef]="detailColumnKey">
+          <td
+            mat-cell
+            *matCellDef="let row"
+            [attr.colspan]="columnKeys().length"
+            class="cae-table__detail-cell"
+          >
+            <div class="cae-table__detail" [id]="detailId(row)">
+              @if (isExpanded(row)) {
+                <ng-container
+                  [ngTemplateOutlet]="rowDetailDef()!.template"
+                  [ngTemplateOutletContext]="{ $implicit: row }"
+                ></ng-container>
+              }
+            </div>
+          </td>
+        </ng-container>
+      }
+
       <tr mat-header-row *matHeaderRowDef="columnKeys()"></tr>
       <tr mat-row *matRowDef="let row; columns: columnKeys()"></tr>
+      @if (rowDetailDef()) {
+        <!-- With multiTemplateDataRows, this second (predicate-less) row def renders once per datum in
+             addition to the main row — the detail row. Collapsed via CSS (removed from the a11y tree)
+             until its row is expanded. -->
+        <tr
+          mat-row
+          *matRowDef="let row; columns: [detailColumnKey]"
+          class="cae-table__detail-row"
+          [class.cae-table__detail-row--collapsed]="!isExpanded(row)"
+        ></tr>
+      }
     </table>
 
     <!-- Persistent live region (always mounted, text varies) so a data-becomes-empty transition is
@@ -241,6 +336,38 @@ export interface CaeTableColumn {
       width: 1%;
       padding-inline-end: var(--cae-space-2);
       white-space: nowrap;
+    }
+    /* Expand-toggle column: shrink to the button (the same width:1% shrink trick as the select cell). */
+    .cae-table__expand-cell {
+      width: 1%;
+      padding-inline-end: var(--cae-space-2);
+      white-space: nowrap;
+    }
+    /* Decorative chevron drawn from currentColor (no icon font, no hardcoded color) — points inline-end
+       when collapsed, rotates down when open. currentColor inherits the button's themed text color. */
+    .cae-table__chevron {
+      display: inline-block;
+      width: 0.5em;
+      height: 0.5em;
+      border-inline-end: 2px solid currentColor;
+      border-block-end: 2px solid currentColor;
+      transform: rotate(-45deg);
+      transition: transform 150ms ease;
+    }
+    .cae-table__chevron--open {
+      transform: rotate(45deg);
+    }
+    /* The detail cell owns no padding (mat-cell default removed) so the projected content controls its
+       own layout; the wrapper gives an unstyled detail a comfortable default the consumer can override. */
+    .cae-table__detail-cell {
+      padding: 0;
+    }
+    .cae-table__detail {
+      padding: var(--cae-space-4);
+    }
+    /* A collapsed detail row is removed from layout AND the a11y tree (display:none) until expanded. */
+    .cae-table__detail-row--collapsed {
+      display: none;
     }
     /* Neutral empty-state hint (token-only): muted text, comfortable padding. currentColor fallback
        inherits the themed on-surface text (legible in light + dark) when the token is unresolved. */
@@ -353,8 +480,42 @@ export class CaeTable<T = Record<string, unknown>> implements OnInit {
    */
   readonly selectColumnHeader = input('Select');
 
+  /**
+   * Two-way set of **expanded** rows (a **vendor-neutral `readonly T[]`**), for expandable detail rows
+   * (#144, p-table `rowexpansion`). Expansion turns on by projecting an `<ng-template caeRowDetailDef>`
+   * (see {@link CaeRowDetailDef}); the table then prepends an accessible expand-toggle column and renders
+   * a full-width detail row beneath each expanded row. Like {@link selection}, membership is by
+   * **reference identity** — a `[data]` refresh yielding new instances drops the expansion (a
+   * stable-identity `dataKey` is the same #144 follow-up). Bind `[(expanded)]` for two-way, or
+   * `(expandedChange)` to observe. Expansion is **view state**, held here, never in the row data (Book 10 §3.2).
+   *
+   * **Focus note (M4, #241):** toggling collapses safely (focus rests on the toggle button). A
+   * *programmatic* clear — or a `[data]`-refresh collapse — while keyboard focus is *inside* an expanded
+   * detail's content moves focus to `<body>`; restoring it to the row's toggle is a real-browser follow-up.
+   */
+  readonly expanded = model<readonly T[]>([]);
+  /**
+   * Accessible name for a row's expand-toggle button. State (open/closed) is conveyed by `aria-expanded`,
+   * so a **stable** name (naming *what* the button controls) is correct — prefer a semantic, row-derived
+   * name. The default is the **1-based position within the current page** (page-relative and post-sort,
+   * like {@link rowSelectionLabel}), so with pagination the default names repeat across pages — a poor
+   * default; supply a row-derived name.
+   */
+  readonly rowExpandLabel = input<(row: T, index: number) => string>(
+    (_row, i) => `Toggle details for row ${i + 1}`,
+  );
+  /**
+   * Visually-hidden accessible name for the expand **column** header — the header holds no text, so this
+   * names the column for AT and gives every toggle cell a header association (WCAG 1.3.1).
+   */
+  readonly expandColumnHeader = input('Details');
+
   /** The reserved `matColumnDef` id for the selection column — kept out of the consumer's key space. */
   protected readonly selectColumnKey = '__caeSelect';
+  /** The reserved `matColumnDef` id for the expand-toggle column. */
+  protected readonly expandColumnKey = '__caeExpand';
+  /** The reserved `matColumnDef` id for the full-width detail row. */
+  protected readonly detailColumnKey = '__caeDetail';
 
   /**
    * The shared `name` for this table's single-select radios — a unique per-instance group id so the
@@ -363,12 +524,15 @@ export class CaeTable<T = Record<string, unknown>> implements OnInit {
   protected readonly radioName = `cae-table-select-${nextTableSelectId++}`;
 
   /**
-   * The `mat-table` `displayedColumns` — the column config order, with the selection column prepended
-   * in a selectable mode.
+   * The `mat-table` `displayedColumns` — the column config order, with the expand-toggle column
+   * (when a detail template is projected) and the selection column (in a selectable mode) prepended,
+   * expander first. The detail row uses its own single-column def, so it is not in this list.
    */
   protected readonly columnKeys = computed(() => {
-    const keys = this.columns().map((c) => c.key);
-    return this.selectionMode() === 'none' ? keys : [this.selectColumnKey, ...keys];
+    const prefix: string[] = [];
+    if (this.rowDetailDef()) prefix.push(this.expandColumnKey);
+    if (this.selectionMode() !== 'none') prefix.push(this.selectColumnKey);
+    return [...prefix, ...this.columns().map((c) => c.key)];
   });
 
   /** O(1) selection membership derived from the two-way {@link selection} model. */
@@ -399,6 +563,59 @@ export class CaeTable<T = Record<string, unknown>> implements OnInit {
   /** Select every row in `data()` (across all pages), or clear the selection if all are already selected. */
   protected toggleAll(): void {
     this.selection.set(this.allSelected() ? [] : [...this.data()]);
+  }
+
+  // ---- Expandable rows (#144) ----
+
+  /**
+   * Projected detail templates (`caeRowDetailDef`). One is expected; {@link rowDetailDef} uses the first
+   * and a dev-warn (constructor) flags a stray second — the fail-loud parity with {@link cellTemplates}.
+   */
+  private readonly rowDetailDefs = contentChildren(CaeRowDetailDef);
+  /** The active detail template — the first projected `caeRowDetailDef`, if any; its presence turns expansion on. */
+  protected readonly rowDetailDef = computed(() => this.rowDetailDefs()[0]);
+
+  /** O(1) expanded-membership derived from the two-way {@link expanded} model. */
+  private readonly expandedSet = computed(() => new Set<T>(this.expanded()));
+
+  /** Whether a row is currently expanded (by reference) — drives its `aria-expanded` + detail render. */
+  protected isExpanded(row: T): boolean {
+    return this.expandedSet().has(row);
+  }
+
+  /** Toggle one row's expanded state (updates the two-way {@link expanded} model). */
+  protected toggleExpand(row: T): void {
+    const cur = this.expanded();
+    this.expanded.set(cur.includes(row) ? cur.filter((r) => r !== row) : [...cur, row]);
+  }
+
+  /** Unique per-instance prefix for this table's detail-region ids (aria-controls targets). */
+  private readonly expandIdPrefix = `cae-table-detail-${nextTableExpandId++}`;
+  /** Row object → its stable detail-region id, assigned lazily so the toggle and its detail region agree. */
+  private readonly detailIds = new WeakMap<object, string>();
+  private detailIdSeq = 0;
+
+  /**
+   * The stable DOM id for a row's detail region — the `aria-controls` target on the toggle button *and*
+   * the `id` on the detail wrapper, which must match for the disclosure association to hold. Keyed by the
+   * row **object** via a `WeakMap` (reference identity, like selection/expansion) so it survives
+   * sort/paginate without depending on a shifting render index. A non-object row (the unconstrained
+   * generic's edge case) has no per-object id — **every** primitive row then shares the one instance-prefix
+   * id, so their detail regions collide on a duplicate `id`/`aria-controls`: expandable rows are intended
+   * for object rows (the default `T = Record<string, unknown>`). Returning a shared id (rather than
+   * throwing — a `WeakMap` rejects primitive keys) keeps a primitive-row table rendering, degraded not broken.
+   */
+  protected detailId(row: T): string {
+    const key = row as unknown;
+    if (key === null || (typeof key !== 'object' && typeof key !== 'function')) {
+      return this.expandIdPrefix;
+    }
+    let id = this.detailIds.get(key as object);
+    if (!id) {
+      id = `${this.expandIdPrefix}-${this.detailIdSeq++}`;
+      this.detailIds.set(key as object, id);
+    }
+    return id;
   }
 
   /**
@@ -555,6 +772,16 @@ export class CaeTable<T = Record<string, unknown>> implements OnInit {
           }
         }
       });
+
+      // Warn on more than one caeRowDetailDef — only the first is used (the fail-loud parity with the
+      // caeCellDef duplicate warn above). One detail template per table.
+      effect(() => {
+        if (this.rowDetailDefs().length > 1) {
+          console.warn(
+            `cae-table: ${this.rowDetailDefs().length} <ng-template caeRowDetailDef> projected — only the first is used (one detail template per table).`,
+          );
+        }
+      });
     }
   }
 
@@ -604,6 +831,16 @@ export class CaeTable<T = Record<string, unknown>> implements OnInit {
     if (this.selectionMode() !== 'none' && keys.includes(this.selectColumnKey)) {
       throw new Error(
         `cae-table: a column uses the reserved selection key "${this.selectColumnKey}" — rename it (this id is used internally for the selection checkbox column when selectionMode is set).`,
+      );
+    }
+    // The expand/detail ids are reserved unconditionally: rowDetailDef (content) hasn't resolved at
+    // ngOnInit, and a "__cae*" column key is internal-only regardless of whether expansion is on.
+    const reservedExpandKey = [this.expandColumnKey, this.detailColumnKey].find((k) =>
+      keys.includes(k),
+    );
+    if (reservedExpandKey) {
+      throw new Error(
+        `cae-table: a column uses the reserved key "${reservedExpandKey}" — rename it (this id is used internally for the expandable-rows toggle/detail columns).`,
       );
     }
   }

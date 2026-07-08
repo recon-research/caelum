@@ -70,7 +70,7 @@ Below, the **current** selector is listed with the historical alias noted. Verif
 
 | PrimeNG (`p-*`) | Caelum (`cae-*`) | Material / CDK basis | Tier | Book |
 |---|---|---|---|---|
-| `p-table` (basic→mid) | `cae-table` | `MatTable` + `MatSort` + `MatPaginator` (+ sticky/expandable staged: v1 #141 = text columns + sort + paginate; sticky/expandable/selection → #144, custom cell templates → #143; single-select is a native radio group — *not* deselectable by default per ARIA, opt into `[allowDeselect]` for p-table-style click/Space re-activation to clear #224) | Compose | 10 |
+| `p-table` (basic→mid) | `cae-table` | `MatTable` + `MatSort` + `MatPaginator` (staged: v1 #141 = text columns + sort + paginate; selection + expandable rows → #144, custom cell templates → #143; expandable rows = project `<ng-template caeRowDetailDef>` for p-table `rowexpansion` parity, an accessible disclosure toggle + `[(expanded)]` model, #144; single-select is a native radio group — *not* deselectable by default per ARIA, opt into `[allowDeselect]` for p-table-style click/Space re-activation to clear #224; sticky header/columns/footer → #144, positioning verified in the M4 real-browser pass #240) | Compose | 10 |
 | `p-table` (advanced) | `cae-data-grid` | **TanStack Table** (headless) behind `CaeGridAdapter` | **Adapter** | 13 |
 | `p-tree` | `cae-tree` | `MatTree` | Direct | 10 |
 | `p-treetable` | `cae-tree-table` | `MatTable` + tree data source (`role=treegrid`) | Build-M | 10 |
