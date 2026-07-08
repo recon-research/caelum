@@ -1,6 +1,6 @@
 # ROADMAP — Caelum
 
-The live plan. Milestone order follows the brief's phased build order ([`_intake/` §5](../_intake/primeng-to-material-migration-brief.md)), adapted to Caelum's scope: an **app-agnostic, public** component library (not an in-place app migration — `D-06`). Onboarding drafted it; every session updates the status of the slice it touched. The `CLAUDE.md` Status block is the 10-line summary of this file.
+The live plan. Milestone order follows the brief's phased build order (the gitignored `_intake/` migration brief §5; see [`_intake/README.md`](../_intake/README.md)), adapted to Caelum's scope: an **app-agnostic, public** component library (not an in-place app migration — `D-06`). Onboarding drafted it; every session updates the status of the slice it touched. The `CLAUDE.md` Status block is the 10-line summary of this file.
 
 **Status legend:** ☐ todo · ◐ in progress · ☑ done · ⊘ blocked · ✂ cut
 

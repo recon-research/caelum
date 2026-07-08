@@ -1,6 +1,6 @@
 # ARCHITECTURE — Caelum
 
-The durable description of the system's shape, its non-negotiable invariants, and the log of every architectural decision. Onboarding drafted this from the [`_intake/` brief](../_intake/primeng-to-material-migration-brief.md); it's updated whenever a `D-NN` decision is made. Keep it honest and current — `plan_work` and `review_against_library` both lean on it.
+The durable description of the system's shape, its non-negotiable invariants, and the log of every architectural decision. Onboarding drafted this from the `_intake/` migration brief (gitignored local planning input; see [`_intake/README.md`](../_intake/README.md)); it's updated whenever a `D-NN` decision is made. Keep it honest and current — `plan_work` and `review_against_library` both lean on it.
 
 ## 1. Shape
 
