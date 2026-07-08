@@ -17,6 +17,8 @@ Implement and measure honestly. The two failure modes this skill kills: **cherry
 6. **Record the outcome** against the *pre-registered* bar: supported / refuted / inconclusive — plus Failure modes & limitations (where it breaks, what wasn't tested). **Negative results are recorded with the same care** — they prevent re-litigating the idea next quarter.
 7. **Wire it in:** `experiments[]` entry in `research/MANIFEST.json` (status: `experimenting` → the note's status too); run `python3 tools/_audit_research.py`; file follow-up tickets; if the outcome grounds a decision, update/file the `decision` issue citing `EXP-NN`. Ship the PR.
 
+**Worked example — judging LLM output:** reuse the [EXP-01](../../../research/experiments/EXP-01_delegated-drafting/EXPERIMENT.md) harness shape rather than rebuilding it: blinding assignment fixed at pre-registration, order-swapped judge passes by fresh provenance-blind agents (position-bias check for free), generated specimens stored under `results/` as frozen *data* (never merged into `textbooks/`, no citation authority), prompt files committed verbatim and exempt from the tracker-hygiene grep (`research/experiments/*/prompts/*`), a stdlib conformance checker as the mechanical gate, and a stdlib SVG plot script (no matplotlib dependency). Cost accounting: prefer the Agent tool's per-run `subagent_tokens` (orchestration-free) alongside ledger deltas — and pass workers file paths, not pasted text (`CLAUDE.md` › Token discipline).
+
 ## Verification
 
 - `EXPERIMENT.md` has all required sections (the audit checks) and the pre-registration was committed **before** results.

@@ -40,7 +40,7 @@ Uses the profiler and profiling build from `PROJECT_CONVENTIONS.md` — never ha
    - Memory-bound: cache misses, false sharing
    - IO-bound: streaming / disk / network stalls
 
-8. **Recommend fixes.** Order by leverage (algorithmic > data layout > SIMD/vectorization > parallel > micro-opts). Reference [PATTERNS.md](../reference/PATTERNS.md) by name.
+8. **Recommend fixes.** Order by leverage (algorithmic > data layout > SIMD/vectorization > parallel > micro-opts). Reference [PATTERNS.md](../../../textbooks/reference/PATTERNS.md) by name.
 
 9. **Report.**
    - Markdown summary: budget, actual, top hotspots, recommended fixes

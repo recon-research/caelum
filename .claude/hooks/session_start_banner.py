@@ -13,7 +13,35 @@
 #
 # Contract: exit 0 always; stdout = injected context; on any error print
 # nothing (a banner must never wedge a session).
-import os, re, subprocess, sys
+#
+# Side effect (fail-open, #47): appends {ts, event, source, session_id} to
+# .claude/metrics/events.jsonl (gitignored). source=="compact" rows are how
+# scripts/metrics.py counts compactions in its Local-telemetry section — the
+# hook input JSON on stdin carries source: startup|resume|clear|compact
+# (https://code.claude.com/docs/en/hooks.md, accessed 2026-07-02).
+# Also rewrites .claude/metrics/session.json with the same row (#95): the
+# CURRENT session's identity. Claim comments read session_id from it —
+# <hostname>/<session_id[:8]>, conventions › Concurrent writers. Per-worktree
+# like all of .claude/metrics/, so one writer per checkout ⇒ unambiguous.
+import json, os, re, subprocess, sys
+from datetime import datetime, timezone
+
+def log_event():
+    try:
+        data = json.loads(sys.stdin.buffer.read().decode("utf-8", "replace"))
+        root = os.environ.get("CLAUDE_PROJECT_DIR") or data.get("cwd") or os.getcwd()
+        mdir = os.path.join(root, ".claude", "metrics")
+        os.makedirs(mdir, exist_ok=True)
+        row = {"ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+               "event": "session_start",
+               "source": data.get("source"),
+               "session_id": data.get("session_id")}
+        with open(os.path.join(mdir, "events.jsonl"), "a", encoding="utf-8") as f:
+            f.write(json.dumps(row) + "\n")
+        with open(os.path.join(mdir, "session.json"), "w", encoding="utf-8") as f:
+            json.dump(row, f)
+    except Exception:
+        pass
 
 def run(args, timeout=8):
     try:
@@ -24,6 +52,7 @@ def run(args, timeout=8):
         return ""
 
 def main():
+    log_event()  # telemetry first: must run even if the banner below bails early
     # Hook cwd is wherever Claude Code was launched; CLAUDE.md lives at repo root.
     root = os.environ.get("CLAUDE_PROJECT_DIR")
     if not (root and os.path.isdir(root)):

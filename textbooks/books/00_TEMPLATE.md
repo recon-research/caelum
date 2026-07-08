@@ -1,6 +1,6 @@
 # Book 00 — The Book Template (How To Write A Book In This Library)
 
-> **This file is the template every book copies.** Duplicate it to `books/NN_your_title.md`, renumber, and replace the content. It both *describes* and *demonstrates* the conventions: the section-ID grammar, the standard arc, and citation discipline. Delete this blockquote in a real book. After adding a book, update `MANIFEST.json`, regenerate `SECTIONS.json`, and run the audits (see [AGENT_GUIDE.md](../AGENT_GUIDE.md) §6).
+> **This file is the template every book copies.** Duplicate it to `books/NN_your_title.md`, renumber, and replace the content. It both *describes* and *demonstrates* the conventions: the section-ID grammar, the standard arc, and citation discipline. Delete this blockquote in a real book. After adding a book, update `MANIFEST.json`, regenerate `SECTIONS.json`, and run the audits (see [AGENT_GUIDE.md](../AGENT_GUIDE.md) §6). Books are **specced before they're written**: the assignment-sheet pass — a `<!-- BRIEF -->` block under every heading, replaced by the fill — is defined in [LIBRARY_SEED.md](../LIBRARY_SEED.md) §2.7; the book stays `status: "scaffolded"` until filled (#70).
 
 ## 1. TL;DR
 

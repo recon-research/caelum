@@ -13,6 +13,12 @@
 # can't be statistically controlled until it has data (~20+ points), so treat
 # them as provisional until the window fills, then calibrate per project.
 #
+# Plus "Local telemetry (this machine)" (#46/#47): skill usage, session
+# cost/context, compactions -- read from gitignored side-channels written by
+# .claude/statusline.py and the hooks (docs/AUTOMATION.md s1-s2). gh can never
+# see those, so the section is separate and honest about being one machine's
+# view; with no local files it degrades to a one-line pointer.
+#
 # Usage:
 #   python3 scripts/metrics.py                 # write docs/METRICS.md (default 90-day window)
 #   python3 scripts/metrics.py --window-days 30
@@ -20,7 +26,7 @@
 #
 # Single-implementation Python (like the audits/hooks) -- runs on both shells;
 # no .ps1 twin. Stdlib only. cwd-independent.
-import json, subprocess, sys, os, datetime, statistics
+import json, subprocess, sys, os, datetime, statistics, glob
 
 os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # repo root
 
@@ -126,6 +132,106 @@ runs_w = [r for r in runs if in_window(r.get("createdAt")) and r.get("conclusion
 red = [r for r in runs_w if r.get("conclusion") == "failure"]
 divergence = pct(len(red), len(runs_w))
 
+# --- Local telemetry (this machine) -- the skill-layer half of CMMI-L4 (#46/#47).
+LOCAL = os.path.join(".claude", "metrics")
+
+
+def read_jsonl(path):
+    """Parse a JSONL file; skip unparseable lines; [] on any failure (fail-soft)."""
+    rows = []
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                try:
+                    rows.append(json.loads(line))
+                except ValueError:
+                    pass
+    except Exception:
+        pass
+    return rows
+
+
+skill_rows = read_jsonl(os.path.join(LOCAL, "skill_usage.jsonl"))
+event_rows = read_jsonl(os.path.join(LOCAL, "events.jsonl"))
+denial_rows = read_jsonl(os.path.join(LOCAL, "permission_denials.jsonl"))
+sess_rows = []
+for p in glob.glob(os.path.join(LOCAL, "sessions", "*.json")):
+    try:
+        with open(p, encoding="utf-8") as f:
+            sess_rows.append(json.load(f))
+    except Exception:
+        pass
+
+ledger_dates = [d for d in (parse_date(r.get("ts")) for r in skill_rows) if d]
+ledger_age = (today - min(ledger_dates)).days if ledger_dates else 0
+skill_w = [r for r in skill_rows if in_window(r.get("ts"))]
+counts = {}
+for r in skill_w:
+    k = str(r.get("skill") or "?")
+    counts[k] = counts.get(k, 0) + 1
+catalog = sorted(os.path.basename(os.path.dirname(p))
+                 for p in glob.glob(os.path.join(".claude", "skills", "*", "SKILL.md")))
+# The "never invoked" alarm reads the ledger's FULL lifetime, not the rolling
+# window: episodic-by-design skills (build_library, configure_project, ...) run
+# once and rarely again, so window-based counting would re-flag them forever
+# once their rows age out (#60). The windowed `counts` above stays the trend.
+ever = {str(r.get("skill") or "?") for r in skill_rows}
+unused = [s for s in catalog if s not in ever]
+sess_w = [s for s in sess_rows if in_window(s.get("updated"))]
+costs = [s["cost_usd"] for s in sess_w if isinstance(s.get("cost_usd"), (int, float))]
+peaks = [s["peak_context_pct"] for s in sess_w if isinstance(s.get("peak_context_pct"), (int, float))]
+compacts = [e for e in event_rows if e.get("source") == "compact" and in_window(e.get("ts"))]
+denials_w = [r for r in denial_rows if in_window(r.get("ts"))]
+
+if not (skill_rows or event_rows or sess_rows or denial_rows):
+    local_md = ("\n## Local telemetry (this machine)\n\n"
+                "> No local telemetry here yet -- this section fills in once the statusline "
+                "and the skill/session hooks have run on this machine (docs/AUTOMATION.md s1-s2). "
+                "Sources are gitignored; each machine sees only its own.\n")
+else:
+    top_list = ", ".join("%s x%d" % (k, v) for k, v in
+                         sorted(counts.items(), key=lambda kv: -kv[1])[:5]) or "none"
+    ledger_mature = ledger_age >= WINDOW
+    unused_names = ", ".join(unused[:8]) + ("..." if len(unused) > 8 else "")
+    if unused and ledger_mature:
+        unused_shown = "%d: %s :warning:" % (len(unused), unused_names)
+    elif unused:
+        unused_shown = "%d *(ledger only %dd old -- alarm arms at %dd)*" % (len(unused), ledger_age, WINDOW)
+    else:
+        unused_shown = "0"
+    med_cost = ("$%.2f" % statistics.median(costs)) if costs else "n/a"
+    cpp = ("$%.2f" % (sum(costs) / n_merged)) if costs and n_merged else "n/a"
+    if len(peaks) >= 5:
+        mp = statistics.median(peaks)
+        med_peak = "%.0f%%" % mp + (" :warning:" if mp >= 85 else "")
+    elif peaks:
+        med_peak = "%.0f%% *(&lt;5 sessions -- directional)*" % statistics.median(peaks)
+    else:
+        med_peak = "n/a"
+    lrows = [
+        "| Skill invocations | %d across %d skill(s) -- top: %s | trend | Which skills earn their always-resident listing cost (#6 measure-first). |"
+        % (len(skill_w), len(counts), top_list),
+        "| Skills never invoked | %s | 0 once the ledger is %dd old | Zero invocations in this machine's ledger lifetime -- dead weight or broken routing: prune the skill or fix its `description`. Ledger is machine-local: a skill exercised only on another box shows here. |"
+        % (unused_shown, WINDOW),
+        "| Sessions recorded | %d -- median cost %s | trend | Per-session cost distribution; a sharp climb means context hygiene is regressing. |"
+        % (len(sess_w), med_cost),
+        "| Median peak context | %s | &lt; 85%% -- alarm &ge; 85%% | Peak context%% reached per session. High = compacting too late; a forced summary is what drops the Resume point. |"
+        % med_peak,
+        "| Compactions | %d (%.1f/wk) | trend | source=='compact' session starts. Read with the row above: many compactions at low peaks is healthy; few at 90%%+ is not. |"
+        % (len(compacts), len(compacts) / (WINDOW / 7)),
+        "| Permission denials | %d (%.1f/wk) | trend | Denied tool calls (rules or the auto-mode classifier) -- each one stalled autopilot. A climb means the allowlist or the denial protocol (CLAUDE.md > Working style) needs work. |"
+        % (len(denials_w), len(denials_w) / (WINDOW / 7)),
+        "| Session cost / merged PR | %s | trend | This machine's windowed session spend over repo-wide merges -- the per-slice price of autopilot. A climb flags context hygiene or slice sizing before the dedicated metrics trip. Directional on multi-machine setups (each box sees only its own spend). |"
+        % cpp,
+    ]
+    local_md = ("\n## Local telemetry (this machine)\n\n"
+                "| Metric | Value | Target | What it means |\n|---|---|---|---|\n"
+                + "\n".join(lrows)
+                + "\n\n*Sources: `.claude/metrics/` -- statusline session snapshots, the skill ledger "
+                  "(age %dd), session-start and permission-denial events. Gitignored: ONE machine's view, not project truth; "
+                  "other machines and CI each see their own or nothing. Skill catalog: %d on disk.*\n"
+                % (ledger_age, len(catalog)))
+
 short_sha = (gh_json(["api", "repos/{owner}/{repo}/commits/HEAD", "--jq", ".sha"]) or "")
 # gh api --jq returns a bare string already parsed by json.loads -> str; trim.
 short_sha = (short_sha[:7] if isinstance(short_sha, str) else "")
@@ -173,7 +279,7 @@ The few metrics that each change a decision when they cross a threshold -- not a
 {chr(10).join(rows)}
 
 *Sample this window: {n_merged} PR(s) merged, {len(bugs)} `bug`(s) filed, {len(runs_w)} PR CI run(s), {len(dlat)} decision(s) closed. Small samples are noisy -- treat single-digit windows as directional, not controlled.*
-"""
+{local_md}"""
 
 if PRINT_ONLY:
     sys.stdout.write(body)

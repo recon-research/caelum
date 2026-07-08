@@ -1,6 +1,6 @@
 ---
 name: retrospective
-description: Run a process retrospective + defect-prevention pass (CMMI-L5) — mine the period's escaped defects from the tracker and the metrics ledger, root-cause the recurring ones, and make sure every escape leaves behind a GUARD (a mechanical gate / anti-pattern / review lens), not just a fix. Use at a milestone exit, when a metric trips its alarm threshold, or when the user says "retrospective", "retro", "root-cause analysis", "why do bugs keep escaping", "post-mortem". Closes the optimizing loop that `scripts/metrics.py` (docs/METRICS.md) opens.
+description: Run a process retrospective + defect-prevention pass (CMMI-L5) — mine the period's escaped defects from the tracker and the metrics ledger (incl. Local telemetry and `skill-defect:` tickets), root-cause the recurring ones, and make sure every escape leaves behind a GUARD (a mechanical gate / anti-pattern / review lens / a SKILL.md diff for skill-layer defects), not just a fix. Use at a milestone exit, when a metric trips its alarm threshold — including the Local-telemetry alarms (never-invoked skill, median peak context) — or when the user says "retrospective", "retro", "root-cause analysis", "why do bugs keep escaping", "a skill keeps misfiring", "post-mortem". Closes the optimizing loop that `scripts/metrics.py` (docs/METRICS.md) opens.
 ---
 
 # Retrospective (Defect-Prevention Loop)
@@ -12,7 +12,7 @@ Read paths / conventions from `PROJECT_CONVENTIONS.md`; the metric thresholds fr
 ## When to run
 
 - **At a milestone exit** — the natural retro cadence (`definition_of_done` gate 10 calls it). Not every compaction; that's too frequent to surface patterns.
-- **When a metric trips its ⚠ alarm** in `docs/METRICS.md` (escape rate, rework, decision latency, preflight↔CI divergence) — a crossed threshold is a *mandatory* causal look, not a note.
+- **When a metric trips its ⚠ alarm** in `docs/METRICS.md` (escape rate, rework, decision latency, preflight↔CI divergence — and the Local-telemetry alarms: a never-invoked skill once the ledger matures, median peak context ≥85%) — a crossed threshold is a *mandatory* causal look, not a note.
 - **On request** / after a notable escape (a red main, a costly post-merge bug, a reversed decision).
 
 ## Procedure
@@ -20,6 +20,7 @@ Read paths / conventions from `PROJECT_CONVENTIONS.md`; the metric thresholds fr
 1. **Gather the period's signals** (since the last retro — use the milestone boundary or the metrics window). Mechanical first:
    - `docs/METRICS.md` — which metrics are at/over threshold? Those are the headline agenda items.
    - **Escaped defects:** `bug` issues filed *after* the merge that introduced them (`gh issue list --label bug --state all`); main-branch CI failures (`gh run list --branch main`); **decision reversals** (a `decision` answer that overruled a provisional default); review findings that *recurred* across PRs.
+   - **Skill-layer signals (#48):** the **Local telemetry** section of `docs/METRICS.md` (per-skill invocation counts, the never-invoked ⚠, median peak context, compactions/wk) + open skill-defect tickets — `gh issue list --state open --search "skill-defect in:title"`. A skill nobody invokes and a skill that misfires are both process defects: the listing is paid context every session.
    - Keep it to what actually escaped a gate — green-on-first-try work is not retro material.
 
 2. **Triage: systemic vs one-off.** Cluster the escapes by **common cause**, not by symptom. A cause that produced **one** defect and is unlikely to recur is a one-off — record it as such (step 5) and move on; don't over-process. A cause that produced **two or more**, or that *could* easily recur, is **systemic** — it gets steps 3–4.
@@ -32,6 +33,7 @@ Read paths / conventions from `PROJECT_CONVENTIONS.md`; the metric thresholds fr
    3. **A review lens** — a standing lens in `adversarial_review` (e.g. the over-engineering lens) when the defect needs judgment, not a regex.
    4. **A policy / settings tweak** — a `PROJECT_CONVENTIONS.md` rule or a `settings.json` deny (owner-authorized) when nothing else fits.
    File the guard as a ticket (`debt`/`followup`) or implement it now if cheap. **"Fixed, no guard" is the failure mode this skill exists to prevent** — a systemic escape that leaves no guard is not done.
+   **Skill-layer defects get a skill-layer guard:** for a `skill-defect:` cluster, a routing miss, or a never-invoked ⚠, the guard is a SKILL.md `description`/procedure diff (or pruning the skill), shipped as a normal PR that states its before/after per the authoring rule (`.claude/skills/README.md`) — worked example: the #45 prepare_compaction flip, exactly this class of guard.
 
 5. **Record one-offs** — a terse "saw X once, cause Y, no guard warranted" so the next retro can spot if a "one-off" is actually recurring. One line; don't ceremony it.
 

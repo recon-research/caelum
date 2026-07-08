@@ -75,6 +75,8 @@ A consistent skeleton makes books navigable and comparable:
 ### 2.3 Citation discipline (the #1 rule)
 **Never assert a `Book NN §X` citation you haven't verified exists.** After SECTIONS.json is generated, `grep` it (don't load it whole — it's large) to confirm a section before citing it. `_audit_refs.py` enforces this across the whole library; target is **0 unresolved references**. This is the single most important quality property — broken citations destroy agent trust.
 
+**Hollow ≠ citable (#70).** Heading-resolution alone would bless a scaffolded book the moment its skeleton exists — SECTIONS indexes headings, not content. So every `books[]` entry carries a maturity `status` (§6.1), and `_audit_refs.py` **fails** (a) any citation from an *authority surface* — covered books, reference docs, skills, root docs — into a book that isn't `covered`, and (b) any explicit `Book NN` citation into a book with no file (previously a silent skip). Non-covered books are *plans*: they may cite ahead; product may not.
+
 ### 2.4 Coverage honesty
 Maintain `coverage_gaps` in MANIFEST: topics the library does **not** cover or covers only partially, each with `status` (`missing`/`partial`/`covered`), the nearest in-library section, and an external source. When an agent (or you) is asked about something thin, say so and point outward — do not fabricate coverage.
 
@@ -84,20 +86,40 @@ In CLAUDE.md and AGENT_GUIDE.md, state plainly where an agent's help is high vs 
 ### 2.6 Validate after every structural change
 Any time you add/rename/restructure: regenerate SECTIONS, run both audits, and grep for count drift. The scripts are fast; run them often. **Counts drift constantly** (book counts, skill counts, volume counts across README/CLAUDE/MANIFEST/memory) — treat a count as a thing to verify, not trust.
 
+### 2.7 The assignment-sheet pass (spec-first authoring — #68)
+Between "outline approved" and "book written" there is otherwise no auditable artifact — scope errors surface as full-prose rewrites, the expensive unit (EXP-01: a strong-model rewrite pass alone cost more than fresh strong-model drafting). So **spec every book before any prose**:
+
+1. **Skeleton:** copy the template; lay the complete heading skeleton (§2.1 grammar, §2.2 arc). The book enters `status: "scaffolded"` (§6.1): plans may cite ahead; product can't cite *them* (#70).
+2. **Brief every section** — an HTML-comment block directly under its heading, invisible to SECTIONS.json/rendered readers/the refs audit, consumed and replaced by the fill:
+
+   ```
+   <!-- BRIEF
+   must-answer: the 2-4 questions this section exists to answer
+   boundaries: what belongs to sibling books/sections instead - name them
+   depth: survey | practitioner | reference-grade
+   sources: pre-harvested - stable refs inline (real URL + accessed date); frontier claims via research/notes (tiered)
+   length: target band, e.g. 300-600 words
+   -->
+   ```
+
+3. **Eval-first:** write this book's ROUTING_EVAL cases *now* — realistic queries → this book — before content exists. `_audit_routing.py` fails a covered book that no case routes to, and the eval is the coverage regression gate from day one.
+4. **Audit + scope-check the spec:** regenerate SECTIONS, run the audits on the skeletons, and have the owner sanity-check scope at brief level — a fraction of the prose reading cost; scope errors die here as heading/brief edits, not chapter rewrites.
+5. **Fill from the frozen spec.** Synthesis + load-bearing claims (arc §§3, 5, 6, 7; DECISION_TREES / ANTI_PATTERNS; anything opinionated) stay on the session model — never routed down: judgment is the product, and a reviewer *anchors* on plausible-but-subtly-wrong cheap prose (the measured shape of EXP-01's refutation). Commodity material (glossary entries, settled §1–§2 definitions) may go to a cheaper tier and be *checked* strong. A fill that can't satisfy its brief **stops and flags — never improvises past the spec**. Parallel fills are safe: ids + cross-refs froze at spec time. Flip `draft` as prose lands; `covered` only after the errata pass.
+
 ---
 
 ## 3. Step 3 — Build Order
 
 Produce the library in this order (each step sets up the next):
 
-1. **Scaffold `MANIFEST.json`** from the approved outline: `total_books`, `total_volumes`, `volumes[]`, and a `books[]` entry per book (`id` `book_NN`, `number`, `title`, `path`, `volume`, `topics[]`, `key_concepts[]`, `summary`). Leave `reference_docs`, `skills`, `topic_to_books`, `rag_hints`, `coverage_gaps` to fill as you go. (Schema in §6.1.)
+1. **Scaffold `MANIFEST.json`** from the approved outline: `total_books`, `total_volumes`, `volumes[]`, and a `books[]` entry per book (`id` `book_NN`, `number`, `title`, `path`, `volume`, `status: "scaffolded"`, `topics[]`, `key_concepts[]`, `summary`). Leave `reference_docs`, `skills`, `topic_to_books`, `rag_hints`, `coverage_gaps` to fill as you go. (Schema + status lifecycle in §6.1.)
 2. **Create `tools/` and add the four scripts** (`_gen_sections.py`, `_audit_refs.py`, `_audit_routing.py`, `_audit_links.py` — verbatim from §9; run them from the repo root).
-3. **Write the books** following §2.1–2.2. Cross-reference other books by `Book NN §X` — but only cite sections you've actually written (or fix citations at the end).
+3. **Spec, then write the books** (§2.7): first the assignment-sheet pass for every book in the approved outline — full skeleton + a BRIEF under every heading + that book's ROUTING_EVAL cases (eval-first) — audits green on the skeletons and an owner scope-check at brief level; then the fill pass from the frozen specs. Cross-reference by `Book NN §X` (plans may cite ahead). Flip each book's `status` as it matures (`scaffolded` → `draft` at prose, → `covered` only after step 10's errata pass); the audit exempts citations *from* non-covered books while you build, and holds every authority surface to covered targets (#70, §2.3).
 4. **Write the reference docs** appropriate to the domain (§6.2).
 5. **Write the skills** — the 4 required universal meta-skills (+ the optional `adversarial_review`) + `PROJECT_CONVENTIONS.md` (templates in §7), plus domain-specific execution skills derived from the library's atomic operations.
 6. **Generate `SECTIONS.json`**: run `_gen_sections.py`.
 7. **Write `CLAUDE.md`, `AGENT_GUIDE.md`, `README.md`** (templates in §6.3–6.4) using the now-real structure.
-8. **Write `ROUTING_EVAL.json`**: ~30–60 realistic queries spanning every volume + reference doc, each with expected target(s) (§6.5).
+8. **Finish `ROUTING_EVAL.json`**: per-book cases were seeded eval-first during the spec pass (§2.7); extend to ~30–60 realistic queries spanning every volume + reference doc, each with expected target(s) (§6.5). `_audit_routing.py` fails any covered book no case routes to (#68).
 9. **Validate to green**: run `_audit_refs.py` (0 misses) and `_audit_routing.py` (all pass). Fix what they flag — broken citations in the books; routing gaps by adding `topic_to_books`/`rag_hints` entries or enriching a book's `topics`/`summary`.
 10. **Adversarial content review (the errata pass)**: the audits prove *consistency*, not *truth*. Fan out parallel read-only reviewers (one per volume / topic cluster; lenses: math/units, API-and-version reality, security claims, cross-book contradictions, staleness) mandated to falsify the books' technical claims; severity-tag (Crit = following it would ship a defect or waste a milestone · High = materially wrong · Med = unlikely to bite · Low = imprecision), fix in one coordinated pass, commit a ledger (`docs/notes/LIBRARY_REVIEW_<date>.md`: verdict counts, the Criticals named, a `file | locator | edit` table), regenerate SECTIONS and re-audit. Repeat after major growth passes. (Orchestration recipe: the `build_library` + `adversarial_review` skills.)
 11. **Write `CHANGELOG.md`** (initial entry) and a final consistency sweep (counts, JSON validity, 0 leftover placeholder / example-system names).
@@ -132,7 +154,7 @@ A library that passes all four is internally consistent. Make passing them a rel
 Top-level fields:
 - `version`, `series_title`, `last_updated`, `total_books`, `total_volumes`, `engine_name` (rename to e.g. `system_name` for non-engine domains), `primary_assumptions` (object), `section_index` (`{"path":"SECTIONS.json","purpose":"…"}`).
 - `volumes[]`: `{number, name, books:[NN,…]}` — contiguous book-number ranges.
-- `books[]`: `{id:"book_NN", number, title, path, volume, topics[], key_concepts[], summary}`.
+- `books[]`: `{id:"book_NN", number, title, path, volume, status, topics[], key_concepts[], summary}`. `status` (#70) is the maturity lifecycle `scaffolded` (skeleton/spec exists) → `draft` (prose landed) → `covered` (errata-passed — only then citable from authority surfaces; `_audit_refs.py` enforces). Missing field reads as `covered` (grandfathers pre-#70 manifests).
 - `reference_docs[]`: `{id, path, topics[], summary}` (lowercase ids; the in-text references use the UPPERCASE form, e.g. `DECISION_TREES`).
 - `skills[]`: `{path, triggers[], description}` per skill.
 - `topic_to_books`: `{ "<topic_keyword>": ["book_NN", "DOC_NAME", …], … }` — reverse index from concept → target(s). **This is the primary routing surface; invest in it.**

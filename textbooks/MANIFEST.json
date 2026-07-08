@@ -4,7 +4,7 @@
   "version": "0.2",
   "series_title": "Caelum — Building a US-Origin-Clean Angular Material Component Library",
   "last_updated": "2026-07-01",
-  "total_books": 20,
+  "total_books": 21,
   "total_volumes": 6,
   "system_name": "Forge",
   "section_index": { "path": "SECTIONS.json", "purpose": "Every heading's id/title/line. Resolve and verify any 'Book NN §X' without opening the book. Regenerate with tools/_gen_sections.py." },

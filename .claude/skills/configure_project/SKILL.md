@@ -1,11 +1,12 @@
 ---
 name: configure_project
 description: Inspect this repository and fill in PROJECT_CONVENTIONS.md so the other skills use the project's real paths, build/test commands, and stack instead of the template's example defaults. Use once when setting up the skills in a new project, or when the build system / source layout changes. Triggers - "configure the skills", "set up skills for this project", "fill project conventions", "adapt skills to my repo".
+effort: low
 ---
 
 # Configure Project Conventions
 
-Run once to adapt the drop-in skills to *this* project. It detects the build system, source layout, and stack and writes them to `PROJECT_CONVENTIONS.md`, which every other skill reads — so you never hard-code paths into individual skills.
+Run once to adapt the drop-in skills to *this* project. It detects the build system, source layout, and stack and writes them to `PROJECT_CONVENTIONS.md`, which every other skill reads — so you never hard-code paths into individual skills. Runs at `effort: low` (#49): the detection is mechanical, this skill owns its whole turn (frontmatter effort scope is rest-of-turn — `.claude/skills/README.md` › Model & effort routing), and downstream guards (preflight's placeholder rule, onboard's self-test) catch mis-fills; a quality slip is a `skill-defect:` ticket + a one-line revert.
 
 ## Procedure
 
