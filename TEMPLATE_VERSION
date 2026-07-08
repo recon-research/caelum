@@ -3,7 +3,8 @@
 # `update_from_template` after every sync. `update_from_template` diffs the upstream
 # template from `sha` to its HEAD to know what changed — without this stamp, every
 # template update is hand archaeology.
-source: Claude Code project_template (local copy; upstream path/URL not recorded at copy time — update if known)
-sha: unknown (this working dir is not a git repo; source commit unavailable at onboard)
+source: https://github.com/recon-research/pyxis (upstream identified + first synced 2026-07-08, template-sync #245)
+sha: 86f842763d4af72335ad1f3df72718c8a0bddaae
+baseline: 276a2d6 (reconstructed — the copy-day HEAD; the original copy recorded no sha, see #245)
 copied: 2026-06-25
-last_update: 2026-06-29
+last_update: 2026-07-08
