@@ -6,7 +6,7 @@ Caelum is an open-source, **US-origin-clean** Angular 22 component library — A
 
 > ~10 lines of "where are we". Per-slice detail lives in the merged PRs, [`docs/ROADMAP.md`](docs/ROADMAP.md), and the issue tracker — never here.
 
-**As of:** 2026-07-07 · main @ `31a7113` · CI green · **repo LIVE + protected** ([github.com/recon-research/caelum](https://github.com/recon-research/caelum)) · **Phase 2** · **M0 ☑ · M1 ☑ · M2 ☑** (grid gap; editor #232 / charts #233 → on-demand tracks per D-18) · **M3 ◐ Build-S/M long tail**. Recipe + gotchas → [`docs/PATTERNS.md`](docs/PATTERNS.md); full slice index → [`docs/ROADMAP.md`](docs/ROADMAP.md).
+**As of:** 2026-07-07 · main @ `e70b1d9` · CI green · **repo LIVE + protected** ([github.com/recon-research/caelum](https://github.com/recon-research/caelum)) · **Phase 2** · **M0 ☑ · M1 ☑ · M2 ☑** (grid gap; editor #232 / charts #233 → on-demand tracks per D-18) · **M3 ◐ Build-S/M long tail**. Recipe + gotchas → [`docs/PATTERNS.md`](docs/PATTERNS.md); full slice index → [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 **Where we are:** the grid is a swappable-engine adapter (client default / TanStack / server) behind one neutral `CaeGridAdapter` port, consumer-tree-shake-guarded (#182), extended with loading/busy a11y, pager focus management, a rows-per-page menu, server total-shrink recovery, and first-load live-region announcement (#176/#188/#189/#192/#177/#190/#194). Breadth continues on cae-table — custom body-cell templates (#143), absolute row-index (#213), multi- + single-select row selection (#144 partial), opt-in single-select click/Space-to-deselect (#224) — and cae-chip-set (#84/#202). **539 tests** (479 caelum + 60 forge); provenance GREEN.
 
@@ -14,7 +14,7 @@ Caelum is an open-source, **US-origin-clean** Angular 22 component library — A
 
 **Open decisions:** none — #142 → **D-16** (Forge warn-budget) and #168 → **D-17** (grid public-API shape) ratified by silence 2026-07-07; #185 → **D-18** (M2 scope: grid-only, advance to M3) decided by the human 2026-07-07. **56 open issues** = 0 decisions + 56 followups/debt/ideas.
 
-**Resume:** `main` @ `31a7113`, tree clean · next action = **pick the next slice** — recommended: cae-table **#144 sticky columns + expandable rows** (ticketed, continues the #1-priority table parity); or open the **M3 ★ team-priority track** (TreeSelect / Carousel, ticket-first). a11y/API-touching slices → 2-lens review · verify: `PATH="$HOME/nodejs/bin:$PATH" npm ci && npm run build:lib && npx ng build forge && CI=true npx ng test caelum && CI=true npx ng test` (539 pass) · `python3 scripts/check_provenance.py` (GREEN) · `PATH="$HOME/nodejs/bin:$PATH" bash scripts/preflight.sh` (PASS 0-skipped).
+**Resume:** `main` @ `e70b1d9`, tree clean · next action = **pick the next slice** — recommended: cae-table **#144 sticky columns + expandable rows** (ticketed, continues the #1-priority table parity); or open the **M3 ★ team-priority track** (TreeSelect / Carousel, ticket-first). a11y/API-touching slices → 2-lens review · verify: `PATH="$HOME/nodejs/bin:$PATH" npm ci && npm run build:lib && npx ng build forge && CI=true npx ng test caelum && CI=true npx ng test` (539 pass) · `python3 scripts/check_provenance.py` (GREEN) · `PATH="$HOME/nodejs/bin:$PATH" bash scripts/preflight.sh` (PASS 0-skipped).
 
 ## Read these first (in order)
 
