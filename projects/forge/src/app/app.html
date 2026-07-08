@@ -618,26 +618,44 @@
           <span class="forge-members-card__note" role="status">{{ memberNote() }}</span>
         </div>
 
-        <cae-table
-          caption="Workspace members"
-          [columns]="memberColumns"
-          [data]="members()"
-          selectionMode="multiple"
-          [selection]="selectedMembers()"
-          (selectionChange)="selectedMembers.set($event)"
-          [rowSelectionLabel]="memberSelectionLabel"
-          paginated
-          [pageSize]="5"
-          sortActive="name"
-          sortDirection="asc"
+        <!-- The sticky scroll context (#144). Three obligations cae-table cannot discharge for us:
+             (1) a bounded overflow ancestor for `position: sticky` to resolve against — with tabindex="0"
+                 + an accessible name so the scrollable region stays keyboard-operable (axe
+                 scrollable-region-focusable, WCAG 2.1.1);
+             (2) a table WIDER than that wrapper — cae-table is width:100%, so without a min-width the
+                 columns just compress, nothing scrolls, and nothing freezes;
+             (3) scroll-padding-block-start equal to the header height, so tabbing to a row below the fold
+                 does not scroll it UNDER the pinned header (WCAG 2.2 SC 2.4.11; browsers do not infer
+                 scroll padding from sticky elements). Verified in a real browser by #254. -->
+        <div
+          class="forge-members-card__scroller"
+          role="region"
+          aria-label="Workspace members, scrollable"
+          tabindex="0"
         >
-          <!-- Custom cell template (#143, p-table pTemplate="body" parity): the Email column renders a
-               mailto: link instead of plain text. The other columns have no caeCellDef, so they keep the
-               zero-boilerplate text default. `value` is the cell's raw value (narrowed by mailtoHref). -->
-          <ng-template caeCellDef="email" let-value="value">
-            <a class="forge-members-card__email" [href]="mailtoHref(value)">{{ value }}</a>
-          </ng-template>
-        </cae-table>
+          <cae-table
+            class="forge-members-card__table"
+            caption="Workspace members"
+            [columns]="memberColumns"
+            [data]="members()"
+            stickyHeader
+            selectionMode="multiple"
+            [selection]="selectedMembers()"
+            (selectionChange)="selectedMembers.set($event)"
+            [rowSelectionLabel]="memberSelectionLabel"
+            paginated
+            [pageSize]="5"
+            sortActive="name"
+            sortDirection="asc"
+          >
+            <!-- Custom cell template (#143, p-table pTemplate="body" parity): the Email column renders a
+                 mailto: link instead of plain text. The other columns have no caeCellDef, so they keep the
+                 zero-boilerplate text default. `value` is the cell's raw value (narrowed by mailtoHref). -->
+            <ng-template caeCellDef="email" let-value="value">
+              <a class="forge-members-card__email" [href]="mailtoHref(value)">{{ value }}</a>
+            </ng-template>
+          </cae-table>
+        </div>
       </cae-card>
     }
 

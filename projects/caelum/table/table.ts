@@ -56,6 +56,34 @@ export interface CaeTableColumn {
   header: string;
   /** When `true`, the header becomes a `mat-sort-header` (keyboard-operable, `aria-sort`). */
   sortable?: boolean;
+  /**
+   * Freeze this column against the table's **inline-start** edge while the table scrolls horizontally.
+   * CSS-only — `position: sticky` on the column's cells; DOM order, roles, and reading order unchanged.
+   *
+   * Stick a **contiguous run** from the start edge. The CDK offsets a sticky column by the summed widths
+   * of the sticky columns *before* it only, so a sticky column standing behind a non-sticky one pins at
+   * offset 0 — on top of that column, hiding its content (a focusable control there stays in the tab order
+   * while invisible: WCAG 2.2 SC 2.4.11). cae-table **dev-warns** on a non-contiguous run.
+   *
+   * The built-in expand/select columns render before the first data column, so they are **auto-frozen**
+   * whenever that column is `sticky` — otherwise the frozen data column would occlude their own controls.
+   *
+   * Needs a horizontally scrollable ancestor **and** a table wider than it (cae-table is `width: 100%`, so
+   * give it a `min-width`) — see {@link CaeTable}'s sticky notes for the full recipe.
+   */
+  sticky?: boolean;
+  /**
+   * Freeze this column against the table's **inline-end** edge — the mirror of {@link sticky}; stick a
+   * contiguous run inward from the end edge (also dev-warned).
+   *
+   * Setting both `sticky` and `stickyEnd` on one column is a config error (dev-warn): a column cannot rest
+   * on both edges. **Upstream caveat:** the CDK's end-offset loop never visits index 0
+   * (`_getStickyEndColumnPositions` runs `i = widths.length; i > 0; i--`), so `stickyEnd` on the *first
+   * displayed* column silently computes no offset and never pins. Reachable only with no expand/select
+   * column and `stickyEnd` on the leading column; pinned by a spec case so it is not later mistaken for a
+   * cae-table bug.
+   */
+  stickyEnd?: boolean;
 }
 
 /**
@@ -112,10 +140,51 @@ export interface CaeTableColumn {
  * row. Bind `[(expanded)]` for the expanded rows as a vendor-neutral `T[]` (reference identity, like
  * {@link selection}). Expansion is **view state**, held in the model, never in the row data (Book 10 §3.2).
  *
+ * **Sticky header + columns** (#144): set `stickyHeader` to freeze the header row against the top of the
+ * scroll container, and `sticky` / `stickyEnd` on a {@link CaeTableColumn} to freeze that column against
+ * the inline-start / inline-end edge — cae-table's cover for p-table's frozen-header / frozen-column
+ * capability (the exact p-table API names are deliberately not asserted here: `primeng` is not a
+ * dependency, so they are unverified — #253). Both are **CSS-only**: the CDK's sticky styler marks the
+ * affected cells and Material's own stylesheet gives them `position: sticky` plus an inherited opaque
+ * background, so cae-table adds no sticky CSS of its own. DOM order, roles, and reading order are
+ * untouched, so **the a11y _tree_ is unchanged** — but note that "unchanged tree" is not "no a11y
+ * consequence": sticky is a *rendering* feature, and a pinned band can paint over a focused control
+ * (WCAG 2.2 SC 2.4.11, Focus Not Obscured). Hence three **consumer obligations**:
+ *
+ * 1. **A scroll context.** Sticky resolves against the nearest scrollable ancestor. Give the table a
+ *    bounded, `overflow`-scrolling wrapper; with no such ancestor the header pins to the *viewport*.
+ *    That wrapper must itself be keyboard-scrollable (axe `scrollable-region-focusable`, WCAG 2.1.1),
+ *    so it needs `tabindex="0"` and an accessible name.
+ * 2. **A table wider than the wrapper**, for sticky *columns* specifically. cae-table renders
+ *    `table { width: 100% }`, so by default the table never overflows horizontally — columns just
+ *    compress and nothing scrolls, therefore nothing freezes. Give the table a `min-width` (or explicit
+ *    column widths) that exceeds the wrapper.
+ * 3. **`scroll-padding-block-start`** on that wrapper, equal to the header height, whenever
+ *    `stickyHeader` is on. Browsers scroll a newly-focused row flush to the scrollport top — i.e. *under*
+ *    the pinned header band — and do not account for sticky overlays themselves (#254).
+ *
+ * ```html
+ * <div role="region" aria-label="Team roster" tabindex="0"
+ *      style="max-height: 20rem; overflow: auto;
+ *             scroll-padding-block-start: var(--mat-table-header-container-height, 56px)">
+ *   <cae-table style="min-width: 48rem" caption="Team roster" stickyHeader [columns]="cols" [data]="rows" />
+ * </div>
+ * ```
+ *
+ * Frozen columns must form a **contiguous run** inward from their edge — a sticky column standing behind a
+ * non-sticky one pins on top of it and hides whatever it contains (a `caeCellDef` link or button there
+ * stays focusable while invisible: the same 2.4.11 failure). That is now a dev-warn, not just prose. The
+ * built-in expand/select columns are **auto-frozen** whenever the first data column is `sticky`, since they
+ * are always rendered before it and a gap there would occlude their own controls (#252). Offsets are
+ * measured by the browser, so the unit tests assert the *wiring*; real positioning and the focus-occlusion
+ * checks are verified in the M4 pass (#240, #254).
+ *
  * **v1 scope** (#141): text columns, sort, client-side pagination, custom body-cell templates (#143,
  * with a page-relative + absolute row index, #213), multi- and single-select (#144), expandable detail
- * rows (#144). Follow-ups: sticky header/columns/footer **#144** (positioning verified in the M4
- * real-browser pass, #240); server-side/lazy data, global filter, column resize/reorder **#145**.
+ * rows (#144), sticky header + sticky columns (#144, built-in columns auto-frozen per #252). Follow-ups:
+ * sticky **footer** **#251** (blocked on a footer content model — cae-table renders no footer row today);
+ * M4 focus-occlusion verification **#254**; p-table frozen-API naming **#253**; server-side/lazy data,
+ * global filter, column resize/reorder **#145**.
  * Header/footer/full-row templating is a future enhancement (not yet requested).
  *
  * Zoneless-compatible: `OnPush` + signal inputs (D-12). No `color` input — theming is free via
@@ -157,7 +226,10 @@ export interface CaeTableColumn {
       }
 
       @if (rowDetailDef()) {
-        <ng-container [matColumnDef]="expandColumnKey">
+        <!-- Auto-frozen with the leading data column (leadColumnSticky): this column always renders before
+             it, so leaving it loose would let the frozen data cell pin at offset 0 and paint over this
+             toggle button, which stays focusable while invisible (WCAG 2.4.11). See #252. -->
+        <ng-container [matColumnDef]="expandColumnKey" [sticky]="leadColumnSticky()">
           <th mat-header-cell *matHeaderCellDef class="cae-table__expand-cell">
             <!-- The expand column's header holds no text — a visually-hidden label names it for AT and
                  gives every toggle cell a header association (WCAG 1.3.1). -->
@@ -196,7 +268,9 @@ export interface CaeTableColumn {
       }
 
       @if (selectionMode() !== 'none') {
-        <ng-container [matColumnDef]="selectColumnKey">
+        <!-- Auto-frozen with the leading data column, for the same reason as the expand column above:
+             otherwise a frozen first data column occludes this checkbox/radio while it stays focusable. -->
+        <ng-container [matColumnDef]="selectColumnKey" [sticky]="leadColumnSticky()">
           <th mat-header-cell *matHeaderCellDef class="cae-table__select-cell">
             <!-- Name the selection column for AT (both modes): the header holds a control (or nothing,
                  in single mode), not text, so a visually-hidden label gives the column an accessible
@@ -251,7 +325,10 @@ export interface CaeTableColumn {
       }
 
       @for (col of columns(); track col.key) {
-        <ng-container [matColumnDef]="col.key">
+        <!-- [sticky]/[stickyEnd] freeze the column against the inline-start/end edge. CdkColumnDef
+             booleanAttribute-transforms both, so an absent flag arrives as plain false and the default
+             render is byte-identical to the pre-sticky one — no coercion needed here. CSS-only. -->
+        <ng-container [matColumnDef]="col.key" [sticky]="col.sticky" [stickyEnd]="col.stickyEnd">
           @if (col.sortable) {
             <th mat-header-cell *matHeaderCellDef mat-sort-header>{{ col.header }}</th>
           } @else {
@@ -298,7 +375,9 @@ export interface CaeTableColumn {
         </ng-container>
       }
 
-      <tr mat-header-row *matHeaderRowDef="columnKeys()"></tr>
+      <!-- The sticky: microsyntax key is MatHeaderRowDef's own input (matHeaderRowDefSticky) — false by
+           default, so an unset [stickyHeader] leaves the header row exactly as it rendered pre-sticky. -->
+      <tr mat-header-row *matHeaderRowDef="columnKeys(); sticky: stickyHeader()"></tr>
       <tr mat-row *matRowDef="let row; columns: columnKeys()"></tr>
       @if (rowDetailDef()) {
         <!-- With multiTemplateDataRows, this second (predicate-less) row def renders once per datum in
@@ -330,6 +409,15 @@ export interface CaeTableColumn {
     table {
       width: 100%;
     }
+    /* Sticky cells (#144) deliberately get NO rule here. Material already supplies both halves: its
+       .mat-mdc-table-sticky class (MatTable overrides the CDK stickyCssClass) carries
+       position:sticky !important, and .mat-mdc-cell/.mat-mdc-row/thead/tbody all set background:inherit,
+       which chains up to .mat-mdc-table background-color: var(--mat-table-background-color,
+       var(--mat-sys-surface)) — opaque, so scrolled rows do not bleed through a frozen cell. That opacity
+       is contingent on the token bridge (D-04): with neither var defined the declaration is invalid at
+       computed-value time and the cell falls back to transparent, so cae-table's sticky needs
+       caelum/styles/theme, like the rest of the library. Do not re-add a background rule here — it would
+       duplicate the theme and fight the bridge. */
     /* Selection column: shrink to the checkbox (the width:1% shrink trick, matching the table's
        own width:100% literal — no width token exists). */
     .cae-table__select-cell {
@@ -422,6 +510,31 @@ export class CaeTable<T = Record<string, unknown>> implements OnInit {
   readonly sortActive = input('');
   /** Initial sort direction for {@link sortActive} (after mount the header owns the live sort). */
   readonly sortDirection = input<CaeSortDirection>('');
+
+  /**
+   * Freeze the header row against the top of the scroll container while the body scrolls. CSS-only —
+   * `position: sticky` on the header cells; DOM order, roles, and reading order unchanged, so the a11y
+   * *tree* is unchanged. Pair with a per-column {@link CaeTableColumn.sticky} to freeze columns too.
+   *
+   * Requires a **scroll context**: sticky resolves against the nearest scrollable ancestor, so give the
+   * table a bounded, `overflow`-scrolling wrapper — with no such ancestor the header pins to the viewport,
+   * which is rarely what you want. That wrapper needs `tabindex="0"` + an accessible name to stay
+   * keyboard-scrollable (axe `scrollable-region-focusable`), and `scroll-padding-block-start` equal to the
+   * header height so a newly-focused row is not scrolled *under* the pinned header (WCAG 2.2 SC 2.4.11 —
+   * browsers do not infer scroll padding from sticky elements; #254):
+   *
+   * ```html
+   * <div role="region" aria-label="Team roster" tabindex="0"
+   *      style="max-height: 20rem; overflow: auto;
+   *             scroll-padding-block-start: var(--mat-table-header-container-height, 56px)">
+   *   <cae-table caption="Team roster" stickyHeader [columns]="cols" [data]="rows" />
+   * </div>
+   * ```
+   *
+   * Real-browser positioning + focus-occlusion are verified in the M4 pass (#240, #254); jsdom has no
+   * layout, so the unit tests assert the wiring, not the offsets.
+   */
+  readonly stickyHeader = input(false, { transform: booleanAttribute });
 
   /**
    * Row-selection mode. `'multiple'` prepends a checkbox column with a select-all header checkbox;
@@ -534,6 +647,18 @@ export class CaeTable<T = Record<string, unknown>> implements OnInit {
     if (this.selectionMode() !== 'none') prefix.push(this.selectColumnKey);
     return [...prefix, ...this.columns().map((c) => c.key)];
   });
+
+  /**
+   * Whether the **first data column** is frozen to the start edge — which is exactly when the built-in
+   * expand/select columns must freeze too. They always render before it, and the CDK offsets a sticky
+   * column by the summed widths of the sticky columns *before* it only: a loose built-in contributes 0, so
+   * the frozen data cell would pin at `left: 0` directly on top of it, hiding a checkbox/radio/toggle that
+   * remains in the tab order (WCAG 2.2 SC 2.4.11). Freezing them keeps the sticky run contiguous from the
+   * real start edge. Deliberately keyed on `columns()[0]` rather than `.some(c => c.sticky)`: a sticky
+   * column that is *not* the leading one is already a non-contiguous run (dev-warned), and freezing the
+   * built-ins would not repair it — it would only add a second gap. See #252.
+   */
+  protected readonly leadColumnSticky = computed(() => !!this.columns()[0]?.sticky);
 
   /** O(1) selection membership derived from the two-way {@link selection} model. */
   private readonly selectedSet = computed(() => new Set<T>(this.selection()));
@@ -782,6 +907,55 @@ export class CaeTable<T = Record<string, unknown>> implements OnInit {
           );
         }
       });
+
+      // Sticky-config validation (#144). An EFFECT, not validateConfig/ngOnInit: `columns` is a signal
+      // input and the CDK genuinely re-wires sticky on a runtime swap (CdkColumnDef.sticky setter →
+      // _hasStickyChanged → _checkStickyStates), so a column-freeze/reorder UI — the likeliest way this
+      // feature is driven — would otherwise change the config without ever re-validating it. Same reason
+      // the caeCellDef warn above is reactive. (The duplicate-key *throw* stays in ngOnInit: it must
+      // precede the first render. `sortActive` stays there too — it is contractually an initial value.)
+      effect(() => {
+        const columns = this.columns();
+        if (columns.length === 0) return; // async-load window; see the caeCellDef warn above.
+        this.warnOnStickyConfig(columns);
+      });
+    }
+  }
+
+  /**
+   * Dev-only sticky-config guards, ordered by consequence.
+   *
+   * The *harmful* misconfiguration is a *non-contiguous run*: the CDK offsets a sticky column by the summed
+   * widths of the sticky columns before it, so a sticky column standing behind a non-sticky one pins at
+   * offset 0 — on top of it — hiding content that stays in the tab order (WCAG 2.2 SC 2.4.11). Sticky
+   * columns must therefore form a **prefix** of the data columns and `stickyEnd` columns a **suffix**.
+   * (The built-in expand/select columns need no check: {@link leadColumnSticky} keeps them in lockstep with
+   * the leading data column, so the run stays contiguous from the real start edge.)
+   *
+   * Both-edges-on-one-column is merely *cosmetic* by comparison — CSS over-constrained resolution pins it
+   * to the start edge in LTR — but it is a self-evident typo, so it is still called out.
+   */
+  private warnOnStickyConfig(columns: readonly CaeTableColumn[]): void {
+    const both = columns.filter((c) => c.sticky && c.stickyEnd).map((c) => c.key);
+    if (both.length) {
+      console.warn(
+        `cae-table: column(s) "${both.join('", "')}" set both sticky and stickyEnd — a column cannot freeze against both edges (pick one).`,
+      );
+    }
+    // Each run must reach its edge: sticky a prefix, stickyEnd a suffix. Walking one step toward that edge
+    // finds the break — `columns[-1]` / `columns[length]` are undefined, so the edge columns never flag.
+    for (const [edge, step, side] of [
+      ['sticky', -1, 'inline-start'],
+      ['stickyEnd', 1, 'inline-end'],
+    ] as const) {
+      const gaps = columns
+        .filter((c, i) => c[edge] && columns[i + step] && !columns[i + step][edge])
+        .map((c) => c.key);
+      if (gaps.length) {
+        console.warn(
+          `cae-table: ${edge} column(s) "${gaps.join('", "')}" are not a contiguous run to the ${side} edge — each pins on top of the loose column beside it, hiding content that stays focusable.`,
+        );
+      }
     }
   }
 

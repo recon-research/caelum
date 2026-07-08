@@ -330,8 +330,14 @@ export class App {
    * the common text-column case). Deferred (#85): MatTable + MatSort + MatPaginator are heavy
    * Material modules, so it's `@defer (on idle)`'d into its own lazy chunk off the initial bundle.
    */
+  /**
+   * `name` is frozen to the inline-start edge (#144). It is the FIRST column, so the sticky run is
+   * contiguous from the start edge — and because `selectionMode="multiple"` prepends a checkbox column,
+   * cae-table auto-freezes that checkbox column alongside it (#252); otherwise the frozen `name` cells
+   * would pin at left:0 on top of the checkboxes, hiding controls that stay in the tab order.
+   */
   protected readonly memberColumns: readonly CaeTableColumn[] = [
-    { key: 'name', header: 'Name', sortable: true },
+    { key: 'name', header: 'Name', sortable: true, sticky: true },
     { key: 'email', header: 'Email' },
     { key: 'role', header: 'Role', sortable: true },
     { key: 'joined', header: 'Joined', sortable: true },

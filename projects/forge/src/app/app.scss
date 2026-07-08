@@ -28,6 +28,24 @@
   color: var(--cae-color-primary);
 }
 
+/* The sticky scroll context for cae-table's `stickyHeader` + frozen `name` column (#144). cae-table
+   cannot own this: `position: sticky` resolves against the nearest scrollable ancestor, which is the
+   consumer's layout decision. `scroll-padding-block-start` keeps a newly-focused row from being scrolled
+   under the pinned header band (WCAG 2.2 SC 2.4.11) — the header height is a Material table token, so no
+   literal. Sizes are relative (`rem`), the only literals allowed here alongside hairline borders. */
+.forge-members-card__scroller {
+  max-height: 20rem;
+  overflow: auto;
+  scroll-padding-block-start: var(--mat-table-header-container-height, 3.5rem);
+}
+/* cae-table is `width: 100%`, so it never overflows its wrapper on its own — without a min-width the
+   columns merely compress, nothing scrolls horizontally, and the frozen column has nothing to freeze
+   against. This is the second of the three consumer obligations documented on CaeTableColumn.sticky. */
+.forge-members-card__table {
+  display: block;
+  min-width: 44rem;
+}
+
 /* The command-bar (#153) and quick-actions (#157) cards share identical note/log styling —
    grouped to keep app.scss lean while the 7kB warn budget (#97, split app.scss) is still open. */
 .forge-commands-card__note,
