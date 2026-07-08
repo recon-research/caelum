@@ -10,13 +10,13 @@ The few metrics that each change a decision when they cross a threshold -- not a
 
 | Metric | Value | Target | What it means |
 |---|---|---|---|
-| Throughput | 9.4/wk | trend only | Merged PRs per week. A trend line, not a target -- a sudden drop flags a blocker. |
+| Throughput | 10.0/wk | trend only | Merged PRs per week. A trend line, not a target -- a sudden drop flags a blocker. |
 | Defect escape rate | 0% | &lt; 15% · alarm &gt; 25% | `bug`s filed / slices merged. Measures gate + review effectiveness; each escape should leave a guard (retrospective, #31). |
 | Rework rate | 0% | &lt; 20% · alarm &gt; 30% | Merged PRs that are themselves fixes. High = slices too big or review too shallow. |
 | Decision latency | 1.0 d | &le; objection window · alarm &gt; 5 d | Median days a `decision` issue stays open. Measures the human-in-loop bottleneck. |
-| Preflight&harr;CI divergence | 0% | ~0% · alarm &gt; 15% | Fraction of PR CI runs that went red. A faithful preflight keeps this ~0; a climb means preflight was skipped or isn't mirroring CI. |
+| Preflight&harr;CI divergence | 1% | ~0% · alarm &gt; 15% | Fraction of PR CI runs that went red. A faithful preflight keeps this ~0; a climb means preflight was skipped or isn't mirroring CI. |
 
-*Sample this window: 121 PR(s) merged, 0 `bug`(s) filed, 143 PR CI run(s), 8 decision(s) closed. Small samples are noisy -- treat single-digit windows as directional, not controlled.*
+*Sample this window: 128 PR(s) merged, 0 `bug`(s) filed, 151 PR CI run(s), 8 decision(s) closed. Small samples are noisy -- treat single-digit windows as directional, not controlled.*
 
 ## Local telemetry (this machine)
 
@@ -24,10 +24,10 @@ The few metrics that each change a decision when they cross a threshold -- not a
 |---|---|---|---|
 | Skill invocations | 0 across 0 skill(s) -- top: none | trend | Which skills earn their always-resident listing cost (#6 measure-first). |
 | Skills never invoked | 26 *(ledger only 0d old -- alarm arms at 90d)* | 0 once the ledger is 90d old | Zero invocations in this machine's ledger lifetime -- dead weight or broken routing: prune the skill or fix its `description`. Ledger is machine-local: a skill exercised only on another box shows here. |
-| Sessions recorded | 1 -- median cost $1540.91 | trend | Per-session cost distribution; a sharp climb means context hygiene is regressing. |
-| Median peak context | 36% *(&lt;5 sessions -- directional)* | &lt; 85% -- alarm &ge; 85% | Peak context% reached per session. High = compacting too late; a forced summary is what drops the Resume point. |
-| Compactions | 0 (0.0/wk) | trend | source=='compact' session starts. Read with the row above: many compactions at low peaks is healthy; few at 90%+ is not. |
-| Permission denials | 0 (0.0/wk) | trend | Denied tool calls (rules or the auto-mode classifier) -- each one stalled autopilot. A climb means the allowlist or the denial protocol (CLAUDE.md > Working style) needs work. |
-| Session cost / merged PR | $12.73 | trend | This machine's windowed session spend over repo-wide merges -- the per-slice price of autopilot. A climb flags context hygiene or slice sizing before the dedicated metrics trip. Directional on multi-machine setups (each box sees only its own spend). |
+| Sessions recorded | 1 -- median cost $1602.71 | trend | Per-session cost distribution; a sharp climb means context hygiene is regressing. |
+| Median peak context | 52% *(&lt;5 sessions -- directional)* | &lt; 85% -- alarm &ge; 85% | Peak context% reached per session. High = compacting too late; a forced summary is what drops the Resume point. |
+| Compactions | 1 (0.1/wk) | trend | source=='compact' session starts. Read with the row above: many compactions at low peaks is healthy; few at 90%+ is not. |
+| Permission denials | 1 (0.1/wk) | trend | Denied tool calls (rules or the auto-mode classifier) -- each one stalled autopilot. A climb means the allowlist or the denial protocol (CLAUDE.md > Working style) needs work. |
+| Session cost / merged PR | $12.52 | trend | This machine's windowed session spend over repo-wide merges -- the per-slice price of autopilot. A climb flags context hygiene or slice sizing before the dedicated metrics trip. Directional on multi-machine setups (each box sees only its own spend). |
 
 *Sources: `.claude/metrics/` -- statusline session snapshots, the skill ledger (age 0d), session-start and permission-denial events. Gitignored: ONE machine's view, not project truth; other machines and CI each see their own or nothing. Skill catalog: 26 on disk.*
