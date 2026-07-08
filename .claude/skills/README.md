@@ -84,7 +84,7 @@ Match the tier to the work's **judgment content, not its size** (`CLAUDE.md` ›
 ## Config files (NOT skills — they live at the project root)
 
 - [`PROJECT_CONVENTIONS.md`](../../PROJECT_CONVENTIONS.md) — paths / commands / stack. **Every skill reads it first.** Fill it via `configure_project`.
-- [`PROJECT_BACKLOG.md`](../../PROJECT_BACKLOG.md) — lightweight Now/Next/Blocked/Done continuity. Defers to GitHub Issues at scale.
+<!-- Caelum deviation: the pre-repo PROJECT_BACKLOG.md interim tracker was retired at go-live; the tracker is GitHub Issues (CLAUDE.md › Source of truth). -->
 
 ## Authoring conventions
 

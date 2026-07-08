@@ -125,11 +125,18 @@ Invoke-Stage 'research audit' { python research/tools/_audit_research.py }
 # CI's static-gates job.
 Invoke-Stage 'provenance (deps license + US-origin, D-11)' { python scripts/check_provenance.py }
 
+# Doc-drift budgets (#67), ops-config three-way-mirror integrity (#71), and the
+# repo-docs relative-link audit (#73) - gates from the pyxis template sync (#245),
+# mirroring ci.yml's static-gates steps and preflight.sh (same stage names).
+Invoke-Stage 'doc budgets' { python scripts/audit_docs.py }
+Invoke-Stage 'ops-config audit' { python scripts/audit_ops_config.py }
+Invoke-Stage 'repo-docs links' { python scripts/audit_repo_links.py }
+
 Invoke-Stage 'todo hygiene (vs origin/main)' {
     # Mirrors ci.yml's hygiene step (same pathspecs, same regex - change both together).
     $null = git rev-parse --verify -q origin/main
     if ($LASTEXITCODE -ne 0) { $global:LASTEXITCODE = 0; Write-Host '(no origin/main yet - skipped)'; return }
-    $diffLines = git diff origin/main...HEAD -- . ':!*.md' ':!.github' ':!textbooks' ':!scripts/preflight.sh' ':!scripts/preflight.ps1' ':!.claude'
+    $diffLines = git diff origin/main...HEAD -- . ':!*.md' ':!.github' ':!textbooks' ':!scripts/preflight.sh' ':!scripts/preflight.ps1' ':!.claude' ':!scripts/audit_ops_config.py'
     $naked = @($diffLines | Where-Object { $_ -match '^\+' -and $_ -notmatch '^\+\+\+' -and $_ -match '(?i)\b(todo|fixme)\b(?!\(#\d+\))' })
     if ($naked.Count -gt 0) {
         $naked | ForEach-Object { Write-Host $_ }
