@@ -6,3 +6,4 @@
  */
 export * from './table';
 export * from './cell-def';
+export * from './row-detail-def';
