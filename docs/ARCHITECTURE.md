@@ -74,6 +74,8 @@ From the brief's pre-loaded scars (§8) plus this repo's standalone-library cons
 
 Every architectural decision, recorded once. `D-01..D-06` are settled by the brief + this onboarding; **`D-07` (grid lib) is ratified — provenance sign-off PASS 2026-07-05 (#169)**; `D-09` (editor lib) remains provisional pending its M2 provenance sign-off; every other row (incl. `D-11..D-15`) is decided. **Grounding** cites the intake brief (`brief §N`) for now; upgrade each to a verified `Book NN §X` once `build_library` runs.
 
+> **Adding a decision** (per `PROJECT_CONVENTIONS.md` › Decision flow): `D-NN` = the decision issue's own number (race-free by construction; the log is non-contiguous by design); cite grounding (verify any `Book NN §X` against `textbooks/SECTIONS.json` first), then reflect it in `docs/ROADMAP.md` + the `CLAUDE.md` Status block. Supersede — never re-litigate — a logged decision with a **new** row (from a new decision issue) citing the old one. *(The existing `D-01`..`D-18` predate this scheme and keep their historical sequential ids; the issue-number rule applies to every new decision from here.)*
+
 | # | Decision | Choice | Grounding |
 |---|----------|--------|-----------|
 | D-01 | UI foundation | **Angular Material + Angular CDK** on Angular 22 (over: freeze on PrimeNG 21 MIT; pay for PrimeNG 22; NG-ZORRO/Taiga; build the whole kit from scratch) | brief §1 — only option clearing both hard rules with zero cost + zero version-lag |
