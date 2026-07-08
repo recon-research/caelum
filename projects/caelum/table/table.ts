@@ -180,6 +180,8 @@ export interface CaeTableColumn {
                 [tabIndex]="radioTabIndex(row)"
                 [checked]="isSelected(row)"
                 (change)="selectOne(row)"
+                (click)="onRadioActivate(row, $event)"
+                (keydown.space)="onRadioActivate(row, $event)"
                 [aria-label]="rowSelectionLabel()(row, i)"
               ></mat-radio-button>
             }
@@ -314,6 +316,20 @@ export class CaeTable<T = Record<string, unknown>> implements OnInit {
    */
   readonly selection = model<readonly T[]>([]);
   /**
+   * Opt in to **click/Space-to-deselect** in `selectionMode="single"` (p-table parity). A native radio
+   * group is, by ARIA, not deselectable — once a row is picked there is no in-grid path back to the empty
+   * selection (clearing otherwise needs a programmatic `[(selection)]` reset). With `[allowDeselect]`,
+   * **re-activating the already-selected radio clears the selection** — by mouse (re-click) *and* by keyboard
+   * (Space on the selected radio), so the deselect is never mouse-only (WCAG 2.1.1). Native radios swallow
+   * the re-activation (no `change` on re-checking the checked one), so {@link onRadioActivate} intercepts the
+   * raw click/keydown. Default `false` preserves strict radio-group semantics; no effect in `'multiple'` /
+   * `'none'` mode (checkboxes already toggle). Deselect triggers on activating the radio **control** (click
+   * or Space) — a tap in Material's enlarged touch-target *ring* around the control does not deselect (#235).
+   * See `reference/COMPARISON.md` (cae-table row) for the divergence note — a deselectable radio group is a
+   * deliberate, opt-in deviation from native semantics (a first-class `role=listbox` alternative is #236).
+   */
+  readonly allowDeselect = input<boolean>(false);
+  /**
    * Accessible name for a row's selection control (a checkbox in `'multiple'` mode, a radio in
    * `'single'`) — supply a semantic label (e.g. the row's name). Especially important in single mode,
    * whose radio group has no visible per-row text to fall back on. The default is the **1-based
@@ -389,12 +405,30 @@ export class CaeTable<T = Record<string, unknown>> implements OnInit {
    * Select exactly one row (single-select mode) — replaces the selection with `[row]`. The radio
    * `(change)` fires only when a radio *becomes* checked (native radios emit nothing on re-selecting
    * the checked one), so this is never called for an already-selected row and never re-emits
-   * redundantly. To *clear* a single-select choice, reset `[(selection)]` — native radios don't
-   * uncheck on re-click (in-grid click-to-deselect is a #224 follow-up). A stray `>1`-length selection
-   * (a consumer seeding multiple rows in single mode) self-heals to length 1 on the first pick.
+   * redundantly. To *clear* a single-select choice, reset `[(selection)]`, or enable {@link allowDeselect}
+   * for in-grid click/Space-to-deselect (native radios don't uncheck on re-click — see
+   * {@link onRadioActivate}). A stray `>1`-length selection (a consumer seeding multiple rows in single
+   * mode) self-heals to length 1 on the first pick.
    */
   protected selectOne(row: T): void {
     this.selection.set([row]);
+  }
+
+  /**
+   * Clear a single-select choice when {@link allowDeselect} is on and the user **re-activates the already
+   * selected radio** (mouse re-click or Space) — the p-table deselect interaction. Guarded on
+   * {@link isSelected}: because the DOM fires `click`/`keydown` **before** the radio's `change`, a *first*
+   * pick of an unselected row reads as not-yet-selected here and falls through untouched to the native
+   * select ({@link selectOne} via `change`); switching to a different row likewise falls through. Only a
+   * re-activation — where the model already holds this row, and a native radio emits no `change` for the
+   * re-check — clears. `preventDefault` stops the redundant native re-check / Space-scroll (there is nothing
+   * native to defer to for a deselect). A no-op unless {@link allowDeselect} — so default behavior and the
+   * `'multiple'` / `'none'` modes are untouched.
+   */
+  protected onRadioActivate(row: T, event: Event): void {
+    if (!this.allowDeselect() || !this.isSelected(row)) return;
+    event.preventDefault();
+    this.selection.set([]);
   }
 
   /**

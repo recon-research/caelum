@@ -796,4 +796,53 @@ describe('CaeTable — single-select row selection (#144)', () => {
     hostFixture.detectChanges();
     expect(hostFixture.componentInstance.selected()).toEqual([PEOPLE[0]]);
   });
+
+  // ---- click/Space-to-deselect (#224, opt-in [allowDeselect], p-table parity) ----
+
+  it('#224: without allowDeselect, re-activating the selected radio does NOT clear (native radio semantics)', () => {
+    setup(); // allowDeselect defaults false
+    radio(0).click();
+    fixture.detectChanges();
+    expect(ref.instance.selection()).toEqual([PEOPLE[0]]);
+    radio(0).click(); // re-click the already-checked radio
+    fixture.detectChanges();
+    // A native radio group is not deselectable by default — the pick stands, no in-grid clear.
+    expect(ref.instance.selection()).toEqual([PEOPLE[0]]);
+    expect(radio(0).checked).toBe(true);
+  });
+
+  it('#224: with [allowDeselect], re-clicking the selected radio clears the selection (mouse)', () => {
+    setup({ allowDeselect: true });
+    radio(0).click();
+    fixture.detectChanges();
+    expect(ref.instance.selection()).toEqual([PEOPLE[0]]);
+    radio(0).click(); // re-activate the checked radio -> clear
+    fixture.detectChanges();
+    expect(ref.instance.selection()).toEqual([]);
+    expect(radio(0).checked).toBe(false);
+  });
+
+  it('#224: [allowDeselect] leaves first-pick and switch intact — only a re-activation clears', () => {
+    setup({ allowDeselect: true });
+    radio(0).click(); // first pick selects (click fires before change; not read as already-selected)
+    fixture.detectChanges();
+    expect(ref.instance.selection()).toEqual([PEOPLE[0]]);
+    radio(2).click(); // switching to a different row replaces, never clears
+    fixture.detectChanges();
+    expect(ref.instance.selection()).toEqual([PEOPLE[2]]);
+    expect(radio(2).checked).toBe(true);
+  });
+
+  it('#224: with [allowDeselect], Space on the selected radio clears it (keyboard-accessible deselect, WCAG 2.1.1)', () => {
+    setup({ allowDeselect: true });
+    radio(1).click();
+    fixture.detectChanges();
+    expect(ref.instance.selection()).toEqual([PEOPLE[1]]);
+    // Space on an already-checked native radio emits no change; the (keydown.space) handler clears.
+    radio(1).dispatchEvent(
+      new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true }),
+    );
+    fixture.detectChanges();
+    expect(ref.instance.selection()).toEqual([]);
+  });
 });
