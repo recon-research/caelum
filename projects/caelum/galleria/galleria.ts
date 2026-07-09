@@ -11,7 +11,7 @@ import {
   model,
   viewChildren,
 } from '@angular/core';
-import { CaeDialog } from 'caelum/dialog';
+import { CaeDialog, type CaeDialogRef } from 'caelum/dialog';
 import { CaeGalleriaLightbox, type CaeGalleriaLightboxData } from './galleria-lightbox';
 
 /**
@@ -58,15 +58,16 @@ let nextUniqueId = 0;
   template: `
     <section
       class="cae-galleria"
-      aria-roledescription="gallery"
+      role="group"
+      [attr.aria-roledescription]="ariaLabel() ? 'gallery' : null"
       [attr.aria-label]="ariaLabel() || null"
     >
       @if (count() > 0) {
         <div
           class="cae-galleria__stage"
-          role="tabpanel"
+          [attr.role]="hasThumbnails() ? 'tabpanel' : null"
           [id]="panelId"
-          [attr.aria-labelledby]="tabId(clampedIndex())"
+          [attr.aria-labelledby]="hasThumbnails() ? tabId(clampedIndex()) : null"
         >
           @if (showNavigators() && count() > 1) {
             <button
@@ -118,7 +119,7 @@ let nextUniqueId = 0;
           }
         </div>
 
-        @if (showThumbnails() && count() > 1) {
+        @if (hasThumbnails()) {
           <div class="cae-galleria__thumbs" role="tablist" [attr.aria-label]="thumbnailsLabel()">
             @for (item of items(); track $index; let i = $index) {
               <button
@@ -289,6 +290,8 @@ let nextUniqueId = 0;
 })
 export class CaeGalleria {
   private readonly dialog = inject(CaeDialog);
+  /** The open lightbox ref, or null — guards against stacking a second lightbox on a double-open. */
+  private lightboxRef: CaeDialogRef<void> | null = null;
 
   /** The images. `alt` is required on each (WCAG 1.1.1). */
   readonly items = input<readonly CaeGalleriaItem[]>([]);
@@ -300,7 +303,7 @@ export class CaeGalleria {
   readonly showThumbnails = input(true, { transform: booleanAttribute });
   /** Show the prev/next navigators over the main image (default on). Hidden for a single image. */
   readonly showNavigators = input(true, { transform: booleanAttribute });
-  /** Accessible name for the gallery region — set one (aria-roledescription reads unlabeled without it). */
+  /** Accessible name for the gallery group — set one (its role/roledescription is dropped without it). */
   readonly ariaLabel = input('');
   readonly prevAriaLabel = input('Previous image');
   readonly nextAriaLabel = input('Next image');
@@ -332,13 +335,22 @@ export class CaeGalleria {
   protected readonly statusText = computed(() =>
     this.count() > 0 ? `Image ${this.clampedIndex() + 1} of ${this.count()}` : '',
   );
+  /**
+   * Whether the thumbnail tablist actually renders. Gates BOTH the tablist `@if` AND the main view's
+   * `role="tabpanel"`/`aria-labelledby` tab semantics — so a single-image or `showThumbnails=false`
+   * gallery is a plain figure, never an orphan tabpanel pointing at a non-existent tab.
+   */
+  protected readonly hasThumbnails = computed(() => this.showThumbnails() && this.count() > 1);
 
   constructor() {
     // Keep the two-way model in range when items shrink or a consumer over-sets it. Runs after CD (no
     // ExpressionChanged hazard); the guard prevents a write loop.
     effect(() => {
       const clamped = this.clampedIndex();
-      if (this.activeIndex() !== clamped) this.activeIndex.set(clamped);
+      // Guard on count > 0 so a still-loading gallery (items() transiently empty) doesn't clobber a
+      // consumer's pre-set [(activeIndex)] down to 0 — when items arrive this re-runs and clamps the
+      // preserved index into the real range.
+      if (this.count() > 0 && this.activeIndex() !== clamped) this.activeIndex.set(clamped);
     });
 
     // Dev-only guidance: an unlabeled gallery, or images missing alt text.
@@ -346,7 +358,7 @@ export class CaeGalleria {
       effect(() => {
         if (this.count() > 0 && !this.ariaLabel()) {
           console.warn(
-            'cae-galleria: no [ariaLabel] — a gallery needs an accessible name (aria-roledescription="gallery" is announced unlabeled without one). Set [ariaLabel].',
+            'cae-galleria: no [ariaLabel] — a gallery needs an accessible name (its aria-roledescription="gallery" is dropped when unlabeled, since roledescription is invalid on an unnamed group). Set [ariaLabel].',
           );
         }
         if (this.items().some((it) => !it.alt)) {
@@ -433,25 +445,33 @@ export class CaeGalleria {
 
   /**
    * Open the fullscreen lightbox at the current image. Material (via {@link CaeDialog}) supplies the
-   * centered modal, focus-trap, `Escape`/backdrop dismissal, and focus-restore to this button. The
-   * lightbox live-syncs `activeIndex` back through `onNavigate`, so the inline view reflects whatever
-   * was last seen — however the dialog closes.
+   * centered modal, focus-trap, `Escape`/backdrop dismissal, and focus-restore to whatever was focused
+   * when it opened — the fullscreen button on the click/keyboard path. The lightbox live-syncs
+   * `activeIndex` back through `onNavigate`, so the inline view reflects whatever was last seen, however
+   * the dialog closes. No-ops on an empty gallery, or when a lightbox is already open (no stacking).
    */
   openFullscreen(): void {
-    if (this.count() === 0) return;
-    this.dialog.open<CaeGalleriaLightbox, void, CaeGalleriaLightboxData>(CaeGalleriaLightbox, {
-      panelClass: 'cae-galleria__lightbox-panel',
-      ariaLabel: this.ariaLabel() || 'Image viewer',
-      maxWidth: '96vw',
-      data: {
-        items: this.items(),
-        index: this.clampedIndex(),
-        circular: this.circular(),
-        onNavigate: (i) => this.activeIndex.set(i),
-        prevAriaLabel: this.prevAriaLabel(),
-        nextAriaLabel: this.nextAriaLabel(),
-        closeAriaLabel: this.closeAriaLabel(),
+    if (this.count() === 0 || this.lightboxRef) return;
+    this.lightboxRef = this.dialog.open<CaeGalleriaLightbox, void, CaeGalleriaLightboxData>(
+      CaeGalleriaLightbox,
+      {
+        // Stable class on the overlay pane — the documented consumer/theme hook for restyling the
+        // lightbox surface (CaeDialogConfig.panelClass); sizing itself is handled by maxWidth.
+        panelClass: 'cae-galleria__lightbox-panel',
+        ariaLabel: this.ariaLabel() || 'Image viewer',
+        maxWidth: '96vw',
+        data: {
+          items: this.items(),
+          index: this.clampedIndex(),
+          circular: this.circular(),
+          onNavigate: (i) => this.activeIndex.set(i),
+          prevAriaLabel: this.prevAriaLabel(),
+          nextAriaLabel: this.nextAriaLabel(),
+          closeAriaLabel: this.closeAriaLabel(),
+        },
       },
-    });
+    );
+    // Release the guard when the lightbox closes (afterClosed emits once, then completes — no leak).
+    this.lightboxRef.afterClosed().subscribe(() => (this.lightboxRef = null));
   }
 }

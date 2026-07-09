@@ -21,7 +21,7 @@ export interface CaeGalleriaLightboxData {
 /**
  * The fullscreen image viewer {@link CaeGalleria} opens through {@link CaeDialog} (D-15, Book 09 §3.3):
  * a large image + prev/next + a live position counter, on Material's centered modal — which already
- * supplies the focus-trap, `Escape`/backdrop dismissal, and **focus-restore to the opening thumbnail**
+ * supplies the focus-trap, `Escape`/backdrop dismissal, and **focus-restore to the opening button**
  * (Book 09 §2.2 beats 3–5), so this component owns only the picture and its navigation. It carries no
  * `@angular/material` import (`CAE_DIALOG_DATA` / {@link injectCaeDialogRef} are the seams). Not
  * exported: a lightbox is reached only via {@link CaeGalleria.openFullscreen}.
@@ -230,14 +230,28 @@ export class CaeGalleriaLightbox {
     this.ref.close();
   }
 
-  /** Left/Right arrows navigate while the modal is focused; `Escape` is Material's own dismissal. */
+  /**
+   * Keyboard nav while the modal is focused (parity with the inline strip): Left/Right step, Home/End
+   * jump to first/last. `Escape` is Material's own dismissal (this handler never touches it).
+   */
   protected onKeydown(event: KeyboardEvent): void {
-    if (event.key === 'ArrowLeft') {
-      event.preventDefault();
-      this.prev();
-    } else if (event.key === 'ArrowRight') {
-      event.preventDefault();
-      this.next();
+    switch (event.key) {
+      case 'ArrowLeft':
+        event.preventDefault();
+        this.prev();
+        break;
+      case 'ArrowRight':
+        event.preventDefault();
+        this.next();
+        break;
+      case 'Home':
+        event.preventDefault();
+        this.setIndex(0);
+        break;
+      case 'End':
+        event.preventDefault();
+        this.setIndex(this.count - 1);
+        break;
     }
   }
 }

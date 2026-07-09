@@ -53,11 +53,26 @@ describe('CaeGalleria', () => {
     fixture?.nativeElement.remove();
   });
 
-  it('renders a labeled gallery region (aria-roledescription="gallery")', async () => {
+  it('labels the gallery as a group (role=group, not a region landmark) with a roledescription', async () => {
     await render();
     const region = el.querySelector('.cae-galleria')!;
+    // role="group" (not a bare labelled section → region landmark) avoids landmark spam for N galleries.
+    expect(region.getAttribute('role')).toBe('group');
     expect(region.getAttribute('aria-roledescription')).toBe('gallery');
     expect(region.getAttribute('aria-label')).toBe('Product photos');
+  });
+
+  it('drops aria-roledescription when unlabeled (invalid on an unnamed group)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    fixture = TestBed.createComponent(CaeGalleria);
+    fixture.componentRef.setInput('items', ITEMS); // no ariaLabel
+    document.body.appendChild(fixture.nativeElement);
+    el = fixture.nativeElement;
+    await settle();
+    const region = el.querySelector('.cae-galleria')!;
+    expect(region.getAttribute('aria-roledescription')).toBeNull();
+    expect(region.getAttribute('aria-label')).toBeNull();
+    warn.mockRestore();
   });
 
   it('shows the active image and a tabpanel labelled by the active thumbnail tab', async () => {
@@ -177,6 +192,21 @@ describe('CaeGalleria', () => {
     expect(mainImg()!.getAttribute('alt')).toBe('Solo');
     expect(navNext()).toBeNull();
     expect(el.querySelector('[role="tablist"]')).toBeNull();
+    // No tablist → the main view must NOT be an orphan tabpanel with a dangling aria-labelledby.
+    const stage = el.querySelector('.cae-galleria__stage')!;
+    expect(stage.getAttribute('role')).toBeNull();
+    expect(stage.getAttribute('aria-labelledby')).toBeNull();
+  });
+
+  it('drops the tab semantics when showThumbnails is false (no orphan tabpanel)', async () => {
+    await render({ showThumbnails: false });
+    expect(el.querySelector('[role="tablist"]')).toBeNull();
+    const stage = el.querySelector('.cae-galleria__stage')!;
+    expect(stage.getAttribute('role')).toBeNull();
+    expect(stage.getAttribute('aria-labelledby')).toBeNull();
+    // The main image and navigators still work without the strip.
+    expect(mainImg()!.getAttribute('alt')).toBe('Alpha');
+    expect(navNext()).not.toBeNull();
   });
 
   it('renders no stage for an empty gallery and openFullscreen is a no-op', async () => {
@@ -278,6 +308,29 @@ describe('CaeGalleria', () => {
       await settle();
       expect(counter()!.textContent!.trim()).toBe('Image 2 of 3');
       TestBed.inject(MatDialog).closeAll();
+    });
+
+    it('jumps to first/last with the Home/End keys', async () => {
+      await render({ activeIndex: 0 });
+      component.openFullscreen();
+      await settle();
+      lightbox()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+      await settle();
+      expect(counter()!.textContent!.trim()).toBe('Image 3 of 3');
+      lightbox()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+      await settle();
+      expect(counter()!.textContent!.trim()).toBe('Image 1 of 3');
+      TestBed.inject(MatDialog).closeAll();
+    });
+
+    it('does not stack a second lightbox on a double open', async () => {
+      await render();
+      const dialog = TestBed.inject(MatDialog);
+      component.openFullscreen();
+      component.openFullscreen();
+      await settle();
+      expect(dialog.openDialogs).toHaveLength(1);
+      dialog.closeAll();
     });
 
     it('closes on the close button', async () => {
