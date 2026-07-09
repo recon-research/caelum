@@ -20,6 +20,11 @@ is the enforcement:
      parses; every hook/statusLine command that references a repo file
      references one that exists; the deny tripwires (git push --force /
      gh pr merge --admin, in BOTH shells) are present.
+  4. TODO-exemption mirror: the ':!' pathspec lists of the four TODO-hygiene
+     enforcement sites (preflight.sh, preflight.ps1, ci.yml, and the
+     block_naked_todos.py hook) must be identical sets -- the hook drifted
+     when the other three gained exemptions and blocked a legitimate commit
+     downstream (#104).
 
 Mirrored three ways itself: ci.yml > static gates > "Ops-config audit" ==
 preflight.{sh,ps1} "ops-config audit" stage (the map below includes it).
@@ -134,6 +139,34 @@ def check_ci_map(preflight_stages, ci_steps, problems):
         )
 
 
+def check_todo_exemptions(root, problems):
+    # Every quoted ':!...' token in these files belongs to the TODO-hygiene
+    # exemption list (verified at #104); an unrelated ':!' pathspec landing in
+    # one of them later fails loudly here -- adjust this parser then, not the rule.
+    sites = (
+        Path("scripts/preflight.sh"),
+        Path("scripts/preflight.ps1"),
+        Path(".github/workflows/ci.yml"),
+        Path(".claude/hooks/block_naked_todos.py"),
+    )
+    specs = {}
+    for site in sites:
+        path = root / site
+        if not path.is_file():
+            problems.append(f"ops-config file missing: {path}")
+            return
+        specs[str(site)] = set(re.findall(r"""['"](:![^'"\n]+)['"]""", read(path)))
+    union = set().union(*specs.values())
+    print(f"TODO-exemption pathspecs: {len(union)} distinct across {len(sites)} sites")
+    for name, found in sorted(specs.items()):
+        for spec in sorted(union - found):
+            problems.append(
+                f"TODO-hygiene exemption \"{spec}\" is missing from {name} -- the four "
+                "enforcement sites must carry an identical pathspec list; a drifted site "
+                "blocks (or waves through) what the others don't (#104)."
+            )
+
+
 def check_settings(path, root, problems):
     try:
         data = json.loads(read(path))
@@ -205,6 +238,7 @@ def main():
         ps1_stages = parse_ps1_stages(ps1_path)
         check_mirror(sh_stages, ps1_stages, problems)
         check_ci_map(set(sh_stages) | set(ps1_stages), parse_ci_steps(ci_path), problems)
+        check_todo_exemptions(root, problems)
         check_settings(settings_path, root, problems)
 
     if problems:

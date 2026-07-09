@@ -36,7 +36,12 @@ ROADMAP_MAX_LINES = 400   # docs/ROADMAP.md: total physical lines
 # A <fill-me> template field. The shipped docs spell it as HTML entities
 # (&lt;...&gt;) so the placeholders survive GitHub's markdown rendering;
 # hand-filled or downstream text may use literal angle brackets -- match both.
-PLACEHOLDER = re.compile(r"<[^<>\n]+>|&lt;[^\n]*?&gt;")
+# The content must start with a letter: comparator prose in a filled Status
+# line ("pointing <0.5 deg ... windows >1-orbit") must NOT read as a
+# placeholder (#105, escaped downstream). Accepted trade-off: a digit-initial
+# hand-written placeholder goes unflagged (misses a flag) rather than prose
+# wrongly failing the gate (blocks a merge).
+PLACEHOLDER = re.compile(r"<[A-Za-z][^<>\n]*>|&lt;[A-Za-z][^\n]*?&gt;")
 CODE_SPAN = re.compile(r"`[^`]*`")       # inline code is not a placeholder (e.g. `gh pr view <n>`)
 
 
@@ -173,7 +178,9 @@ def check_roadmap(root, problems):
         )
     lines = strip_code_fences(raw)
     for i, line in enumerate(lines):
-        m = re.match(r"^(#{2,4})\s+(M\d\S*)", line)
+        # Milestone ids: digit-or-dash after `M` (M0, M1.5, M-H) — the class
+        # still rejects prose headings like "## Milestones" (letter there).
+        m = re.match(r"^(#{2,4})\s+(M[\d-]\S*)", line)
         if not m:
             continue
         body = section_bounds(lines, i, len(m.group(1)))
