@@ -80,6 +80,9 @@ export * from 'caelum/tree-table';
 // --- Media (M3): carousel (#273 — content-agnostic rotating carousel; signal index, autoplay+pause, APG a11y) ---
 export * from 'caelum/carousel';
 
+// --- Form controls (M3): tree-select (#279 — hierarchical node-select over a cdkConnectedOverlay + mat-tree panel; value = node keys) ---
+export * from 'caelum/tree-select';
+
 // --- Composed (M1): split-button (#148 — primary command + secondary-action dropdown over MatButton + cae-menu) ---
 export * from 'caelum/split-button';
 

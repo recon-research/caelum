@@ -1,0 +1,34 @@
+<cae-card class="forge-tree-select-card">
+  <h3 class="forge-tree-select-card__title">Tree select</h3>
+  <p class="forge-tree-select-card__lead">
+    Pick node(s) from a hierarchical tree in a pop-up panel. The control's value is the node
+    <strong>key</strong> — never the visible label, and expansion state never leaks into it.
+  </p>
+
+  <div class="forge-tree-select">
+    <span id="forge-ts-single" class="forge-tree-select__label">Move to folder</span>
+    <cae-tree-select
+      [nodes]="resources"
+      ariaLabelledby="forge-ts-single"
+      placeholder="Choose a folder…"
+      [formControl]="single"
+    />
+    <p class="forge-tree-select__note">
+      Selected key: <code>{{ singleText() }}</code>
+    </p>
+  </div>
+
+  <div class="forge-tree-select">
+    <span id="forge-ts-multi" class="forge-tree-select__label">Grant access to</span>
+    <cae-tree-select
+      [nodes]="resources"
+      selectionMode="multiple"
+      ariaLabelledby="forge-ts-multi"
+      placeholder="Choose environments…"
+      [formControl]="multi"
+    />
+    <p class="forge-tree-select__note">
+      Selected keys: <code>{{ multiText() }}</code>
+    </p>
+  </div>
+</cae-card>
