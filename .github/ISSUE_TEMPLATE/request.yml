@@ -1,0 +1,24 @@
+name: Request / feedback
+description: Ask for something or report a problem, in your own words — no process knowledge needed. The project's agent handles the paperwork.
+labels: ["inbox"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Write however you like — **vague is fine**. The project's agent reads this, investigates,
+        files the formal ticket(s) for you, and replies here with what it did and where to follow
+        along. If it needs more detail, it will ask you one question here. You never need labels,
+        templates, or the project's conventions — that's the agent's job.
+  - type: textarea
+    id: request
+    attributes:
+      label: What do you want, or what's wrong?
+      description: Detail helps but isn't required. Links and screenshots welcome.
+      placeholder: e.g. "The export feels slow on big files" or "Could it remember my last settings?"
+    validations:
+      required: true
+  - type: input
+    id: importance
+    attributes:
+      label: How much does this matter to you? (optional)
+      placeholder: nice-to-have / important / it's blocking me

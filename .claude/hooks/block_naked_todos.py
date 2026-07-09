@@ -31,7 +31,10 @@ def chdir_repo_root():
     if root and os.path.isdir(root):
         os.chdir(root)
 
-EXEMPT = [":!*.md", ":!.github", ":!textbooks", ":!scripts/preflight.sh", ":!scripts/preflight.ps1", ":!.claude"]
+# Mirror of the ':!' pathspecs in preflight.sh / preflight.ps1 / ci.yml — the
+# four-site identity is enforced by audit_ops_config.py check 4 (#104).
+EXEMPT = [":!*.md", ":!.github", ":!textbooks", ":!scripts/preflight.sh", ":!scripts/preflight.ps1",
+          ":!.claude", ":!scripts/audit_ops_config.py"]
 TICKETED = re.compile(r"(?i)\b(todo|fixme)\(#\d+\)")
 NAKED = re.compile(r"(?i)\b(todo|fixme)\b")
 

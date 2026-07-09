@@ -43,4 +43,4 @@ The PR URL, the merged commit hash on `main`, and the CI result (which checks ra
 - Don't `gh pr merge --admin` — it bypasses the required checks; if a green PR won't merge, merge `main` *into* the branch, re-preflight, wait for green.
 - Don't merge with a failing or still-running check "because it's probably fine".
 - Don't inline multiline bodies/messages on PowerShell — body-file / here-doc only (conventions › PR / commit mechanics).
-- Don't push through a permission/classifier denial of the merge — that's the owner's call, not an error to engineer around: run the denial protocol (`CLAUDE.md` › Working style — survey the owner with approve-retry / standing-rule / merge-it-yourself choices) and continue with independent work meanwhile.
+- Don't push through a permission/classifier denial of the merge — that's the owner's call, not an error to engineer around: run the denial protocol (`CLAUDE.md` › Working style — diagnose rule-vs-classifier, then survey the owner with approve-retry / unblock-this-session / standing-rule / merge-it-yourself choices) and continue with independent work meanwhile.
