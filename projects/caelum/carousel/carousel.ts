@@ -1,8 +1,9 @@
-import { NgTemplateOutlet } from '@angular/common';
+import { NgTemplateOutlet, isPlatformBrowser } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
   ElementRef,
+  PLATFORM_ID,
   computed,
   contentChild,
   effect,
@@ -11,26 +12,9 @@ import {
   isDevMode,
   model,
   signal,
+  viewChildren,
 } from '@angular/core';
 import { CaeCarouselItem, CaeCarouselItemContext } from './carousel-item';
-
-/**
- * A responsive-option row: below `breakpoint` (a CSS length) the carousel uses this `numVisible`/`numScroll`.
- * Reserved for the responsive follow-up (#273 out-of-scope note) — v1 renders a fixed window — so it is
- * exported now to keep the input's type stable, but not yet consumed.
- */
-export interface CaeCarouselResponsiveOption {
-  /** Max viewport width (CSS length, e.g. `'768px'`) at or below which this option applies. */
-  breakpoint: string;
-  /** Items visible at this breakpoint. */
-  numVisible: number;
-  /** Items scrolled per step at this breakpoint. */
-  numScroll: number;
-}
-
-/** Process-global counter seeding a unique per-instance scope token, so a carousel-in-a-slide never
- *  matches the outer carousel's indicator query (mirrors cae-tree-table's row scope). */
-let nextCarouselId = 0;
 
 /**
  * `cae-carousel` — a content-agnostic rotating carousel (`reference/COMPARISON.md`: `p-carousel` →
@@ -68,9 +52,16 @@ let nextCarouselId = 0;
  * slide; see {@link CaeCarouselItem}. Without one, slides fall back to the item's string form (dev-warned).
  *
  * **v1 scope** (#273): fixed horizontal window, circular, autoplay (+pause/stop/reduced-motion), prev/next,
- * indicators, keyboard, full ARIA, content projection. Follow-ups: responsive `responsiveOptions`, vertical
- * orientation, and touch/CDK-drag swipe-to-advance (buttons + arrows already give the full keyboard path,
- * §3.5 gate 1, so swipe is an enhancement, not a parity gap).
+ * indicators, keyboard, full ARIA, content projection. Follow-ups (#276): responsive `responsiveOptions`,
+ * vertical orientation, touch/CDK-drag swipe-to-advance (buttons + arrows already give the full keyboard
+ * path, §3.5 gate 1, so swipe is an enhancement, not a parity gap), and focus restoration when a focused
+ * slide is removed from the window (see the focus note below).
+ *
+ * **Focus note (M4, #276).** Autoplay pauses on focus, and indicator/button paging moves focus off the
+ * slide first, so those paths are safe. But a **programmatic** window shift — a consumer writing `[(page)]`,
+ * or a `numVisible`/`value` change — while keyboard focus is *inside* a slide's content makes that slide
+ * `inert` and drops DOM focus to `<body>`; restoring it is a real-browser follow-up (the same hazard
+ * cae-tree-table documents at #263).
  *
  * @typeParam T - the item shape (one element of {@link value}).
  */
@@ -81,7 +72,9 @@ let nextCarouselId = 0;
   host: {
     class: 'cae-carousel',
     role: 'group',
-    'aria-roledescription': 'carousel',
+    // roledescription only when NAMED — an unnamed aria-roledescription="carousel" is announced as a
+    // nameless "carousel" (worse than none); the dev-warn nudges the consumer to set [ariaLabel].
+    '[attr.aria-roledescription]': "ariaLabel() ? 'carousel' : null",
     '[attr.aria-label]': 'ariaLabel() || null',
     '(mouseenter)': '_hovered.set(true)',
     '(mouseleave)': '_hovered.set(false)',
@@ -128,7 +121,7 @@ let nextCarouselId = 0;
             type="button"
             class="cae-carousel__nav cae-carousel__nav--prev"
             [attr.aria-label]="prevAriaLabel()"
-            [disabled]="atStart() && !circular()"
+            [attr.aria-disabled]="atStart() && !circular() ? 'true' : null"
             (click)="prev()"
           >
             <span
@@ -142,11 +135,10 @@ let nextCarouselId = 0;
           <div class="cae-carousel__indicators" role="group" [attr.aria-label]="indicatorsLabel()">
             @for (p of pages(); track p; let i = $index) {
               <button
+                #indicatorBtn
                 type="button"
                 class="cae-carousel__indicator"
                 [class.cae-carousel__indicator--active]="i === clampedPage()"
-                [attr.data-cae-carousel-scope]="scope"
-                [attr.data-cae-carousel-indicator]="i"
                 [attr.aria-label]="indicatorLabel(i)"
                 [attr.aria-current]="i === clampedPage() ? 'true' : null"
                 [tabindex]="i === clampedPage() ? 0 : -1"
@@ -162,7 +154,7 @@ let nextCarouselId = 0;
             type="button"
             class="cae-carousel__nav cae-carousel__nav--next"
             [attr.aria-label]="nextAriaLabel()"
-            [disabled]="atEnd() && !circular()"
+            [attr.aria-disabled]="atEnd() && !circular() ? 'true' : null"
             (click)="next()"
           >
             <span
@@ -181,8 +173,8 @@ let nextCarouselId = 0;
           >
             <span
               class="cae-carousel__play-icon"
-              [class.cae-carousel__play-icon--pause]="playDesire()"
-              [class.cae-carousel__play-icon--play]="!playDesire()"
+              [class.cae-carousel__play-icon--pause]="autoplayOn()"
+              [class.cae-carousel__play-icon--play]="!autoplayOn()"
               aria-hidden="true"
             ></span>
           </button>
@@ -229,12 +221,14 @@ let nextCarouselId = 0;
       color: var(--cae-color-on-surface);
       cursor: pointer;
     }
-    .cae-carousel__nav:disabled {
+    /* Ends use aria-disabled (not the disabled property) so the focused button KEEPS focus instead of
+       blurring to <body> when it dims at an end (WCAG 2.4.3); prev()/next() already no-op there. */
+    .cae-carousel__nav[aria-disabled='true'] {
       color: var(--cae-color-on-surface-variant);
       opacity: 0.5;
       cursor: default;
     }
-    .cae-carousel__nav:not(:disabled):hover,
+    .cae-carousel__nav:not([aria-disabled='true']):hover,
     .cae-carousel__play:hover {
       border-color: var(--cae-color-primary);
     }
@@ -339,19 +333,18 @@ export class CaeCarousel<T = unknown> {
   readonly nextAriaLabel = input('Next slide');
   /** Accessible label for the indicator group. */
   readonly indicatorsLabel = input('Choose slide to display');
-  /**
-   * Responsive breakpoint overrides. **Not yet consumed** (v1 renders a fixed window) — reserved for the
-   * responsive follow-up so the public input type is stable now; see the class doc's v1-scope note.
-   */
-  readonly responsiveOptions = input<readonly CaeCarouselResponsiveOption[]>([]);
 
   /** The active page index (0-based), two-way. Bind `[(page)]` for two-way or `(pageChange)` to observe. */
   readonly page = model(0);
 
-  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
-
-  /** Per-instance scope token stamped on each indicator, so {@link focusIndicator} finds THIS carousel's dots. */
-  protected readonly scope = String(nextCarouselId++);
+  /** Whether we're in a browser — autoplay's timer never arms during SSR (matches the matchMedia guard). */
+  private readonly isBrowser = isPlatformBrowser(inject(PLATFORM_ID));
+  /**
+   * This carousel's own indicator buttons. A **view query** auto-scopes to THIS component's view — a nested
+   * `<cae-carousel>` inside a slide keeps its dots in the child's view, invisible here — so focus-by-index
+   * needs no per-instance DOM token.
+   */
+  private readonly indicatorBtns = viewChildren<ElementRef<HTMLElement>>('indicatorBtn');
 
   /** True while the pointer is over the carousel — pauses autoplay. */
   protected readonly _hovered = signal(false);
@@ -360,25 +353,33 @@ export class CaeCarousel<T = unknown> {
   /** Whether hover/focus is currently pausing autoplay. */
   private readonly interacting = computed(() => this._hovered() || this._focused());
 
-  /**
-   * Explicit play/pause intent from the toggle button: `null` = follow the default (autoplay on, unless
-   * reduced motion is requested), `true`/`false` = the user chose. Kept separate from the transient
-   * hover/focus pause so leaving the carousel resumes the user's chosen mode.
-   */
-  private readonly _autoplayOn = signal<boolean | null>(null);
-  /** Whether the OS asks for reduced motion — computed once (rarely toggles mid-session; a live signal is a follow-up). */
+  /** Whether the OS asks for reduced motion — computed once (rarely toggles mid-session; a live signal is #276). */
   private readonly reducedMotion = this.computeReducedMotion();
-  /** The effective "should be playing" intent: explicit choice, else on unless reduced motion is requested. */
-  protected readonly playDesire = computed(() => this._autoplayOn() ?? !this.reducedMotion);
-  /** Whether autoplay is actively advancing right now (intent AND enabled AND not hover/focus-paused). */
+  /**
+   * Whether autoplay is ON — the play/pause toggle's state. Defaults on, unless the OS requests reduced
+   * motion (then off; the user can still start it explicitly). Kept separate from the transient hover/focus
+   * pause so leaving the carousel resumes this chosen mode.
+   */
+  protected readonly autoplayOn = signal(!this.reducedMotion);
+  /** Whether autoplay is actively advancing right now (on AND enabled AND >1 page AND not paused AND in a browser). */
   protected readonly playing = computed(
-    () => this.autoplayInterval() > 0 && this.playDesire() && !this.interacting(),
+    () =>
+      this.isBrowser &&
+      this.autoplayInterval() > 0 &&
+      this.totalPages() > 1 &&
+      this.autoplayOn() &&
+      !this.interacting(),
   );
 
   /** {@link numVisible} floored to a positive integer. */
   private readonly visibleCount = computed(() => Math.max(1, Math.floor(this.numVisible())));
-  /** {@link numScroll} floored to a positive integer. */
-  private readonly scrollCount = computed(() => Math.max(1, Math.floor(this.numScroll())));
+  /**
+   * {@link numScroll} floored to a positive integer, and never MORE than numVisible: a scroll step larger
+   * than the window would skip over interior slides, leaving them permanently unreachable by keyboard/AT.
+   */
+  private readonly scrollCount = computed(() =>
+    Math.min(Math.max(1, Math.floor(this.numScroll())), this.visibleCount()),
+  );
 
   /** Total page count: `ceil((n - numVisible) / numScroll) + 1`, or 1 when everything fits in one window. */
   protected readonly totalPages = computed(() => {
@@ -414,9 +415,9 @@ export class CaeCarousel<T = unknown> {
   /** Whether the carousel is on its last page. */
   protected readonly atEnd = computed(() => this.clampedPage() === this.totalPages() - 1);
 
-  /** Accessible label for the play/pause toggle — reflects the play *intent*, not the transient hover-pause. */
+  /** Accessible label for the play/pause toggle — reflects the toggle state, not the transient hover-pause. */
   protected readonly playLabel = computed(() =>
-    this.playDesire() ? 'Pause autoplay' : 'Start autoplay',
+    this.autoplayOn() ? 'Pause autoplay' : 'Start autoplay',
   );
 
   /** The single projected slide template (`caeCarouselItem`), or `null` for the text fallback. */
@@ -510,9 +511,9 @@ export class CaeCarousel<T = unknown> {
     this.goTo(p >= this.totalPages() - 1 ? 0 : p + 1);
   }
 
-  /** Toggle the user's play/pause intent (the "Pause, Stop, Hide" control, WCAG 2.2.2). */
+  /** Toggle the play/pause state (the "Pause, Stop, Hide" control, WCAG 2.2.2). */
   togglePlay(): void {
-    this._autoplayOn.set(!this.playDesire());
+    this.autoplayOn.update((on) => !on);
   }
 
   /**
@@ -547,16 +548,13 @@ export class CaeCarousel<T = unknown> {
   }
 
   /**
-   * Move DOM focus to indicator `i` (the new roving tab stop). Scoped to THIS carousel by the per-instance
-   * `data-cae-carousel-scope` token, so a nested carousel inside a slide is never matched. Programmatic
-   * `.focus()` ignores the current `tabindex` sign, so it lands immediately.
+   * Move DOM focus to indicator `i` (the new roving tab stop). Uses the {@link indicatorBtns} view query,
+   * which only ever contains THIS carousel's dots (a nested carousel's live in its own view), so no
+   * instance token is needed. Programmatic `.focus()` ignores the current `tabindex` sign, so it lands
+   * immediately.
    */
   private focusIndicator(i: number): void {
-    this.host.nativeElement
-      .querySelector<HTMLElement>(
-        `[data-cae-carousel-scope="${this.scope}"][data-cae-carousel-indicator="${i}"]`,
-      )
-      ?.focus();
+    this.indicatorBtns()[i]?.nativeElement.focus();
   }
 
   /** Whether the OS requests reduced motion (SSR/jsdom-safe: no `matchMedia` → treated as no preference). */

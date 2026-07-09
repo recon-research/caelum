@@ -136,13 +136,31 @@ describe('CaeCarousel', () => {
     expect(visibleSlides()[0].textContent?.trim()).toBe('1:b');
   });
 
-  it('disables prev at the start and next at the end (non-circular)', () => {
-    expect(prevBtn()!.disabled).toBe(true);
-    expect(nextBtn()!.disabled).toBe(false);
+  it('marks prev aria-disabled at the start and next aria-disabled at the end (non-circular)', () => {
+    // aria-disabled, NOT the disabled property — so the focused button keeps focus instead of blurring
+    // to <body> when it dims at an end (WCAG 2.4.3). Native disabled must stay false.
+    expect(prevBtn()!.getAttribute('aria-disabled')).toBe('true');
+    expect(prevBtn()!.disabled).toBe(false);
+    expect(nextBtn()!.getAttribute('aria-disabled')).toBeNull();
     carousel.goTo(4);
     fixture.detectChanges();
-    expect(nextBtn()!.disabled).toBe(true);
-    expect(prevBtn()!.disabled).toBe(false);
+    expect(nextBtn()!.getAttribute('aria-disabled')).toBe('true');
+    expect(nextBtn()!.disabled).toBe(false);
+    expect(prevBtn()!.getAttribute('aria-disabled')).toBeNull();
+  });
+
+  it('keeps focus on the next button when it becomes aria-disabled at the end (no focus strand)', () => {
+    document.body.appendChild(fixture.nativeElement);
+    carousel.goTo(3);
+    fixture.detectChanges();
+    nextBtn()!.focus();
+    expect(document.activeElement).toBe(nextBtn());
+    // Advance to the last page → next dims (aria-disabled) but, being not natively disabled, keeps focus.
+    nextBtn()!.click();
+    fixture.detectChanges();
+    expect(carousel.page()).toBe(4);
+    expect(nextBtn()!.getAttribute('aria-disabled')).toBe('true');
+    expect(document.activeElement).toBe(nextBtn());
   });
 
   it('wraps past the ends only when circular', async () => {
@@ -160,9 +178,18 @@ describe('CaeCarousel', () => {
     carousel.prev();
     fixture.detectChanges();
     expect(carousel.page()).toBe(4);
-    // Navigators are never disabled when circular.
-    expect(prevBtn()!.disabled).toBe(false);
-    expect(nextBtn()!.disabled).toBe(false);
+    // Navigators are never aria-disabled when circular.
+    expect(prevBtn()!.getAttribute('aria-disabled')).toBeNull();
+    expect(nextBtn()!.getAttribute('aria-disabled')).toBeNull();
+  });
+
+  it('clamps numScroll to numVisible so no interior slide is unreachable', async () => {
+    // numScroll 3 > numVisible 1 would step over slides 1 and 3; clamped to 1 → every slide is a page.
+    await setInput({ numVisible: 1, numScroll: 3 });
+    expect(indicators()).toHaveLength(5);
+    carousel.goTo(1);
+    fixture.detectChanges();
+    expect(visibleSlides()[0].textContent?.trim()).toBe('1:b'); // slide 1 is reachable
   });
 
   it('clamps an out-of-range page and corrects the two-way model', () => {
@@ -374,6 +401,8 @@ describe('CaeCarousel dev-warnings', () => {
     fixture.componentRef.setInput('value', ['a', 'b']);
     fixture.detectChanges();
     expect(warnings.some((w) => w.includes('no [ariaLabel]'))).toBe(true);
+    // Unnamed → no aria-roledescription (a nameless "carousel" announcement is worse than none).
+    expect(fixture.nativeElement.getAttribute('aria-roledescription')).toBeNull();
     fixture.nativeElement.remove();
   });
 
