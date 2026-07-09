@@ -659,6 +659,14 @@
       </cae-card>
     }
 
+    <!-- cae-tree-table (#262, M3 composed) — a HIERARCHICAL table: rows expand/collapse as a WAI-ARIA
+         treegrid over MatTable, with row-level roving keyboard nav (the data cousin of TreeSelect,
+         Book 10 §3.4). Its own @defer'd component keeps cae-tree-table (MatTable) off the eager initial
+         bundle (#85/#142), like the grid demos below. -->
+    @defer (on idle) {
+      <app-tree-table-demo />
+    }
+
     <!-- cae-data-grid (#170 interface, #171 TanStack engine — the M2 grid exit criterion). Unlike the
          cae-table above (a thin MatTable wrapper, great for a small roster), the grid renders its OWN
          virtualized DOM over thousands of rows and does all sort/paginate work behind the CaeGridAdapter

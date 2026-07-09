@@ -77,6 +77,7 @@ import type { RenameWorkspaceDialog, RenameWorkspaceData } from './rename-worksp
 // eager initial bundle). It owns the grid, its data, and the engine provider; App just defers it in.
 import { ActivityGridDemo } from './activity-grid-demo';
 import { OrdersGridDemo } from './orders-grid-demo';
+import { TreeTableDemo } from './tree-table-demo';
 
 type ThemeMode = 'auto' | 'light' | 'dark';
 
@@ -141,6 +142,7 @@ const SWATCHES: ReadonlyArray<{ token: string; label: string }> = [
     CaeCellDef,
     ActivityGridDemo,
     OrdersGridDemo,
+    TreeTableDemo,
     CaeTextarea,
     CaeToggleButton,
     CaeTooltip,

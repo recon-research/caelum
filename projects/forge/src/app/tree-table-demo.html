@@ -1,0 +1,27 @@
+<cae-card
+  class="forge-tree-table-card"
+  title="Workspace files"
+  subtitle="cae-tree-table — a hierarchical treegrid over MatTable (p-treeTable parity, #262)"
+>
+  <p class="forge-panel__lead">
+    Rows form an expand/collapse hierarchy rendered as a WAI-ARIA <code>treegrid</code>. Click a
+    chevron to open a folder, or navigate entirely by keyboard: Tab into the grid, then arrow keys
+    move between rows (Up/Down), open/close a folder (Right/Left), jump to the ends (Home/End), and
+    Enter opens a row. The Kind column shows a custom <code>caeTreeCellDef</code> cell.
+  </p>
+
+  <cae-tree-table
+    caption="Workspace files"
+    [nodes]="files"
+    [columns]="columns"
+    [(expanded)]="open"
+    [rowExpandLabel]="expandLabel"
+    (nodeActivate)="onActivate($event)"
+  >
+    <ng-template caeTreeCellDef="kind" let-value="value">
+      <span class="forge-ftype forge-ftype--{{ value }}">{{ value }}</span>
+    </ng-template>
+  </cae-tree-table>
+
+  <p class="forge-tree-table-card__note" role="status">{{ openedNote() }}</p>
+</cae-card>
