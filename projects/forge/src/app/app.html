@@ -683,6 +683,14 @@
       <app-galleria-demo />
     }
 
+    <!-- cae-image (#275, M3 ★ media) — the media family's smallest member: a token-styled image that opens
+         a fullscreen zoom/rotate/pan preview on the shared cae-dialog shell (focus-trap + Escape + restore),
+         reusing the galleria lightbox's centered-modal substrate. Its own @defer'd component keeps the image
+         and the dialog module it pulls in off the eager initial bundle (#85/#142), like the other demos. -->
+    @defer (on idle) {
+      <app-image-demo />
+    }
+
     <!-- cae-tree-select (#279, M3 ★ value-picker) — the FORM cousin of cae-tree-table: pick node(s)
          from a hierarchical tree in the library's first cdkConnectedOverlay panel; the value is the
          node key(s), never the label. Its own @defer'd component keeps the CDK overlay + a11y modules

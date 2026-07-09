@@ -83,6 +83,9 @@ export * from 'caelum/carousel';
 // --- Media (M3): galleria (#274 — image gallery; thumbnail tablist + fullscreen lightbox over cae-dialog) ---
 export * from 'caelum/galleria';
 
+// --- Media (M3): image (#275 — token-styled image + fullscreen zoom/rotate/pan preview over cae-dialog) ---
+export * from 'caelum/image';
+
 // --- Form controls (M3): tree-select (#279 — hierarchical node-select over a cdkConnectedOverlay + mat-tree panel; value = node keys) ---
 export * from 'caelum/tree-select';
 

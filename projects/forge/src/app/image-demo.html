@@ -1,0 +1,16 @@
+<cae-card class="forge-image-card">
+  <h3 class="forge-image-card__title">Image preview</h3>
+  <p class="forge-image-card__lead">
+    Hover the image for the magnifier, then click (or focus it and press Enter) to open a fullscreen
+    preview. Inside, zoom with <code>+</code> / <code>−</code>, rotate, and pan with the arrow keys
+    or by dragging — <code>Escape</code> closes it and returns focus to the image.
+  </p>
+
+  <cae-image
+    class="forge-image"
+    [src]="src"
+    alt="The Orion field — a wide star field in deep blue"
+    caption="A wide star field in deep blue."
+    previewAriaLabel="Open the Orion field full screen"
+  />
+</cae-card>
