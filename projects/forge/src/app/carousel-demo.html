@@ -1,0 +1,31 @@
+<cae-card
+  class="forge-carousel-card"
+  title="Release highlights"
+  subtitle="cae-carousel — a content-agnostic rotating carousel (p-carousel parity, #273)"
+>
+  <p class="forge-panel__lead">
+    A rotating set of slides with full keyboard and screen-reader support. It autoplays, but pauses
+    the moment you hover or focus it and can be stopped outright with the play/pause button (WCAG
+    2.2.2). Use the prev/next buttons, or Tab to the dots and arrow between them; paging wraps
+    around (circular).
+  </p>
+
+  <cae-carousel
+    class="forge-carousel"
+    [value]="highlights"
+    [circular]="true"
+    [autoplayInterval]="5000"
+    ariaLabel="Release highlights"
+    [(page)]="page"
+  >
+    <ng-template caeCarouselItem let-item>
+      @let highlight = asHighlight(item);
+      <article class="forge-highlight">
+        <h3 class="forge-highlight__title">{{ highlight.title }}</h3>
+        <p class="forge-highlight__blurb">{{ highlight.blurb }}</p>
+      </article>
+    </ng-template>
+  </cae-carousel>
+
+  <p class="forge-carousel-card__note">{{ slideNote() }}</p>
+</cae-card>

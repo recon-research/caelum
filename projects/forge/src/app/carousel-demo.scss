@@ -1,0 +1,32 @@
+// Carousel demo (#273) — per-demo card styles, token-driven (D-04). Only literals are structural
+// (display/ratios); every colour/space resolves to `--cae-*` (a literal colour would be a defect,
+// Book 04 §3.6).
+
+.forge-carousel {
+  display: block;
+}
+
+// A highlight slide: a padded, token-styled panel with a reserved min-height so the viewport keeps a
+// stable size across slides (content-driven height, no hardcoded colour).
+.forge-highlight {
+  box-sizing: border-box;
+  min-block-size: 9rem;
+  margin-inline: var(--cae-space-1);
+  padding: var(--cae-space-5);
+  border: 1px solid var(--cae-color-border);
+  border-radius: var(--cae-radius-md);
+  background: var(--cae-surface-sunken);
+}
+.forge-highlight__title {
+  margin: 0 0 var(--cae-space-2);
+  color: var(--cae-color-primary);
+}
+.forge-highlight__blurb {
+  margin: 0;
+  color: var(--cae-color-on-surface-variant);
+}
+
+.forge-carousel-card__note {
+  margin-block-start: var(--cae-space-3);
+  color: var(--cae-color-on-surface-variant);
+}
