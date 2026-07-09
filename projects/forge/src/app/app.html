@@ -667,6 +667,14 @@
       <app-tree-table-demo />
     }
 
+    <!-- cae-carousel (#273, M3 ★ media) — a content-agnostic rotating carousel: circular paging, autoplay
+         that pauses on hover/focus with a WCAG 2.2.2 play/pause control, prev/next, and an arrow-navigable
+         indicator group (APG carousel). Its own @defer'd component keeps it off the eager initial bundle
+         (#85/#142), like the other below-the-fold demos. -->
+    @defer (on idle) {
+      <app-carousel-demo />
+    }
+
     <!-- cae-data-grid (#170 interface, #171 TanStack engine — the M2 grid exit criterion). Unlike the
          cae-table above (a thin MatTable wrapper, great for a small roster), the grid renders its OWN
          virtualized DOM over thousands of rows and does all sort/paginate work behind the CaeGridAdapter
