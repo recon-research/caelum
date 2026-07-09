@@ -1,0 +1,37 @@
+// Tree-select demo (#279) — per-demo card styles, token-driven (D-04). Only literals are structural
+// (display/max-width); every colour/space resolves to `--cae-*` (a literal colour would be a defect,
+// Book 04 §3.6).
+
+.forge-tree-select-card {
+  display: block;
+}
+.forge-tree-select-card__title {
+  margin: 0 0 var(--cae-space-2);
+  color: var(--cae-color-on-surface);
+}
+.forge-tree-select-card__lead {
+  margin: 0 0 var(--cae-space-4);
+  color: var(--cae-color-on-surface-variant);
+}
+
+// One labelled field + its readback. A capped width keeps the trigger a realistic form-control size
+// rather than stretching the full card.
+.forge-tree-select {
+  max-inline-size: 22rem;
+  margin-block-end: var(--cae-space-5);
+}
+.forge-tree-select:last-child {
+  margin-block-end: 0;
+}
+.forge-tree-select__label {
+  display: block;
+  margin-block-end: var(--cae-space-1);
+  color: var(--cae-color-on-surface);
+}
+.forge-tree-select__note {
+  margin-block-start: var(--cae-space-2);
+  color: var(--cae-color-on-surface-variant);
+}
+.forge-tree-select__note code {
+  color: var(--cae-color-primary);
+}
