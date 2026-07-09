@@ -675,6 +675,14 @@
       <app-carousel-demo />
     }
 
+    <!-- cae-galleria (#274, M3 ★ media) — the carousel's gallery sibling: a main image + thumbnail
+         tablist + a fullscreen lightbox on the shared cae-dialog shell (focus-trap + Escape + restore).
+         Its own @defer'd component keeps the gallery and the dialog module it pulls in off the eager
+         initial bundle (#85/#142), like the other below-the-fold demos. -->
+    @defer (on idle) {
+      <app-galleria-demo />
+    }
+
     <!-- cae-tree-select (#279, M3 ★ value-picker) — the FORM cousin of cae-tree-table: pick node(s)
          from a hierarchical tree in the library's first cdkConnectedOverlay panel; the value is the
          node key(s), never the label. Its own @defer'd component keeps the CDK overlay + a11y modules

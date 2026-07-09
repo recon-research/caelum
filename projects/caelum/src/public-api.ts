@@ -80,6 +80,9 @@ export * from 'caelum/tree-table';
 // --- Media (M3): carousel (#273 — content-agnostic rotating carousel; signal index, autoplay+pause, APG a11y) ---
 export * from 'caelum/carousel';
 
+// --- Media (M3): galleria (#274 — image gallery; thumbnail tablist + fullscreen lightbox over cae-dialog) ---
+export * from 'caelum/galleria';
+
 // --- Form controls (M3): tree-select (#279 — hierarchical node-select over a cdkConnectedOverlay + mat-tree panel; value = node keys) ---
 export * from 'caelum/tree-select';
 
