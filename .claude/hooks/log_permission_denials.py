@@ -9,10 +9,12 @@
 # Hook input arrives as JSON on stdin; tool_name / tool_input / session_id are
 # present as on other tool events, but the deny-reason field's name is not
 # documented for this event, so likely spellings are probed defensively and an
-# absent reason is stored as "". Whether PermissionDenied fires for auto-mode
-# CLASSIFIER denials, in addition to rule-based and interactive denies, is
-# unverified until one occurs live post-wiring (#58 tracks that check) — the
-# hook tolerates either answer.
+# absent reason is stored as "". PermissionDenied DOES fire for auto-mode
+# CLASSIFIER denials, not just rule-based and interactive denies — verified
+# live 2026-07-08 by a downstream copy's ledger (classifier-denied cross-repo
+# `gh issue create`, reason logged as "No reason provided"; intake #118 →
+# #125). A local first-party datum would be stronger; classifier reasons may
+# arrive unnamed like that, so the defensive probing stays.
 #
 # Wiring (docs/AUTOMATION.md §1 — settings.json changes are owner-applied):
 #   "PermissionDenied": [ { "hooks": [ { "type": "command",

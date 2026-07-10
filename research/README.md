@@ -33,13 +33,14 @@ Reports and notes **ground `D-NN` decisions** exactly like book sections do — 
 | [`notes/`](notes/00_TEMPLATE.md) | Survey notes — one per topic. Template: [`notes/00_TEMPLATE.md`](notes/00_TEMPLATE.md). |
 | [`experiments/`](experiments/00_TEMPLATE.md) | `EXP-NN_<slug>/` dirs: `EXPERIMENT.md` + `results/` (data + plots + plot scripts). Template: [`experiments/00_TEMPLATE.md`](experiments/00_TEMPLATE.md). |
 | [`reports/`](reports/00_TEMPLATE.md) | `RR-NN_<slug>.md` paper artifacts, markdown-first (export to docx/pdf is a rendering step, never the source of truth). Template: [`reports/00_TEMPLATE.md`](reports/00_TEMPLATE.md). |
+| `banked/` | Frozen generation data captured from a scarce generator (e.g. a frontier-model access window), provenance-stamped as raw material for a later deliberate re-derivation slice. **No citation authority** — not notes, not experiments; each collection's `README.md` carries its provenance and trust model, and is routed in the MANIFEST like everything else. |
 | [`tools/_audit_research.py`](tools/_audit_research.py) | The mechanical gate (below). Exits non-zero; CI runs it. |
 
 ## The audit
 
 Run `python3 tools/_audit_research.py` from this directory (CI does, on every push):
 
-- `MANIFEST.json` is valid; every entry's path exists; every on-disk note/experiment/report is routed in the MANIFEST.
+- `MANIFEST.json` is valid; every entry's path exists; every on-disk note/experiment/report/banked collection is routed in the MANIFEST.
 - Every note has a `reviewed:` date; every **tiered claim line** carries an inline `(source: https://…)` **and** an `accessed YYYY-MM-DD`. Untagged **quantitative** claims (a percentage / `N×` with no tier *and* no source) **warn** — a narrow, low-noise backstop for the gap where an untagged claim would skip the source gate; prose claims remain the discipline-plus-review boundary.
 - Every report has its required sections (`## References`, `## Reproducibility`, …); every reference entry carries a URL.
 - Every experiment has `EXPERIMENT.md` with the pre-registration sections.

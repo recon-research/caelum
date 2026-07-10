@@ -1,5 +1,5 @@
 {
-  "$comment": "Routing + lifecycle index for the frontier research layer. Audited by tools/_audit_research.py (run from research/): every entry's path must exist on disk, and every on-disk note/experiment/report must have an entry here. Trust model: research claims are sourced + tiered + dated and they STALE; cite as research/notes/<file>.md, EXP-NN, or RR-NN — never as a Book NN §X.",
+  "$comment": "Routing + lifecycle index for the frontier research layer. Audited by tools/_audit_research.py (run from research/): every entry's path must exist on disk, and every on-disk note/experiment/report/banked collection must have an entry here. Trust model: research claims are sourced + tiered + dated and they STALE; cite as research/notes/<file>.md, EXP-NN, or RR-NN — never as a Book NN §X. Banked collections are frozen generation data with NO citation authority (each collection's README carries its trust model).",
   "version": "0.1",
   "staleness_policy": "A note stales ~180 days after its 'reviewed:' date. Re-verify load-bearing claims (and bump the date) before planning against it. The audit warns on stale notes; --strict-staleness makes staleness a failure.",
   "status_values": ["surveyed", "experimenting", "reported", "graduated"],
@@ -151,5 +151,6 @@
     }
   ],
   "experiments": [],
-  "reports": []
+  "reports": [],
+  "banked": []
 }

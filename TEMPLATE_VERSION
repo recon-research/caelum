@@ -3,8 +3,17 @@
 # `update_from_template` after every sync. `update_from_template` diffs the upstream
 # template from `sha` to its HEAD to know what changed — without this stamp, every
 # template update is hand archaeology.
+#
+# NOTE (2026-07-09, #297): the prior sync #259/#260 advanced the ops template
+# b263b94→dfd6b47 on disk but MISSED the re-stamp — this `sha` field still read
+# b263b94 while disk was already at dfd6b47. True baseline for #297 was dfd6b47.
+# DEVIATION — not taken this sync: the `design_review` skill + canon (upstream
+# D-137) is deferred (#298) to a slice gated on the #240/M4 screenshot-capture runner
+# (jsdom can't render, so its pixel-evidence gate would be permanently degraded);
+# re-evaluate at that milestone. Also not taken: pyxis-domain content
+# (research/banked/register-game-engine, EXP-03/04/05, docs/METRICS numbers).
 source: https://github.com/recon-research/pyxis (upstream identified + first synced 2026-07-08, template-sync #245)
-sha: b263b94f615619b88852cd123407ded05c9ef8cc (onboard Mode A split → read-on-demand MODE_A.md, #102; synced 2026-07-08)
+sha: 4193b6df24fd4f069d13bc94e9fd471097559958 (ops template sync dfd6b47→4193b6d, #297; synced 2026-07-09)
 baseline: 276a2d6 (reconstructed — the copy-day HEAD; the original copy recorded no sha, see #245)
 copied: 2026-06-25
-last_update: 2026-07-08
+last_update: 2026-07-09
