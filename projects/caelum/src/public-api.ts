@@ -98,6 +98,9 @@ export * from 'caelum/input-otp';
 // --- Form controls (M3): password (#304 — matInput[type=password] + visibility toggle + advisory strength meter, p-password parity) ---
 export * from 'caelum/password';
 
+// --- Form controls (M3): input-mask (#302 — fixed-template masked input, unmasked-string CVA, p-inputMask parity; last input-family member) ---
+export * from 'caelum/input-mask';
+
 // --- Composed (M1): split-button (#148 — primary command + secondary-action dropdown over MatButton + cae-menu) ---
 export * from 'caelum/split-button';
 

@@ -1,0 +1,38 @@
+<cae-card class="forge-mask-card">
+  <h3 class="forge-mask-card__title">Input mask</h3>
+  <p class="forge-mask-card__lead">
+    A fixed-template field: the mask <code>(999) 999-9999</code> shows structure as you type, but
+    the form stores the <em>unmasked</em> value. The readout prints the raw model — exactly what a
+    backend would receive — so you can watch the <strong>view</strong> and the
+    <strong>model</strong> diverge. Try pasting <code>(212) 555-0142</code>: the digits spread
+    through the template.
+  </p>
+
+  <div class="forge-mask-field">
+    <cae-input-mask
+      mask="(999) 999-9999"
+      label="Phone number"
+      autocomplete="tel"
+      hint="US format — 10 digits"
+      [required]="true"
+      [formControl]="phone"
+      [errorMessages]="errorMessages"
+    />
+    <dl class="forge-mask-readout">
+      <div>
+        <dt>Model (unmasked)</dt>
+        <dd>
+          <code>{{ value() || '—' }}</code>
+        </dd>
+      </div>
+      <div>
+        <dt>Digits</dt>
+        <dd>{{ value().length }} / 10</dd>
+      </div>
+      <div>
+        <dt>Form</dt>
+        <dd>{{ status() === 'VALID' ? 'valid' : 'invalid' }}</dd>
+      </div>
+    </dl>
+  </div>
+</cae-card>

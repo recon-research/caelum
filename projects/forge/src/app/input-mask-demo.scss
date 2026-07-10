@@ -1,0 +1,41 @@
+// Input-mask demo (#302) — per-demo card styles, token-driven (D-04). Only literals are structural
+// (display/spacing-as-space-tokens); every colour resolves to `--cae-*` (a literal colour would be a
+// defect, Book 04 §3.6).
+
+.forge-mask-card {
+  display: block;
+}
+.forge-mask-card__title {
+  margin: 0 0 var(--cae-space-2);
+  color: var(--cae-color-on-surface);
+}
+.forge-mask-card__lead {
+  margin: 0 0 var(--cae-space-4);
+  color: var(--cae-color-on-surface-variant);
+}
+.forge-mask-card__lead code {
+  color: var(--cae-color-primary);
+}
+
+.forge-mask-field {
+  max-inline-size: 22rem;
+}
+.forge-mask-readout {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--cae-space-1) var(--cae-space-4);
+  margin-block-start: var(--cae-space-3);
+  color: var(--cae-color-on-surface-variant);
+}
+.forge-mask-readout > div {
+  display: contents;
+}
+.forge-mask-readout dt {
+  font-weight: 600;
+}
+.forge-mask-readout dd {
+  margin: 0;
+}
+.forge-mask-readout code {
+  color: var(--cae-color-primary);
+}

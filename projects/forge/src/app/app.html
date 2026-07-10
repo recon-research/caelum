@@ -723,6 +723,14 @@
       <app-password-demo />
     }
 
+    <!-- cae-input-mask (#302, M3 input family — the last member) — the fixed-template masked field:
+         the view shows the mask while the form stores the UNMASKED value (Book 08 §2.2 model/view split).
+         Its own @defer'd component keeps the control off the eager initial bundle (#85/#142), like the
+         other below-the-fold demos. -->
+    @defer (on idle) {
+      <app-input-mask-demo />
+    }
+
     <!-- cae-data-grid (#170 interface, #171 TanStack engine — the M2 grid exit criterion). Unlike the
          cae-table above (a thin MatTable wrapper, great for a small roster), the grid renders its OWN
          virtualized DOM over thousands of rows and does all sort/paginate work behind the CaeGridAdapter
