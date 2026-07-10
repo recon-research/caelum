@@ -1,0 +1,23 @@
+<cae-card class="forge-image-compare-card">
+  <h3 class="forge-image-compare-card__title">Image compare</h3>
+  <p class="forge-image-compare-card__lead">
+    Drag the divider to reveal the <code>Before</code> plate over the <code>After</code> plate — or
+    focus it and resize with the arrow keys (<code>Home</code> / <code>End</code> snap to the
+    edges). The reveal position is two-way bound, so the readout tracks the divider.
+  </p>
+
+  <cae-image-compare
+    class="forge-image-compare"
+    [beforeSrc]="beforeSrc"
+    beforeAlt="Before — a muted grey plate"
+    [afterSrc]="afterSrc"
+    afterAlt="After — a vivid green plate"
+    ariaLabel="Reveal the before image"
+    [(value)]="reveal"
+  />
+
+  <dl class="forge-image-compare-card__readout">
+    <dt>Revealed</dt>
+    <dd>{{ reveal() | number: '1.0-0' }}%</dd>
+  </dl>
+</cae-card>

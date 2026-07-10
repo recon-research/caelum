@@ -691,6 +691,15 @@
       <app-image-demo />
     }
 
+    <!-- cae-image-compare (#293, M3 ★ media) — the niche before/after reveal slider on a DISTINCT substrate
+         from cae-image (a reveal slider, not the dialog lightbox): a draggable, keyboard-resizable divider
+         (the APG window-splitter separator, RTL-aware via Directionality) clips the top image. Its own
+         @defer'd component keeps it off the eager initial bundle (#85/#142), like the other below-the-fold
+         demos. -->
+    @defer (on idle) {
+      <app-image-compare-demo />
+    }
+
     <!-- cae-tree-select (#279, M3 ★ value-picker) — the FORM cousin of cae-tree-table: pick node(s)
          from a hierarchical tree in the library's first cdkConnectedOverlay panel; the value is the
          node key(s), never the label. Its own @defer'd component keeps the CDK overlay + a11y modules

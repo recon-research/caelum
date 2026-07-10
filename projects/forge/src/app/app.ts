@@ -81,6 +81,7 @@ import { TreeTableDemo } from './tree-table-demo';
 import { CarouselDemo } from './carousel-demo';
 import { GalleriaDemo } from './galleria-demo';
 import { ImageDemo } from './image-demo';
+import { ImageCompareDemo } from './image-compare-demo';
 import { TreeSelectDemo } from './tree-select-demo';
 import { InputNumberDemo } from './input-number-demo';
 import { InputOtpDemo } from './input-otp-demo';
@@ -154,6 +155,7 @@ const SWATCHES: ReadonlyArray<{ token: string; label: string }> = [
     CarouselDemo,
     GalleriaDemo,
     ImageDemo,
+    ImageCompareDemo,
     TreeSelectDemo,
     InputNumberDemo,
     InputOtpDemo,
