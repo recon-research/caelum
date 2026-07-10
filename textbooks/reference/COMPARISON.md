@@ -93,7 +93,7 @@ Below, the **current** selector is listed with the historical alias noted. Verif
 | `p-toolbar` | `cae-toolbar` | `MatToolbar` (`caeToolbarStart`/`caeToolbarEnd` slots; no `role=toolbar` — needs roving tabindex; center group / rows → #127) | Direct | 11 |
 | `p-divider` | `cae-divider` | `MatDivider` | Direct | 11 |
 | `p-panel`, `p-fieldset` | `cae-panel` / `cae-fieldset` | `MatCard` / built legend | Compose | 11 |
-| `p-scrollpanel` | `cae-scroll-panel` | CDK scrolling / native overflow | Build-S | 11 |
+| `p-scrollpanel` | `cae-scroll-panel` | native `overflow` + token-styled scrollbars over `CdkScrollable`; keyboard-focusable `role=region` only while content overflows; no custom-scrollbar engine | Build-S | 11 |
 | `p-splitter` | `cae-splitter` | multi-panel flex splitter; keyboard-resizable APG window-splitter dividers (`role=separator`), native pointer resize, RTL via `Directionality`, no foreign drag lib | Build-M | 11 |
 
 ## Overlay

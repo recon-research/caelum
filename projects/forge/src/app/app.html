@@ -708,6 +708,13 @@
       <app-splitter-demo />
     }
 
+    <!-- cae-scroll-panel (#328, M3 Splitter family sibling) — a token-styled cross-browser scroll container
+         over native overflow + CdkScrollable; keyboard-focusable role="region" only while its content
+         overflows. Its own @defer'd component keeps it off the eager initial bundle (#85/#142). -->
+    @defer (on idle) {
+      <app-scroll-panel-demo />
+    }
+
     <!-- cae-tree-select (#279, M3 ★ value-picker) — the FORM cousin of cae-tree-table: pick node(s)
          from a hierarchical tree in the library's first cdkConnectedOverlay panel; the value is the
          node key(s), never the label. Its own @defer'd component keeps the CDK overlay + a11y modules
