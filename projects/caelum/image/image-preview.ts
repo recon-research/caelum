@@ -7,7 +7,8 @@ export interface CaeImagePreviewLabels {
   controls: string;
   zoomIn: string;
   zoomOut: string;
-  zoomReset: string;
+  /** The reset control clears zoom + rotation + pan — name it accordingly ("Reset view"). */
+  reset: string;
   rotateLeft: string;
   rotateRight: string;
   close: string;
@@ -106,7 +107,7 @@ const clamp = (v: number, min: number, max: number): number => Math.max(min, Mat
         <button
           type="button"
           class="cae-image-preview__btn"
-          [attr.aria-label]="data.labels.zoomReset"
+          [attr.aria-label]="data.labels.reset"
           [attr.aria-disabled]="atIdentity() ? 'true' : null"
           (click)="reset()"
         >
@@ -128,26 +129,29 @@ const clamp = (v: number, min: number, max: number): number => Math.max(min, Mat
         </button>
       </div>
 
-      <div
-        class="cae-image-preview__viewport"
-        (pointerdown)="onPanStart($event)"
-        (pointermove)="onPanMove($event)"
-        (pointerup)="onPanEnd()"
-        (pointercancel)="onPanEnd()"
-      >
-        <img
-          class="cae-image-preview__image"
-          [class.cae-image-preview__image--panning]="panning()"
-          [src]="data.src"
-          [alt]="data.alt"
-          [style.transform]="transform()"
-          draggable="false"
-        />
-      </div>
-
-      @if (data.caption) {
-        <p class="cae-image-preview__caption">{{ data.caption }}</p>
-      }
+      <!-- figure/figcaption programmatically ties the caption to the image (WCAG 1.3.1), mirroring the
+           galleria lightbox — not a bare sibling <p>. -->
+      <figure class="cae-image-preview__figure">
+        <div
+          class="cae-image-preview__viewport"
+          (pointerdown)="onPanStart($event)"
+          (pointermove)="onPanMove($event)"
+          (pointerup)="onPanEnd()"
+          (pointercancel)="onPanEnd()"
+        >
+          <img
+            class="cae-image-preview__image"
+            [class.cae-image-preview__image--panning]="panning()"
+            [src]="data.src"
+            [alt]="data.alt"
+            [style.transform]="transform()"
+            draggable="false"
+          />
+        </div>
+        @if (data.caption) {
+          <figcaption class="cae-image-preview__caption">{{ data.caption }}</figcaption>
+        }
+      </figure>
 
       <!-- The zoom level is announced by a polite live region. ARIA announces CHANGES, so the initial 100%
            on open is silent and each zoom/reset reads "Zoom N%" (the library convention is an in-template
@@ -195,6 +199,14 @@ const clamp = (v: number, min: number, max: number): number => Math.max(min, Mat
     }
     .cae-image-preview__btn:not([aria-disabled='true']):hover {
       border-color: var(--cae-color-primary);
+    }
+    .cae-image-preview__figure {
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--cae-space-2);
+      min-inline-size: 0;
     }
     .cae-image-preview__viewport {
       display: flex;
@@ -347,12 +359,14 @@ export class CaeImagePreview {
     this.scale.set(clamp(this.scale() - this.data.zoomStep, this.data.minZoom, this.data.maxZoom));
   }
 
+  // Rotation is normalized to (-360, 360) so a full turn returns to exactly 0 — otherwise `atIdentity`
+  // would stay false (and Reset stay lit) after four turns even though the image looks unrotated.
   protected rotateLeft(): void {
-    this.rotation.update((r) => r - 90);
+    this.rotation.update((r) => (r - 90) % 360);
   }
 
   protected rotateRight(): void {
-    this.rotation.update((r) => r + 90);
+    this.rotation.update((r) => (r + 90) % 360);
   }
 
   /** Back to fit: scale 1, no rotation, no pan. */

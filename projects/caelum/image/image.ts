@@ -2,20 +2,23 @@ import {
   booleanAttribute,
   ChangeDetectionStrategy,
   Component,
+  effect,
   inject,
   input,
+  isDevMode,
   numberAttribute,
 } from '@angular/core';
 import { CaeDialog, type CaeDialogRef } from 'caelum/dialog';
 import { CaeImagePreview, type CaeImagePreviewData } from './image-preview';
 
 /**
- * `cae-image` — a token-styled image with an optional full-size preview (`reference/COMPARISON.md`:
+ * `cae-image` — a token-styled image with an opt-in full-size preview (`reference/COMPARISON.md`:
  * `p-image` → `cae-image`; Book 11 §3.4, the ★ media family's smallest member). It renders an `<img>`;
- * when `[preview]` is on (the default) it overlays a focusable trigger that opens a **fullscreen preview**
- * through {@link CaeDialog} (D-15, Book 09 §3.3) with **zoom, rotate, and pan** — the same centered-modal
- * substrate as the galleria lightbox, so Material supplies the focus-trap, `Escape`/backdrop dismissal,
- * and focus-restore to the trigger for free.
+ * with `[preview]` set it overlays a focusable trigger that opens a **fullscreen preview** through
+ * {@link CaeDialog} (D-15, Book 09 §3.3) with **zoom, rotate, and pan** — the same centered-modal substrate
+ * as the galleria lightbox, so Material supplies the focus-trap, `Escape`/backdrop dismissal, and
+ * focus-restore to the trigger for free. `preview` defaults to **`false`** (p-image parity — a bare image
+ * is inert, so a migrating team's `<p-image>` doesn't silently become a modal trigger).
  *
  * Display-only: an image has no value, so there's no `ControlValueAccessor` (unlike tree-select). The
  * preview's zoom/pan transform is the primitive the galleria lightbox will later share (#289). No foreign
@@ -23,7 +26,7 @@ import { CaeImagePreview, type CaeImagePreviewData } from './image-preview';
  * path (Book 11 §3.5 non-negotiable #1), so nothing is pointer-only.
  *
  * ```html
- * <cae-image src="/photo.jpg" alt="A wide star field" previewAriaLabel="View full-size star field" />
+ * <cae-image src="/photo.jpg" alt="A wide star field" preview previewAriaLabel="View full-size star field" />
  * ```
  */
 @Component({
@@ -130,12 +133,16 @@ export class CaeImage {
   readonly src = input('');
   /** Alt text — required for a meaningful image (WCAG 1.1.1); empty marks a decorative image. */
   readonly alt = input('');
-  /** Enable the click-to-preview overlay + fullscreen lightbox (default on). */
-  readonly preview = input(true, { transform: booleanAttribute });
+  /** Enable the click-to-preview overlay + fullscreen lightbox. Defaults **off** (p-image parity). */
+  readonly preview = input(false, { transform: booleanAttribute });
   /** Optional CSS width/height applied to the `<img>` (a `p-image` passthrough). */
   readonly width = input('');
   readonly height = input('');
-  /** Zoom floor / ceiling / step for the preview (defaults: 0.5×–4×, 0.5 steps). */
+  /**
+   * Zoom floor / ceiling / step for the preview (defaults: 0.5×–4×, 0.5 steps). Contract:
+   * `minZoom ≤ 1 ≤ maxZoom` and `zoomStep > 0` — 1× is the fit/identity the preview opens and resets to; a
+   * dev-warn fires if the bounds don't bracket 1.
+   */
   readonly minZoom = input(0.5, { transform: numberAttribute });
   readonly maxZoom = input(4, { transform: numberAttribute });
   readonly zoomStep = input(0.5, { transform: numberAttribute });
@@ -144,7 +151,8 @@ export class CaeImage {
   readonly controlsAriaLabel = input('Image controls');
   readonly zoomInAriaLabel = input('Zoom in');
   readonly zoomOutAriaLabel = input('Zoom out');
-  readonly zoomResetAriaLabel = input('Reset zoom');
+  /** Name for the reset control — it clears zoom AND rotation AND pan, so it's "Reset view", not just zoom. */
+  readonly resetAriaLabel = input('Reset view');
   readonly rotateLeftAriaLabel = input('Rotate left');
   readonly rotateRightAriaLabel = input('Rotate right');
   readonly closeAriaLabel = input('Close');
@@ -155,6 +163,25 @@ export class CaeImage {
   // omission — cae-galleria warns), a standalone image legitimately uses `alt=""` to mark itself
   // decorative (WCAG 1.1.1 / H67). The `<img>` always renders a valid `alt` attribute, and axe verifies
   // the rendered result — a heuristic warn here can only false-positive on intentionally-decorative images.
+
+  constructor() {
+    // Dev-only guard: the zoom bounds must bracket the 1× fit/identity the preview opens and resets to
+    // (minZoom ≤ 1 ≤ maxZoom, min < max, step > 0). Out-of-range or reversed bounds don't crash but leave
+    // the zoom controls silently broken (e.g. reversed bounds dead-lock clamp), so warn only when a preview
+    // is actually reachable.
+    if (isDevMode()) {
+      effect(() => {
+        const min = this.minZoom();
+        const max = this.maxZoom();
+        const step = this.zoomStep();
+        if (this.preview() && !(min < max && step > 0 && min <= 1 && max >= 1)) {
+          console.warn(
+            `cae-image: invalid zoom bounds [minZoom=${min}, maxZoom=${max}, zoomStep=${step}] — the contract is minZoom ≤ 1 ≤ maxZoom with zoomStep > 0 (1× is the fit the preview opens/resets to). The zoom controls may behave unexpectedly.`,
+          );
+        }
+      });
+    }
+  }
 
   /**
    * Open the fullscreen preview. Material (via {@link CaeDialog}) supplies the centered modal, focus-trap,
@@ -182,7 +209,7 @@ export class CaeImage {
             controls: this.controlsAriaLabel(),
             zoomIn: this.zoomInAriaLabel(),
             zoomOut: this.zoomOutAriaLabel(),
-            zoomReset: this.zoomResetAriaLabel(),
+            reset: this.resetAriaLabel(),
             rotateLeft: this.rotateLeftAriaLabel(),
             rotateRight: this.rotateRightAriaLabel(),
             close: this.closeAriaLabel(),

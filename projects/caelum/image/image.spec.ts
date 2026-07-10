@@ -5,9 +5,6 @@ import { MatDialog } from '@angular/material/dialog';
 import { CaeDialog } from 'caelum/dialog';
 import { CaeImage } from './image';
 
-/** The preview's internal read surface we assert against (its bound transform + zoom scale). */
-type PreviewInternals = { transform: () => string; scale: () => number };
-
 describe('CaeImage', () => {
   let fixture: ComponentFixture<CaeImage>;
   let component: CaeImage;
@@ -26,6 +23,7 @@ describe('CaeImage', () => {
     component = fixture.componentInstance;
     fixture.componentRef.setInput('src', 'photo.jpg');
     fixture.componentRef.setInput('alt', 'A wide star field');
+    fixture.componentRef.setInput('preview', true); // preview defaults OFF (p-image parity); most tests need it on
     for (const [k, v] of Object.entries(inputs)) fixture.componentRef.setInput(k, v);
     document.body.appendChild(fixture.nativeElement);
     el = fixture.nativeElement;
@@ -45,8 +43,8 @@ describe('CaeImage', () => {
     containerEl.querySelector(`.cae-image-preview__btn[aria-label="${label}"]`);
   const closeBtn = (): HTMLButtonElement | null =>
     containerEl.querySelector('.cae-image-preview__btn--close');
-  const previewInternals = (): PreviewInternals =>
-    TestBed.inject(MatDialog).openDialogs[0].componentInstance as PreviewInternals;
+  // The bound CSS transform is the observable output of zoom/rotate/pan — assert it, not internal signals.
+  const previewTransform = (): string => previewImg()!.style.transform;
 
   beforeEach(() => {
     overlayContainer = TestBed.inject(OverlayContainer);
@@ -67,14 +65,25 @@ describe('CaeImage', () => {
     expect(img()!.getAttribute('alt')).toBe('A wide star field');
   });
 
-  it('shows a labeled preview trigger by default', async () => {
+  it('is opt-in: no preview trigger by default (p-image parity — a bare image is inert)', async () => {
+    fixture = TestBed.createComponent(CaeImage);
+    fixture.componentRef.setInput('src', 'photo.jpg');
+    fixture.componentRef.setInput('alt', 'A wide star field'); // no [preview] → default false
+    document.body.appendChild(fixture.nativeElement);
+    el = fixture.nativeElement;
+    await settle();
+    expect(trigger()).toBeNull();
+    expect(img()).not.toBeNull();
+  });
+
+  it('shows a labeled preview trigger when [preview] is set', async () => {
     await render();
     expect(trigger()).not.toBeNull();
     expect(trigger()!.getAttribute('aria-label')).toBe('View full-size image');
     expect(trigger()!.getAttribute('type')).toBe('button');
   });
 
-  it('omits the trigger when [preview] is false (a plain token-styled image)', async () => {
+  it('omits the trigger when [preview] is explicitly false (a plain token-styled image)', async () => {
     await render({ preview: false });
     expect(trigger()).toBeNull();
     expect(img()).not.toBeNull();
@@ -183,12 +192,11 @@ describe('CaeImage', () => {
     expect(previewStatus()!.getAttribute('aria-live')).toBe('polite');
     btn('Zoom in')!.click();
     await settle();
-    expect(previewInternals().scale()).toBe(1.5);
-    expect(previewInternals().transform()).toContain('scale(1.5)');
+    expect(previewTransform()).toContain('scale(1.5)');
     expect(previewStatus()!.textContent!.trim()).toBe('Zoom 150%');
   });
 
-  it('goes aria-disabled at the zoom ceiling and floor (keeping focus, not the disabled property)', async () => {
+  it('goes aria-disabled at the zoom ceiling and floor, keeping focus (not the disabled property)', async () => {
     // Bounds chosen so the start (1) is already the floor and one step hits the ceiling.
     await render({ minZoom: 1, maxZoom: 1.5, zoomStep: 0.5 });
     component.openPreview();
@@ -198,11 +206,15 @@ describe('CaeImage', () => {
     // The dimmed control is aria-disabled, NOT [disabled] — so it stays a focusable element.
     expect(btn('Zoom out')!.hasAttribute('disabled')).toBe(false);
 
+    // Focus the zoom-in button, then drive it to the ceiling where it dims — focus must NOT strand to
+    // <body> (the exact focus-strand bug the carousel/galleria reviews caught).
+    btn('Zoom in')!.focus();
     btn('Zoom in')!.click();
     await settle();
-    expect(previewInternals().scale()).toBe(1.5);
+    expect(previewStatus()!.textContent!.trim()).toBe('Zoom 150%');
     expect(btn('Zoom in')!.getAttribute('aria-disabled')).toBe('true'); // at ceiling
     expect(btn('Zoom out')!.getAttribute('aria-disabled')).toBeNull();
+    expect(document.activeElement).toBe(btn('Zoom in')); // focus retained on the now-dimmed button
   });
 
   it('rotates right and left (90° steps reflected in the transform)', async () => {
@@ -211,29 +223,30 @@ describe('CaeImage', () => {
     await settle();
     btn('Rotate right')!.click();
     await settle();
-    expect(previewInternals().transform()).toContain('rotate(90deg)');
+    expect(previewTransform()).toContain('rotate(90deg)');
     btn('Rotate left')!.click();
     btn('Rotate left')!.click();
     await settle();
-    expect(previewInternals().transform()).toContain('rotate(-90deg)');
+    expect(previewTransform()).toContain('rotate(-90deg)');
   });
 
   it('resets zoom/rotation/pan back to identity (and dims the reset control there)', async () => {
     await render();
     component.openPreview();
     await settle();
-    expect(btn('Reset zoom')!.getAttribute('aria-disabled')).toBe('true'); // starts at identity
+    // The reset control clears rotation + pan too, so it's named "Reset view", not "Reset zoom".
+    expect(btn('Reset view')!.getAttribute('aria-disabled')).toBe('true'); // starts at identity
     btn('Zoom in')!.click();
     btn('Rotate right')!.click();
     await settle();
-    expect(btn('Reset zoom')!.getAttribute('aria-disabled')).toBeNull();
-    btn('Reset zoom')!.click();
+    expect(btn('Reset view')!.getAttribute('aria-disabled')).toBeNull();
+    btn('Reset view')!.click();
     await settle();
-    expect(previewInternals().transform()).toContain('scale(1)');
-    expect(previewInternals().transform()).toContain('rotate(0deg)');
-    expect(previewInternals().transform()).toContain('translate(0px, 0px)');
+    expect(previewTransform()).toContain('scale(1)');
+    expect(previewTransform()).toContain('rotate(0deg)');
+    expect(previewTransform()).toContain('translate(0px, 0px)');
     expect(previewStatus()!.textContent!.trim()).toBe('Zoom 100%');
-    expect(btn('Reset zoom')!.getAttribute('aria-disabled')).toBe('true');
+    expect(btn('Reset view')!.getAttribute('aria-disabled')).toBe('true');
   });
 
   it('keyboard: +/- zoom and 0 resets (the accessible zoom path)', async () => {
@@ -243,14 +256,14 @@ describe('CaeImage', () => {
     const host = preview()!;
     host.dispatchEvent(new KeyboardEvent('keydown', { key: '+', bubbles: true }));
     await settle();
-    expect(previewInternals().scale()).toBe(1.5);
+    expect(previewStatus()!.textContent!.trim()).toBe('Zoom 150%');
     host.dispatchEvent(new KeyboardEvent('keydown', { key: '-', bubbles: true }));
     host.dispatchEvent(new KeyboardEvent('keydown', { key: '-', bubbles: true }));
     await settle();
-    expect(previewInternals().scale()).toBe(0.5);
+    expect(previewStatus()!.textContent!.trim()).toBe('Zoom 50%');
     host.dispatchEvent(new KeyboardEvent('keydown', { key: '0', bubbles: true }));
     await settle();
-    expect(previewInternals().scale()).toBe(1);
+    expect(previewStatus()!.textContent!.trim()).toBe('Zoom 100%');
   });
 
   it('keyboard: arrow keys pan the image (the accessible pan path — pan is not drag-only)', async () => {
@@ -262,7 +275,7 @@ describe('CaeImage', () => {
     host.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
     await settle();
     // One step right (+32px x) and one step down (+32px y).
-    expect(previewInternals().transform()).toContain('translate(32px, 32px)');
+    expect(previewTransform()).toContain('translate(32px, 32px)');
   });
 
   it('pointer drag pans the image (progressive enhancement over the keyboard path)', async () => {
@@ -279,7 +292,7 @@ describe('CaeImage', () => {
       new MouseEvent('pointermove', { clientX: 130, clientY: 110, bubbles: true }),
     );
     await settle();
-    expect(previewInternals().transform()).toContain('translate(30px, 10px)');
+    expect(previewTransform()).toContain('translate(30px, 10px)');
   });
 
   it('shows a caption in the preview when provided', async () => {
