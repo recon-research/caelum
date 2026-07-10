@@ -1,0 +1,36 @@
+<cae-card class="forge-splitter-card">
+  <h3 class="forge-splitter-card__title">Splitter</h3>
+  <p class="forge-splitter-card__lead">
+    Drag a divider to resize — or focus it and use the arrow keys (<code>Home</code> /
+    <code>End</code> snap to the min/max). The outer splitter is horizontal; its right pane nests a
+    vertical splitter, so resizing composes. Each divider is a keyboard-operable
+    <code>role="separator"</code>.
+  </p>
+
+  <div class="forge-splitter">
+    <cae-splitter
+      layout="horizontal"
+      ariaLabel="Resize sidebar and content"
+      (resizeEnd)="onOuterResize($event)"
+    >
+      <cae-splitter-panel [size]="30" [minSize]="15">
+        <div class="forge-splitter__pane">Sidebar</div>
+      </cae-splitter-panel>
+      <cae-splitter-panel [size]="70">
+        <cae-splitter layout="vertical" ariaLabel="Resize preview and details">
+          <cae-splitter-panel [size]="60">
+            <div class="forge-splitter__pane">Preview</div>
+          </cae-splitter-panel>
+          <cae-splitter-panel [size]="40" [minSize]="20">
+            <div class="forge-splitter__pane">Details</div>
+          </cae-splitter-panel>
+        </cae-splitter>
+      </cae-splitter-panel>
+    </cae-splitter>
+  </div>
+
+  <dl class="forge-splitter-card__readout">
+    <dt>Sidebar / content</dt>
+    <dd>{{ outerSizes()[0] | number: '1.0-0' }}% / {{ outerSizes()[1] | number: '1.0-0' }}%</dd>
+  </dl>
+</cae-card>
