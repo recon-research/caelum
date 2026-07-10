@@ -157,7 +157,7 @@ Below, the **current** selector is listed with the historical alias noted. Verif
 | `p-carousel` | `cae-carousel` | CDK drag + stepper index | Build-M | 11 |
 | `p-galleria` | `cae-galleria` | overlay shell (Book 09) + drag-drop | Build-M | 11 |
 | `p-image` | `cae-image` | overlay preview / lightbox | Build-S | 11 |
-| `p-imagecompare` | `cae-image-compare` | build on drag + overlay (niche) | Build-S | 11 |
+| `p-imagecompare` | `cae-image-compare` | before/after reveal slider; APG window-splitter divider (`role=separator`, keyboard-resizable), RTL via `Directionality`, no foreign drag lib (niche) | Build-S | 11 |
 
 ## Misc / directives
 

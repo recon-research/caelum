@@ -86,6 +86,9 @@ export * from 'caelum/galleria';
 // --- Media (M3): image (#275 — token-styled image + fullscreen zoom/rotate/pan preview over cae-dialog) ---
 export * from 'caelum/image';
 
+// --- Media (M3): image-compare (#293 — before/after reveal slider; APG window-splitter divider, RTL-aware, p-imagecompare parity) ---
+export * from 'caelum/image-compare';
+
 // --- Form controls (M3): tree-select (#279 — hierarchical node-select over a cdkConnectedOverlay + mat-tree panel; value = node keys) ---
 export * from 'caelum/tree-select';
 
