@@ -1,0 +1,47 @@
+<cae-card class="forge-inputotp-card">
+  <h3 class="forge-inputotp-card__title">One-time code</h3>
+  <p class="forge-inputotp-card__lead">
+    <em>N</em> cells, <em>one</em> value. Type to advance, Backspace to go back, and — the trick
+    most OTP fields miss — paste the whole code into any cell to fill them all. The cells are a
+    single tab stop and one accessible group; the model is a plain <code>string</code>.
+  </p>
+
+  <div class="forge-inputotp-field">
+    <span id="forge-otp-label" class="forge-inputotp-field__label">Verification code</span>
+    <cae-input-otp
+      [length]="6"
+      ariaLabelledby="forge-otp-label"
+      [cellAriaLabel]="digitLabel"
+      [ngModel]="code()"
+      (ngModelChange)="code.set($event)"
+    />
+    <p class="forge-inputotp-field__note">
+      @if (complete()) {
+        Code <strong>{{ code() }}</strong> — complete
+      } @else {
+        Entered <strong>{{ code().length }}</strong> of 6 digits
+      }
+    </p>
+    <!-- Announce completion ONCE (not the running count): an always-present live region whose text
+         changes only at the complete() transition — the a11y-review-recommended pattern. -->
+    <p class="forge-inputotp-sr-status" role="status">
+      {{ complete() ? 'Verification code complete' : '' }}
+    </p>
+  </div>
+
+  <div class="forge-inputotp-field">
+    <span id="forge-serial-label" class="forge-inputotp-field__label">
+      Product serial (alphanumeric)
+    </span>
+    <cae-input-otp
+      [length]="4"
+      [integerOnly]="false"
+      ariaLabelledby="forge-serial-label"
+      [ngModel]="serial()"
+      (ngModelChange)="serial.set($event)"
+    />
+    <p class="forge-inputotp-field__note">
+      Serial: <strong>{{ serial() || '—' }}</strong>
+    </p>
+  </div>
+</cae-card>
