@@ -80,6 +80,7 @@ import { OrdersGridDemo } from './orders-grid-demo';
 import { TreeTableDemo } from './tree-table-demo';
 import { CarouselDemo } from './carousel-demo';
 import { GalleriaDemo } from './galleria-demo';
+import { ImageDemo } from './image-demo';
 import { TreeSelectDemo } from './tree-select-demo';
 
 type ThemeMode = 'auto' | 'light' | 'dark';
@@ -148,6 +149,7 @@ const SWATCHES: ReadonlyArray<{ token: string; label: string }> = [
     TreeTableDemo,
     CarouselDemo,
     GalleriaDemo,
+    ImageDemo,
     TreeSelectDemo,
     CaeTextarea,
     CaeToggleButton,

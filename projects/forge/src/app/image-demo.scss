@@ -1,0 +1,23 @@
+// Image demo (#275) — per-demo card styles, token-driven (D-04). Only literals are structural
+// (display/max-width); every colour/space resolves to `--cae-*` (a literal colour would be a defect,
+// Book 04 §3.6).
+
+.forge-image-card {
+  display: block;
+}
+.forge-image-card__title {
+  margin: 0 0 var(--cae-space-2);
+  color: var(--cae-color-on-surface);
+}
+.forge-image-card__lead {
+  margin: 0 0 var(--cae-space-4);
+  color: var(--cae-color-on-surface-variant);
+}
+.forge-image-card__lead code {
+  color: var(--cae-color-primary);
+}
+
+// Cap the image to a realistic content width rather than stretching the full card.
+.forge-image {
+  max-inline-size: 24rem;
+}
