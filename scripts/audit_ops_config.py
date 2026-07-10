@@ -20,11 +20,10 @@ is the enforcement:
      parses; every hook/statusLine command that references a repo file
      references one that exists; the deny tripwires (git push --force /
      gh pr merge --admin, in BOTH shells) are present.
-  4. TODO-exemption mirror: the ':!' pathspec lists of the four TODO-hygiene
-     enforcement sites (preflight.sh, preflight.ps1, ci.yml, and the
-     block_naked_todos.py hook) must be identical sets -- the hook drifted
-     when the other three gained exemptions and blocked a legitimate commit
-     downstream (#104).
+  4. TODO-exemption mirror: the ':!' pathspec lists of the TODO-hygiene
+     enforcement sites (TODO_EXEMPTION_SITES below -- a porting surface)
+     must be identical sets -- the hook drifted when the other sites gained
+     exemptions and blocked a legitimate commit downstream (#104).
 
 Mirrored three ways itself: ci.yml > static gates > "Ops-config audit" ==
 preflight.{sh,ps1} "ops-config audit" stage (the map below includes it).
@@ -62,6 +61,21 @@ CI_ONLY_STEPS = {
     "PR references a ticket",  # ticket-first gate (#75) is PR-only by nature; preflight runs pre-PR
 }
 
+# The TODO-hygiene enforcement sites whose quoted ':!' exemption pathspecs
+# must stay string-identical sets (check 4, #104). PORTING SURFACE (#123),
+# like the map above: downstream, this list = YOUR enforcement sites -- a
+# site you don't have is not a site to audit; and if your sites use
+# different exemption semantics (e.g. working-tree roots + name exemptions
+# instead of ':!' pathspecs), adapting or dropping this check is expected,
+# not a missed port. The hook entry is the site most likely to lag: syncs
+# tend to touch preflight/ci together and miss it.
+TODO_EXEMPTION_SITES = (
+    Path("scripts/preflight.sh"),
+    Path("scripts/preflight.ps1"),
+    Path(".github/workflows/ci.yml"),
+    Path(".claude/hooks/block_naked_todos.py"),
+)
+
 # The two deny tripwires the shipped settings must keep, in both shell tools
 # (prefix match -- the shipped rules carry a :* suffix).
 DENY_TRIPWIRES = ("git push --force", "gh pr merge --admin")
@@ -73,20 +87,23 @@ def read(path):
 
 
 def parse_sh_stages(path):
-    # `stage "name"` / `skip_stage "name"`, plus Caelum's Node-gated wrapper
-    # `run_if_node "name" cmd` (project deviation #15 — the Node stages only run
-    # with $HOME/nodejs on PATH). The wrapper's own body calls `stage "$name"` /
-    # `skip_stage "$name"` with a variable, so names containing `$` are filtered.
-    names = re.findall(r'^\s*(?:skip_stage|stage|run_if_node)\s+"([^"]+)"', read(path), re.M)
+    # `stage "name"` / `skip_stage "name"` (either quote style — both are legal
+    # sh and a downstream's style must not zero the parse), plus Caelum's
+    # Node-gated wrapper `run_if_node "name" cmd` (project deviation #15 — the
+    # Node stages only run with $HOME/nodejs on PATH). The wrapper's own body
+    # calls `stage "$name"` / `skip_stage "$name"` with a variable, so names
+    # containing `$` are filtered.
+    names = re.findall(r'''^\s*(?:skip_stage|stage|run_if_node)\s+['"]([^'"]+)['"]''', read(path), re.M)
     return [n for n in names if "$" not in n]
 
 
 def parse_ps1_stages(path):
-    # `Invoke-Stage 'name'` / `Skip-Stage 'name'`, plus Caelum's Node-gated
-    # wrapper `Invoke-StageIfNode 'name' {...}` (project deviation #15). The
-    # wrapper body calls `Invoke-Stage $Name` with a variable -> `$` filtered.
+    # `Invoke-Stage 'name'` / `Skip-Stage 'name'` (either quote style, as
+    # above), plus Caelum's Node-gated wrapper `Invoke-StageIfNode 'name'
+    # {...}` (project deviation #15). The wrapper body calls `Invoke-Stage
+    # $Name` with a variable -> `$` filtered.
     names = re.findall(
-        r"^\s*(?:Invoke-StageIfNode|Invoke-Stage|Skip-Stage)\s+'([^']+)'", read(path), re.M
+        r"""^\s*(?:Invoke-StageIfNode|Invoke-Stage|Skip-Stage)\s+['"]([^'"]+)['"]""", read(path), re.M
     )
     return [n for n in names if "$" not in n]
 
@@ -143,27 +160,25 @@ def check_todo_exemptions(root, problems):
     # Every quoted ':!...' token in these files belongs to the TODO-hygiene
     # exemption list (verified at #104); an unrelated ':!' pathspec landing in
     # one of them later fails loudly here -- adjust this parser then, not the rule.
-    sites = (
-        Path("scripts/preflight.sh"),
-        Path("scripts/preflight.ps1"),
-        Path(".github/workflows/ci.yml"),
-        Path(".claude/hooks/block_naked_todos.py"),
-    )
     specs = {}
-    for site in sites:
+    for site in TODO_EXEMPTION_SITES:
         path = root / site
         if not path.is_file():
             problems.append(f"ops-config file missing: {path}")
             return
         specs[str(site)] = set(re.findall(r"""['"](:![^'"\n]+)['"]""", read(path)))
     union = set().union(*specs.values())
-    print(f"TODO-exemption pathspecs: {len(union)} distinct across {len(sites)} sites")
+    print(
+        f"TODO-exemption pathspecs: {len(union)} distinct across "
+        f"{len(TODO_EXEMPTION_SITES)} sites"
+    )
     for name, found in sorted(specs.items()):
         for spec in sorted(union - found):
             problems.append(
-                f"TODO-hygiene exemption \"{spec}\" is missing from {name} -- the four "
-                "enforcement sites must carry an identical pathspec list; a drifted site "
-                "blocks (or waves through) what the others don't (#104)."
+                f"TODO-hygiene exemption \"{spec}\" is missing from {name} -- the "
+                f"{len(TODO_EXEMPTION_SITES)} enforcement sites must carry an identical "
+                "pathspec list; a drifted site blocks (or waves through) what the "
+                "others don't (#104)."
             )
 
 

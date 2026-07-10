@@ -19,7 +19,7 @@ except Exception as e:
     raise SystemExit(1)
 
 listed = set()
-for kind in ("notes", "experiments", "reports"):
+for kind in ("notes", "experiments", "reports", "banked"):
     for e in M.get(kind, []):
         p = str(e.get("path", "")).replace("\\", "/")
         listed.add(p)
@@ -34,7 +34,8 @@ for k, targets in M.get("topic_to_notes", {}).items():
             errs.append(f"MANIFEST topic_to_notes[{k!r}]: target missing -> {t}")
 
 for p in (sorted(glob.glob("notes/*.md")) + sorted(glob.glob("reports/RR-*.md"))
-          + sorted(glob.glob("experiments/EXP-*/EXPERIMENT.md"))):
+          + sorted(glob.glob("experiments/EXP-*/EXPERIMENT.md"))
+          + sorted(glob.glob("banked/*/README.md"))):
     q = p.replace("\\", "/")
     if is_template(q): continue
     if q not in listed and os.path.dirname(q) not in listed:
@@ -137,6 +138,10 @@ for d in sorted(glob.glob("experiments/EXP-*/")):
         if sec not in text:
             errs.append(f"{f}: missing required section '{sec}'")
     scan_links(f, lines)
+
+# --- banked collections: frozen generation data — README routed above; links must resolve ---
+for p in sorted(glob.glob("banked/*/README.md")):
+    scan_links(p, open(p, encoding="utf-8").read().split("\n"))
 
 # --- optional: URL liveness (never a CI gate; flaky by nature) ---
 if LIVE:
