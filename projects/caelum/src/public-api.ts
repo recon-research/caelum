@@ -89,6 +89,9 @@ export * from 'caelum/image';
 // --- Form controls (M3): tree-select (#279 — hierarchical node-select over a cdkConnectedOverlay + mat-tree panel; value = node keys) ---
 export * from 'caelum/tree-select';
 
+// --- Form controls (M3): input-number (#301 — numeric text input; number|null CVA over Intl.NumberFormat, first of the input family #302–#304) ---
+export * from 'caelum/input-number';
+
 // --- Composed (M1): split-button (#148 — primary command + secondary-action dropdown over MatButton + cae-menu) ---
 export * from 'caelum/split-button';
 

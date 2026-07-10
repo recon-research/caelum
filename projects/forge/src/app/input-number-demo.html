@@ -1,0 +1,38 @@
+<cae-card class="forge-inputnumber-card">
+  <h3 class="forge-inputnumber-card__title">Numeric input</h3>
+  <p class="forge-inputnumber-card__lead">
+    A dedicated numeric field whose model is a real <code>number</code>, formatted per locale via
+    <code>Intl.NumberFormat</code>. The first two fields bind the <em>same</em> value — type in
+    either and watch it reformat in the other's locale; grouping lands on blur, never mid-keystroke.
+    The model never becomes a <code>"1,234"</code> string.
+  </p>
+
+  <div class="forge-inputnumber-grid">
+    <cae-input-number
+      label="Quantity (en-US)"
+      hint="Grouped decimal — the model stays a number"
+      [ngModel]="quantity()"
+      (ngModelChange)="quantity.set($event)"
+    />
+    <cae-input-number
+      label="Menge (de-DE)"
+      locale="de-DE"
+      hint="Same value, German formatting"
+      [ngModel]="quantity()"
+      (ngModelChange)="quantity.set($event)"
+    />
+    <cae-input-number
+      label="Unit price"
+      mode="currency"
+      currency="USD"
+      [minFractionDigits]="2"
+      [ngModel]="price()"
+      (ngModelChange)="price.set($event)"
+    />
+  </div>
+
+  <p class="forge-inputnumber-readout">
+    Model: <strong>quantity = {{ quantity() ?? 'null' }}</strong> ({{ quantityType() }}) ·
+    <strong>price = {{ price() ?? 'null' }}</strong>
+  </p>
+</cae-card>
