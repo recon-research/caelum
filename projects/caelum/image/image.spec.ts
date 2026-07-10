@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { MatDialog } from '@angular/material/dialog';
+import { of, Subject } from 'rxjs';
 
 import { CaeDialog } from 'caelum/dialog';
 import { CaeImage } from './image';
@@ -116,7 +117,7 @@ describe('CaeImage', () => {
     await render({ caption: 'A caption', minZoom: 0.25, maxZoom: 3, zoomStep: 0.75 });
     const spy = vi
       .spyOn(TestBed.inject(CaeDialog), 'open')
-      .mockReturnValue({ afterClosed: () => ({ subscribe: () => {} }) } as never);
+      .mockReturnValue({ afterClosed: () => of(undefined) } as never);
     component.openPreview();
     const [comp, config] = spy.mock.calls[0] as [
       unknown,
@@ -155,11 +156,27 @@ describe('CaeImage', () => {
     await render({ alt: '' });
     const spy = vi
       .spyOn(TestBed.inject(CaeDialog), 'open')
-      .mockReturnValue({ afterClosed: () => ({ subscribe: () => {} }) } as never);
+      .mockReturnValue({ afterClosed: () => of(undefined) } as never);
     component.openPreview();
     const config = spy.mock.calls[0][1] as { ariaLabel: string; data: { caption?: string } };
     expect(config.ariaLabel).toBe('Image preview');
     expect(config.data.caption).toBeUndefined(); // empty caption is dropped, not passed as ''
+  });
+
+  it('closes an open preview when the host is destroyed mid-preview (#294)', async () => {
+    await render();
+    // A Subject (unlike of()) doesn't emit on subscribe, so previewRef stays set until we destroy — the
+    // realistic "host torn down while the modal is still open" case the DestroyRef hook exists for.
+    const afterClosed$ = new Subject<void>();
+    const close = vi.fn();
+    vi.spyOn(TestBed.inject(CaeDialog), 'open').mockReturnValue({
+      afterClosed: () => afterClosed$,
+      close,
+    } as never);
+    component.openPreview();
+    expect(close).not.toHaveBeenCalled();
+    fixture.destroy();
+    expect(close).toHaveBeenCalledTimes(1); // destroying the host tears down its lightbox
   });
 
   // --- The fullscreen preview (real overlay) ---

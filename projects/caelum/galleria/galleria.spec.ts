@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { MatDialog } from '@angular/material/dialog';
+import { of, Subject } from 'rxjs';
 
 import { CaeDialog } from 'caelum/dialog';
 import { CaeGalleria, type CaeGalleriaItem } from './galleria';
@@ -242,7 +243,7 @@ describe('CaeGalleria', () => {
       await render({ activeIndex: 1, circular: true });
       const spy = vi
         .spyOn(TestBed.inject(CaeDialog), 'open')
-        .mockReturnValue({ afterClosed: () => ({ subscribe: () => {} }) } as never);
+        .mockReturnValue({ afterClosed: () => of(undefined) } as never);
       component.openFullscreen();
       const [comp, config] = spy.mock.calls[0] as [
         unknown,
@@ -263,6 +264,22 @@ describe('CaeGalleria', () => {
       // onNavigate is the live seam: calling it (as the lightbox does on nav) updates the inline view.
       data.onNavigate(2);
       expect(component.activeIndex()).toBe(2);
+    });
+
+    it('closes an open lightbox when the host is destroyed mid-lightbox (#294)', async () => {
+      await render();
+      // A Subject (unlike of()) doesn't emit on subscribe, so lightboxRef stays set until we destroy — the
+      // realistic "host torn down while the modal is still open" case the DestroyRef hook exists for.
+      const afterClosed$ = new Subject<void>();
+      const close = vi.fn();
+      vi.spyOn(TestBed.inject(CaeDialog), 'open').mockReturnValue({
+        afterClosed: () => afterClosed$,
+        close,
+      } as never);
+      component.openFullscreen();
+      expect(close).not.toHaveBeenCalled();
+      fixture.destroy();
+      expect(close).toHaveBeenCalledTimes(1); // destroying the host tears down its lightbox
     });
   });
 

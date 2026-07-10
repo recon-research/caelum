@@ -3,6 +3,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
   ElementRef,
   effect,
   inject,
@@ -11,6 +12,7 @@ import {
   model,
   viewChildren,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CaeDialog, type CaeDialogRef } from 'caelum/dialog';
 import { CaeGalleriaLightbox, type CaeGalleriaLightboxData } from './galleria-lightbox';
 
@@ -290,6 +292,7 @@ let nextUniqueId = 0;
 })
 export class CaeGalleria {
   private readonly dialog = inject(CaeDialog);
+  private readonly destroyRef = inject(DestroyRef);
   /** The open lightbox ref, or null — guards against stacking a second lightbox on a double-open. */
   private lightboxRef: CaeDialogRef<void> | null = null;
 
@@ -343,6 +346,11 @@ export class CaeGalleria {
   protected readonly hasThumbnails = computed(() => this.showThumbnails() && this.count() > 1);
 
   constructor() {
+    // Tear down this gallery's lightbox when the host is destroyed while it's still open (#294): close the
+    // modal so focus isn't stranded on <body> with no live restore target. The afterClosed subscription is
+    // tied to the same DestroyRef in openFullscreen().
+    this.destroyRef.onDestroy(() => this.lightboxRef?.close());
+
     // Keep the two-way model in range when items shrink or a consumer over-sets it. Runs after CD (no
     // ExpressionChanged hazard); the guard prevents a write loop.
     effect(() => {
@@ -471,7 +479,11 @@ export class CaeGalleria {
         },
       },
     );
-    // Release the guard when the lightbox closes (afterClosed emits once, then completes — no leak).
-    this.lightboxRef.afterClosed().subscribe(() => (this.lightboxRef = null));
+    // Release the guard when the lightbox closes. afterClosed emits once then completes, but tie it to the
+    // DestroyRef so a host destroyed mid-lightbox can't leave the closure pinning this instance (#294).
+    this.lightboxRef
+      .afterClosed()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => (this.lightboxRef = null));
   }
 }
