@@ -104,6 +104,9 @@ export * from 'caelum/password';
 // --- Form controls (M3): input-mask (#302 — fixed-template masked input, unmasked-string CVA, p-inputMask parity; last input-family member) ---
 export * from 'caelum/input-mask';
 
+// --- Layout (M3): splitter (#323 — keyboard-resizable multi-panel splitter, APG window-splitter dividers, p-splitter parity; opens the Splitter family) ---
+export * from 'caelum/splitter';
+
 // --- Composed (M1): split-button (#148 — primary command + secondary-action dropdown over MatButton + cae-menu) ---
 export * from 'caelum/split-button';
 
