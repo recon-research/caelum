@@ -2,12 +2,14 @@ import {
   booleanAttribute,
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   effect,
   inject,
   input,
   isDevMode,
   numberAttribute,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CaeDialog, type CaeDialogRef } from 'caelum/dialog';
 import { CaeImagePreview, type CaeImagePreviewData } from './image-preview';
 
@@ -126,6 +128,7 @@ import { CaeImagePreview, type CaeImagePreviewData } from './image-preview';
 })
 export class CaeImage {
   private readonly dialog = inject(CaeDialog);
+  private readonly destroyRef = inject(DestroyRef);
   /** The open preview ref, or null — guards against stacking a second preview on a double-open. */
   private previewRef: CaeDialogRef<void> | null = null;
 
@@ -165,6 +168,11 @@ export class CaeImage {
   // the rendered result — a heuristic warn here can only false-positive on intentionally-decorative images.
 
   constructor() {
+    // Tear down this image's preview when the host is destroyed while it's still open (#294): close the
+    // modal so focus isn't stranded on <body> with no live restore target (Material restores focus to the
+    // opener, which is gone). The afterClosed subscription is tied to the same DestroyRef in openPreview().
+    this.destroyRef.onDestroy(() => this.previewRef?.close());
+
     // Dev-only guard: the zoom bounds must bracket the 1× fit/identity the preview opens and resets to
     // (minZoom ≤ 1 ≤ maxZoom, min < max, step > 0). Out-of-range or reversed bounds don't crash but leave
     // the zoom controls silently broken (e.g. reversed bounds dead-lock clamp), so warn only when a preview
@@ -217,7 +225,11 @@ export class CaeImage {
         },
       },
     );
-    // Release the guard when the preview closes (afterClosed emits once, then completes — no leak).
-    this.previewRef.afterClosed().subscribe(() => (this.previewRef = null));
+    // Release the guard when the preview closes. afterClosed emits once then completes, but tie it to the
+    // DestroyRef anyway so a host destroyed mid-preview can't leave the closure pinning this instance (#294).
+    this.previewRef
+      .afterClosed()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => (this.previewRef = null));
   }
 }
