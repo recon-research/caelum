@@ -46,7 +46,7 @@ Below, the **current** selector is listed with the historical alias noted. Verif
 | `p-datepicker` (was `p-calendar`) | `cae-datepicker` | `MatDatepicker` + `mat-date-range-input` | Compose | 09 |
 | — (time-of-day) | `cae-time-picker` | `matInput` mask (no first-party time picker — R2 scar) | Build-S | 08 |
 | `p-inputnumber` | `cae-input-number` | `matInput` format/parse; `number\|null` CVA component | Build-S | 08 |
-| `p-inputmask` | `cae-input-mask` | directive on `matInput` (no foreign mask lib) | Build-S | 08 |
+| `p-inputmask` | `cae-input-mask` | fixed-template mask **component** (extends `CaeFormFieldControlBase`); **unmasked**-string CVA, live re-mask + caret discipline + paste-spread, no foreign mask lib | Build-S | 08 |
 | `p-inputotp` | `cae-input-otp` | N segmented native inputs; one `string` CVA (NG_VALUE_ACCESSOR), roving tabindex | Build-S | 08 |
 | `p-password` | `cae-password` | `matInput[type=password]` component (extends `CaeFormFieldControlBase`) + inline-SVG visibility toggle + advisory token-styled strength meter (enforced policy stays a form `ValidatorFn`) | Build-S | 08 |
 | `pKeyFilter` (directive) | `cae-key-filter` | directive on `matInput` | Build-S | 08 |

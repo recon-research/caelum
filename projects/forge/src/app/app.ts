@@ -85,6 +85,7 @@ import { TreeSelectDemo } from './tree-select-demo';
 import { InputNumberDemo } from './input-number-demo';
 import { InputOtpDemo } from './input-otp-demo';
 import { PasswordDemo } from './password-demo';
+import { InputMaskDemo } from './input-mask-demo';
 
 type ThemeMode = 'auto' | 'light' | 'dark';
 
@@ -157,6 +158,7 @@ const SWATCHES: ReadonlyArray<{ token: string; label: string }> = [
     InputNumberDemo,
     InputOtpDemo,
     PasswordDemo,
+    InputMaskDemo,
     CaeTextarea,
     CaeToggleButton,
     CaeTooltip,
