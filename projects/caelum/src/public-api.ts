@@ -95,6 +95,9 @@ export * from 'caelum/input-number';
 // --- Form controls (M3): input-otp (#303 — one-time-code input, N cells / one string CVA, p-inputOtp parity) ---
 export * from 'caelum/input-otp';
 
+// --- Form controls (M3): password (#304 — matInput[type=password] + visibility toggle + advisory strength meter, p-password parity) ---
+export * from 'caelum/password';
+
 // --- Composed (M1): split-button (#148 — primary command + secondary-action dropdown over MatButton + cae-menu) ---
 export * from 'caelum/split-button';
 

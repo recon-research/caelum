@@ -48,7 +48,7 @@ Below, the **current** selector is listed with the historical alias noted. Verif
 | `p-inputnumber` | `cae-input-number` | `matInput` format/parse; `number\|null` CVA component | Build-S | 08 |
 | `p-inputmask` | `cae-input-mask` | directive on `matInput` (no foreign mask lib) | Build-S | 08 |
 | `p-inputotp` | `cae-input-otp` | N segmented native inputs; one `string` CVA (NG_VALUE_ACCESSOR), roving tabindex | Build-S | 08 |
-| `p-password` | `cae-password` | `matInput[type=password]` + strength directive | Build-S | 08 |
+| `p-password` | `cae-password` | `matInput[type=password]` component (extends `CaeFormFieldControlBase`) + inline-SVG visibility toggle + advisory token-styled strength meter (enforced policy stays a form `ValidatorFn`) | Build-S | 08 |
 | `pKeyFilter` (directive) | `cae-key-filter` | directive on `matInput` | Build-S | 08 |
 | `p-rating` | `cae-rating` | icon row + Aria | Build-S | 11 |
 | `p-colorpicker` | `cae-color-picker` | native `<input type=color>` / CDK overlay | Build-S | 08 |
