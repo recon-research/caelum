@@ -45,7 +45,7 @@ Below, the **current** selector is listed with the historical alias noted. Verif
 | `p-listbox` | `cae-listbox` | `mat-selection-list` (or `cdkListbox`) | Direct | 06 |
 | `p-datepicker` (was `p-calendar`) | `cae-datepicker` | `MatDatepicker` + `mat-date-range-input` | Compose | 09 |
 | — (time-of-day) | `cae-time-picker` | `matInput` mask (no first-party time picker — R2 scar) | Build-S | 08 |
-| `p-inputnumber` | `cae-input-number` | `matInput` + format/parse directive | Build-S | 08 |
+| `p-inputnumber` | `cae-input-number` | `matInput` format/parse; `number\|null` CVA component | Build-S | 08 |
 | `p-inputmask` | `cae-input-mask` | directive on `matInput` (no foreign mask lib) | Build-S | 08 |
 | `p-inputotp` | `cae-input-otp` | segmented `matInput`s | Build-S | 08 |
 | `p-password` | `cae-password` | `matInput[type=password]` + strength directive | Build-S | 08 |
