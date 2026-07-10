@@ -83,6 +83,7 @@ import { GalleriaDemo } from './galleria-demo';
 import { ImageDemo } from './image-demo';
 import { TreeSelectDemo } from './tree-select-demo';
 import { InputNumberDemo } from './input-number-demo';
+import { InputOtpDemo } from './input-otp-demo';
 
 type ThemeMode = 'auto' | 'light' | 'dark';
 
@@ -153,6 +154,7 @@ const SWATCHES: ReadonlyArray<{ token: string; label: string }> = [
     ImageDemo,
     TreeSelectDemo,
     InputNumberDemo,
+    InputOtpDemo,
     CaeTextarea,
     CaeToggleButton,
     CaeTooltip,
