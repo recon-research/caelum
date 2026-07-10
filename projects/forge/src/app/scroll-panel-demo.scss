@@ -1,0 +1,54 @@
+// Scroll-panel demo (#328) — per-demo card styles, token-driven (D-04). Only structural literals remain
+// (display/grid/height/border-width); every colour/space resolves to `--cae-*` (a literal colour would be a
+// defect, Book 04 §3.6).
+
+.forge-scroll-card {
+  display: block;
+}
+.forge-scroll-card__title {
+  margin: 0 0 var(--cae-space-2);
+  color: var(--cae-color-on-surface);
+}
+.forge-scroll-card__lead {
+  margin: 0 0 var(--cae-space-4);
+  color: var(--cae-color-on-surface-variant);
+}
+.forge-scroll-card__lead code {
+  color: var(--cae-color-primary);
+}
+
+.forge-scroll-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--cae-space-4);
+  max-inline-size: 40rem;
+}
+.forge-scroll-col__label {
+  margin: 0 0 var(--cae-space-2);
+  color: var(--cae-color-on-surface-variant);
+}
+
+// The panel is a fixed box; the component scrolls whatever overflows it (token scrollbars come from the
+// component itself). The frame here is demo chrome.
+.forge-scroll-panel {
+  block-size: 9rem;
+  padding: var(--cae-space-3);
+  border: 1px solid var(--cae-color-border);
+  border-radius: var(--cae-radius-md);
+  background: var(--cae-surface-raised);
+}
+.forge-scroll-list {
+  margin: 0;
+  padding-inline-start: var(--cae-space-4);
+}
+.forge-scroll-list__item {
+  margin-block: var(--cae-space-2);
+  color: var(--cae-color-on-surface-variant);
+}
+.forge-scroll-list__item strong {
+  color: var(--cae-color-on-surface);
+}
+.forge-scroll-short {
+  margin: 0;
+  color: var(--cae-color-on-surface-variant);
+}

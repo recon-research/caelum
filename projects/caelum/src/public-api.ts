@@ -107,6 +107,9 @@ export * from 'caelum/input-mask';
 // --- Layout (M3): splitter (#323 — keyboard-resizable multi-panel splitter, APG window-splitter dividers, p-splitter parity; opens the Splitter family) ---
 export * from 'caelum/splitter';
 
+// --- Layout (M3): scroll-panel (#328 — token-styled cross-browser scroll container over native overflow + CdkScrollable, Splitter family sibling) ---
+export * from 'caelum/scroll-panel';
+
 // --- Composed (M1): split-button (#148 — primary command + secondary-action dropdown over MatButton + cae-menu) ---
 export * from 'caelum/split-button';
 

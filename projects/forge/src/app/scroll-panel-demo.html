@@ -1,0 +1,33 @@
+<cae-card class="forge-scroll-card">
+  <h3 class="forge-scroll-card__title">Scroll panel</h3>
+  <p class="forge-scroll-card__lead">
+    A native scroll container with token-styled scrollbars. When its content overflows it becomes a
+    keyboard-focusable <code>role="region"</code> — <code>Tab</code> to it, then scroll with the
+    arrow keys / <code>Page&nbsp;Up</code> / <code>Page&nbsp;Down</code>. A panel whose content fits
+    gets no tab stop.
+  </p>
+
+  <div class="forge-scroll-grid">
+    <div class="forge-scroll-col">
+      <p class="forge-scroll-col__label">Overflows → scrollable region</p>
+      <cae-scroll-panel ariaLabel="Release notes" class="forge-scroll-panel">
+        <ul class="forge-scroll-list">
+          @for (r of releases; track r.version) {
+            <li class="forge-scroll-list__item">
+              <strong>v{{ r.version }}</strong> — {{ r.note }}
+            </li>
+          }
+        </ul>
+      </cae-scroll-panel>
+    </div>
+
+    <div class="forge-scroll-col">
+      <p class="forge-scroll-col__label">Fits → no tab stop</p>
+      <cae-scroll-panel ariaLabel="Summary" class="forge-scroll-panel">
+        <p class="forge-scroll-short">
+          Short content that fits inside the panel — nothing to scroll.
+        </p>
+      </cae-scroll-panel>
+    </div>
+  </div>
+</cae-card>
