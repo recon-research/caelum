@@ -116,7 +116,7 @@ Below, the **current** selector is listed with the historical alias noted. Verif
 | (TabMenu) | `cae-tab-menu` | `mat-tab-nav-bar` + `mat-tab-link` (v1 #164 = manual-`active` mode; selection is VALUE-based — assign each item a `value` and bind `[(activeValue)]`, *not* p-tabMenu's reference-based `activeItem`; the wrapper owns the `mat-tab-nav-panel` internally for the ARIA tabs pattern; router-linked mode/icons/rich items/responsive/RTL/closable → #165) | Direct | 09 |
 | `p-contextmenu` | `cae-context-menu` | CDK Menu (`cdkContextMenuTriggerFor`; v1 #157 = flat `CaeMenuItem[]` right-click menu, token-styled overlay panel via `ViewEncapsulation.None`, empty-items disables trigger, a11y free from the CDK primitives; submenus/rich items/groups/global-open/per-target data → #158) | Compose | 09 |
 | `p-tieredmenu` | `cae-tiered-menu` | CDK Menu (nested) | Compose | 09 |
-| `p-breadcrumb` | `cae-breadcrumb` | semantic `nav` + `aria-current` | Build-S | 09 |
+| `p-breadcrumb` | `cae-breadcrumb` | semantic `nav` + `<ol>` with `aria-current="page"` on the current page (non-link); silent `aria-hidden` token separators; data-driven `[items]`/`[home]`; no overlay | Build-S | 09 |
 | `p-panelmenu` | `cae-panel-menu` | `MatExpansionPanel` + nav | Build-S | 09 |
 | `p-megamenu`, `p-dock` | `cae-mega-menu` / `cae-dock` | CDK overlay / build (niche) | Build-M | 09 |
 

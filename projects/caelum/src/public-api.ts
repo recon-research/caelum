@@ -110,6 +110,9 @@ export * from 'caelum/splitter';
 // --- Layout (M3): scroll-panel (#328 — token-styled cross-browser scroll container over native overflow + CdkScrollable, Splitter family sibling) ---
 export * from 'caelum/scroll-panel';
 
+// --- Navigation (M3): breadcrumb (#332 — semantic nav + <ol> + aria-current, CSS token separators, no overlay; p-breadcrumb parity) ---
+export * from 'caelum/breadcrumb';
+
 // --- Composed (M1): split-button (#148 — primary command + secondary-action dropdown over MatButton + cae-menu) ---
 export * from 'caelum/split-button';
 

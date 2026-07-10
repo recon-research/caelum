@@ -715,6 +715,13 @@
       <app-scroll-panel-demo />
     }
 
+    <!-- cae-breadcrumb (#332, M3 navigation) — a semantic nav + <ol> trail with aria-current on the
+         current page and CSS-drawn token separators; no overlay, just honest navigation markup. Its own
+         @defer'd component keeps it off the eager initial bundle (#85/#142). -->
+    @defer (on idle) {
+      <app-breadcrumb-demo />
+    }
+
     <!-- cae-tree-select (#279, M3 ★ value-picker) — the FORM cousin of cae-tree-table: pick node(s)
          from a hierarchical tree in the library's first cdkConnectedOverlay panel; the value is the
          node key(s), never the label. Its own @defer'd component keeps the CDK overlay + a11y modules

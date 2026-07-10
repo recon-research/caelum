@@ -324,8 +324,8 @@ describe('App', () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     const el = fixture.nativeElement as HTMLElement;
-    // Exactly twenty-six @defer blocks — the capacity sliders, modules listbox, timezone autocomplete,
-    // skills multi-select, members table, tree-table, carousel, galleria, image, image-compare, splitter, scroll-panel, tree-select, input-number, input-otp,
+    // Exactly twenty-seven @defer blocks — the capacity sliders, modules listbox, timezone autocomplete,
+    // skills multi-select, members table, tree-table, carousel, galleria, image, image-compare, splitter, scroll-panel, breadcrumb, tree-select, input-number, input-otp,
     // password, input-mask, activity data-grid, orders server-grid, command bar, quick-actions context menu, workspace-sections tab menu,
     // structure tree, reference tabs, FAQ accordion, and tag row — each carrying a heavy Material module or
     // new CDK family (MatSlider/MatList/MatAutocomplete/MatSelect+MatChips/MatTable+MatSort+MatPaginator/CDK-VirtualScroll×2/
@@ -336,7 +336,7 @@ describe('App', () => {
     // @tanstack/table-core (#171); the orders grid defers app-orders-grid-demo — the ServerGridAdapter
     // engine (#176) — each into its own lazy chunk, the #142 initial-budget guard. galleria and image both
     // defer the MatDialog they pull in through cae-dialog.)
-    expect((await fixture.getDeferBlocks()).length).toBe(26);
+    expect((await fixture.getDeferBlocks()).length).toBe(27);
     // The eager critical path (the create-workspace form) is present with NO defer block rendered...
     expect(el.querySelector('.forge-form-card')).not.toBeNull();
     // ...while the deferred demo sections are genuinely absent until rendered (proof they're lazy).
@@ -352,6 +352,7 @@ describe('App', () => {
     expect(el.querySelector('.forge-image-compare-card')).toBeNull();
     expect(el.querySelector('.forge-splitter-card')).toBeNull();
     expect(el.querySelector('.forge-scroll-card')).toBeNull();
+    expect(el.querySelector('.forge-breadcrumb-card')).toBeNull();
     expect(el.querySelector('.forge-tree-select-card')).toBeNull();
     expect(el.querySelector('.forge-inputnumber-card')).toBeNull();
     expect(el.querySelector('.forge-inputotp-card')).toBeNull();
@@ -379,6 +380,7 @@ describe('App', () => {
     expect(el.querySelector('.forge-image-compare-card')).not.toBeNull();
     expect(el.querySelector('.forge-splitter-card')).not.toBeNull();
     expect(el.querySelector('.forge-scroll-card')).not.toBeNull();
+    expect(el.querySelector('.forge-breadcrumb-card')).not.toBeNull();
     expect(el.querySelector('.forge-tree-select-card')).not.toBeNull();
     expect(el.querySelector('.forge-inputnumber-card')).not.toBeNull();
     expect(el.querySelector('.forge-inputotp-card')).not.toBeNull();

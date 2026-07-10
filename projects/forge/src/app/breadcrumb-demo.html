@@ -1,0 +1,27 @@
+<cae-card class="forge-breadcrumb-card">
+  <h3 class="forge-breadcrumb-card__title">Breadcrumb</h3>
+  <p class="forge-breadcrumb-card__lead">
+    A semantic <code>&lt;nav aria-label&gt;</code> → <code>&lt;ol&gt;</code> trail: hyperlink
+    ancestors, the current page marked <code>aria-current="page"</code> (never a link), and
+    CSS-drawn token separators. <code>Tab</code> moves through the links; a page reader announces
+    the trail as an ordered list.
+  </p>
+
+  <div class="forge-breadcrumb-row">
+    <span class="forge-breadcrumb-row__label">Default <code>/</code> separator</span>
+    <cae-breadcrumb [home]="home" [items]="trail" (itemSelect)="lastSelected.set($event.label)" />
+  </div>
+
+  <div class="forge-breadcrumb-row">
+    <span class="forge-breadcrumb-row__label">Configurable <code>›</code> separator</span>
+    <cae-breadcrumb [home]="home" [items]="trail" separator="›" ariaLabel="Documentation trail" />
+  </div>
+
+  <p class="forge-breadcrumb-echo" role="status" aria-live="polite">
+    @if (lastSelected(); as label) {
+      Last crumb activated: <strong>{{ label }}</strong>
+    } @else {
+      Activate a crumb to see <code>(itemSelect)</code> fire.
+    }
+  </p>
+</cae-card>
