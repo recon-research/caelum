@@ -1,0 +1,44 @@
+// Breadcrumb demo (#332) — per-demo card styles, token-driven (D-04). Only structural literals remain
+// (display/flex/gap); every colour/space resolves to `--cae-*` (a literal colour would be a defect,
+// Book 04 §3.6). The breadcrumb draws its own separators + link/current styling from the component.
+
+.forge-breadcrumb-card {
+  display: block;
+}
+.forge-breadcrumb-card__title {
+  margin: 0 0 var(--cae-space-2);
+  color: var(--cae-color-on-surface);
+}
+.forge-breadcrumb-card__lead {
+  margin: 0 0 var(--cae-space-4);
+  color: var(--cae-color-on-surface-variant);
+}
+.forge-breadcrumb-card__lead code {
+  color: var(--cae-color-primary);
+}
+
+.forge-breadcrumb-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--cae-space-3);
+  margin-block: var(--cae-space-3);
+}
+.forge-breadcrumb-row__label {
+  min-inline-size: 14rem;
+  color: var(--cae-color-on-surface-variant);
+}
+.forge-breadcrumb-row__label code {
+  color: var(--cae-color-primary);
+}
+
+.forge-breadcrumb-echo {
+  margin: var(--cae-space-4) 0 0;
+  color: var(--cae-color-on-surface-variant);
+}
+.forge-breadcrumb-echo code {
+  color: var(--cae-color-primary);
+}
+.forge-breadcrumb-echo strong {
+  color: var(--cae-color-on-surface);
+}
