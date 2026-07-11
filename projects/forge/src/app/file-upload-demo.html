@@ -1,0 +1,36 @@
+<cae-card class="forge-file-upload-card">
+  <h3 class="forge-file-upload-card__title">File upload</h3>
+  <p class="forge-file-upload-card__lead">
+    <strong>Choose files</strong> with the keyboard (Tab to the control, then Enter) or
+    <strong>drop</strong> them on the zone. Images up to 512&nbsp;KB are accepted; anything larger
+    or non-image is <strong>rejected before upload</strong> at the trust boundary and announced to a
+    screen reader. Wiring <code>[url]</code> turns on the <code>HttpClient</code> progress / cancel
+    / retry upload.
+  </p>
+
+  <cae-file-upload
+    class="forge-file-upload-control"
+    accept="image/*"
+    [multiple]="true"
+    [maxFileSize]="maxSize"
+    chooseLabel="Choose images"
+    dropLabel="or drop images here"
+    ariaLabel="Upload images"
+    (filesSelected)="onSelect($event)"
+    (uploadError)="onError($event)"
+  />
+
+  <p class="forge-file-upload-accepted">
+    Accepted: <strong>{{ acceptedText() }}</strong>
+  </p>
+
+  <!-- Visual echo only (no aria-live): cae-file-upload already announces rejections via LiveAnnouncer,
+       so a second live region here would double-announce. -->
+  <p class="forge-file-upload-echo">
+    @if (lastRejection(); as rejected) {
+      Last rejected: <strong>{{ rejected }}</strong>
+    } @else {
+      Try dropping a large or non-image file to see the trust boundary reject it.
+    }
+  </p>
+</cae-card>

@@ -738,6 +738,15 @@
       <app-pick-list-demo />
     }
 
+    <!-- cae-file-upload (#338, M3 drag-drop cluster — third/final member) — keyboard-reachable native
+         input[type=file] + native DataTransfer dropzone (not cdkDropList — OS file drops aren't cdkDrag
+         items), trust-boundary type/size validation before upload, HttpClient progress/cancel/retry,
+         controlled CVA. Its own @defer'd component keeps it (and @angular/common/http) off the eager
+         initial bundle (#85/#142), like the other below-the-fold demos. -->
+    @defer (on idle) {
+      <app-file-upload-demo />
+    }
+
     <!-- cae-tree-select (#279, M3 ★ value-picker) — the FORM cousin of cae-tree-table: pick node(s)
          from a hierarchical tree in the library's first cdkConnectedOverlay panel; the value is the
          node key(s), never the label. Its own @defer'd component keeps the CDK overlay + a11y modules

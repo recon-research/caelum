@@ -148,7 +148,7 @@ Below, the **current** selector is listed with the historical alias noted. Verif
 
 | PrimeNG (`p-*`) | Caelum (`cae-*`) | Material / CDK basis | Tier | Book |
 |---|---|---|---|---|
-| `p-fileupload` | `cae-file-upload` | CDK drag-drop + `HttpClient` (no first-party uploader — build US-clean) | Build-M | 11 |
+| `p-fileupload` | `cae-file-upload` | keyboard-reachable native `input[type=file]` + native `DataTransfer` dropzone (not `cdkDropList` — that transfers `cdkDrag` items, never OS file drops); trust-boundary type/size validation *before* upload; `HttpClient` `reportProgress` per-file progress + cancel/retry; controlled CVA (value = accepted `File[]`), `LiveAnnouncer` announcements; no first-party uploader — built US-clean (Book 03) | Build-M | 11 |
 
 ## Media (a team priority)
 
