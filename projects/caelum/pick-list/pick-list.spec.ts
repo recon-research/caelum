@@ -9,6 +9,8 @@ import {
   CaePickListItemDef,
   CaePickListReorderEvent,
   CaePickListSide,
+  CaePickListSourceHeaderDef,
+  CaePickListTargetHeaderDef,
   CaePickListTransferEvent,
 } from './pick-list';
 
@@ -97,6 +99,34 @@ class PickListHost {
 class FallbackHost {
   readonly src = signal<readonly string[]>(['x', 'y']);
   readonly tgt = signal<readonly string[]>(['z']);
+}
+
+/**
+ * Host projecting per-pane header slots — exercises the `aria-labelledby` labelling path and its
+ * precedence over the `aria-label` string. `sourceAriaLabelledby` (an external heading the consumer
+ * owns) is bound so the explicit-labelledby-beats-header precedence can be asserted.
+ */
+@Component({
+  selector: 'cae-pick-list-header-host',
+  imports: [CaePickList, CaePickListSourceHeaderDef, CaePickListTargetHeaderDef],
+  template: `
+    <h2 id="external-src">External source heading</h2>
+    <cae-pick-list
+      [source]="sourceItems()"
+      [target]="targetItems()"
+      [sourceAriaLabel]="sourceAriaLabel()"
+      [sourceAriaLabelledby]="sourceAriaLabelledby()"
+    >
+      <ng-template caePickListSourceHeader>Available roles</ng-template>
+      <ng-template caePickListTargetHeader>Assigned roles</ng-template>
+    </cae-pick-list>
+  `,
+})
+class PickListHeaderHost {
+  readonly sourceItems = signal<readonly Row[]>(ROWS());
+  readonly targetItems = signal<readonly Row[]>([]);
+  readonly sourceAriaLabel = signal('');
+  readonly sourceAriaLabelledby = signal('');
 }
 
 describe('CaePickList', () => {
@@ -221,6 +251,45 @@ describe('CaePickList', () => {
     fixture.detectChanges();
     expect(src().getAttribute('aria-labelledby')).toBe('src-heading');
     expect(src().getAttribute('aria-label')).toBeNull(); // labelledby wins; no double name
+  });
+
+  it('a projected header labels its own list (aria-labelledby → the header id) and supersedes the aria-label string', () => {
+    const hf = TestBed.createComponent(PickListHeaderHost);
+    hf.componentInstance.sourceAriaLabel.set('ignored when a header is projected');
+    document.body.appendChild(hf.nativeElement);
+    hf.detectChanges();
+    const el = hf.nativeElement as HTMLElement;
+    const [srcList, tgtList] = Array.from(el.querySelectorAll<HTMLElement>('[role="listbox"]'));
+
+    const srcHeaderId = srcList.getAttribute('aria-labelledby')!;
+    expect(srcHeaderId).toBeTruthy();
+    expect(srcList.getAttribute('aria-label')).toBeNull(); // the header names the list; no double name
+    expect(el.querySelector(`#${srcHeaderId}`)?.textContent?.trim()).toBe('Available roles');
+
+    const tgtHeaderId = tgtList.getAttribute('aria-labelledby')!;
+    expect(tgtHeaderId).toBeTruthy();
+    expect(tgtHeaderId).not.toBe(srcHeaderId); // each list points at its OWN header, not a shared id
+    expect(el.querySelector(`#${tgtHeaderId}`)?.textContent?.trim()).toBe('Assigned roles');
+
+    hf.nativeElement.remove();
+    hf.destroy();
+  });
+
+  it('prefers an explicit ariaLabelledby (an external heading you own) over a projected header', () => {
+    const hf = TestBed.createComponent(PickListHeaderHost);
+    hf.componentInstance.sourceAriaLabelledby.set('external-src');
+    document.body.appendChild(hf.nativeElement);
+    hf.detectChanges();
+    const el = hf.nativeElement as HTMLElement;
+    const srcList = el.querySelector<HTMLElement>('[role="listbox"]')!;
+
+    expect(srcList.getAttribute('aria-labelledby')).toBe('external-src'); // the input wins over the header
+    expect(srcList.getAttribute('aria-label')).toBeNull();
+    // The header still renders as a visible title even though it no longer provides the accessible name.
+    expect(el.textContent).toContain('Available roles');
+
+    hf.nativeElement.remove();
+    hf.destroy();
   });
 
   it('focuses the first row of each list by default (sole tab stop) with nothing selected', () => {

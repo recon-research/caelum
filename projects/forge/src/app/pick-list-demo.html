@@ -5,8 +5,9 @@
     click, Ctrl+click, Shift+click, or Space / Shift+Arrow / Ctrl+A by keyboard — and move the whole
     block with the <strong>transfer buttons</strong> between the lists. <strong>Reorder</strong> a
     list in place by dragging a row or using its outer up / top / down / bottom buttons; every move
-    is announced to a screen reader. Each list is a <code>role="listbox"</code>, so the whole picker
-    is operable without a pointer.
+    is announced to a screen reader. Each list carries a projected <strong>header</strong> that is
+    also its accessible name, and is a <code>role="listbox"</code>, so the whole picker is operable
+    without a pointer.
   </p>
 
   <cae-pick-list
@@ -17,11 +18,11 @@
     (targetChange)="assigned.set($event)"
     [sourceSelection]="availableSel()"
     (sourceSelectionChange)="availableSel.set($event)"
-    sourceAriaLabel="Available roles"
-    targetAriaLabel="Assigned roles"
     (transfer)="onTransfer($event)"
     (reorder)="onReorder($event)"
   >
+    <ng-template caePickListSourceHeader>Available roles</ng-template>
+    <ng-template caePickListTargetHeader>Assigned roles</ng-template>
     <ng-template caePickListItem let-role>{{ $any(role).name }}</ng-template>
   </cae-pick-list>
 
