@@ -1,0 +1,36 @@
+<cae-card class="forge-pick-list-card">
+  <h3 class="forge-pick-list-card__title">Pick list</h3>
+  <p class="forge-pick-list-card__lead">
+    Assign roles by <strong>dragging</strong> one across, or select a role and use the
+    <strong>transfer buttons</strong> between the lists — every move is announced to a screen
+    reader. Each list is a <code>role="listbox"</code>, so the whole picker is operable without a
+    pointer.
+  </p>
+
+  <cae-pick-list
+    class="forge-pick-list-control"
+    [source]="available()"
+    (sourceChange)="available.set($event)"
+    [target]="assigned()"
+    (targetChange)="assigned.set($event)"
+    sourceAriaLabel="Available roles"
+    targetAriaLabel="Assigned roles"
+    (transfer)="onTransfer($event)"
+  >
+    <ng-template caePickListItem let-role>{{ $any(role).name }}</ng-template>
+  </cae-pick-list>
+
+  <p class="forge-pick-list-assigned">
+    Assigned: <strong>{{ assignedText() }}</strong>
+  </p>
+
+  <!-- Visual echo only (no aria-live): cae-pick-list already announces each transfer via LiveAnnouncer,
+       so a second live region here would double-announce. -->
+  <p class="forge-pick-list-echo">
+    @if (lastTransfer(); as move) {
+      Last transfer: <strong>{{ move }}</strong>
+    } @else {
+      Drag a role or use the transfer buttons to reassign.
+    }
+  </p>
+</cae-card>

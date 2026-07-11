@@ -86,6 +86,7 @@ import { SplitterDemo } from './splitter-demo';
 import { ScrollPanelDemo } from './scroll-panel-demo';
 import { BreadcrumbDemo } from './breadcrumb-demo';
 import { OrderListDemo } from './order-list-demo';
+import { PickListDemo } from './pick-list-demo';
 import { TreeSelectDemo } from './tree-select-demo';
 import { InputNumberDemo } from './input-number-demo';
 import { InputOtpDemo } from './input-otp-demo';
@@ -164,6 +165,7 @@ const SWATCHES: ReadonlyArray<{ token: string; label: string }> = [
     ScrollPanelDemo,
     BreadcrumbDemo,
     OrderListDemo,
+    PickListDemo,
     TreeSelectDemo,
     InputNumberDemo,
     InputOtpDemo,
