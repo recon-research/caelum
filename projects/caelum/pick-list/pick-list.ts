@@ -140,12 +140,13 @@ function clampActive(raw: number, n: number): number {
  *
  * **Accessibility.** Each list needs an accessible name: `[sourceAriaLabel]`/`[targetAriaLabel]`
  * (defaults `"Source list"`/`"Target list"`) or `[sourceAriaLabelledby]`/`[targetAriaLabelledby]`
- * (preferred when a visible heading is shown). Transfer buttons are real `<button>`s with `aria-label`s,
- * disabled — via `aria-disabled`, **not** the native attribute, so a button that empties its source
- * stays focusable instead of blurring to `<body>` and stranding the keyboard user — when the relevant
- * list is empty. State (both orders, both focus indices, both selections) lives in signals, so it
- * repaints under a zoneless host (Book 01 §3.2); drag pointer math is CDK's, and the drop result lands
- * in the models (Book 05 §3.4 zoneless note).
+ * (preferred when a visible heading is shown). Transfer **and reorder** buttons are real `<button>`s
+ * with self-contained `aria-label`s (e.g. `"Move up in the source list"`), grouped under a
+ * `role="group"`; they disable — via `aria-disabled`, **not** the native attribute, so a button that
+ * empties its source or reaches a list bound stays focusable instead of blurring to `<body>` and
+ * stranding the keyboard user. State (both orders, both focus indices, both selections) lives in
+ * signals, so it repaints under a zoneless host (Book 01 §3.2); drag pointer math is CDK's, and the
+ * drop result lands in the models (Book 05 §3.4 zoneless note).
  *
  * **Binding the value.** `[source]` and `[target]` are `model()`s — bind them **two-way**. With
  * `WritableSignal`s (the library's idiom) decompose as below; plain fields can use `[(source)]` /
@@ -178,7 +179,7 @@ function clampActive(raw: number, n: number): number {
         <button
           type="button"
           class="cae-pick-list__btn"
-          aria-label="Move source up"
+          aria-label="Move up in the source list"
           [attr.aria-disabled]="!sourceCanMoveUp() ? 'true' : null"
           (click)="moveUp('source')"
         >
@@ -187,7 +188,7 @@ function clampActive(raw: number, n: number): number {
         <button
           type="button"
           class="cae-pick-list__btn"
-          aria-label="Move source to top"
+          aria-label="Move to top in the source list"
           [attr.aria-disabled]="!sourceCanMoveUp() ? 'true' : null"
           (click)="moveTop('source')"
         >
@@ -196,7 +197,7 @@ function clampActive(raw: number, n: number): number {
         <button
           type="button"
           class="cae-pick-list__btn"
-          aria-label="Move source down"
+          aria-label="Move down in the source list"
           [attr.aria-disabled]="!sourceCanMoveDown() ? 'true' : null"
           (click)="moveDown('source')"
         >
@@ -205,7 +206,7 @@ function clampActive(raw: number, n: number): number {
         <button
           type="button"
           class="cae-pick-list__btn"
-          aria-label="Move source to bottom"
+          aria-label="Move to bottom in the source list"
           [attr.aria-disabled]="!sourceCanMoveDown() ? 'true' : null"
           (click)="moveBottom('source')"
         >
@@ -348,7 +349,7 @@ function clampActive(raw: number, n: number): number {
         <button
           type="button"
           class="cae-pick-list__btn"
-          aria-label="Move target up"
+          aria-label="Move up in the target list"
           [attr.aria-disabled]="!targetCanMoveUp() ? 'true' : null"
           (click)="moveUp('target')"
         >
@@ -357,7 +358,7 @@ function clampActive(raw: number, n: number): number {
         <button
           type="button"
           class="cae-pick-list__btn"
-          aria-label="Move target to top"
+          aria-label="Move to top in the target list"
           [attr.aria-disabled]="!targetCanMoveUp() ? 'true' : null"
           (click)="moveTop('target')"
         >
@@ -366,7 +367,7 @@ function clampActive(raw: number, n: number): number {
         <button
           type="button"
           class="cae-pick-list__btn"
-          aria-label="Move target down"
+          aria-label="Move down in the target list"
           [attr.aria-disabled]="!targetCanMoveDown() ? 'true' : null"
           (click)="moveDown('target')"
         >
@@ -375,7 +376,7 @@ function clampActive(raw: number, n: number): number {
         <button
           type="button"
           class="cae-pick-list__btn"
-          aria-label="Move target to bottom"
+          aria-label="Move to bottom in the target list"
           [attr.aria-disabled]="!targetCanMoveDown() ? 'true' : null"
           (click)="moveBottom('target')"
         >
@@ -386,8 +387,8 @@ function clampActive(raw: number, n: number): number {
 
     <span [id]="instructionsId" class="cae-pick-list__sr-only">
       Space toggles selection; Shift plus Arrow, Home, or End extends it; Control plus A selects
-      all; Escape clears. Use the reorder buttons to reorder within a list, or the transfer buttons
-      or drag to move the selection to the other list.
+      all; Escape clears. Reorder within a list with its move buttons or by dragging a row; move the
+      selection to the other list with the transfer buttons or a cross-list drag.
     </span>
   `,
   styles: `

@@ -600,7 +600,7 @@ describe('CaePickList', () => {
 
   it('reorders the focused source row down with the move button (no selection), announcing + emitting', () => {
     render({ source: ROWS(), target: [] }); // focus = Alpha (0), nothing selected
-    btn('Move source down').click();
+    btn('Move down in the source list').click();
     fixture.detectChanges();
     expect(names(host.sourceItems())).toEqual(['Bravo', 'Alpha', 'Charlie']);
     expect(focusedTextIn(src())).toContain('Alpha'); // focus follows the moved row
@@ -616,7 +616,7 @@ describe('CaePickList', () => {
 
   it('moves the focused source row to the bottom with the move-to-bottom button', () => {
     render({ source: ROWS(), target: [] });
-    btn('Move source to bottom').click();
+    btn('Move to bottom in the source list').click();
     fixture.detectChanges();
     expect(names(host.sourceItems())).toEqual(['Bravo', 'Charlie', 'Alpha']);
     expect(focusedTextIn(src())).toContain('Alpha'); // focus follows to the bottom
@@ -625,25 +625,25 @@ describe('CaePickList', () => {
 
   it('disables the reorder buttons at the list bounds (aria-disabled, staying focusable)', () => {
     render({ source: ROWS(), target: [] }); // focus at top (0), nothing selected
-    expect(disabled('Move source up')).toBe(true);
-    expect(disabled('Move source to top')).toBe(true);
-    expect(disabled('Move source down')).toBe(false);
-    expect(disabled('Move source to bottom')).toBe(false);
+    expect(disabled('Move up in the source list')).toBe(true);
+    expect(disabled('Move to top in the source list')).toBe(true);
+    expect(disabled('Move down in the source list')).toBe(false);
+    expect(disabled('Move to bottom in the source list')).toBe(false);
     // aria-disabled, not native [disabled] — a bound-reaching reorder button stays in the tab order.
-    expect(btn('Move source up').disabled).toBe(false);
+    expect(btn('Move up in the source list').disabled).toBe(false);
     // Focus the last row → down/bottom disable, up/top enable.
     optionsIn(src())[2].focus();
     fixture.detectChanges();
-    expect(disabled('Move source down')).toBe(true);
-    expect(disabled('Move source to bottom')).toBe(true);
-    expect(disabled('Move source up')).toBe(false);
-    expect(disabled('Move source to top')).toBe(false);
+    expect(disabled('Move down in the source list')).toBe(true);
+    expect(disabled('Move to bottom in the source list')).toBe(true);
+    expect(disabled('Move up in the source list')).toBe(false);
+    expect(disabled('Move to top in the source list')).toBe(false);
   });
 
   it('a bound-reaching reorder is a guarded no-op even if the aria-disabled button is clicked', () => {
     render({ source: ROWS(), target: [] }); // focus at top; up is aria-disabled
     const before = textsIn(src());
-    btn('Move source up').click(); // guarded by canReorderUp — must do nothing
+    btn('Move up in the source list').click(); // guarded by canReorderUp — must do nothing
     fixture.detectChanges();
     expect(textsIn(src())).toEqual(before);
     expect(host.lastReorder()).toBeNull();
@@ -654,7 +654,7 @@ describe('CaePickList', () => {
     render({ source: FOUR(), target: [] });
     clickRow(src(), 0); // Alpha
     clickRow(src(), 1, { ctrlKey: true }); // + Bravo → selection {Alpha, Bravo} at the top
-    btn('Move source down').click(); // bubble the block one step past Charlie
+    btn('Move down in the source list').click(); // bubble the block one step past Charlie
     fixture.detectChanges();
     expect(names(host.sourceItems())).toEqual(['Charlie', 'Alpha', 'Bravo', 'Delta']);
     expect(names(host.sourceSel())).toEqual(['Alpha', 'Bravo']); // block intact, relative order kept
@@ -665,11 +665,37 @@ describe('CaePickList', () => {
     expect(announce).toHaveBeenCalledWith('Moved 2 items down in the source list');
   });
 
+  it('bubbles a NON-contiguous block past its in-between neighbour, keeping selection order', () => {
+    render({ source: FOUR(), target: [] });
+    clickRow(src(), 0); // Alpha (0)
+    clickRow(src(), 2, { ctrlKey: true }); // + Charlie (2) → non-contiguous {0, 2}, Bravo (1) between
+    btn('Move down in the source list').click();
+    fixture.detectChanges();
+    // Charlie bubbles past Delta; Alpha bubbles past Bravo — each picked row moves one step down.
+    expect(names(host.sourceItems())).toEqual(['Bravo', 'Alpha', 'Delta', 'Charlie']);
+    // Selection stays {Alpha, Charlie}, still in list order (block move never reorders picked-vs-picked).
+    expect(names(host.sourceSel())).toEqual(['Alpha', 'Charlie']);
+    expect(host.lastReorder()!.movedIndices).toEqual([0, 2]);
+  });
+
+  it('keeps focus on the focused row when it is OUTSIDE the moved selection', () => {
+    render({ source: FOUR(), target: [] });
+    clickRow(src(), 2); // Charlie (2)
+    clickRow(src(), 3, { ctrlKey: true }); // + Delta (3) → selection {Charlie, Delta} at the bottom
+    optionsIn(src())[0].focus(); // focus Alpha — OUTSIDE the selection
+    fixture.detectChanges();
+    btn('Move up in the source list').click(); // move the {Charlie, Delta} block up one
+    fixture.detectChanges();
+    expect(names(host.sourceItems())).toEqual(['Alpha', 'Charlie', 'Delta', 'Bravo']);
+    // Focus must follow its own item (Alpha), not jump to the moved block.
+    expect(focusedTextIn(src())).toContain('Alpha');
+  });
+
   it('reorders the target list independently of the source (mirror side)', () => {
     render({ source: [], target: ROWS() });
     optionsIn(tgt())[2].focus(); // focus Charlie (2) in the target
     fixture.detectChanges();
-    btn('Move target to top').click();
+    btn('Move to top in the target list').click();
     fixture.detectChanges();
     expect(names(host.targetItems())).toEqual(['Charlie', 'Alpha', 'Bravo']);
     expect(host.sourceItems().length).toBe(0); // source untouched
@@ -677,6 +703,43 @@ describe('CaePickList', () => {
     const evt = host.lastReorder()!;
     expect(evt.side).toBe('target');
     expect(names(evt.items)).toEqual(['Charlie', 'Alpha', 'Bravo']);
+    expect(announce).toHaveBeenCalledWith('Moved to position 1 of 3 in the target list');
+  });
+
+  it('keeps a bound-reaching reorder button focused (aria-disabled, not native → no strand)', () => {
+    render({ source: ROWS(), target: [] }); // focus at top; "to bottom" enabled
+    const toBottom = btn('Move to bottom in the source list');
+    toBottom.focus();
+    expect(document.activeElement).toBe(toBottom);
+    toBottom.click(); // sends the focused row to the bottom → down/bottom go aria-disabled
+    fixture.detectChanges();
+    expect(disabled('Move to bottom in the source list')).toBe(true);
+    // aria-disabled (not native [disabled]) → the button is NOT blurred to <body>, so the keyboard
+    // user isn't stranded (the recurring aria-disabled-at-bounds MAJOR class).
+    expect(document.activeElement).toBe(toBottom);
+    expect(toBottom.getAttribute('aria-disabled')).toBe('true');
+  });
+
+  it('wraps each pane\'s reorder buttons in a labelled role="group"', () => {
+    render({ source: ROWS(), target: ROWS() });
+    const groupLabels = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('[role="group"]'),
+    ).map((g) => g.getAttribute('aria-label'));
+    expect(groupLabels).toContain('Reorder source list');
+    expect(groupLabels).toContain('Reorder target list');
+  });
+
+  it('reorders the TARGET list on a same-container drop (mirror drag path)', () => {
+    render({ source: [], target: ROWS() });
+    const same = {};
+    drop({ previousContainer: same, container: same, previousIndex: 2, currentIndex: 0 }, 'target');
+    fixture.detectChanges();
+    expect(names(host.targetItems())).toEqual(['Charlie', 'Alpha', 'Bravo']);
+    expect(host.sourceItems().length).toBe(0); // source untouched
+    const evt = host.lastReorder()!;
+    expect(evt.side).toBe('target');
+    expect(evt.previousIndex).toBe(2);
+    expect(evt.currentIndex).toBe(0);
     expect(announce).toHaveBeenCalledWith('Moved to position 1 of 3 in the target list');
   });
 });
