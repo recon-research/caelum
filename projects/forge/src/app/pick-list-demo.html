@@ -3,9 +3,10 @@
   <p class="forge-pick-list-card__lead">
     Assign roles by <strong>dragging</strong> one across, or <strong>multi-select</strong> roles —
     click, Ctrl+click, Shift+click, or Space / Shift+Arrow / Ctrl+A by keyboard — and move the whole
-    block with the <strong>transfer buttons</strong> between the lists; every move is announced to a
-    screen reader. Each list is a <code>role="listbox"</code>, so the whole picker is operable
-    without a pointer.
+    block with the <strong>transfer buttons</strong> between the lists. <strong>Reorder</strong> a
+    list in place by dragging a row or using its outer up / top / down / bottom buttons; every move
+    is announced to a screen reader. Each list is a <code>role="listbox"</code>, so the whole picker
+    is operable without a pointer.
   </p>
 
   <cae-pick-list
@@ -19,6 +20,7 @@
     sourceAriaLabel="Available roles"
     targetAriaLabel="Assigned roles"
     (transfer)="onTransfer($event)"
+    (reorder)="onReorder($event)"
   >
     <ng-template caePickListItem let-role>{{ $any(role).name }}</ng-template>
   </cae-pick-list>
@@ -38,6 +40,14 @@
       Last transfer: <strong>{{ move }}</strong>
     } @else {
       Drag a role or use the transfer buttons to reassign.
+    }
+  </p>
+
+  <p class="forge-pick-list-echo">
+    @if (lastReorder(); as move) {
+      Last reorder: <strong>{{ move }}</strong>
+    } @else {
+      Drag a row or use a list's move buttons to reorder it.
     }
   </p>
 </cae-card>
