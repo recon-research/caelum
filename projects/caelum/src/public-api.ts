@@ -113,6 +113,9 @@ export * from 'caelum/scroll-panel';
 // --- Navigation (M3): breadcrumb (#332 — semantic nav + <ol> + aria-current, CSS token separators, no overlay; p-breadcrumb parity) ---
 export * from 'caelum/breadcrumb';
 
+// --- Drag-drop cluster (M3): order-list (#336 — keyboard-operable drag-reorderable listbox over cdkDropList + LiveAnnouncer; p-orderList parity; first of OrderList/PickList/FileUpload) ---
+export * from 'caelum/order-list';
+
 // --- Composed (M1): split-button (#148 — primary command + secondary-action dropdown over MatButton + cae-menu) ---
 export * from 'caelum/split-button';
 
