@@ -23,6 +23,14 @@ const ROWS = (): Row[] => [
   { id: 'c', name: 'Charlie' },
 ];
 
+/** A fresh four-row list — block-move / range tests need a non-adjacent, non-edge-pinned selection. */
+const FOUR = (): Row[] => [
+  { id: 'a', name: 'Alpha' },
+  { id: 'b', name: 'Bravo' },
+  { id: 'c', name: 'Charlie' },
+  { id: 'd', name: 'Delta' },
+];
+
 /** The shape onDrop actually reads — a subset of CdkDragDrop we can build in jsdom (no real pointer drag). */
 type DropLike = {
   previousContainer: unknown;
@@ -41,14 +49,26 @@ type DropLike = {
       (sourceChange)="sourceItems.set($event)"
       [target]="targetItems()"
       (targetChange)="targetItems.set($event)"
+      [sourceSelection]="sourceSel()"
+      (sourceSelectionChange)="sourceSel.set($event)"
+      [targetSelection]="targetSel()"
+      (targetSelectionChange)="targetSel.set($event)"
       [sourceAriaLabel]="sourceAriaLabel()"
       [targetAriaLabel]="targetAriaLabel()"
       [sourceAriaLabelledby]="sourceAriaLabelledby()"
       [targetAriaLabelledby]="targetAriaLabelledby()"
       (transfer)="lastTransfer.set($event)"
     >
-      <ng-template caePickListItem let-item let-i="index" let-active="active">
-        <span class="tpl">{{ $any(item).name }}#{{ i }}{{ active ? '*' : '' }}</span>
+      <ng-template
+        caePickListItem
+        let-item
+        let-i="index"
+        let-active="active"
+        let-selected="selected"
+      >
+        <span class="tpl"
+          >{{ $any(item).name }}#{{ i }}{{ active ? '*' : '' }}{{ selected ? '+' : '' }}</span
+        >
       </ng-template>
     </cae-pick-list>
   `,
@@ -56,6 +76,8 @@ type DropLike = {
 class PickListHost {
   readonly sourceItems = signal<readonly Row[]>([]);
   readonly targetItems = signal<readonly Row[]>([]);
+  readonly sourceSel = signal<readonly Row[]>([]);
+  readonly targetSel = signal<readonly Row[]>([]);
   readonly sourceAriaLabel = signal('');
   readonly targetAriaLabel = signal('');
   readonly sourceAriaLabelledby = signal('');
@@ -129,9 +151,15 @@ describe('CaePickList', () => {
   function disabled(label: string): boolean {
     return btn(label).getAttribute('aria-disabled') === 'true';
   }
-  function activeTextIn(list: HTMLElement): string | null {
-    const el = list.querySelector('[aria-selected="true"]');
+  // Focus (the roving tab stop) is separate from selection (aria-selected) — read them independently.
+  function focusedTextIn(list: HTMLElement): string | null {
+    const el = list.querySelector('[tabindex="0"]');
     return el ? el.textContent!.trim() : null;
+  }
+  function selectedTextsIn(list: HTMLElement): string[] {
+    return Array.from(list.querySelectorAll<HTMLElement>('[aria-selected="true"]')).map((el) =>
+      el.textContent!.trim(),
+    );
   }
   function names(items: readonly Row[]): string[] {
     return items.map((r) => r.name);
@@ -146,21 +174,35 @@ describe('CaePickList', () => {
       side,
     );
   }
+  function clickRow(list: HTMLElement, i: number, mods: Partial<MouseEventInit> = {}): void {
+    optionsIn(list)[i].dispatchEvent(new MouseEvent('click', { bubbles: true, ...mods }));
+    fixture.detectChanges();
+  }
+  function key(el: HTMLElement, k: string, mods: Partial<KeyboardEventInit> = {}): void {
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, ...mods }));
+    fixture.detectChanges();
+  }
 
-  it('renders two named listboxes of options, both wired as cdkDropLists sharing the instructions', () => {
+  it('renders two multiselectable listboxes; each option (not the container) is described by the instructions', () => {
     render({ source: ROWS(), target: [{ id: 'z', name: 'Zeta' }] });
     expect(lists().length).toBe(2);
     expect(src().getAttribute('aria-label')).toBe('Source list'); // default names
     expect(tgt().getAttribute('aria-label')).toBe('Target list');
+    expect([src(), tgt()].every((l) => l.getAttribute('aria-multiselectable') === 'true')).toBe(
+      true,
+    );
     expect(optionsIn(src()).length).toBe(3);
     expect(optionsIn(tgt()).length).toBe(1);
     // Both CdkDropList directives are actually applied (they stamp this class) — so the transfer
     // (cdkDropListDropped) bindings are real, not just handlers tested in isolation.
     expect([src(), tgt()].every((l) => l.classList.contains('cdk-drop-list'))).toBe(true);
-    // A single visually-hidden instructions node describes both listboxes.
-    const described = src().getAttribute('aria-describedby');
+    // The instructions are described-by the OPTIONS (not the container) so roving tabindex re-announces
+    // them as focus moves — the listbox.ts precedent (a container describedby is never re-read).
+    const described = optionsIn(src())[0].getAttribute('aria-describedby');
     expect(described).toBeTruthy();
-    expect(tgt().getAttribute('aria-describedby')).toBe(described);
+    expect(src().getAttribute('aria-describedby')).toBeNull();
+    expect(tgt().getAttribute('aria-describedby')).toBeNull();
+    expect(optionsIn(tgt())[0].getAttribute('aria-describedby')).toBe(described);
     expect(fixture.nativeElement.querySelector(`#${described}`)?.textContent).toContain('transfer');
   });
 
@@ -178,7 +220,7 @@ describe('CaePickList', () => {
     expect(src().getAttribute('aria-label')).toBeNull(); // labelledby wins; no double name
   });
 
-  it('activates the first row of each list by default: aria-selected + the sole tab stop', () => {
+  it('focuses the first row of each list by default (sole tab stop) with nothing selected', () => {
     render({
       source: ROWS(),
       target: [
@@ -188,44 +230,45 @@ describe('CaePickList', () => {
     });
     for (const list of [src(), tgt()]) {
       const rows = optionsIn(list);
-      expect(rows[0].getAttribute('aria-selected')).toBe('true');
+      // Focus (tab stop) defaults to row 0; selection is empty (p-pickList parity).
       expect(rows[0].getAttribute('tabindex')).toBe('0');
       expect(rows[1].getAttribute('tabindex')).toBe('-1');
-      expect(list.querySelectorAll('[aria-selected="true"]').length).toBe(1);
+      expect(rows.every((r) => r.getAttribute('aria-selected') === 'false')).toBe(true);
+      expect(selectedTextsIn(list)).toEqual([]);
     }
   });
 
-  it('activates a row on click within its own list (selection + tab stop follow)', () => {
+  it('plain click within a list selects only that row (replace) and focuses it', () => {
     render({ source: ROWS(), target: [] });
-    optionsIn(src())[2].dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    fixture.detectChanges();
+    clickRow(src(), 2);
     expect(optionsIn(src())[2].getAttribute('aria-selected')).toBe('true');
-    expect(optionsIn(src())[2].getAttribute('tabindex')).toBe('0');
+    expect(optionsIn(src())[2].getAttribute('tabindex')).toBe('0'); // focus follows
     expect(optionsIn(src())[0].getAttribute('aria-selected')).toBe('false');
+    expect(selectedTextsIn(src())).toEqual(['Charlie#2*+']); // exactly one selected
+    expect(names(host.sourceSel())).toEqual(['Charlie']); // [(sourceSelection)] round-trips out
+    // The other list is untouched — selection is per-side.
+    expect(host.targetSel()).toEqual([]);
+    expect(announce).toHaveBeenCalledWith('1 of 3 selected in the source list');
   });
 
-  it('moves the active row within a list with Arrow/Home/End, following focus (no transfer)', () => {
+  it('moves focus within a list with Arrow/Home/End (no selection, no transfer, no announce)', () => {
     render({ source: ROWS(), target: [] });
     const before = textsIn(src());
     optionsIn(src())[0].focus();
 
-    optionsIn(src())[0].dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }),
-    );
-    fixture.detectChanges();
+    key(optionsIn(src())[0], 'ArrowDown');
     expect(document.activeElement).toBe(optionsIn(src())[1]);
-    expect(activeTextIn(src())).toContain('Bravo');
+    expect(focusedTextIn(src())).toContain('Bravo');
 
-    optionsIn(src())[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
-    fixture.detectChanges();
+    key(optionsIn(src())[1], 'End');
     expect(document.activeElement).toBe(optionsIn(src())[2]);
 
-    optionsIn(src())[2].dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
-    fixture.detectChanges();
+    key(optionsIn(src())[2], 'Home');
     expect(document.activeElement).toBe(optionsIn(src())[0]);
 
-    // Navigation never transfers or reorders, and doesn't announce.
+    // Navigation never transfers, never selects, and doesn't announce.
     expect(textsIn(src())).toEqual(before);
+    expect(selectedTextsIn(src())).toEqual([]);
     expect(announce).not.toHaveBeenCalled();
   });
 
@@ -261,14 +304,15 @@ describe('CaePickList', () => {
     expect(moveAll.getAttribute('aria-disabled')).toBe('true');
   });
 
-  it('moves the selected row to the target end, activating it there, emitting + announcing', () => {
-    render({ source: ROWS(), target: [] }); // source active = Alpha (0)
+  it('"Move selected" with nothing selected moves the focused row, focusing it in the target', () => {
+    render({ source: ROWS(), target: [] }); // source focus = Alpha (0), nothing selected
     btn('Move selected to target').click();
     fixture.detectChanges();
 
     expect(names(host.sourceItems())).toEqual(['Bravo', 'Charlie']);
     expect(names(host.targetItems())).toEqual(['Alpha']);
-    expect(activeTextIn(tgt())).toContain('Alpha'); // the moved item is active in its new list
+    expect(focusedTextIn(tgt())).toContain('Alpha'); // the moved item is focused in its new list
+    expect(selectedTextsIn(tgt())).toEqual([]); // moved item is not auto-selected in the target
     const evt = host.lastTransfer()!;
     expect(evt.from).toBe('source');
     expect(evt.to).toBe('target');
@@ -285,29 +329,11 @@ describe('CaePickList', () => {
 
     expect(host.sourceItems().length).toBe(0);
     expect(names(host.targetItems())).toEqual(['Zeta', 'Alpha', 'Bravo', 'Charlie']);
-    expect(activeTextIn(tgt())).toContain('Alpha'); // first moved item is active (index 1)
+    expect(focusedTextIn(tgt())).toContain('Alpha'); // first moved item is focused (index 1)
     const evt = host.lastTransfer()!;
     expect(evt.from).toBe('source');
     expect(names(evt.items)).toEqual(['Alpha', 'Bravo', 'Charlie']);
     expect(announce).toHaveBeenCalledWith('Moved 3 items to the target list.');
-  });
-
-  it('moves selected + all back the other way (target → source)', () => {
-    render({ source: [], target: ROWS() });
-    optionsIn(tgt())[2].dispatchEvent(new MouseEvent('click', { bubbles: true })); // select Charlie
-    fixture.detectChanges();
-
-    btn('Move selected to source').click();
-    fixture.detectChanges();
-    expect(names(host.targetItems())).toEqual(['Alpha', 'Bravo']);
-    expect(names(host.sourceItems())).toEqual(['Charlie']);
-    expect(announce).toHaveBeenCalledWith('Moved to the source list, position 1 of 1.');
-
-    btn('Move all to source').click();
-    fixture.detectChanges();
-    expect(host.targetItems().length).toBe(0);
-    expect(names(host.sourceItems())).toEqual(['Charlie', 'Alpha', 'Bravo']);
-    expect(announce).toHaveBeenLastCalledWith('Moved 2 items to the source list.');
   });
 
   it('transfers on a cross-list CDK drop, honoring the drop index, announcing', () => {
@@ -372,29 +398,164 @@ describe('CaePickList', () => {
     fb.destroy();
   });
 
-  it('clamps a list active index when it shrinks below it (no stale/resurrected index)', () => {
+  it('clamps a list focus index when it shrinks below it, pruning a now-absent selection', () => {
     render({ source: ROWS(), target: [] });
-    optionsIn(src())[2].dispatchEvent(new MouseEvent('click', { bubbles: true })); // active = 2 (Charlie)
-    fixture.detectChanges();
-    expect(activeTextIn(src())).toContain('Charlie');
-    // Shrink source externally to a single row: index 2 is out of range and must clamp.
+    clickRow(src(), 2); // focus = 2 (Charlie), and Charlie selected
+    expect(focusedTextIn(src())).toContain('Charlie');
+    expect(names(host.sourceSel())).toEqual(['Charlie']);
+    // Shrink source externally to a single row: index 2 is out of range → clamp; Charlie gone → prune.
     host.sourceItems.set([{ id: 'solo', name: 'Solo' }]);
     fixture.detectChanges();
-    expect(activeTextIn(src())).toContain('Solo');
+    expect(focusedTextIn(src())).toContain('Solo');
+    expect(host.sourceSel()).toEqual([]); // Charlie no longer present → selection pruned
     // Grow back: the clamped index must NOT resurrect the old position 2.
     host.sourceItems.set(ROWS());
     fixture.detectChanges();
-    expect(src().querySelector('[aria-selected="true"]')).toBe(optionsIn(src())[0]);
+    expect(src().querySelector('[tabindex="0"]')).toBe(optionsIn(src())[0]);
   });
 
   it('renders two empty lists without crashing — no rows, all transfer buttons aria-disabled', () => {
     render({ source: [], target: [] });
     expect(optionsIn(src()).length).toBe(0);
     expect(optionsIn(tgt()).length).toBe(0);
-    expect(src().querySelectorAll('[aria-selected="true"]').length).toBe(0);
+    expect(selectedTextsIn(src())).toEqual([]);
     expect(disabled('Move selected to target')).toBe(true);
     expect(disabled('Move all to target')).toBe(true);
     expect(disabled('Move selected to source')).toBe(true);
     expect(disabled('Move all to source')).toBe(true);
+  });
+
+  // --- Multi-select (ARIA listbox multiselect, per side) -----------------------------------------
+
+  it('Ctrl/Cmd+click toggles a source row into/out of the selection (additive)', () => {
+    render({ source: ROWS(), target: [] });
+    clickRow(src(), 0); // select Alpha (replace)
+    clickRow(src(), 2, { ctrlKey: true }); // add Charlie
+    expect(selectedTextsIn(src())).toEqual(['Alpha#0+', 'Charlie#2*+']); // list order; Charlie focused
+    expect(names(host.sourceSel())).toEqual(['Alpha', 'Charlie']);
+    clickRow(src(), 0, { ctrlKey: true }); // toggle Alpha off
+    expect(names(host.sourceSel())).toEqual(['Charlie']);
+  });
+
+  it('Shift+click selects the contiguous range from the anchor', () => {
+    render({ source: ROWS(), target: [] });
+    clickRow(src(), 0); // anchor = 0
+    clickRow(src(), 2, { shiftKey: true }); // range 0..2
+    expect(names(host.sourceSel())).toEqual(['Alpha', 'Bravo', 'Charlie']);
+  });
+
+  it('Space toggles the focused target row; Ctrl+A selects all in that list; announces the count', () => {
+    render({ source: [], target: ROWS() });
+    optionsIn(tgt())[1].focus();
+    key(optionsIn(tgt())[1], ' '); // toggle Bravo on
+    expect(names(host.targetSel())).toEqual(['Bravo']);
+    expect(host.sourceSel()).toEqual([]); // the other list stays empty
+    expect(announce).toHaveBeenCalledWith('1 of 3 selected in the target list');
+
+    key(optionsIn(tgt())[1], 'a', { ctrlKey: true }); // select all in target
+    expect(names(host.targetSel())).toEqual(['Alpha', 'Bravo', 'Charlie']);
+    expect(announce).toHaveBeenCalledWith('3 of 3 selected in the target list');
+  });
+
+  it('Shift+ArrowDown range-extends the selection while moving focus', () => {
+    render({ source: ROWS(), target: [] });
+    optionsIn(src())[0].focus();
+    key(optionsIn(src())[0], 'ArrowDown', { shiftKey: true }); // anchor 0 → focus 1, range 0..1
+    expect(document.activeElement).toBe(optionsIn(src())[1]);
+    expect(names(host.sourceSel())).toEqual(['Alpha', 'Bravo']);
+    key(optionsIn(src())[1], 'ArrowDown', { shiftKey: true }); // extend to 0..2
+    expect(names(host.sourceSel())).toEqual(['Alpha', 'Bravo', 'Charlie']);
+  });
+
+  it('Shift+End range-extends from the anchor to the last row', () => {
+    render({ source: ROWS(), target: [] });
+    optionsIn(src())[0].focus();
+    key(optionsIn(src())[0], ' '); // anchor = Alpha (0)
+    key(optionsIn(src())[0], 'End', { shiftKey: true }); // extend 0..2
+    expect(names(host.sourceSel())).toEqual(['Alpha', 'Bravo', 'Charlie']);
+    expect(document.activeElement).toBe(optionsIn(src())[2]);
+  });
+
+  it('Escape clears the whole selection of that list (keyboard parity with pointer)', () => {
+    render({ source: ROWS(), target: [] });
+    optionsIn(src())[0].focus();
+    key(optionsIn(src())[0], 'a', { ctrlKey: true }); // select all
+    expect(host.sourceSel().length).toBe(3);
+    key(optionsIn(src())[0], 'Escape');
+    expect(host.sourceSel()).toEqual([]);
+    expect(selectedTextsIn(src())).toEqual([]);
+    expect(announce).toHaveBeenCalledWith('Selection cleared in the source list');
+  });
+
+  it('moves a multi-selection as a block to the target, preserving source order (non-adjacent)', () => {
+    render({ source: FOUR(), target: [{ id: 'z', name: 'Zeta' }] });
+    clickRow(src(), 0); // select Alpha (0)
+    clickRow(src(), 2, { ctrlKey: true }); // + Charlie (2) → non-adjacent selection {0, 2}
+    btn('Move selected to target').click();
+    fixture.detectChanges();
+
+    // The selected block moves in source order; the rest stays behind.
+    expect(names(host.sourceItems())).toEqual(['Bravo', 'Delta']);
+    expect(names(host.targetItems())).toEqual(['Zeta', 'Alpha', 'Charlie']);
+    expect(focusedTextIn(tgt())).toContain('Alpha'); // first moved row is focused (index 1)
+    const evt = host.lastTransfer()!;
+    expect(names(evt.items)).toEqual(['Alpha', 'Charlie']);
+    expect(host.sourceSel()).toEqual([]); // moved items pruned from the source selection
+    expect(announce).toHaveBeenCalledWith('Moved 2 items to the target list.');
+  });
+
+  it('moves the selected block + all back the other way (target → source button transfer)', () => {
+    render({ source: [], target: FOUR() });
+    clickRow(tgt(), 1); // select Bravo
+    clickRow(tgt(), 3, { ctrlKey: true }); // + Delta → target selection {Bravo, Delta}
+    btn('Move selected to source').click();
+    fixture.detectChanges();
+    // The mirror leg: transferSelected('target','source') moves the block in target order, rest stays.
+    expect(names(host.targetItems())).toEqual(['Alpha', 'Charlie']);
+    expect(names(host.sourceItems())).toEqual(['Bravo', 'Delta']);
+    expect(host.targetSel()).toEqual([]); // moved items pruned from the target selection
+    expect(announce).toHaveBeenCalledWith('Moved 2 items to the source list.');
+
+    btn('Move all to source').click(); // move the remainder wholesale
+    fixture.detectChanges();
+    expect(host.targetItems().length).toBe(0);
+    expect(names(host.sourceItems())).toEqual(['Bravo', 'Delta', 'Alpha', 'Charlie']);
+    expect(announce).toHaveBeenLastCalledWith('Moved 2 items to the source list.');
+  });
+
+  it('writes selection in from the parent ([(sourceSelection)] two-way) and reflects it', () => {
+    render({ source: ROWS(), target: [] });
+    const rows = host.sourceItems();
+    host.sourceSel.set([rows[0], rows[2]]); // parent selects Alpha + Charlie
+    fixture.detectChanges();
+    expect(selectedTextsIn(src())).toEqual(['Alpha#0*+', 'Charlie#2+']);
+    expect(optionsIn(src())[0].getAttribute('aria-selected')).toBe('true');
+    expect(optionsIn(src())[1].getAttribute('aria-selected')).toBe('false');
+  });
+
+  it('keeps the range anchor stable across an index shift (anchor is the item, not a stale index)', () => {
+    render({ source: ROWS(), target: [] });
+    clickRow(src(), 1); // select Bravo, anchor = Bravo (row 1)
+    // Prepend a row externally: Bravo is now at index 2 (a STALE index anchor of 1 would mis-range).
+    const rows = host.sourceItems();
+    host.sourceItems.set([{ id: 'z', name: 'Zeta' }, ...rows]);
+    fixture.detectChanges();
+    expect(names(host.sourceItems())).toEqual(['Zeta', 'Alpha', 'Bravo', 'Charlie']);
+    // Shift+click Charlie (now row 3): the item anchor (Bravo, now row 2) ranges Bravo..Charlie.
+    clickRow(src(), 3, { shiftKey: true });
+    expect(names(host.sourceSel())).toEqual(['Bravo', 'Charlie']);
+  });
+
+  it('a cross-list drop of a selected row prunes it from the source selection', () => {
+    render({ source: FOUR(), target: [] });
+    clickRow(src(), 0); // Alpha
+    clickRow(src(), 2, { ctrlKey: true }); // + Charlie → source selection [Alpha, Charlie]
+    // Drag Alpha (row 0) across to the target; the button block-move isn't involved here.
+    drop({ previousContainer: {}, container: {}, previousIndex: 0, currentIndex: 0 }, 'target');
+    fixture.detectChanges();
+    expect(names(host.sourceItems())).toEqual(['Bravo', 'Charlie', 'Delta']);
+    expect(names(host.targetItems())).toEqual(['Alpha']);
+    // Alpha left the source, so it drops out of the source selection; Charlie stays.
+    expect(names(host.sourceSel())).toEqual(['Charlie']);
   });
 });

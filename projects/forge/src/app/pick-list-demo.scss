@@ -32,6 +32,14 @@
   color: var(--cae-color-on-surface);
 }
 
+.forge-pick-list-selected {
+  margin: var(--cae-space-2) 0 0;
+  color: var(--cae-color-on-surface-variant);
+}
+.forge-pick-list-selected strong {
+  color: var(--cae-color-on-surface);
+}
+
 .forge-pick-list-echo {
   margin: var(--cae-space-2) 0 0;
   color: var(--cae-color-on-surface-variant);
