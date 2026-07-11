@@ -77,7 +77,7 @@ Below, the **current** selector is listed with the historical alias noted. Verif
 | `p-paginator` | `cae-paginator` | `MatPaginator` | Direct | 10 |
 | `p-virtualscroller` (a.k.a. `p-scroller`) | `cae-virtual-scroll` | `cdk-virtual-scroll-viewport` | Direct | 10 |
 | `p-dataview` | `cae-data-view` | layout + `MatPaginator` | Compose | 10 |
-| `p-orderlist` | `cae-order-list` | keyboard-operable drag-reorderable `role=listbox` over `cdkDropList`; move up/top/down/bottom buttons + roving tabindex, every move announced via `LiveAnnouncer`; content-agnostic `caeOrderListItem` template; `[(value)]` model + `(reorder)`; no foreign drag lib | Build-M | 11 |
+| `p-orderlist` | `cae-order-list` | keyboard-operable drag-reorderable multi-selectable `role=listbox` over `cdkDropList`; **multi-select** (`[(selection)]`; click/Ctrl/Shift-click, Space/Shift+Arrow/Ctrl+A) with block move up/top/down/bottom + roving tabindex (focus separate from selection), every move + selection announced via `LiveAnnouncer`; content-agnostic `caeOrderListItem` template (item/index/active/selected); `[(value)]` model + `(reorder)`; no foreign drag lib | Build-M | 11 |
 | `p-picklist` | `cae-pick-list` | two connected keyboard-operable `role=listbox` lists over `cdkDropList` + `cdkDropListConnectedTo`; move-selected/move-all buttons both directions + per-list roving tabindex, every transfer announced via `LiveAnnouncer`; content-agnostic `caePickListItem` template; `[(source)]`/`[(target)]` models + `(transfer)`; v1 transfer-only (within-list reorder deferred); no foreign drag lib | Build-M | 11 |
 | `p-timeline` | `cae-timeline` | CSS/flex + CDK | Build-S | 11 |
 | `p-organizationchart` | `cae-org-chart` | SVG/CDK or vetted US lib | Build-L | 11 |
