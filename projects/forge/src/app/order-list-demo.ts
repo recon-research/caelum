@@ -9,10 +9,11 @@ interface Widget {
 }
 
 /**
- * The deferred "Order list" `cae-order-list` demo (#336) — the first drag-drop-cluster component. It
- * reorders a set of dashboard sections two ways: drag a row (`cdkDropList`), or select one and use the
- * move buttons — both announce *"Moved to position N of M"* to a screen reader. The current order and
- * the last move echo below so the interaction is visibly live end-to-end (DoD liveness).
+ * The deferred "Order list" `cae-order-list` demo (#336; multi-select #341). It reorders a set of
+ * dashboard sections two ways: drag a row (`cdkDropList`), or **multi-select** rows (click / Ctrl+click /
+ * Shift+click; Space, Shift+Arrow, Ctrl+A by keyboard) and move the whole block with the buttons — both
+ * paths announce to a screen reader. The current order and the live selection echo below so the
+ * interaction is visibly live end-to-end (DoD liveness).
  *
  * `@defer`'d from App (#85): keeping the demo — and the `@angular/cdk/drag-drop` it pulls in — in its
  * own lazy chunk holds those bytes off Forge's initial bundle (the #142 / D-16 budget).
@@ -37,6 +38,16 @@ export class OrderListDemo {
   /** The live order, echoed so a reorder is visibly reflected. */
   protected readonly orderText = computed(() =>
     this.widgets()
+      .map((w) => w.name)
+      .join(' · '),
+  );
+
+  /** The current multi-selection, two-way bound so the move buttons act on the whole set. */
+  protected readonly selected = signal<readonly Widget[]>([]);
+
+  /** The selected sections, echoed so multi-select is visibly reflected. */
+  protected readonly selectedText = computed(() =>
+    this.selected()
       .map((w) => w.name)
       .join(' · '),
   );
