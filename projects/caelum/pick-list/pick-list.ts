@@ -16,7 +16,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
-import { CdkDrag, CdkDragDrop, CdkDropList } from '@angular/cdk/drag-drop';
+import { CdkDrag, CdkDragDrop, CdkDropList, moveItemInArray } from '@angular/cdk/drag-drop';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 
 /** Per-instance id source for the aria-describedby instructions (SSR/hydration-stable, unlike random). */
@@ -37,6 +37,20 @@ export interface CaePickListTransferEvent<T = unknown> {
   readonly source: readonly T[];
   /** The full target list in its new order (a fresh array; the bound `[(target)]` receives the same). */
   readonly target: readonly T[];
+}
+
+/** The payload of {@link CaePickList.reorder} — which list moved, its new order, and the moved indices. */
+export interface CaePickListReorderEvent<T = unknown> {
+  /** Which list reordered — the left/`source` or the right/`target`. */
+  readonly side: CaePickListSide;
+  /** That list's full new order (a fresh array; the bound `[(source)]`/`[(target)]` receives the same). */
+  readonly items: readonly T[];
+  /** Where the **first** moved row was (for a multi-row block move, the topmost selected row). */
+  readonly previousIndex: number;
+  /** Where that first moved row now is. */
+  readonly currentIndex: number;
+  /** Every moved row's *previous* index, ascending — one entry for a single move, N for a block move. */
+  readonly movedIndices: readonly number[];
 }
 
 /** The context handed to a `caePickListItem` template: the item, its index, focus, and selection. */
@@ -93,20 +107,23 @@ function clampActive(raw: number, n: number): number {
  * two order-lists wired together across a transfer axis. Built on `@angular/cdk/drag-drop` +
  * `@angular/cdk/a11y` only — no foreign drag library (Book 03 keeps the provenance surface clean).
  *
- * **The two transfer paths.** (1) **Drag** — drag a row from one list and drop it on the other; the
+ * **Transfer — the two paths.** (1) **Drag** — drag a row from one list and drop it on the other; the
  * two `cdkDropList`s are wired with `cdkDropListConnectedTo`, so the drop transfers the item across.
- * (2) **Keyboard/pointer, no drag** — a control column between the lists: *move selected →*, *move all
- * →*, *← move selected*, *⇐ move all*, each acting on the **active** row (or the whole list). Either
- * path updates the same `[(source)]` / `[(target)]` models and emits `(transfer)`, and every move is
- * announced via `LiveAnnouncer` — so the §3.5 parity leg holds: a keyboard path for every drag,
- * announced for non-visual users.
+ * (2) **Keyboard/pointer, no drag** — the centre control column: *move selected →*, *move all
+ * →*, *← move selected*, *⇐ move all*, each acting on the **selected block** (or the focused row, or the
+ * whole list). Either path updates the same `[(source)]` / `[(target)]` models and emits `(transfer)`,
+ * and every move is announced via `LiveAnnouncer` — so the §3.5 parity leg holds: a keyboard path for
+ * every drag, announced for non-visual users.
  *
- * **Scope (v1 — transfer only).** Dragging **within** a list does not reorder it (`cdkDropList`
- * sorting is disabled): the only drag operation is the cross-list transfer, which is exactly the one
- * with a full keyboard path. Reordering **within** each list (drag *and* its own move-up/down buttons,
- * shipped together so §3.5's *keyboard-path-for-every-drag* invariant is never broken) is a deferred
- * follow-on (#342) — as are per-side header slots, in-list filtering, and RTL of the transfer axis.
- * Transfer — the pick-list's defining operation — ships complete and accessible.
+ * **Reorder within a list — the two paths.** Each pane is effectively a `cae-order-list`: (1) **Drag**
+ * a row within its own list to a new position (`cdkDropList` sorting is enabled; a same-container drop
+ * reorders rather than transfers); (2) an **outer** control column per pane — *move up / to top / down /
+ * to bottom* — reorders that list's **selected block** (or its focused row), so §3.5's
+ * *keyboard-path-for-every-drag* invariant holds for the reorder drag too. Either path updates that
+ * side's model, emits `(reorder)` (with the `side`), and announces the move.
+ *
+ * **Scope.** Transfer and within-list reorder both ship complete and accessible. Still deferred (#342):
+ * per-side header slots, in-list filtering, RTL of the transfer axis, and virtualization (#240-gated).
  *
  * **Selection & focus model (per list; ARIA listbox multiselect).** Each list is an independent
  * `role="listbox"` (`aria-multiselectable`) whose rows are `role="option"`. Focus and selection are
@@ -157,12 +174,49 @@ function clampActive(raw: number, n: number): number {
   host: { class: 'cae-pick-list' },
   template: `
     <div class="cae-pick-list__pane">
+      <div class="cae-pick-list__reorder" role="group" aria-label="Reorder source list">
+        <button
+          type="button"
+          class="cae-pick-list__btn"
+          aria-label="Move source up"
+          [attr.aria-disabled]="!sourceCanMoveUp() ? 'true' : null"
+          (click)="moveUp('source')"
+        >
+          <span aria-hidden="true">&#8593;</span>
+        </button>
+        <button
+          type="button"
+          class="cae-pick-list__btn"
+          aria-label="Move source to top"
+          [attr.aria-disabled]="!sourceCanMoveUp() ? 'true' : null"
+          (click)="moveTop('source')"
+        >
+          <span aria-hidden="true">&#8607;</span>
+        </button>
+        <button
+          type="button"
+          class="cae-pick-list__btn"
+          aria-label="Move source down"
+          [attr.aria-disabled]="!sourceCanMoveDown() ? 'true' : null"
+          (click)="moveDown('source')"
+        >
+          <span aria-hidden="true">&#8595;</span>
+        </button>
+        <button
+          type="button"
+          class="cae-pick-list__btn"
+          aria-label="Move source to bottom"
+          [attr.aria-disabled]="!sourceCanMoveDown() ? 'true' : null"
+          (click)="moveBottom('source')"
+        >
+          <span aria-hidden="true">&#8609;</span>
+        </button>
+      </div>
       <ul
         class="cae-pick-list__list"
         role="listbox"
         aria-multiselectable="true"
         cdkDropList
-        cdkDropListSortingDisabled
         #sourceDrop="cdkDropList"
         [cdkDropListData]="source()"
         [cdkDropListConnectedTo]="[targetDrop]"
@@ -250,7 +304,6 @@ function clampActive(raw: number, n: number): number {
         role="listbox"
         aria-multiselectable="true"
         cdkDropList
-        cdkDropListSortingDisabled
         #targetDrop="cdkDropList"
         [cdkDropListData]="target()"
         [cdkDropListConnectedTo]="[sourceDrop]"
@@ -291,11 +344,50 @@ function clampActive(raw: number, n: number): number {
           </li>
         }
       </ul>
+      <div class="cae-pick-list__reorder" role="group" aria-label="Reorder target list">
+        <button
+          type="button"
+          class="cae-pick-list__btn"
+          aria-label="Move target up"
+          [attr.aria-disabled]="!targetCanMoveUp() ? 'true' : null"
+          (click)="moveUp('target')"
+        >
+          <span aria-hidden="true">&#8593;</span>
+        </button>
+        <button
+          type="button"
+          class="cae-pick-list__btn"
+          aria-label="Move target to top"
+          [attr.aria-disabled]="!targetCanMoveUp() ? 'true' : null"
+          (click)="moveTop('target')"
+        >
+          <span aria-hidden="true">&#8607;</span>
+        </button>
+        <button
+          type="button"
+          class="cae-pick-list__btn"
+          aria-label="Move target down"
+          [attr.aria-disabled]="!targetCanMoveDown() ? 'true' : null"
+          (click)="moveDown('target')"
+        >
+          <span aria-hidden="true">&#8595;</span>
+        </button>
+        <button
+          type="button"
+          class="cae-pick-list__btn"
+          aria-label="Move target to bottom"
+          [attr.aria-disabled]="!targetCanMoveDown() ? 'true' : null"
+          (click)="moveBottom('target')"
+        >
+          <span aria-hidden="true">&#8609;</span>
+        </button>
+      </div>
     </div>
 
     <span [id]="instructionsId" class="cae-pick-list__sr-only">
       Space toggles selection; Shift plus Arrow, Home, or End extends it; Control plus A selects
-      all; Escape clears. Use the transfer buttons or drag to move the selection to the other list.
+      all; Escape clears. Use the reorder buttons to reorder within a list, or the transfer buttons
+      or drag to move the selection to the other list.
     </span>
   `,
   styles: `
@@ -308,8 +400,11 @@ function clampActive(raw: number, n: number): number {
       flex: 1 1 0;
       min-inline-size: 0;
       display: flex;
+      gap: var(--cae-space-1);
     }
-    .cae-pick-list__controls {
+    /* Centre transfer column + each pane's outer reorder column: a vertical button stack. */
+    .cae-pick-list__controls,
+    .cae-pick-list__reorder {
       display: flex;
       flex-direction: column;
       justify-content: center;
@@ -378,6 +473,10 @@ function clampActive(raw: number, n: number): number {
     .cae-pick-list__option.cdk-drag-placeholder {
       opacity: 0.5;
     }
+    /* Smoothly slide the non-dragged rows as a within-list reorder previews (matches cae-order-list). */
+    .cae-pick-list__list.cdk-drop-list-dragging .cae-pick-list__option:not(.cdk-drag-placeholder) {
+      transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+    }
     /* Visually-hidden but AT-readable (the standard sr-only recipe) — the transfer instructions both
        listboxes are aria-describedby-linked to. */
     .cae-pick-list__sr-only {
@@ -424,6 +523,8 @@ export class CaePickList<T = unknown> {
   readonly targetAriaLabelledby = input('');
   /** Emits on every transfer (drag or button) with the moved item(s), the direction, and both new orders. */
   readonly transfer = output<CaePickListTransferEvent<T>>();
+  /** Emits on every within-list reorder (drag or move button) with the side, its new order, and moved indices. */
+  readonly reorder = output<CaePickListReorderEvent<T>>();
 
   /** The projected row template (shared by both lists), if the consumer supplied one. */
   protected readonly itemDef = contentChild(CaePickListItemDef<T>);
@@ -460,6 +561,12 @@ export class CaePickList<T = unknown> {
   /** Transfer to a side is possible iff its source (the *other* list) has items to move. */
   protected readonly canMoveToTarget = computed(() => this.source().length > 0);
   protected readonly canMoveToSource = computed(() => this.target().length > 0);
+
+  /** Per-side reorder bounds — each list's move-up/top (down/bottom) buttons are live off its own edges. */
+  protected readonly sourceCanMoveUp = computed(() => this.canReorderUp('source'));
+  protected readonly sourceCanMoveDown = computed(() => this.canReorderDown('source'));
+  protected readonly targetCanMoveUp = computed(() => this.canReorderUp('target'));
+  protected readonly targetCanMoveDown = computed(() => this.canReorderDown('target'));
 
   constructor() {
     // Clamp each RAW active index whenever its list changes, so a shrink can't leave a stale
@@ -528,10 +635,30 @@ export class CaePickList<T = unknown> {
     if (this.canMoveToSource()) this.transferAll('target', 'source');
   }
 
-  /** A drop on `dropSide` transfers the dragged row from the other list. Within-list drops are no-ops (v1). */
+  /** Reorder `side`'s selected block (or its focused row) one step up / to the top of that list. */
+  protected moveUp(side: CaePickListSide): void {
+    if (this.canReorderUp(side)) this.reorderSelection(side, 'up');
+  }
+  protected moveTop(side: CaePickListSide): void {
+    if (this.canReorderUp(side)) this.reorderSelection(side, 'top');
+  }
+  /** Reorder `side`'s selected block (or its focused row) one step down / to the bottom of that list. */
+  protected moveDown(side: CaePickListSide): void {
+    if (this.canReorderDown(side)) this.reorderSelection(side, 'down');
+  }
+  protected moveBottom(side: CaePickListSide): void {
+    if (this.canReorderDown(side)) this.reorderSelection(side, 'bottom');
+  }
+
+  /**
+   * A drop on `dropSide`: a **same-container** drop reorders that list (sorting is enabled); a
+   * **cross-container** drop transfers the dragged row from the other list.
+   */
   protected onDrop(event: CdkDragDrop<readonly T[]>, dropSide: CaePickListSide): void {
-    // Sorting is disabled, so a same-container drop can't reorder — ignore it (no within-list reorder in v1).
-    if (event.previousContainer === event.container) return;
+    if (event.previousContainer === event.container) {
+      this.reorderAt(dropSide, event.previousIndex, event.currentIndex);
+      return;
+    }
     const fromSide: CaePickListSide = dropSide === 'source' ? 'target' : 'source';
     this.transferAt(fromSide, event.previousIndex, dropSide, event.currentIndex);
   }
@@ -644,6 +771,17 @@ export class CaePickList<T = unknown> {
     return a >= 0 ? [a] : [];
   }
 
+  /** `side`'s move-up/top is live iff its move set is non-empty and not already at the top. */
+  private canReorderUp(side: CaePickListSide): boolean {
+    const m = this.moveIndicesOf(side);
+    return m.length > 0 && m[0] > 0;
+  }
+  /** `side`'s move-down/bottom is live iff its move set is non-empty and not already at the bottom. */
+  private canReorderDown(side: CaePickListSide): boolean {
+    const m = this.moveIndicesOf(side);
+    return m.length > 0 && m[m.length - 1] < this.read(side).length - 1;
+  }
+
   /**
    * Move `fromSide`'s selected block (or, with nothing selected, its focused row) onto the end of
    * `toSide`, preserving the rows' relative order; focus the first moved row there; announce + emit.
@@ -712,6 +850,93 @@ export class CaePickList<T = unknown> {
     const n = fromArr.length;
     this.announcer.announce(`Moved ${n} item${n === 1 ? '' : 's'} to the ${toSide} list.`);
     this.emitTransfer(fromArr, fromSide, toSide);
+  }
+
+  /**
+   * Reorder `side`'s selected block (or its focused row when nothing is selected) in `dir`, preserving
+   * the rows' relative order. Up/Down bubble the block one step past non-selected neighbours; Top/Bottom
+   * lift it to the edge. Focus follows its item; `(reorder)` reports the first moved row's old→new index.
+   * Mirrors `cae-order-list`'s reorder — each pane is an order-list. (Selection keeps its relative order
+   * because the whole contiguous block moves as a unit, so the length-guarded prune stays a no-op.)
+   */
+  private reorderSelection(side: CaePickListSide, dir: 'up' | 'down' | 'top' | 'bottom'): void {
+    const idx = this.moveIndicesOf(side);
+    if (!idx.length) return;
+    const items = [...this.read(side)];
+    const activeIdx = this.activeOf(side);
+    const focusedItem = activeIdx >= 0 ? items[activeIdx] : undefined;
+    const firstMoved = items[idx[0]];
+    const picked = new Set(idx.map((i) => items[i]));
+
+    let next: T[];
+    if (dir === 'top') {
+      next = [...idx.map((i) => items[i]), ...items.filter((it) => !picked.has(it))];
+    } else if (dir === 'bottom') {
+      next = [...items.filter((it) => !picked.has(it)), ...idx.map((i) => items[i])];
+    } else if (dir === 'up') {
+      next = [...items];
+      for (let i = 1; i < next.length; i++) {
+        if (picked.has(next[i]) && !picked.has(next[i - 1])) {
+          [next[i - 1], next[i]] = [next[i], next[i - 1]];
+        }
+      }
+    } else {
+      next = [...items];
+      for (let i = next.length - 2; i >= 0; i--) {
+        if (picked.has(next[i]) && !picked.has(next[i + 1])) {
+          [next[i + 1], next[i]] = [next[i], next[i + 1]];
+        }
+      }
+    }
+
+    this.write(side, next);
+    if (focusedItem !== undefined) {
+      const ni = next.indexOf(focusedItem);
+      if (ni >= 0) this.activeSignal(side).set(ni);
+    }
+    const count = idx.length;
+    this.reorder.emit({
+      side,
+      items: next,
+      previousIndex: idx[0],
+      currentIndex: next.indexOf(firstMoved),
+      movedIndices: idx,
+    });
+    this.announcer.announce(
+      count === 1
+        ? `Moved to position ${next.indexOf(firstMoved) + 1} of ${next.length} in the ${side} list`
+        : `Moved ${count} items ${
+            dir === 'top' ? 'to top' : dir === 'bottom' ? 'to bottom' : dir
+          } in the ${side} list`,
+    );
+  }
+
+  /**
+   * Reorder a single dragged row within `side` from `previousIndex` to `currentIndex` (the drag path;
+   * multi-move is the buttons' job); it becomes focused. Mirrors `cae-order-list`'s `onDrop`.
+   */
+  private reorderAt(side: CaePickListSide, previousIndex: number, currentIndex: number): void {
+    if (previousIndex === currentIndex) return;
+    const next = [...this.read(side)];
+    moveItemInArray(next, previousIndex, currentIndex);
+    this.write(side, next);
+    this.activeSignal(side).set(currentIndex);
+    // Keep the emitted selection in list order if the dragged row was selected (a single-row drag can
+    // reorder it relative to other selected rows; the length-only prune guard won't catch a same-size reorder).
+    const set = this.selectedSetOf(side);
+    if (set.has(next[currentIndex])) {
+      this.selectionModel(side).set(next.filter((it) => set.has(it)));
+    }
+    this.reorder.emit({
+      side,
+      items: next,
+      previousIndex,
+      currentIndex,
+      movedIndices: [previousIndex],
+    });
+    this.announcer.announce(
+      `Moved to position ${currentIndex + 1} of ${next.length} in the ${side} list`,
+    );
   }
 
   private emitTransfer(items: readonly T[], from: CaePickListSide, to: CaePickListSide): void {

@@ -1,7 +1,12 @@
 import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
 
 import { CaeCard } from 'caelum/card';
-import { CaePickList, CaePickListItemDef, CaePickListTransferEvent } from 'caelum/pick-list';
+import {
+  CaePickList,
+  CaePickListItemDef,
+  CaePickListReorderEvent,
+  CaePickListTransferEvent,
+} from 'caelum/pick-list';
 
 interface Role {
   id: string;
@@ -9,11 +14,13 @@ interface Role {
 }
 
 /**
- * The deferred "Pick list" `cae-pick-list` demo (#337; multi-select #342) — the second drag-drop-cluster
- * component. It assigns roles two ways: drag a role across, or **multi-select** roles (click / Ctrl+click
- * / Shift+click; Space, Shift+Arrow, Ctrl+A by keyboard) and move the whole block with the transfer
- * buttons — both paths announce to a screen reader. The assigned set, the live source selection, and the
- * last transfer echo below so the interaction is visibly live end-to-end (DoD liveness).
+ * The deferred "Pick list" `cae-pick-list` demo (#337; multi-select + within-list reorder #342) — the
+ * second drag-drop-cluster component. It assigns roles two ways: drag a role across, or **multi-select**
+ * roles (click / Ctrl+click / Shift+click; Space, Shift+Arrow, Ctrl+A by keyboard) and move the whole
+ * block with the transfer buttons. Each list can also be **reordered in place** — drag a row, or use its
+ * outer up / top / down / bottom buttons. Every move announces to a screen reader. The assigned set, the
+ * live source selection, the last transfer, and the last reorder echo below so the interaction is visibly
+ * live end-to-end (DoD liveness).
  *
  * `@defer`'d from App (#85): keeping the demo — and the `@angular/cdk/drag-drop` it pulls in — in its
  * own lazy chunk holds those bytes off Forge's initial bundle (the #142 / D-16 budget).
@@ -62,8 +69,16 @@ export class PickListDemo {
   /** The last transfer, echoed (visual only — cae-pick-list already announces via LiveAnnouncer). */
   protected readonly lastTransfer = signal<string | null>(null);
 
+  /** The last within-list reorder, echoed (visual only — the component already announces it). */
+  protected readonly lastReorder = signal<string | null>(null);
+
   protected onTransfer(event: CaePickListTransferEvent<Role>): void {
     const n = event.items.length;
     this.lastTransfer.set(`${n} role${n === 1 ? '' : 's'} to the ${event.to} list`);
+  }
+
+  protected onReorder(event: CaePickListReorderEvent<Role>): void {
+    const n = event.movedIndices.length;
+    this.lastReorder.set(`${n} role${n === 1 ? '' : 's'} in the ${event.side} list`);
   }
 }
