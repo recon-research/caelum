@@ -2,7 +2,7 @@ import { Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
-import { HttpEventType, provideHttpClient } from '@angular/common/http';
+import { HttpEventType, HttpHeaders, HttpParams, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -176,6 +176,75 @@ describe('CaeFileUpload', () => {
     expect(uploaded.at(-1)).toMatchObject({ response: { ok: true } });
     // Success carries a persistent TEXT status, not color alone (WCAG 1.4.1).
     expect(el('.cae-file-upload__done')?.textContent).toContain('Uploaded');
+  });
+
+  describe('request configuration (#345)', () => {
+    // Set url + the config under test first, then drive one auto-upload and grab the request.
+    function uploadOne() {
+      fixture.componentRef.setInput('url', URL);
+      fixture.componentRef.setInput('auto', true);
+      fixture.detectChanges();
+      ingest([makeFile('a.txt', 10)]);
+      return http.expectOne((r) => r.url === URL); // r.url excludes params, so this matches with params set
+    }
+
+    it('threads withCredentials and plain-object headers (incl. array-valued) onto the request', () => {
+      fixture.componentRef.setInput('withCredentials', true);
+      fixture.componentRef.setInput('headers', {
+        Authorization: 'Bearer t0ken',
+        'X-Multi': ['a', 'b'],
+      });
+      const req = uploadOne();
+      expect(req.request.withCredentials).toBe(true);
+      expect(req.request.headers.get('Authorization')).toBe('Bearer t0ken');
+      expect(req.request.headers.getAll('X-Multi')).toEqual(['a', 'b']);
+      req.flush({ ok: true });
+    });
+
+    it('strips a consumer-set Content-Type so the browser keeps the multipart boundary', () => {
+      // A Content-Type without a boundary would silently corrupt every FormData upload; guard it.
+      fixture.componentRef.setInput('headers', {
+        'content-type': 'application/json',
+        'X-Keep': '1',
+      });
+      const req = uploadOne();
+      expect(req.request.headers.has('Content-Type')).toBe(false); // stripped (case-insensitive)
+      expect(req.request.headers.get('X-Keep')).toBe('1'); // other headers survive
+      req.flush({ ok: true });
+    });
+
+    it('accepts HttpHeaders / HttpParams instances directly', () => {
+      fixture.componentRef.setInput('headers', new HttpHeaders({ 'X-Trace': 'abc' }));
+      fixture.componentRef.setInput('params', new HttpParams().set('folder', 'avatars'));
+      const req = uploadOne();
+      expect(req.request.headers.get('X-Trace')).toBe('abc');
+      expect(req.request.params.get('folder')).toBe('avatars');
+      expect(req.request.urlWithParams).toBe(`${URL}?folder=avatars`);
+      req.flush({ ok: true });
+    });
+
+    it('serializes plain-object params (string/number/boolean/array) into the query string', () => {
+      fixture.componentRef.setInput('params', {
+        folder: 'pics',
+        overwrite: true,
+        page: 2,
+        tags: ['x', 'y'],
+      });
+      const req = uploadOne();
+      expect(req.request.params.get('folder')).toBe('pics');
+      expect(req.request.params.get('overwrite')).toBe('true');
+      expect(req.request.params.get('page')).toBe('2');
+      expect(req.request.params.getAll('tags')).toEqual(['x', 'y']);
+      req.flush({ ok: true });
+    });
+
+    it('sends no credentials, headers, or params by default (safe request)', () => {
+      const req = uploadOne();
+      expect(req.request.withCredentials).toBe(false);
+      expect(req.request.headers.get('Authorization')).toBeNull();
+      expect(req.request.params.keys()).toEqual([]);
+      req.flush({ ok: true });
+    });
   });
 
   it('waits for upload() in manual mode; the Upload button is aria-disabled (not native) with no pending', () => {

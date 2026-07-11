@@ -19,6 +19,8 @@ import {
   HttpClient,
   HttpErrorResponse,
   HttpEventType,
+  HttpHeaders,
+  HttpParams,
   HttpRequest,
   HttpResponse,
 } from '@angular/common/http';
@@ -393,12 +395,30 @@ export class CaeFileUpload implements ControlValueAccessor {
 
   /**
    * The endpoint each file is `POST`ed to. Empty → **selection-only** (validate + expose the value,
-   * never hit the network). The full request-config surface (`withCredentials`, headers) is a
-   * follow-on (#338 deferred list).
+   * never hit the network). Tune the request with {@link withCredentials}, {@link headers}, and
+   * {@link params}.
    */
   readonly url = input('');
   /** The `multipart/form-data` field name each file is sent under. */
   readonly name = input('file');
+  /** Send credentials (cookies / TLS certs) with the upload — `XMLHttpRequest.withCredentials`. */
+  readonly withCredentials = input(false, { transform: booleanAttribute });
+  /**
+   * Extra request headers — an `HttpHeaders` or a plain `{ name: value }` map (e.g. an `Authorization`
+   * bearer token). Any `Content-Type` is **stripped**: the browser must set the `multipart/form-data`
+   * boundary itself, so an explicit value would silently corrupt every upload body.
+   * Pass a **new** object to change this — an in-place mutation of the same reference is not observed.
+   */
+  readonly headers = input<HttpHeaders | Record<string, string | string[]> | null>(null);
+  /**
+   * Query params appended to {@link url} — an `HttpParams` or a plain `{ key: value }` map.
+   * Pass a **new** object to change this — an in-place mutation of the same reference is not observed.
+   */
+  readonly params = input<
+    | HttpParams
+    | Record<string, string | number | boolean | ReadonlyArray<string | number | boolean>>
+    | null
+  >(null);
   /** Allow selecting/dropping more than one file (append); off = single-file, each pick replaces. */
   readonly multiple = input(false, { transform: booleanAttribute });
   /**
@@ -446,6 +466,22 @@ export class CaeFileUpload implements ControlValueAccessor {
   private readonly formDisabled = signal(false);
   protected readonly isDisabled = computed(() => this.disabled() || this.formDisabled());
   protected readonly hasPending = computed(() => this.files().some((f) => f.status === 'pending'));
+
+  // Normalize the ergonomic plain-object inputs to the immutable types HttpRequest requires, memoized
+  // so every file in a batch reuses one instance (and a plain map re-normalizes only on a new reference).
+  private readonly resolvedHeaders = computed(() => {
+    const h = this.headers();
+    if (!h) return undefined;
+    const hh = h instanceof HttpHeaders ? h : new HttpHeaders(h);
+    // Guard the multipart boundary: XHR/fetch backends only auto-set Content-Type when it is absent,
+    // so a consumer-supplied one (any casing) suppresses the browser boundary and corrupts the body.
+    return hh.has('Content-Type') ? hh.delete('Content-Type') : hh;
+  });
+  private readonly resolvedParams = computed(() => {
+    const p = this.params();
+    if (!p) return undefined;
+    return p instanceof HttpParams ? p : new HttpParams({ fromObject: p });
+  });
 
   // Active HttpClient subscriptions keyed by file id (non-reactive: cancel/cleanup only).
   private readonly subs = new Map<number, Subscription>();
@@ -597,7 +633,12 @@ export class CaeFileUpload implements ControlValueAccessor {
 
     const body = new FormData();
     body.append(this.name(), entry.file, entry.file.name);
-    const request = new HttpRequest('POST', url, body, { reportProgress: true });
+    const request = new HttpRequest('POST', url, body, {
+      reportProgress: true,
+      withCredentials: this.withCredentials(),
+      headers: this.resolvedHeaders(),
+      params: this.resolvedParams(),
+    });
 
     const sub = this.http.request(request).subscribe({
       next: (event) => {
