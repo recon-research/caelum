@@ -77,7 +77,7 @@ Below, the **current** selector is listed with the historical alias noted. Verif
 | `p-paginator` | `cae-paginator` | `MatPaginator` | Direct | 10 |
 | `p-virtualscroller` (a.k.a. `p-scroller`) | `cae-virtual-scroll` | `cdk-virtual-scroll-viewport` | Direct | 10 |
 | `p-dataview` | `cae-data-view` | layout + `MatPaginator` | Compose | 10 |
-| `p-orderlist` | `cae-order-list` | CDK drag-drop list | Build-M | 11 |
+| `p-orderlist` | `cae-order-list` | keyboard-operable drag-reorderable `role=listbox` over `cdkDropList`; move up/top/down/bottom buttons + roving tabindex, every move announced via `LiveAnnouncer`; content-agnostic `caeOrderListItem` template; `[(value)]` model + `(reorder)`; no foreign drag lib | Build-M | 11 |
 | `p-picklist` | `cae-pick-list` | two connected CDK drop-lists | Build-M | 11 |
 | `p-timeline` | `cae-timeline` | CSS/flex + CDK | Build-S | 11 |
 | `p-organizationchart` | `cae-org-chart` | SVG/CDK or vetted US lib | Build-L | 11 |

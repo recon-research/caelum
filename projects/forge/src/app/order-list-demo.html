@@ -1,0 +1,34 @@
+<cae-card class="forge-order-list-card">
+  <h3 class="forge-order-list-card__title">Order list</h3>
+  <p class="forge-order-list-card__lead">
+    Reorder the dashboard sections by <strong>dragging a row</strong>, or select one and use the
+    <strong>move buttons</strong> — every move is announced to a screen reader (<code
+      >"Moved to position N of M"</code
+    >). Arrow keys move the selection; the list is a <code>role="listbox"</code>, so it is fully
+    operable without a pointer.
+  </p>
+
+  <cae-order-list
+    class="forge-order-list-control"
+    [value]="widgets()"
+    (valueChange)="widgets.set($event)"
+    ariaLabel="Dashboard sections"
+    (reorder)="onReorder($event)"
+  >
+    <ng-template caeOrderListItem let-widget>{{ $any(widget).name }}</ng-template>
+  </cae-order-list>
+
+  <p class="forge-order-list-order">
+    Current order: <strong>{{ orderText() }}</strong>
+  </p>
+
+  <!-- Visual echo only (no aria-live): cae-order-list already announces each move via LiveAnnouncer,
+       so a second live region here would double-announce. -->
+  <p class="forge-order-list-echo">
+    @if (lastMove(); as move) {
+      Last move: <strong>{{ move }}</strong>
+    } @else {
+      Drag a row or use the move buttons to reorder.
+    }
+  </p>
+</cae-card>
