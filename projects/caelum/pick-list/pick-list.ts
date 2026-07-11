@@ -27,7 +27,7 @@ export type CaePickListSide = 'source' | 'target';
 
 /** The payload of {@link CaePickList.transfer} — what moved, which way, and both lists' new orders. */
 export interface CaePickListTransferEvent<T = unknown> {
-  /** The item(s) moved, in their source order (one for move-selected, many for move-all). */
+  /** The item(s) moved, in their source order (the selected block, or the whole list for move-all). */
   readonly items: readonly T[];
   /** The list the items left. */
   readonly from: CaePickListSide;
@@ -39,14 +39,16 @@ export interface CaePickListTransferEvent<T = unknown> {
   readonly target: readonly T[];
 }
 
-/** The context handed to a `caePickListItem` template: the item, its index, and whether it is active. */
+/** The context handed to a `caePickListItem` template: the item, its index, focus, and selection. */
 export interface CaePickListItemContext<T = unknown> {
   /** The item to render. */
   $implicit: T;
   /** The item's current index within its list. */
   readonly index: number;
-  /** Whether this item is the active (selected, move-source) row of its list. */
+  /** Whether this is the *focused* (roving tab stop) row of its list — distinct from selection. */
   readonly active: boolean;
+  /** Whether this row is in its list's multi-selection (part of the move-source block). */
+  readonly selected: boolean;
 }
 
 /**
@@ -103,32 +105,37 @@ function clampActive(raw: number, n: number): number {
  * sorting is disabled): the only drag operation is the cross-list transfer, which is exactly the one
  * with a full keyboard path. Reordering **within** each list (drag *and* its own move-up/down buttons,
  * shipped together so §3.5's *keyboard-path-for-every-drag* invariant is never broken) is a deferred
- * follow-on (#342) — as are multi-select transfer, per-side header slots, in-list filtering, and RTL
- * of the transfer axis. Transfer — the pick-list's defining operation — ships complete and accessible.
+ * follow-on (#342) — as are per-side header slots, in-list filtering, and RTL of the transfer axis.
+ * Transfer — the pick-list's defining operation — ships complete and accessible.
  *
- * **Selection & focus model (per list).** Each list is an independent `role="listbox"` whose rows are
- * `role="option"`, with its own active row (the move source): it carries `aria-selected` and is that
- * list's single tab stop (roving tabindex). Arrow keys move the active row within a list (Home/End jump
- * to its ends); clicking or focusing a row activates it. This mirrors `cae-order-list` (and, before it,
- * `cae-input-otp`'s deliberate roving-tabindex-without-a-key-manager choice): a data-driven `@for` over
- * a `[source]`/`[target]` signal has no child option components for a CDK key manager to drive, so a
- * clamped four-key handler is the deterministic minimum, and keeping each active index in a signal lets
- * it survive a transfer (it re-clamps when its list shrinks).
+ * **Selection & focus model (per list; ARIA listbox multiselect).** Each list is an independent
+ * `role="listbox"` (`aria-multiselectable`) whose rows are `role="option"`. Focus and selection are
+ * **separate**: exactly one row per list is *focused* (its roving tab stop), while a `[(sourceSelection)]`
+ * / `[(targetSelection)]` set is the block the transfer buttons act on. Selection is **empty by default**
+ * (`p-pickList` parity) and stores *item references*, so it survives an external reorder/edit and prunes
+ * to items still present in its list (items moved out drop from it). Pointer: click selects one,
+ * Ctrl/Cmd+click toggles, Shift+click ranges. Keyboard:
+ * Arrow/Home/End move focus, Space toggles the focused row, Shift+Arrow/Home/End range-extend from the
+ * anchor, Ctrl/Cmd+A selects all in that list, Escape clears it. With nothing selected the buttons fall
+ * back to the focused row. Like `cae-order-list` (and `cae-input-otp` before it), focus is a deliberate
+ * roving-tabindex-without-a-key-manager over a `@for` — no child option components — and keeping focus +
+ * anchor in signals lets them follow the item through a transfer for free.
  *
  * **Accessibility.** Each list needs an accessible name: `[sourceAriaLabel]`/`[targetAriaLabel]`
  * (defaults `"Source list"`/`"Target list"`) or `[sourceAriaLabelledby]`/`[targetAriaLabelledby]`
  * (preferred when a visible heading is shown). Transfer buttons are real `<button>`s with `aria-label`s,
  * disabled — via `aria-disabled`, **not** the native attribute, so a button that empties its source
  * stays focusable instead of blurring to `<body>` and stranding the keyboard user — when the relevant
- * list is empty. State (both orders, both active indices) lives in signals, so it repaints under a
- * zoneless host (Book 01 §3.2); drag pointer math is CDK's, and the drop result lands in the models
- * (Book 05 §3.4 zoneless note).
+ * list is empty. State (both orders, both focus indices, both selections) lives in signals, so it
+ * repaints under a zoneless host (Book 01 §3.2); drag pointer math is CDK's, and the drop result lands
+ * in the models (Book 05 §3.4 zoneless note).
  *
  * **Binding the value.** `[source]` and `[target]` are `model()`s — bind them **two-way**. With
  * `WritableSignal`s (the library's idiom) decompose as below; plain fields can use `[(source)]` /
  * `[(target)]`. A **one-way** `[source]` leaves that list *uncontrolled*: a transfer still shows, but
  * the parent's array drifts out of sync and the move is lost the next time the parent reassigns it —
- * persist `(transfer)` / `(sourceChange)` / `(targetChange)` instead.
+ * persist `(transfer)` / `(sourceChange)` / `(targetChange)` instead. `[(sourceSelection)]` /
+ * `[(targetSelection)]` are optional two-way selection bindings (each defaults to empty).
  *
  * ```html
  * <cae-pick-list
@@ -153,6 +160,7 @@ function clampActive(raw: number, n: number): number {
       <ul
         class="cae-pick-list__list"
         role="listbox"
+        aria-multiselectable="true"
         cdkDropList
         cdkDropListSortingDisabled
         #sourceDrop="cdkDropList"
@@ -162,7 +170,6 @@ function clampActive(raw: number, n: number): number {
           sourceAriaLabelledby() ? null : sourceAriaLabel().trim() || 'Source list'
         "
         [attr.aria-labelledby]="sourceAriaLabelledby() || null"
-        [attr.aria-describedby]="instructionsId"
         (cdkDropListDropped)="onDrop($event, 'source')"
       >
         @for (item of source(); track item; let i = $index) {
@@ -170,12 +177,14 @@ function clampActive(raw: number, n: number): number {
             #sourceOption
             class="cae-pick-list__option"
             [class.cae-pick-list__option--active]="i === sourceActive()"
+            [class.cae-pick-list__option--selected]="isSelected('source', item)"
             role="option"
             cdkDrag
-            [attr.aria-selected]="i === sourceActive()"
+            [attr.aria-selected]="isSelected('source', item)"
+            [attr.aria-describedby]="instructionsId"
             [tabindex]="i === sourceTabStop() ? 0 : -1"
             (focus)="activate('source', i)"
-            (click)="activate('source', i)"
+            (click)="onOptionClick('source', i, $event)"
             (keydown)="onKeydown('source', i, $event)"
           >
             @if (itemDef(); as def) {
@@ -185,6 +194,7 @@ function clampActive(raw: number, n: number): number {
                   $implicit: item,
                   index: i,
                   active: i === sourceActive(),
+                  selected: isSelected('source', item),
                 }"
               />
             } @else {
@@ -238,6 +248,7 @@ function clampActive(raw: number, n: number): number {
       <ul
         class="cae-pick-list__list"
         role="listbox"
+        aria-multiselectable="true"
         cdkDropList
         cdkDropListSortingDisabled
         #targetDrop="cdkDropList"
@@ -247,7 +258,6 @@ function clampActive(raw: number, n: number): number {
           targetAriaLabelledby() ? null : targetAriaLabel().trim() || 'Target list'
         "
         [attr.aria-labelledby]="targetAriaLabelledby() || null"
-        [attr.aria-describedby]="instructionsId"
         (cdkDropListDropped)="onDrop($event, 'target')"
       >
         @for (item of target(); track item; let i = $index) {
@@ -255,12 +265,14 @@ function clampActive(raw: number, n: number): number {
             #targetOption
             class="cae-pick-list__option"
             [class.cae-pick-list__option--active]="i === targetActive()"
+            [class.cae-pick-list__option--selected]="isSelected('target', item)"
             role="option"
             cdkDrag
-            [attr.aria-selected]="i === targetActive()"
+            [attr.aria-selected]="isSelected('target', item)"
+            [attr.aria-describedby]="instructionsId"
             [tabindex]="i === targetTabStop() ? 0 : -1"
             (focus)="activate('target', i)"
-            (click)="activate('target', i)"
+            (click)="onOptionClick('target', i, $event)"
             (keydown)="onKeydown('target', i, $event)"
           >
             @if (itemDef(); as def) {
@@ -270,6 +282,7 @@ function clampActive(raw: number, n: number): number {
                   $implicit: item,
                   index: i,
                   active: i === targetActive(),
+                  selected: isSelected('target', item),
                 }"
               />
             } @else {
@@ -281,7 +294,8 @@ function clampActive(raw: number, n: number): number {
     </div>
 
     <span [id]="instructionsId" class="cae-pick-list__sr-only">
-      Select an item, then use the transfer buttons or drag to move it to the other list.
+      Space toggles selection; Shift plus Arrow, Home, or End extends it; Control plus A selects
+      all; Escape clears. Use the transfer buttons or drag to move the selection to the other list.
     </span>
   `,
   styles: `
@@ -342,8 +356,14 @@ function clampActive(raw: number, n: number): number {
       color: var(--cae-color-on-surface);
       cursor: grab;
     }
-    /* Active row differs by colour + aria-selected (Caelum ships no font-weight token). */
+    /* Focused (roving tab stop) row, when not also selected: a subtle fill so the move target is
+       discoverable before the ring appears. Selection (below) overrides it. */
     .cae-pick-list__option--active {
+      background: var(--cae-surface-sunken);
+    }
+    /* Selected rows carry the strong colour + aria-selected (Caelum ships no font-weight token);
+       ordered after --active so a focused+selected row reads as selected. */
+    .cae-pick-list__option--selected {
       background: var(--cae-color-primary);
       color: var(--cae-color-on-primary);
     }
@@ -351,7 +371,7 @@ function clampActive(raw: number, n: number): number {
     .cae-pick-list__option:focus-visible {
       outline: 2px solid var(--cae-color-primary);
       outline-offset: 2px;
-      /* Surface halo keeps the ring visible over the primary-filled active row (WCAG 1.4.11). */
+      /* Surface halo keeps the ring visible over the primary-filled selected row (WCAG 1.4.11). */
       box-shadow: 0 0 0 4px var(--cae-surface-raised);
     }
     /* The CDK drag preview/placeholder inherit the row's emulated styles (same _ngcontent attr). */
@@ -385,6 +405,15 @@ export class CaePickList<T = unknown> {
   readonly source = model<readonly T[]>([]);
   /** The right/target list, two-way. Transfers replace it with a fresh array. */
   readonly target = model<readonly T[]>([]);
+  /**
+   * The source list's multi-selection, two-way — the *items* (by identity) the transfer buttons move.
+   * Empty by default (`p-pickList` parity); the emitted array is always in source order and stores
+   * references (not indices), so it survives an external reorder/edit; items moved out of the list (or
+   * removed) prune from it. With nothing selected, the buttons fall back to the focused source row.
+   */
+  readonly sourceSelection = model<readonly T[]>([]);
+  /** The target list's multi-selection, two-way — the target-side mirror of {@link sourceSelection}. */
+  readonly targetSelection = model<readonly T[]>([]);
   /** Accessible name for the source `role="listbox"` (default `"Source list"`); ignored if labelledby is set. */
   readonly sourceAriaLabel = input('');
   /** Accessible name for the target `role="listbox"` (default `"Target list"`); ignored if labelledby is set. */
@@ -414,6 +443,20 @@ export class CaePickList<T = unknown> {
   protected readonly sourceTabStop = computed(() => Math.max(this.sourceActive(), 0));
   protected readonly targetTabStop = computed(() => Math.max(this.targetActive(), 0));
 
+  /**
+   * Range anchors for Shift+click / Shift+Arrow — stored as the *item* (not an index) so they survive a
+   * transfer or external edit that shifts indices (an index anchor would silently mis-range).
+   */
+  private readonly sourceAnchor = signal<T | null>(null);
+  private readonly targetAnchor = signal<T | null>(null);
+  /** Each side's selection as a `Set` for O(1) membership tests in the template hot path. */
+  private readonly sourceSelectedSet = computed(() => new Set<T>(this.sourceSelection()));
+  private readonly targetSelectedSet = computed(() => new Set<T>(this.targetSelection()));
+  /** Whether `item` is in `side`'s selection (template hot path — called per row). */
+  protected isSelected(side: CaePickListSide, item: T): boolean {
+    return this.selectedSetOf(side).has(item);
+  }
+
   /** Transfer to a side is possible iff its source (the *other* list) has items to move. */
   protected readonly canMoveToTarget = computed(() => this.source().length > 0);
   protected readonly canMoveToSource = computed(() => this.target().length > 0);
@@ -427,6 +470,20 @@ export class CaePickList<T = unknown> {
       this.reclamp(this.sourceActiveIndex, this.source().length);
       this.reclamp(this.targetActiveIndex, this.target().length);
     });
+    // Prune each side's selection to items still present after an external change or a transfer
+    // (selection is by identity, so removed/moved items must drop out). Guarded on length so it
+    // converges — no effect loop. Mirrors cae-order-list's prune.
+    effect(() => this.prune('source'));
+    effect(() => this.prune('target'));
+  }
+
+  /** Drop from `side`'s selection any items no longer present in that list. */
+  private prune(side: CaePickListSide): void {
+    const present = this.selectedSetOf(side); // reads the side's selection
+    if (present.size === 0) return;
+    const model = this.selectionModel(side);
+    const kept = this.read(side).filter((it) => present.has(it));
+    if (kept.length !== model().length) model.set(kept);
   }
 
   private reclamp(idx: WritableSignal<number>, n: number): void {
@@ -434,18 +491,35 @@ export class CaePickList<T = unknown> {
     if (clamped !== idx()) idx.set(clamped);
   }
 
-  /** Make row `index` of `side` the active (move-source) row. */
+  /** Move `side`'s roving focus (its tab stop) to row `index` — does not change selection. */
   protected activate(side: CaePickListSide, index: number): void {
     this.activeSignal(side).set(index);
   }
 
+  /**
+   * Pointer selection within `side` (ARIA listbox multiselect): plain click selects only this row;
+   * Ctrl/Cmd-click toggles it; Shift-click selects the contiguous range from the anchor. Always focuses.
+   */
+  protected onOptionClick(side: CaePickListSide, index: number, event: MouseEvent): void {
+    this.activeSignal(side).set(index);
+    const item = this.read(side)[index];
+    if (item === undefined) return;
+    if (event.shiftKey) {
+      this.selectRange(side, index, index);
+    } else if (event.ctrlKey || event.metaKey) {
+      this.toggle(side, index);
+      this.anchorSignal(side).set(item);
+    } else {
+      this.commitSelection(side, new Set([item]));
+      this.anchorSignal(side).set(item);
+    }
+  }
+
   protected moveSelectedToTarget(): void {
-    if (this.canMoveToTarget())
-      this.transferAt('source', this.sourceActive(), 'target', this.target().length);
+    if (this.canMoveToTarget()) this.transferSelected('source', 'target');
   }
   protected moveSelectedToSource(): void {
-    if (this.canMoveToSource())
-      this.transferAt('target', this.targetActive(), 'source', this.source().length);
+    if (this.canMoveToSource()) this.transferSelected('target', 'source');
   }
   protected moveAllToTarget(): void {
     if (this.canMoveToTarget()) this.transferAll('source', 'target');
@@ -462,10 +536,36 @@ export class CaePickList<T = unknown> {
     this.transferAt(fromSide, event.previousIndex, dropSide, event.currentIndex);
   }
 
-  /** Arrow / Home / End move the active row within `side` (navigation only — moves are the buttons' job). */
+  /**
+   * Keyboard model within `side` (ARIA listbox multiselect): Arrow/Home/End move focus; Space toggles
+   * the focused row; Shift+Arrow / Shift+Home/End range-extend from the anchor; Ctrl/Cmd+A selects all
+   * in that list; Escape clears it. Transfers are the buttons' job (a data list has no default action).
+   */
   protected onKeydown(side: CaePickListSide, index: number, event: KeyboardEvent): void {
-    const last = this.read(side).length - 1;
+    const items = this.read(side);
+    const last = items.length - 1;
     if (last < 0) return;
+
+    if ((event.ctrlKey || event.metaKey) && (event.key === 'a' || event.key === 'A')) {
+      event.preventDefault();
+      this.commitSelection(side, new Set(items));
+      return;
+    }
+    if (event.key === ' ' || event.key === 'Spacebar') {
+      event.preventDefault();
+      this.toggle(side, index);
+      this.anchorSignal(side).set(items[index] ?? null);
+      return;
+    }
+    if (event.key === 'Escape') {
+      // A keyboard path to clear the whole selection (pointer users just click one row to reduce it).
+      if (this.selectionModel(side)().length) {
+        event.preventDefault();
+        this.commitSelection(side, new Set());
+      }
+      return;
+    }
+
     let target: number | null = null;
     switch (event.key) {
       case 'ArrowUp':
@@ -484,12 +584,100 @@ export class CaePickList<T = unknown> {
         return;
     }
     event.preventDefault();
+    // Shift + a navigation key extends the range from the anchor (or this origin row) to the target.
+    if (event.shiftKey) this.selectRange(side, target, index);
     this.activeSignal(side).set(target);
     const els = side === 'source' ? this.sourceOptionEls() : this.targetOptionEls();
     els[target]?.nativeElement.focus();
   }
 
-  /** Move one item from `fromSide[fromIndex]` into `toSide` at `toIndex`; announce + emit. */
+  /** Toggle row `index` of `side` in/out of that list's selection. */
+  private toggle(side: CaePickListSide, index: number): void {
+    const item = this.read(side)[index];
+    if (item === undefined) return;
+    const set = new Set(this.selectionModel(side)());
+    if (set.has(item)) set.delete(item);
+    else set.add(item);
+    this.commitSelection(side, set);
+  }
+
+  /**
+   * Select the contiguous range from `side`'s anchor to `focus` (inclusive), replacing its selection.
+   * The anchor is resolved from the stored *item* (index-stable across transfers); with no live anchor
+   * one is established at `fallbackFrom` (the origin row) so subsequent extends grow from there.
+   */
+  private selectRange(side: CaePickListSide, focus: number, fallbackFrom: number): void {
+    const items = this.read(side);
+    const anchorItem = this.anchorSignal(side)();
+    const anchorIdx = anchorItem != null ? items.indexOf(anchorItem) : -1;
+    const from = anchorIdx >= 0 ? anchorIdx : fallbackFrom;
+    if (anchorIdx < 0) this.anchorSignal(side).set(items[fallbackFrom] ?? null);
+    const lo = Math.max(0, Math.min(from, focus));
+    const hi = Math.min(items.length - 1, Math.max(from, focus));
+    const set = new Set<T>();
+    for (let i = lo; i <= hi; i++) set.add(items[i]);
+    this.commitSelection(side, set);
+  }
+
+  /** Commit `side`'s new selection: store it in list order and announce the count. */
+  private commitSelection(side: CaePickListSide, set: ReadonlySet<T>): void {
+    const items = this.read(side);
+    const ordered = items.filter((it) => set.has(it));
+    this.selectionModel(side).set(ordered);
+    this.announcer.announce(
+      ordered.length === 0
+        ? `Selection cleared in the ${side} list`
+        : `${ordered.length} of ${items.length} selected in the ${side} list`,
+    );
+  }
+
+  /** Ascending indices the transfer acts on for `side`: its selected rows, or its focused row when none. */
+  private moveIndicesOf(side: CaePickListSide): readonly number[] {
+    const items = this.read(side);
+    const sel = this.selectedSetOf(side);
+    const picked = items.reduce<number[]>((acc, it, i) => {
+      if (sel.has(it)) acc.push(i);
+      return acc;
+    }, []);
+    if (picked.length) return picked;
+    const a = this.activeOf(side);
+    return a >= 0 ? [a] : [];
+  }
+
+  /**
+   * Move `fromSide`'s selected block (or, with nothing selected, its focused row) onto the end of
+   * `toSide`, preserving the rows' relative order; focus the first moved row there; announce + emit.
+   * The source-side selection then prunes to empty (its items are gone) via the prune effect.
+   */
+  private transferSelected(fromSide: CaePickListSide, toSide: CaePickListSide): void {
+    const idx = this.moveIndicesOf(fromSide);
+    if (!idx.length) return;
+    const fromArr = this.read(fromSide);
+    const movedItems = idx.map((i) => fromArr[i]);
+    const movedSet = new Set<T>(movedItems);
+    const remaining = fromArr.filter((it) => !movedSet.has(it));
+    const firstAt = this.read(toSide).length;
+    const toArr = [...this.read(toSide), ...movedItems];
+    this.write(fromSide, remaining);
+    this.write(toSide, toArr);
+    this.activeSignal(toSide).set(firstAt); // the first moved item is focused in its new list
+    // The moved block has left the source, so clear its selection now — *before* the emit — so the
+    // two-way sourceSelection is coherent for a consumer reading it inside (transfer); the length-guarded
+    // prune effect then no-ops. (Every selected row moves, so clearing the whole set is exact.)
+    if (this.selectionModel(fromSide)().length) this.selectionModel(fromSide).set([]);
+    const n = movedItems.length;
+    this.announcer.announce(
+      n === 1
+        ? `Moved to the ${toSide} list, position ${firstAt + 1} of ${toArr.length}.`
+        : `Moved ${n} items to the ${toSide} list.`,
+    );
+    this.emitTransfer(movedItems, fromSide, toSide);
+  }
+
+  /**
+   * Move one item from `fromSide[fromIndex]` into `toSide` at `toIndex`; announce + emit. The drag
+   * path (a cross-list drop transfers exactly the dragged row, at the drop position).
+   */
   private transferAt(
     fromSide: CaePickListSide,
     fromIndex: number,
@@ -540,5 +728,17 @@ export class CaePickList<T = unknown> {
   }
   private activeSignal(side: CaePickListSide): WritableSignal<number> {
     return side === 'source' ? this.sourceActiveIndex : this.targetActiveIndex;
+  }
+  private selectionModel(side: CaePickListSide): WritableSignal<readonly T[]> {
+    return side === 'source' ? this.sourceSelection : this.targetSelection;
+  }
+  private selectedSetOf(side: CaePickListSide): ReadonlySet<T> {
+    return side === 'source' ? this.sourceSelectedSet() : this.targetSelectedSet();
+  }
+  private anchorSignal(side: CaePickListSide): WritableSignal<T | null> {
+    return side === 'source' ? this.sourceAnchor : this.targetAnchor;
+  }
+  private activeOf(side: CaePickListSide): number {
+    return side === 'source' ? this.sourceActive() : this.targetActive();
   }
 }

@@ -9,10 +9,11 @@ interface Role {
 }
 
 /**
- * The deferred "Pick list" `cae-pick-list` demo (#337) — the second drag-drop-cluster component. It
- * assigns roles two ways: drag a role across, or select one and use the transfer buttons between the
- * lists — both announce the move to a screen reader. The assigned set and the last transfer echo below
- * so the interaction is visibly live end-to-end (DoD liveness).
+ * The deferred "Pick list" `cae-pick-list` demo (#337; multi-select #342) — the second drag-drop-cluster
+ * component. It assigns roles two ways: drag a role across, or **multi-select** roles (click / Ctrl+click
+ * / Shift+click; Space, Shift+Arrow, Ctrl+A by keyboard) and move the whole block with the transfer
+ * buttons — both paths announce to a screen reader. The assigned set, the live source selection, and the
+ * last transfer echo below so the interaction is visibly live end-to-end (DoD liveness).
  *
  * `@defer`'d from App (#85): keeping the demo — and the `@angular/cdk/drag-drop` it pulls in — in its
  * own lazy chunk holds those bytes off Forge's initial bundle (the #142 / D-16 budget).
@@ -43,6 +44,17 @@ export class PickListDemo {
   protected readonly assignedText = computed(
     () =>
       this.assigned()
+        .map((r) => r.name)
+        .join(' · ') || '(none)',
+  );
+
+  /** The available (source) list's multi-selection, two-way bound so the transfer buttons act on the block. */
+  protected readonly availableSel = signal<readonly Role[]>([]);
+
+  /** The live source selection, echoed so multi-select is visibly reflected. */
+  protected readonly availableSelText = computed(
+    () =>
+      this.availableSel()
         .map((r) => r.name)
         .join(' · ') || '(none)',
   );
