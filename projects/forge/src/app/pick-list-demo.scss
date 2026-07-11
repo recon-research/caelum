@@ -1,0 +1,41 @@
+// Pick-list demo (#337) — per-demo card styles, token-driven (D-04). Only structural literals remain
+// (display/margins/max-inline-size); every colour resolves to `--cae-*` (a literal colour would be a
+// defect, Book 04 §3.6). The pick-list draws its own listbox/button/active styling from the component.
+
+.forge-pick-list-card {
+  display: block;
+}
+.forge-pick-list-card__title {
+  margin: 0 0 var(--cae-space-2);
+  color: var(--cae-color-on-surface);
+}
+.forge-pick-list-card__lead {
+  margin: 0 0 var(--cae-space-4);
+  color: var(--cae-color-on-surface-variant);
+}
+.forge-pick-list-card__lead code {
+  color: var(--cae-color-primary);
+}
+.forge-pick-list-card__lead strong {
+  color: var(--cae-color-on-surface);
+}
+
+.forge-pick-list-control {
+  max-inline-size: 36rem;
+}
+
+.forge-pick-list-assigned {
+  margin: var(--cae-space-4) 0 0;
+  color: var(--cae-color-on-surface-variant);
+}
+.forge-pick-list-assigned strong {
+  color: var(--cae-color-on-surface);
+}
+
+.forge-pick-list-echo {
+  margin: var(--cae-space-2) 0 0;
+  color: var(--cae-color-on-surface-variant);
+}
+.forge-pick-list-echo strong {
+  color: var(--cae-color-on-surface);
+}

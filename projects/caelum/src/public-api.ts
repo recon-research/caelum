@@ -116,6 +116,9 @@ export * from 'caelum/breadcrumb';
 // --- Drag-drop cluster (M3): order-list (#336 — keyboard-operable drag-reorderable listbox over cdkDropList + LiveAnnouncer; p-orderList parity; first of OrderList/PickList/FileUpload) ---
 export * from 'caelum/order-list';
 
+// --- Drag-drop cluster (M3): pick-list (#337 — two connected keyboard-operable cdkDropLists with move-selected/move-all buttons + LiveAnnouncer; p-pickList parity; second of OrderList/PickList/FileUpload) ---
+export * from 'caelum/pick-list';
+
 // --- Composed (M1): split-button (#148 — primary command + secondary-action dropdown over MatButton + cae-menu) ---
 export * from 'caelum/split-button';
 
