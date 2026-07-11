@@ -5,6 +5,8 @@ import {
   CaePickList,
   CaePickListItemDef,
   CaePickListReorderEvent,
+  CaePickListSourceHeaderDef,
+  CaePickListTargetHeaderDef,
   CaePickListTransferEvent,
 } from 'caelum/pick-list';
 
@@ -14,11 +16,13 @@ interface Role {
 }
 
 /**
- * The deferred "Pick list" `cae-pick-list` demo (#337; multi-select + within-list reorder #342) — the
- * second drag-drop-cluster component. It assigns roles two ways: drag a role across, or **multi-select**
- * roles (click / Ctrl+click / Shift+click; Space, Shift+Arrow, Ctrl+A by keyboard) and move the whole
- * block with the transfer buttons. Each list can also be **reordered in place** — drag a row, or use its
- * outer up / top / down / bottom buttons. Every move announces to a screen reader. The assigned set, the
+ * The deferred "Pick list" `cae-pick-list` demo (#337; multi-select + within-list reorder + header
+ * slots #342) — the second drag-drop-cluster component. It assigns roles two ways: drag a role across,
+ * or **multi-select** roles (click / Ctrl+click / Shift+click; Space, Shift+Arrow, Ctrl+A by keyboard)
+ * and move the whole block with the transfer buttons. Each list can also be **reordered in place** —
+ * drag a row, or use its outer up / top / down / bottom buttons. Projected **header slots**
+ * (`caePickListSourceHeader`/`caePickListTargetHeader`) give each list a visible title that is also its
+ * `aria-labelledby` accessible name. Every move announces to a screen reader. The assigned set, the
  * live source selection, the last transfer, and the last reorder echo below so the interaction is visibly
  * live end-to-end (DoD liveness).
  *
@@ -28,7 +32,13 @@ interface Role {
 @Component({
   selector: 'app-pick-list-demo',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CaeCard, CaePickList, CaePickListItemDef],
+  imports: [
+    CaeCard,
+    CaePickList,
+    CaePickListItemDef,
+    CaePickListSourceHeaderDef,
+    CaePickListTargetHeaderDef,
+  ],
   templateUrl: './pick-list-demo.html',
   styleUrl: './pick-list-demo.scss',
 })

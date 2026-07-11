@@ -93,6 +93,30 @@ export class CaePickListItemDef<T = unknown> {
   }
 }
 
+/**
+ * Marks the `<ng-template>` that renders the **source** list's header (`p-pickList`'s `sourceHeader`
+ * parity). Usage: `<ng-template caePickListSourceHeader>Available roles</ng-template>`. When present,
+ * the component renders it above the source list and points that listbox's `aria-labelledby` at it, so
+ * the visible heading *is* the list's accessible name — preferred over the `[sourceAriaLabel]` string.
+ * An explicit `[sourceAriaLabelledby]` (an external heading you own) still wins. Import it alongside
+ * `CaePickList`. Keep the projected content **non-focusable static text** — it *is* the list's accessible
+ * name, so an empty or icon-only header would leave the listbox unnamed (WCAG 4.1.2). For an icon-only or
+ * possibly-empty (async) title, use `[sourceAriaLabelledby]` (your own element) or a `[sourceAriaLabel]`
+ * string with no header instead. It labels a `role="listbox"`, not a landmark.
+ */
+@Directive({ selector: 'ng-template[caePickListSourceHeader]' })
+export class CaePickListSourceHeaderDef {
+  /** The captured header template. */
+  readonly template = inject<TemplateRef<void>>(TemplateRef);
+}
+
+/** The target-side mirror of {@link CaePickListSourceHeaderDef} (`p-pickList`'s `targetHeader` parity). */
+@Directive({ selector: 'ng-template[caePickListTargetHeader]' })
+export class CaePickListTargetHeaderDef {
+  /** The captured header template. */
+  readonly template = inject<TemplateRef<void>>(TemplateRef);
+}
+
 /** Clamp a raw active index into `[0, n-1]`, or `-1` when the list is empty (the a11y-authoritative value). */
 function clampActive(raw: number, n: number): number {
   return n ? Math.min(Math.max(raw, 0), n - 1) : -1;
@@ -122,8 +146,8 @@ function clampActive(raw: number, n: number): number {
  * *keyboard-path-for-every-drag* invariant holds for the reorder drag too. Either path updates that
  * side's model, emits `(reorder)` (with the `side`), and announces the move.
  *
- * **Scope.** Transfer and within-list reorder both ship complete and accessible. Still deferred (#342):
- * per-side header slots, in-list filtering, RTL of the transfer axis, and virtualization (#240-gated).
+ * **Scope.** Transfer, within-list reorder, and per-side header slots all ship complete and accessible.
+ * Still deferred (#342): in-list filtering, RTL of the transfer axis, and virtualization (#240-gated).
  *
  * **Selection & focus model (per list; ARIA listbox multiselect).** Each list is an independent
  * `role="listbox"` (`aria-multiselectable`) whose rows are `role="option"`. Focus and selection are
@@ -138,9 +162,11 @@ function clampActive(raw: number, n: number): number {
  * roving-tabindex-without-a-key-manager over a `@for` — no child option components — and keeping focus +
  * anchor in signals lets them follow the item through a transfer for free.
  *
- * **Accessibility.** Each list needs an accessible name: `[sourceAriaLabel]`/`[targetAriaLabel]`
- * (defaults `"Source list"`/`"Target list"`) or `[sourceAriaLabelledby]`/`[targetAriaLabelledby]`
- * (preferred when a visible heading is shown). Transfer **and reorder** buttons are real `<button>`s
+ * **Accessibility.** Each list needs an accessible name, in precedence order: an explicit
+ * `[sourceAriaLabelledby]`/`[targetAriaLabelledby]` (an external heading you own) › a projected
+ * `caePickListSourceHeader`/`caePickListTargetHeader` template (rendered above the list, it becomes the
+ * list's visible title *and* its `aria-labelledby` target) › the `[sourceAriaLabel]`/`[targetAriaLabel]`
+ * string (defaults `"Source list"`/`"Target list"`). Transfer **and reorder** buttons are real `<button>`s
  * with self-contained `aria-label`s (e.g. `"Move up in the source list"`), grouped under a
  * `role="group"`; they disable — via `aria-disabled`, **not** the native attribute, so a button that
  * empties its source or reaches a list bound stays focusable instead of blurring to `<body>` and
@@ -161,9 +187,9 @@ function clampActive(raw: number, n: number): number {
  *   (sourceChange)="available.set($event)"
  *   [target]="selected()"
  *   (targetChange)="selected.set($event)"
- *   sourceAriaLabel="Available roles"
- *   targetAriaLabel="Assigned roles"
  * >
+ *   <ng-template caePickListSourceHeader>Available roles</ng-template>
+ *   <ng-template caePickListTargetHeader>Assigned roles</ng-template>
  *   <ng-template caePickListItem let-role>{{ $any(role).name }}</ng-template>
  * </cae-pick-list>
  * ```
@@ -175,89 +201,94 @@ function clampActive(raw: number, n: number): number {
   host: { class: 'cae-pick-list' },
   template: `
     <div class="cae-pick-list__pane">
-      <div class="cae-pick-list__reorder" role="group" aria-label="Reorder source list">
-        <button
-          type="button"
-          class="cae-pick-list__btn"
-          aria-label="Move up in the source list"
-          [attr.aria-disabled]="!sourceCanMoveUp() ? 'true' : null"
-          (click)="moveUp('source')"
-        >
-          <span aria-hidden="true">&#8593;</span>
-        </button>
-        <button
-          type="button"
-          class="cae-pick-list__btn"
-          aria-label="Move to top in the source list"
-          [attr.aria-disabled]="!sourceCanMoveUp() ? 'true' : null"
-          (click)="moveTop('source')"
-        >
-          <span aria-hidden="true">&#8607;</span>
-        </button>
-        <button
-          type="button"
-          class="cae-pick-list__btn"
-          aria-label="Move down in the source list"
-          [attr.aria-disabled]="!sourceCanMoveDown() ? 'true' : null"
-          (click)="moveDown('source')"
-        >
-          <span aria-hidden="true">&#8595;</span>
-        </button>
-        <button
-          type="button"
-          class="cae-pick-list__btn"
-          aria-label="Move to bottom in the source list"
-          [attr.aria-disabled]="!sourceCanMoveDown() ? 'true' : null"
-          (click)="moveBottom('source')"
-        >
-          <span aria-hidden="true">&#8609;</span>
-        </button>
-      </div>
-      <ul
-        class="cae-pick-list__list"
-        role="listbox"
-        aria-multiselectable="true"
-        cdkDropList
-        #sourceDrop="cdkDropList"
-        [cdkDropListData]="source()"
-        [cdkDropListConnectedTo]="[targetDrop]"
-        [attr.aria-label]="
-          sourceAriaLabelledby() ? null : sourceAriaLabel().trim() || 'Source list'
-        "
-        [attr.aria-labelledby]="sourceAriaLabelledby() || null"
-        (cdkDropListDropped)="onDrop($event, 'source')"
-      >
-        @for (item of source(); track item; let i = $index) {
-          <li
-            #sourceOption
-            class="cae-pick-list__option"
-            [class.cae-pick-list__option--active]="i === sourceActive()"
-            [class.cae-pick-list__option--selected]="isSelected('source', item)"
-            role="option"
-            cdkDrag
-            [attr.aria-selected]="isSelected('source', item)"
-            [attr.aria-describedby]="instructionsId"
-            [tabindex]="i === sourceTabStop() ? 0 : -1"
-            (focus)="activate('source', i)"
-            (click)="onOptionClick('source', i, $event)"
-            (keydown)="onKeydown('source', i, $event)"
+      @if (sourceHeaderDef(); as header) {
+        <div class="cae-pick-list__header" [id]="sourceHeaderId">
+          <ng-container [ngTemplateOutlet]="header.template" />
+        </div>
+      }
+      <div class="cae-pick-list__pane-body">
+        <div class="cae-pick-list__reorder" role="group" aria-label="Reorder source list">
+          <button
+            type="button"
+            class="cae-pick-list__btn"
+            aria-label="Move up in the source list"
+            [attr.aria-disabled]="!sourceCanMoveUp() ? 'true' : null"
+            (click)="moveUp('source')"
           >
-            @if (itemDef(); as def) {
-              <ng-container
-                [ngTemplateOutlet]="def.template"
-                [ngTemplateOutletContext]="{
-                  $implicit: item,
-                  index: i,
-                  active: i === sourceActive(),
-                  selected: isSelected('source', item),
-                }"
-              />
-            } @else {
-              {{ item }}
-            }
-          </li>
-        }
-      </ul>
+            <span aria-hidden="true">&#8593;</span>
+          </button>
+          <button
+            type="button"
+            class="cae-pick-list__btn"
+            aria-label="Move to top in the source list"
+            [attr.aria-disabled]="!sourceCanMoveUp() ? 'true' : null"
+            (click)="moveTop('source')"
+          >
+            <span aria-hidden="true">&#8607;</span>
+          </button>
+          <button
+            type="button"
+            class="cae-pick-list__btn"
+            aria-label="Move down in the source list"
+            [attr.aria-disabled]="!sourceCanMoveDown() ? 'true' : null"
+            (click)="moveDown('source')"
+          >
+            <span aria-hidden="true">&#8595;</span>
+          </button>
+          <button
+            type="button"
+            class="cae-pick-list__btn"
+            aria-label="Move to bottom in the source list"
+            [attr.aria-disabled]="!sourceCanMoveDown() ? 'true' : null"
+            (click)="moveBottom('source')"
+          >
+            <span aria-hidden="true">&#8609;</span>
+          </button>
+        </div>
+        <ul
+          class="cae-pick-list__list"
+          role="listbox"
+          aria-multiselectable="true"
+          cdkDropList
+          #sourceDrop="cdkDropList"
+          [cdkDropListData]="source()"
+          [cdkDropListConnectedTo]="[targetDrop]"
+          [attr.aria-label]="sourceLabelledby() ? null : sourceAriaLabel().trim() || 'Source list'"
+          [attr.aria-labelledby]="sourceLabelledby() || null"
+          (cdkDropListDropped)="onDrop($event, 'source')"
+        >
+          @for (item of source(); track item; let i = $index) {
+            <li
+              #sourceOption
+              class="cae-pick-list__option"
+              [class.cae-pick-list__option--active]="i === sourceActive()"
+              [class.cae-pick-list__option--selected]="isSelected('source', item)"
+              role="option"
+              cdkDrag
+              [attr.aria-selected]="isSelected('source', item)"
+              [attr.aria-describedby]="instructionsId"
+              [tabindex]="i === sourceTabStop() ? 0 : -1"
+              (focus)="activate('source', i)"
+              (click)="onOptionClick('source', i, $event)"
+              (keydown)="onKeydown('source', i, $event)"
+            >
+              @if (itemDef(); as def) {
+                <ng-container
+                  [ngTemplateOutlet]="def.template"
+                  [ngTemplateOutletContext]="{
+                    $implicit: item,
+                    index: i,
+                    active: i === sourceActive(),
+                    selected: isSelected('source', item),
+                  }"
+                />
+              } @else {
+                {{ item }}
+              }
+            </li>
+          }
+        </ul>
+      </div>
     </div>
 
     <div class="cae-pick-list__controls" role="group" aria-label="Transfer controls">
@@ -300,88 +331,93 @@ function clampActive(raw: number, n: number): number {
     </div>
 
     <div class="cae-pick-list__pane">
-      <ul
-        class="cae-pick-list__list"
-        role="listbox"
-        aria-multiselectable="true"
-        cdkDropList
-        #targetDrop="cdkDropList"
-        [cdkDropListData]="target()"
-        [cdkDropListConnectedTo]="[sourceDrop]"
-        [attr.aria-label]="
-          targetAriaLabelledby() ? null : targetAriaLabel().trim() || 'Target list'
-        "
-        [attr.aria-labelledby]="targetAriaLabelledby() || null"
-        (cdkDropListDropped)="onDrop($event, 'target')"
-      >
-        @for (item of target(); track item; let i = $index) {
-          <li
-            #targetOption
-            class="cae-pick-list__option"
-            [class.cae-pick-list__option--active]="i === targetActive()"
-            [class.cae-pick-list__option--selected]="isSelected('target', item)"
-            role="option"
-            cdkDrag
-            [attr.aria-selected]="isSelected('target', item)"
-            [attr.aria-describedby]="instructionsId"
-            [tabindex]="i === targetTabStop() ? 0 : -1"
-            (focus)="activate('target', i)"
-            (click)="onOptionClick('target', i, $event)"
-            (keydown)="onKeydown('target', i, $event)"
+      @if (targetHeaderDef(); as header) {
+        <div class="cae-pick-list__header" [id]="targetHeaderId">
+          <ng-container [ngTemplateOutlet]="header.template" />
+        </div>
+      }
+      <div class="cae-pick-list__pane-body">
+        <ul
+          class="cae-pick-list__list"
+          role="listbox"
+          aria-multiselectable="true"
+          cdkDropList
+          #targetDrop="cdkDropList"
+          [cdkDropListData]="target()"
+          [cdkDropListConnectedTo]="[sourceDrop]"
+          [attr.aria-label]="targetLabelledby() ? null : targetAriaLabel().trim() || 'Target list'"
+          [attr.aria-labelledby]="targetLabelledby() || null"
+          (cdkDropListDropped)="onDrop($event, 'target')"
+        >
+          @for (item of target(); track item; let i = $index) {
+            <li
+              #targetOption
+              class="cae-pick-list__option"
+              [class.cae-pick-list__option--active]="i === targetActive()"
+              [class.cae-pick-list__option--selected]="isSelected('target', item)"
+              role="option"
+              cdkDrag
+              [attr.aria-selected]="isSelected('target', item)"
+              [attr.aria-describedby]="instructionsId"
+              [tabindex]="i === targetTabStop() ? 0 : -1"
+              (focus)="activate('target', i)"
+              (click)="onOptionClick('target', i, $event)"
+              (keydown)="onKeydown('target', i, $event)"
+            >
+              @if (itemDef(); as def) {
+                <ng-container
+                  [ngTemplateOutlet]="def.template"
+                  [ngTemplateOutletContext]="{
+                    $implicit: item,
+                    index: i,
+                    active: i === targetActive(),
+                    selected: isSelected('target', item),
+                  }"
+                />
+              } @else {
+                {{ item }}
+              }
+            </li>
+          }
+        </ul>
+        <div class="cae-pick-list__reorder" role="group" aria-label="Reorder target list">
+          <button
+            type="button"
+            class="cae-pick-list__btn"
+            aria-label="Move up in the target list"
+            [attr.aria-disabled]="!targetCanMoveUp() ? 'true' : null"
+            (click)="moveUp('target')"
           >
-            @if (itemDef(); as def) {
-              <ng-container
-                [ngTemplateOutlet]="def.template"
-                [ngTemplateOutletContext]="{
-                  $implicit: item,
-                  index: i,
-                  active: i === targetActive(),
-                  selected: isSelected('target', item),
-                }"
-              />
-            } @else {
-              {{ item }}
-            }
-          </li>
-        }
-      </ul>
-      <div class="cae-pick-list__reorder" role="group" aria-label="Reorder target list">
-        <button
-          type="button"
-          class="cae-pick-list__btn"
-          aria-label="Move up in the target list"
-          [attr.aria-disabled]="!targetCanMoveUp() ? 'true' : null"
-          (click)="moveUp('target')"
-        >
-          <span aria-hidden="true">&#8593;</span>
-        </button>
-        <button
-          type="button"
-          class="cae-pick-list__btn"
-          aria-label="Move to top in the target list"
-          [attr.aria-disabled]="!targetCanMoveUp() ? 'true' : null"
-          (click)="moveTop('target')"
-        >
-          <span aria-hidden="true">&#8607;</span>
-        </button>
-        <button
-          type="button"
-          class="cae-pick-list__btn"
-          aria-label="Move down in the target list"
-          [attr.aria-disabled]="!targetCanMoveDown() ? 'true' : null"
-          (click)="moveDown('target')"
-        >
-          <span aria-hidden="true">&#8595;</span>
-        </button>
-        <button
-          type="button"
-          class="cae-pick-list__btn"
-          aria-label="Move to bottom in the target list"
-          [attr.aria-disabled]="!targetCanMoveDown() ? 'true' : null"
-          (click)="moveBottom('target')"
-        >
-          <span aria-hidden="true">&#8609;</span>
-        </button>
+            <span aria-hidden="true">&#8593;</span>
+          </button>
+          <button
+            type="button"
+            class="cae-pick-list__btn"
+            aria-label="Move to top in the target list"
+            [attr.aria-disabled]="!targetCanMoveUp() ? 'true' : null"
+            (click)="moveTop('target')"
+          >
+            <span aria-hidden="true">&#8607;</span>
+          </button>
+          <button
+            type="button"
+            class="cae-pick-list__btn"
+            aria-label="Move down in the target list"
+            [attr.aria-disabled]="!targetCanMoveDown() ? 'true' : null"
+            (click)="moveDown('target')"
+          >
+            <span aria-hidden="true">&#8595;</span>
+          </button>
+          <button
+            type="button"
+            class="cae-pick-list__btn"
+            aria-label="Move to bottom in the target list"
+            [attr.aria-disabled]="!targetCanMoveDown() ? 'true' : null"
+            (click)="moveBottom('target')"
+          >
+            <span aria-hidden="true">&#8609;</span>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -401,7 +437,20 @@ function clampActive(raw: number, n: number): number {
       flex: 1 1 0;
       min-inline-size: 0;
       display: flex;
+      flex-direction: column;
       gap: var(--cae-space-1);
+    }
+    /* The reorder column + list row within a pane — the header (when projected) stacks above it. */
+    .cae-pick-list__pane-body {
+      flex: 1 1 auto;
+      min-block-size: 0;
+      display: flex;
+      gap: var(--cae-space-1);
+    }
+    /* Projected per-pane header: labels its listbox (aria-labelledby) and reads as its visible title. */
+    .cae-pick-list__header {
+      padding: var(--cae-space-1) var(--cae-space-2);
+      color: var(--cae-color-on-surface);
     }
     /* Centre transfer column + each pane's outer reorder column: a vertical button stack. */
     .cae-pick-list__controls,
@@ -498,8 +547,13 @@ export class CaePickList<T = unknown> {
   private readonly sourceOptionEls = viewChildren<ElementRef<HTMLElement>>('sourceOption');
   private readonly targetOptionEls = viewChildren<ElementRef<HTMLElement>>('targetOption');
 
+  /** Per-instance id root (SSR/hydration-stable) shared by the instructions + the two header ids. */
+  private readonly uid = nextUniqueId++;
   /** Stable id linking both listboxes to their visually-hidden transfer instructions (aria-describedby). */
-  protected readonly instructionsId = `cae-pick-list-instructions-${nextUniqueId++}`;
+  protected readonly instructionsId = `cae-pick-list-instructions-${this.uid}`;
+  /** Ids the projected headers carry, so each listbox can point its `aria-labelledby` at its own header. */
+  protected readonly sourceHeaderId = `cae-pick-list-source-header-${this.uid}`;
+  protected readonly targetHeaderId = `cae-pick-list-target-header-${this.uid}`;
 
   /** The left/source list, two-way. Transfers replace it with a fresh array. */
   readonly source = model<readonly T[]>([]);
@@ -514,9 +568,9 @@ export class CaePickList<T = unknown> {
   readonly sourceSelection = model<readonly T[]>([]);
   /** The target list's multi-selection, two-way — the target-side mirror of {@link sourceSelection}. */
   readonly targetSelection = model<readonly T[]>([]);
-  /** Accessible name for the source `role="listbox"` (default `"Source list"`); ignored if labelledby is set. */
+  /** Accessible name for the source `role="listbox"` (default `"Source list"`); ignored if a header slot or labelledby is set. */
   readonly sourceAriaLabel = input('');
-  /** Accessible name for the target `role="listbox"` (default `"Target list"`); ignored if labelledby is set. */
+  /** Accessible name for the target `role="listbox"` (default `"Target list"`); ignored if a header slot or labelledby is set. */
   readonly targetAriaLabel = input('');
   /** `id` of a visible element labelling the source list — preferred when a heading is shown. */
   readonly sourceAriaLabelledby = input('');
@@ -529,6 +583,21 @@ export class CaePickList<T = unknown> {
 
   /** The projected row template (shared by both lists), if the consumer supplied one. */
   protected readonly itemDef = contentChild(CaePickListItemDef<T>);
+  /** The projected per-pane header templates, if supplied — each labels its own listbox. */
+  protected readonly sourceHeaderDef = contentChild(CaePickListSourceHeaderDef);
+  protected readonly targetHeaderDef = contentChild(CaePickListTargetHeaderDef);
+
+  /**
+   * The `id` each listbox points its `aria-labelledby` at (empty ⇒ it falls back to the `aria-label`
+   * string). Precedence: an explicit `[…AriaLabelledby]` (an external heading the consumer owns) wins;
+   * else a projected header labels the list; else neither, and the `aria-label` string names it.
+   */
+  protected readonly sourceLabelledby = computed(
+    () => this.sourceAriaLabelledby().trim() || (this.sourceHeaderDef() ? this.sourceHeaderId : ''),
+  );
+  protected readonly targetLabelledby = computed(
+    () => this.targetAriaLabelledby().trim() || (this.targetHeaderDef() ? this.targetHeaderId : ''),
+  );
 
   /** Raw active indices; may momentarily exceed a list's length after a transfer (clamped on read). */
   private readonly sourceActiveIndex = signal(0);
