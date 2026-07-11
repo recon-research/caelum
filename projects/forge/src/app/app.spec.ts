@@ -324,8 +324,8 @@ describe('App', () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     const el = fixture.nativeElement as HTMLElement;
-    // Exactly twenty-nine @defer blocks — the capacity sliders, modules listbox, timezone autocomplete,
-    // skills multi-select, members table, tree-table, carousel, galleria, image, image-compare, splitter, scroll-panel, breadcrumb, order-list, pick-list, tree-select, input-number, input-otp,
+    // Exactly thirty @defer blocks — the capacity sliders, modules listbox, timezone autocomplete,
+    // skills multi-select, members table, tree-table, carousel, galleria, image, image-compare, splitter, scroll-panel, breadcrumb, order-list, pick-list, file-upload, tree-select, input-number, input-otp,
     // password, input-mask, activity data-grid, orders server-grid, command bar, quick-actions context menu, workspace-sections tab menu,
     // structure tree, reference tabs, FAQ accordion, and tag row — each carrying a heavy Material module or
     // new CDK family (MatSlider/MatList/MatAutocomplete/MatSelect+MatChips/MatTable+MatSort+MatPaginator/CDK-VirtualScroll×2/
@@ -336,7 +336,7 @@ describe('App', () => {
     // @tanstack/table-core (#171); the orders grid defers app-orders-grid-demo — the ServerGridAdapter
     // engine (#176) — each into its own lazy chunk, the #142 initial-budget guard. galleria and image both
     // defer the MatDialog they pull in through cae-dialog.)
-    expect((await fixture.getDeferBlocks()).length).toBe(29);
+    expect((await fixture.getDeferBlocks()).length).toBe(30);
     // The eager critical path (the create-workspace form) is present with NO defer block rendered...
     expect(el.querySelector('.forge-form-card')).not.toBeNull();
     // ...while the deferred demo sections are genuinely absent until rendered (proof they're lazy).
@@ -355,6 +355,7 @@ describe('App', () => {
     expect(el.querySelector('.forge-breadcrumb-card')).toBeNull();
     expect(el.querySelector('.forge-order-list-card')).toBeNull();
     expect(el.querySelector('.forge-pick-list-card')).toBeNull();
+    expect(el.querySelector('.forge-file-upload-card')).toBeNull();
     expect(el.querySelector('.forge-tree-select-card')).toBeNull();
     expect(el.querySelector('.forge-inputnumber-card')).toBeNull();
     expect(el.querySelector('.forge-inputotp-card')).toBeNull();
@@ -385,6 +386,7 @@ describe('App', () => {
     expect(el.querySelector('.forge-breadcrumb-card')).not.toBeNull();
     expect(el.querySelector('.forge-order-list-card')).not.toBeNull();
     expect(el.querySelector('.forge-pick-list-card')).not.toBeNull();
+    expect(el.querySelector('.forge-file-upload-card')).not.toBeNull();
     expect(el.querySelector('.forge-tree-select-card')).not.toBeNull();
     expect(el.querySelector('.forge-inputnumber-card')).not.toBeNull();
     expect(el.querySelector('.forge-inputotp-card')).not.toBeNull();

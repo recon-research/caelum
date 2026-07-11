@@ -1,0 +1,41 @@
+// File-upload demo (#338) — per-demo card styles, token-driven (D-04). Only structural literals remain
+// (display/margins/max-inline-size); every colour resolves to `--cae-*` (a literal colour would be a
+// defect, Book 04 §3.6). The file-upload draws its own dropzone/button/progress styling from the component.
+
+.forge-file-upload-card {
+  display: block;
+}
+.forge-file-upload-card__title {
+  margin: 0 0 var(--cae-space-2);
+  color: var(--cae-color-on-surface);
+}
+.forge-file-upload-card__lead {
+  margin: 0 0 var(--cae-space-4);
+  color: var(--cae-color-on-surface-variant);
+}
+.forge-file-upload-card__lead code {
+  color: var(--cae-color-primary);
+}
+.forge-file-upload-card__lead strong {
+  color: var(--cae-color-on-surface);
+}
+
+.forge-file-upload-control {
+  max-inline-size: 36rem;
+}
+
+.forge-file-upload-accepted {
+  margin: var(--cae-space-4) 0 0;
+  color: var(--cae-color-on-surface-variant);
+}
+.forge-file-upload-accepted strong {
+  color: var(--cae-color-on-surface);
+}
+
+.forge-file-upload-echo {
+  margin: var(--cae-space-2) 0 0;
+  color: var(--cae-color-on-surface-variant);
+}
+.forge-file-upload-echo strong {
+  color: var(--cae-color-on-surface);
+}

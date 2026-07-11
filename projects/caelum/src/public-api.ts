@@ -119,6 +119,9 @@ export * from 'caelum/order-list';
 // --- Drag-drop cluster (M3): pick-list (#337 — two connected keyboard-operable cdkDropLists with move-selected/move-all buttons + LiveAnnouncer; p-pickList parity; second of OrderList/PickList/FileUpload) ---
 export * from 'caelum/pick-list';
 
+// --- Drag-drop cluster (M3): file-upload (#338 — keyboard-reachable input[type=file] + native dropzone, trust-boundary type/size validation, HttpClient progress/cancel/retry, controlled CVA; p-fileUpload parity; third and final of OrderList/PickList/FileUpload) ---
+export * from 'caelum/file-upload';
+
 // --- Composed (M1): split-button (#148 — primary command + secondary-action dropdown over MatButton + cae-menu) ---
 export * from 'caelum/split-button';
 

@@ -1,0 +1,434 @@
+import { Component } from '@angular/core';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
+import { FormControl, ReactiveFormsModule } from '@angular/forms';
+import { HttpEventType, provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { LiveAnnouncer } from '@angular/cdk/a11y';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  CaeFileUpload,
+  CaeFileUploadError,
+  CaeFileUploadEvent,
+  CaeFileUploadProgress,
+} from './file-upload';
+
+const URL = '/api/upload';
+
+/** A `File` with a controllable `size` (jsdom's `new File(['x'], …)` is always 1 byte). */
+function makeFile(name: string, size = 10, type = ''): File {
+  const file = new File(['x'], name, { type });
+  Object.defineProperty(file, 'size', { value: size });
+  return file;
+}
+
+describe('CaeFileUpload', () => {
+  let fixture: ComponentFixture<CaeFileUpload>;
+  let cmp: CaeFileUpload;
+  let http: HttpTestingController;
+  let announce: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      imports: [CaeFileUpload],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    });
+    http = TestBed.inject(HttpTestingController);
+    announce = vi
+      .spyOn(TestBed.inject(LiveAnnouncer), 'announce')
+      .mockResolvedValue(undefined as unknown as void);
+    fixture = TestBed.createComponent(CaeFileUpload);
+    cmp = fixture.componentInstance;
+    document.body.appendChild(fixture.nativeElement);
+    fixture.detectChanges();
+  });
+
+  afterEach(() => {
+    try {
+      http.verify();
+    } finally {
+      fixture.destroy();
+      fixture.nativeElement.remove();
+    }
+  });
+
+  // Intake funnels through the shared `ingest` path (protected — the boundary the input/dropzone call).
+  function ingest(files: File[]): void {
+    (cmp as unknown as { ingest(f: readonly File[]): void }).ingest(files);
+    fixture.detectChanges();
+  }
+  function files() {
+    return (
+      cmp as unknown as {
+        files(): readonly { id: number; status: string; progress: number; error: string | null }[];
+      }
+    ).files();
+  }
+  const el = (sel: string) => fixture.nativeElement.querySelector(sel) as HTMLElement | null;
+
+  it('renders a keyboard-reachable native file input labelled by the styled button', () => {
+    const input = el('input[type="file"]') as HTMLInputElement;
+    expect(input).toBeTruthy();
+    // The input is the keyboard path — it must NOT be removed from the tab order.
+    expect(input.hasAttribute('hidden')).toBe(false);
+    expect(input.disabled).toBe(false);
+    const label = el('label.cae-file-upload__button') as HTMLLabelElement;
+    expect(label.getAttribute('for')).toBe(input.id);
+    expect(input.id).toContain('cae-file-upload-');
+  });
+
+  it('passes accept/multiple through to the native input', () => {
+    fixture.componentRef.setInput('accept', 'image/*');
+    fixture.componentRef.setInput('multiple', true);
+    fixture.detectChanges();
+    const input = el('input[type="file"]') as HTMLInputElement;
+    expect(input.getAttribute('accept')).toBe('image/*');
+    expect(input.multiple).toBe(true);
+  });
+
+  it('forwards ariaDescribedby onto the focusable input (#47 consumer-owned error hook)', () => {
+    fixture.componentRef.setInput('ariaDescribedby', 'err-1');
+    fixture.detectChanges();
+    const input = el('input[type="file"]') as HTMLInputElement;
+    expect(input.getAttribute('aria-describedby')).toBe('err-1');
+  });
+
+  // --- Trust boundary -----------------------------------------------------------------------------
+
+  it('rejects an oversized file at the trust boundary — never uploads it', () => {
+    const errors: CaeFileUploadError[] = [];
+    cmp.uploadError.subscribe((e) => errors.push(e));
+    fixture.componentRef.setInput('url', URL);
+    fixture.componentRef.setInput('auto', true);
+    fixture.componentRef.setInput('maxFileSize', 50);
+    fixture.detectChanges();
+
+    ingest([makeFile('big.png', 5000, 'image/png')]);
+
+    expect(files()[0].status).toBe('invalid');
+    expect(files()[0].error).toContain('limit');
+    expect(errors[0]).toMatchObject({ kind: 'validation' });
+    http.expectNone(URL); // the non-negotiable: rejected before upload
+    expect(announce).toHaveBeenCalledWith(expect.stringContaining('rejected'));
+  });
+
+  it('rejects a disallowed type before upload; accepts a matching type group', () => {
+    fixture.componentRef.setInput('accept', 'image/*');
+    fixture.componentRef.setInput('multiple', true);
+    fixture.detectChanges();
+
+    ingest([makeFile('doc.pdf', 10, 'application/pdf'), makeFile('pic.png', 10, 'image/png')]);
+
+    expect(files()[0].status).toBe('invalid');
+    expect(files()[1].status).toBe('pending');
+  });
+
+  it('matches accept by file extension when the MIME type is blank', () => {
+    fixture.componentRef.setInput('accept', '.csv');
+    fixture.detectChanges();
+    ingest([makeFile('data.csv', 10, '')]);
+    expect(files()[0].status).toBe('pending');
+  });
+
+  // --- Selection-only (no url) --------------------------------------------------------------------
+
+  it('exposes accepted files as the value and emits (select), with no network when url is unset', () => {
+    const selected: (readonly File[])[] = [];
+    cmp.filesSelected.subscribe((v) => selected.push(v));
+    fixture.componentRef.setInput('multiple', true);
+    fixture.detectChanges();
+
+    ingest([makeFile('a.txt', 10), makeFile('b.txt', 10)]);
+
+    expect(files().map((f) => f.status)).toEqual(['pending', 'pending']);
+    expect(selected.at(-1)!.length).toBe(2);
+    http.expectNone(URL);
+  });
+
+  // --- Upload / progress / cancel / retry ---------------------------------------------------------
+
+  it('auto-uploads with real HttpClient progress and a success response', () => {
+    const progresses: CaeFileUploadProgress[] = [];
+    const uploaded: CaeFileUploadEvent[] = [];
+    cmp.uploadProgress.subscribe((p) => progresses.push(p));
+    cmp.uploaded.subscribe((u) => uploaded.push(u));
+    fixture.componentRef.setInput('url', URL);
+    fixture.componentRef.setInput('auto', true);
+    fixture.detectChanges();
+
+    ingest([makeFile('a.txt', 10)]);
+
+    const req = http.expectOne(URL);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body instanceof FormData).toBe(true);
+    expect(req.request.reportProgress).toBe(true);
+
+    req.event({ type: HttpEventType.UploadProgress, loaded: 40, total: 100 });
+    fixture.detectChanges();
+    expect(files()[0].status).toBe('uploading');
+    expect(files()[0].progress).toBe(40);
+    expect(progresses.at(-1)).toMatchObject({ progress: 40 });
+
+    req.flush({ ok: true });
+    fixture.detectChanges();
+    expect(files()[0].status).toBe('success');
+    expect(files()[0].progress).toBe(100);
+    expect(uploaded.at(-1)).toMatchObject({ response: { ok: true } });
+    // Success carries a persistent TEXT status, not color alone (WCAG 1.4.1).
+    expect(el('.cae-file-upload__done')?.textContent).toContain('Uploaded');
+  });
+
+  it('waits for upload() in manual mode; the Upload button is aria-disabled (not native) with no pending', () => {
+    fixture.componentRef.setInput('url', URL);
+    fixture.detectChanges();
+
+    // No files yet → button present, aria-disabled, but still focusable (not native-disabled).
+    const btn = el('.cae-file-upload__upload') as HTMLButtonElement;
+    expect(btn).toBeTruthy();
+    expect(btn.getAttribute('aria-disabled')).toBe('true');
+    expect(btn.disabled).toBe(false);
+
+    ingest([makeFile('a.txt', 10)]);
+    expect(
+      (el('.cae-file-upload__upload') as HTMLButtonElement).getAttribute('aria-disabled'),
+    ).toBeNull();
+    http.expectNone(URL); // not auto → nothing uploaded on add
+
+    cmp.upload();
+    const req = http.expectOne(URL);
+    req.flush({ ok: true });
+    fixture.detectChanges();
+    expect(files()[0].status).toBe('success');
+  });
+
+  it('cancel() aborts the in-flight request', () => {
+    fixture.componentRef.setInput('url', URL);
+    fixture.componentRef.setInput('auto', true);
+    fixture.detectChanges();
+
+    ingest([makeFile('a.txt', 10)]);
+    const req = http.expectOne(URL);
+    cmp.cancel(files()[0].id);
+    fixture.detectChanges();
+
+    expect(req.cancelled).toBe(true);
+    expect(files()[0].status).toBe('canceled');
+    expect(announce).toHaveBeenCalledWith(expect.stringContaining('canceled'));
+  });
+
+  it('surfaces an upload error, then retry() re-sends and can succeed', () => {
+    const errors: CaeFileUploadError[] = [];
+    cmp.uploadError.subscribe((e) => errors.push(e));
+    fixture.componentRef.setInput('url', URL);
+    fixture.componentRef.setInput('auto', true);
+    fixture.detectChanges();
+
+    ingest([makeFile('a.txt', 10)]);
+    http.expectOne(URL).flush('nope', { status: 500, statusText: 'Server Error' });
+    fixture.detectChanges();
+    expect(files()[0].status).toBe('error');
+    expect(errors.at(-1)).toMatchObject({ kind: 'upload' });
+
+    cmp.retry(files()[0].id);
+    const retryReq = http.expectOne(URL);
+    retryReq.flush({ ok: true });
+    fixture.detectChanges();
+    expect(files()[0].status).toBe('success');
+  });
+
+  it('errors a pending file that is uploaded with no url configured', () => {
+    const errors: CaeFileUploadError[] = [];
+    cmp.uploadError.subscribe((e) => errors.push(e));
+    // url unset → selection-only; forcing upload() surfaces a configuration error, not a silent no-op.
+    ingest([makeFile('a.txt', 10)]);
+    cmp.upload();
+    fixture.detectChanges();
+    // hasPending() was true, so upload() ran; each pending file errors as not-configured.
+    expect(files()[0].status).toBe('error');
+    expect(errors.at(-1)).toMatchObject({ kind: 'upload' });
+    // The error state is announced (parity with the network-failure path — no silent SR gap).
+    expect(announce).toHaveBeenCalledWith(expect.stringContaining('failed to upload'));
+    http.expectNone(URL);
+  });
+
+  it('treats a negative maxFileSize as no limit (ignores the invalid config, no fail-closed footgun)', () => {
+    fixture.componentRef.setInput('maxFileSize', -1);
+    fixture.detectChanges();
+    ingest([makeFile('big.txt', 99999)]);
+    expect(files()[0].status).toBe('pending');
+  });
+
+  // --- Trust boundary on the form path (writeValue) -----------------------------------------------
+
+  it('validates files written via the form model — an oversize one is invalid and never uploaded', () => {
+    fixture.componentRef.setInput('url', URL);
+    fixture.componentRef.setInput('maxFileSize', 50);
+    fixture.componentRef.setInput('multiple', true);
+    fixture.detectChanges();
+
+    cmp.writeValue([makeFile('big.png', 5000, 'image/png'), makeFile('ok.png', 10, 'image/png')]);
+    fixture.detectChanges();
+    expect(files()[0].status).toBe('invalid');
+    expect(files()[1].status).toBe('pending');
+
+    cmp.upload();
+    const reqs = http.match(URL);
+    expect(reqs.length).toBe(1); // only the valid file reaches the network
+    reqs[0].flush({ ok: true });
+  });
+
+  // --- Focus management (WCAG 2.4.3 — no stranding to <body>) --------------------------------------
+
+  it('moves focus to a neighbor row when a focused row is removed', async () => {
+    fixture.componentRef.setInput('multiple', true);
+    fixture.detectChanges();
+    ingest([makeFile('a.txt', 10), makeFile('b.txt', 10), makeFile('c.txt', 10)]);
+    const ids = files().map((f) => f.id);
+
+    const midRemove = fixture.nativeElement.querySelector(
+      `[data-remove-id="${ids[1]}"]`,
+    ) as HTMLButtonElement;
+    midRemove.focus();
+    expect(document.activeElement).toBe(midRemove);
+
+    cmp.removeFile(ids[1]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const nextRemove = fixture.nativeElement.querySelector(`[data-remove-id="${ids[2]}"]`);
+    expect(document.activeElement).toBe(nextRemove);
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it('keeps focus in the row when Cancel swaps to Retry', async () => {
+    fixture.componentRef.setInput('url', URL);
+    fixture.componentRef.setInput('auto', true);
+    fixture.detectChanges();
+    ingest([makeFile('a.txt', 10)]);
+    const id = files()[0].id;
+    http.expectOne(URL); // in-flight (canceled below; a cancelled request passes verify)
+
+    const cancelBtn = fixture.nativeElement.querySelector(
+      `[data-action-id="${id}"]`,
+    ) as HTMLButtonElement;
+    cancelBtn.focus();
+    cmp.cancel(id);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const retryBtn = fixture.nativeElement.querySelector(`[data-action-id="${id}"]`);
+    expect(retryBtn?.textContent?.trim()).toBe('Retry');
+    expect(document.activeElement).toBe(retryBtn);
+  });
+
+  // --- Queue mechanics ----------------------------------------------------------------------------
+
+  it('removes a file, emits (remove), and updates the value', () => {
+    const removed: File[] = [];
+    const selected: (readonly File[])[] = [];
+    cmp.remove.subscribe((f) => removed.push(f));
+    cmp.filesSelected.subscribe((v) => selected.push(v));
+    fixture.componentRef.setInput('multiple', true);
+    fixture.detectChanges();
+
+    ingest([makeFile('a.txt', 10), makeFile('b.txt', 10)]);
+    cmp.removeFile(files()[0].id);
+    fixture.detectChanges();
+
+    expect(files().length).toBe(1);
+    expect(removed.length).toBe(1);
+    expect(selected.at(-1)!.length).toBe(1);
+  });
+
+  it('single mode keeps only the latest pick (replaces the queue)', () => {
+    ingest([makeFile('a.txt', 10)]);
+    ingest([makeFile('b.txt', 10)]);
+    expect(files().length).toBe(1);
+    expect(files()[0].error).toBeNull();
+  });
+
+  it('a disabled control ignores intake', () => {
+    fixture.componentRef.setInput('disabled', true);
+    fixture.detectChanges();
+    ingest([makeFile('a.txt', 10)]);
+    expect(files().length).toBe(0);
+  });
+
+  it('destroys cleanly, aborting an in-flight upload', () => {
+    fixture.componentRef.setInput('url', URL);
+    fixture.componentRef.setInput('auto', true);
+    fixture.detectChanges();
+    ingest([makeFile('a.txt', 10)]);
+    const req = http.expectOne(URL);
+    fixture.destroy();
+    expect(req.cancelled).toBe(true);
+  });
+});
+
+// --- Forms integration (controlled CVA) -----------------------------------------------------------
+
+@Component({
+  template: `<cae-file-upload [formControl]="ctrl" [multiple]="true" />`,
+  imports: [CaeFileUpload, ReactiveFormsModule],
+})
+class FormHost {
+  readonly ctrl = new FormControl<readonly File[]>([], { nonNullable: true });
+}
+
+describe('CaeFileUpload — forms (CVA)', () => {
+  let fixture: ComponentFixture<FormHost>;
+  let host: FormHost;
+  let cmp: CaeFileUpload;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      imports: [FormHost],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    });
+    fixture = TestBed.createComponent(FormHost);
+    host = fixture.componentInstance;
+    document.body.appendChild(fixture.nativeElement);
+    fixture.detectChanges();
+    cmp = fixture.debugElement.query(By.directive(CaeFileUpload)).componentInstance;
+  });
+
+  afterEach(() => {
+    TestBed.inject(HttpTestingController).verify();
+    fixture.destroy();
+    fixture.nativeElement.remove();
+  });
+
+  function ingest(files: File[]): void {
+    (cmp as unknown as { ingest(f: readonly File[]): void }).ingest(files);
+    fixture.detectChanges();
+  }
+
+  it('round-trips the accepted file set through the FormControl', () => {
+    ingest([makeFile('a.txt', 10), makeFile('b.txt', 10)]);
+    expect(host.ctrl.value.length).toBe(2);
+    expect(host.ctrl.value[0].name).toBe('a.txt');
+  });
+
+  it('writeValue([]) via reset clears the queue without re-emitting', () => {
+    ingest([makeFile('a.txt', 10)]);
+    host.ctrl.reset([]);
+    fixture.detectChanges();
+    const files = (cmp as unknown as { files(): readonly unknown[] }).files();
+    expect(files.length).toBe(0);
+  });
+
+  it('marks the control touched on input blur', () => {
+    expect(host.ctrl.touched).toBe(false);
+    const input = fixture.nativeElement.querySelector('input[type="file"]') as HTMLInputElement;
+    input.dispatchEvent(new Event('blur'));
+    fixture.detectChanges();
+    expect(host.ctrl.touched).toBe(true);
+  });
+
+  it('setDisabledState reflects into the native input', () => {
+    host.ctrl.disable();
+    fixture.detectChanges();
+    const input = fixture.nativeElement.querySelector('input[type="file"]') as HTMLInputElement;
+    expect(input.disabled).toBe(true);
+  });
+});
