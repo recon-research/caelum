@@ -20,9 +20,15 @@
   color: var(--cae-color-on-surface);
 }
 
-// Controls-position toggle — token-styled like the picker's own buttons (no literal colours, Book 04 §3.6).
-.forge-order-list-controls-toggle {
+// Demo toggles (controls-position, drag-handle) — token-styled like the picker's own buttons
+// (no literal colours, Book 04 §3.6). aria-pressed carries the state; the fill is the visual on-state.
+.forge-order-list-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cae-space-2);
   margin: 0 0 var(--cae-space-3);
+}
+.forge-order-list-toggle {
   padding: var(--cae-space-1) var(--cae-space-3);
   border: 1px solid var(--cae-color-border);
   border-radius: var(--cae-radius-sm);
@@ -31,11 +37,11 @@
   font: inherit;
   cursor: pointer;
 }
-.forge-order-list-controls-toggle[aria-pressed='true'] {
+.forge-order-list-toggle[aria-pressed='true'] {
   background: var(--cae-color-primary);
   color: var(--cae-color-on-primary);
 }
-.forge-order-list-controls-toggle:focus-visible {
+.forge-order-list-toggle:focus-visible {
   outline: 2px solid var(--cae-color-primary);
   outline-offset: 2px;
   // Surface halo keeps the ring visible over the primary-filled pressed state (WCAG 1.4.11).
@@ -44,6 +50,12 @@
 
 .forge-order-list-control {
   max-inline-size: 24rem;
+}
+
+// The "(locked)" hint on the disabled row — muted, so it reads as secondary to the section name.
+.forge-order-list-locked {
+  color: var(--cae-color-on-surface-variant);
+  font-style: italic;
 }
 
 .forge-order-list-order {

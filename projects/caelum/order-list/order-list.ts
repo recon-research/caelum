@@ -15,7 +15,13 @@ import {
   viewChildren,
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
-import { CdkDrag, CdkDragDrop, CdkDropList, moveItemInArray } from '@angular/cdk/drag-drop';
+import {
+  CdkDrag,
+  CdkDragDrop,
+  CdkDragHandle,
+  CdkDropList,
+  moveItemInArray,
+} from '@angular/cdk/drag-drop';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 
 /** Per-instance id source for the aria-describedby instructions (SSR/hydration-stable, unlike random). */
@@ -43,6 +49,8 @@ export interface CaeOrderListItemContext<T = unknown> {
   readonly active: boolean;
   /** Whether this row is in the current multi-selection (the move-target set). */
   readonly selected: boolean;
+  /** Whether this row is disabled (`[disabledMatch]`) — not selectable, movable, or draggable. */
+  readonly disabled: boolean;
 }
 
 /**
@@ -126,12 +134,15 @@ export class CaeOrderListHeaderDef {
  * host (Book 01 §3.2); drag pointer math is CDK's, and the drop lands in the `[(value)]` signal.
  *
  * **Content-agnostic.** Project a `<ng-template caeOrderListItem let-item let-i="index"
- * let-selected="selected">` to render rich rows (context: item, `index`, `active` = focused,
- * `selected`); without one, rows render `{{ item }}`. Rows must be **distinct references** (objects, or
- * unique primitives) — reorder + selection track by identity so the moved DOM node follows the item; a
- * custom `trackBy` is an additive follow-up. The reorder-button column sits at the inline-start by
- * default; `[controlsPosition]="'after'"` moves it to the inline-end (DOM-reordered, so tab order tracks
- * visual order). **RTL** needs no code: the control column mirrors for free through the host's logical
+ * let-selected="selected" let-disabled="disabled">` to render rich rows (context: item, `index`,
+ * `active` = focused, `selected`, `disabled`); without one, rows render `{{ item }}`. Rows must be
+ * **distinct references** (objects, or unique primitives) — reorder + selection track by identity so the
+ * moved DOM node follows the item; a custom `trackBy` is an additive follow-up. Mark rows non-actionable
+ * with `[disabledMatch]` (a predicate; disabled rows are dimmed + `aria-disabled`, can't be selected,
+ * moved, or dragged, but stay focusable), and set `[dragHandle]` to restrict drag initiation to a
+ * rendered grip (the whole row is the drag surface by default). The reorder-button column sits at the
+ * inline-start by default; `[controlsPosition]="'after'"` moves it to the inline-end (DOM-reordered, so
+ * tab order tracks visual order). **RTL** needs no code: the control column mirrors for free through the host's logical
  * flex row (either `controlsPosition`) and the reorder glyphs are vertical (nothing to flip), unlike
  * `cae-pick-list`'s horizontal transfer axis (Book 04 §3.5; visual-regression gated at M4/#240).
  *
@@ -166,7 +177,7 @@ export class CaeOrderListHeaderDef {
 @Component({
   selector: 'cae-order-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [NgTemplateOutlet, CdkDropList, CdkDrag],
+  imports: [NgTemplateOutlet, CdkDropList, CdkDrag, CdkDragHandle],
   host: { class: 'cae-order-list' },
   template: `
     <ng-template #controlsTpl>
@@ -257,29 +268,44 @@ export class CaeOrderListHeaderDef {
             class="cae-order-list__option"
             [class.cae-order-list__option--active]="i === active()"
             [class.cae-order-list__option--selected]="isSelected(item)"
+            [class.cae-order-list__option--disabled]="isDisabled(item)"
+            [class.cae-order-list__option--has-handle]="dragHandle()"
             role="option"
             cdkDrag
-            [cdkDragDisabled]="isFiltering()"
+            [cdkDragDisabled]="isFiltering() || isDisabled(item)"
             [attr.aria-selected]="isSelected(item)"
+            [attr.aria-disabled]="isDisabled(item) ? 'true' : null"
             [attr.aria-describedby]="instructionsId"
             [tabindex]="i === activeTabStop() ? 0 : -1"
             (focus)="activate(i)"
             (click)="onOptionClick(i, $event)"
             (keydown)="onKeydown(i, $event)"
           >
-            @if (itemDef(); as def) {
-              <ng-container
-                [ngTemplateOutlet]="def.template"
-                [ngTemplateOutletContext]="{
-                  $implicit: item,
-                  index: i,
-                  active: i === active(),
-                  selected: isSelected(item),
-                }"
-              />
-            } @else {
-              {{ item }}
+            @if (dragHandle()) {
+              <!-- Pointer-only drag affordance: aria-hidden and non-focusable, so it stays out of the
+                   roving tabindex and the "options hold no focusable descendants" rule holds — the
+                   keyboard reorder path is the move buttons, not the grip (CDK drag is pointer-only). -->
+              <span class="cae-order-list__handle" cdkDragHandle aria-hidden="true">&#10303;</span>
             }
+            <!-- Content wrapper: display:contents (layout-transparent) in the default block layout, but a
+                 single flex child in handle mode — so a multi-root projected row lays out as ONE unit
+                 beside the grip, not N gap-separated flex items. -->
+            <span class="cae-order-list__content">
+              @if (itemDef(); as def) {
+                <ng-container
+                  [ngTemplateOutlet]="def.template"
+                  [ngTemplateOutletContext]="{
+                    $implicit: item,
+                    index: i,
+                    active: i === active(),
+                    selected: isSelected(item),
+                    disabled: isDisabled(item),
+                  }"
+                />
+              } @else {
+                {{ item }}
+              }
+            </span>
           </li>
         }
         @if (isFiltering() && filtered().length === 0) {
@@ -391,12 +417,55 @@ export class CaeOrderListHeaderDef {
       background: var(--cae-color-primary);
       color: var(--cae-color-on-primary);
     }
+    /* Disabled row (aria-disabled, not native): dimmed and not-selectable/movable, but still focusable
+       so a keyboard/AT user can perceive it (WAI-ARIA listbox). Selection/move/drag guards are in TS. */
+    .cae-order-list__option--disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    /* Content wrapper: layout-transparent in the default block layout (so a projected row renders exactly
+       as if unwrapped), a single flex child in handle mode (so a multi-root row stays one unit, not N
+       gap-separated flex items beside the grip). */
+    .cae-order-list__content {
+      display: contents;
+    }
+    /* Drag-handle mode: only the grip initiates drag, so the row itself is no longer grab-cursored and
+       lays out as a row (grip | content). The grip is a pointer affordance only — aria-hidden above. */
+    .cae-order-list__option--has-handle {
+      display: flex;
+      align-items: center;
+      gap: var(--cae-space-2);
+      cursor: default;
+    }
+    .cae-order-list__option--has-handle .cae-order-list__content {
+      display: block;
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+    .cae-order-list__handle {
+      flex: none;
+      cursor: grab;
+      color: var(--cae-color-on-surface);
+      opacity: 0.6;
+      line-height: 1;
+      user-select: none;
+    }
+    .cae-order-list__option--disabled .cae-order-list__handle {
+      cursor: not-allowed;
+    }
     .cae-order-list__btn:focus-visible,
     .cae-order-list__option:focus-visible {
       outline: 2px solid var(--cae-color-primary);
       outline-offset: 2px;
       /* Surface halo keeps the ring visible over a primary-filled selected row (WCAG 1.4.11). */
       box-shadow: 0 0 0 4px var(--cae-surface-raised);
+    }
+    /* Both the bound-reaching move buttons and disabled rows stay keyboard-focusable by design, but the
+       0.5 opacity dim would halve their focus ring — restore full opacity while focused so the outline
+       paints at full strength (WCAG 2.4.7 / 1.4.11); the aria-disabled/cursor cues still convey state. */
+    .cae-order-list__btn[aria-disabled='true']:focus-visible,
+    .cae-order-list__option--disabled:focus-visible {
+      opacity: 1;
     }
     /* The CDK drag preview/placeholder inherit the row's emulated styles (same _ngcontent attr). */
     .cae-order-list__option.cdk-drag-placeholder {
@@ -438,7 +507,10 @@ export class CaeOrderList<T = unknown> {
    * The multi-selection, two-way — the *items* (by identity) the move buttons act on. Empty by default
    * (`p-orderList` parity); the emitted array is always in list order. Selection follows items through a
    * reorder for free (it stores references, not indices), and is pruned to items still present in
-   * {@link value}. With nothing selected, the move buttons fall back to acting on the focused row.
+   * {@link value}. A row that becomes **disabled** while selected stays selected (selection is by
+   * reference and survives, as it does across a reorder) but is barred from moves — it clears only when
+   * removed from {@link value} or explicitly deselected, so `selection()` may momentarily hold a disabled
+   * row. With nothing selected, the move buttons fall back to acting on the focused row.
    */
   readonly selection = model<readonly T[]>([]);
   /** Accessible name for the `role="listbox"` (default `"Order list"`); ignored if `ariaLabelledby` is set. */
@@ -452,6 +524,27 @@ export class CaeOrderList<T = unknown> {
    * order (WCAG 2.4.3).
    */
   readonly controlsPosition = input<'before' | 'after'>('before');
+
+  /**
+   * Predicate marking rows as **disabled** (`p-orderList` per-item disabling). A disabled row is
+   * dimmed and `aria-disabled` — it cannot be selected, moved by the buttons, or dragged — but stays
+   * **focusable** so a keyboard/AT user can still navigate onto and perceive it (WAI-ARIA listbox; the
+   * same `aria-disabled`-not-native discipline the move buttons use, so focus is never blurred to
+   * `<body>`). Range and select-all include only the enabled rows in their span. Default: nothing
+   * disabled. Evaluated per row against {@link value}, so it may depend on external state. **Pair it with
+   * a visible indicator** rendered from the item template's `disabled` context (as the demo's "(locked)"
+   * tag) — the built-in dim is a colour-independent but subtle cue. Avoid disabling the row most likely to
+   * be the initial focus (index 0), which would make a dimmed row the default tab stop.
+   */
+  readonly disabledMatch = input<(item: T) => boolean>(() => false);
+  /**
+   * Restrict drag initiation to a rendered **grip handle** (`p-orderList` + `cdkDragHandle`; Book 05
+   * §3.4). Off by default — the whole row is the drag surface. When on, each row renders a small,
+   * `aria-hidden`, non-focusable grip and only it starts a drag, so a click-drag on the row body just
+   * selects. The grip is a pointer affordance only; the keyboard reorder path is unchanged (the move
+   * buttons), so the grip stays out of the roving tabindex.
+   */
+  readonly dragHandle = input(false);
 
   /**
    * Show a text filter above the list (`p-orderList` `[filter]`). Off by default — when off the
@@ -547,18 +640,34 @@ export class CaeOrderList<T = unknown> {
   protected isSelected(item: T): boolean {
     return this.selectedSet().has(item);
   }
+  /** Disabled rows as a `Set` (evaluated over {@link value}) for O(1) membership in the template/guards. */
+  private readonly disabledSet = computed<ReadonlySet<T>>(() => {
+    const match = this.disabledMatch();
+    return new Set<T>(this.value().filter(match));
+  });
+  /** Whether `item` is disabled — not selectable, movable, or draggable (template hot path). */
+  protected isDisabled(item: T): boolean {
+    return this.disabledSet().has(item);
+  }
 
   /** Ascending indices the move buttons act on: the selected rows, or the focused row when none selected. */
   private readonly moveIndices = computed<readonly number[]>(() => {
     if (this.isFiltering()) return []; // reorder is disabled while filtering (partial-view indices are ambiguous)
     const items = this.value();
     const sel = this.selectedSet();
+    const dis = this.disabledSet();
+    // Disabled rows never move — excluded from the selected picks (a row selected *then* disabled by a
+    // dynamic predicate is dropped here, not just at selection time) and from the focused-row fallback.
     const picked = items.reduce<number[]>((acc, it, i) => {
-      if (sel.has(it)) acc.push(i);
+      if (sel.has(it) && !dis.has(it)) acc.push(i);
       return acc;
     }, []);
     if (picked.length) return picked;
-    return this.active() >= 0 ? [this.active()] : [];
+    // A non-empty selection whose every row is disabled has nothing movable — stay inert; do NOT fall
+    // back to the focused (unselected) row, which would silently move a row the user never picked.
+    if (sel.size) return [];
+    const a = this.active();
+    return a >= 0 && !dis.has(items[a]) ? [a] : [];
   });
   protected readonly canMoveUp = computed(() => {
     const m = this.moveIndices();
@@ -624,7 +733,8 @@ export class CaeOrderList<T = unknown> {
   protected onOptionClick(index: number, event: MouseEvent): void {
     this.focusIndex.set(index);
     const item = this.filtered()[index];
-    if (item === undefined) return;
+    // Focus lands on a disabled row (it's navigable), but it can't be selected — bail before any mutation.
+    if (item === undefined || this.isDisabled(item)) return;
     if (event.shiftKey) {
       this.selectRange(index, index);
     } else if (event.ctrlKey || event.metaKey) {
@@ -683,14 +793,20 @@ export class CaeOrderList<T = unknown> {
 
     if ((event.ctrlKey || event.metaKey) && (event.key === 'a' || event.key === 'A')) {
       event.preventDefault();
-      // Select-all means all *visible* rows — identical to the whole list when not filtering.
-      this.commitSelection(new Set(this.filtered()));
+      // Select-all means all *visible, enabled* rows — identical to the whole list when nothing is
+      // filtered or disabled.
+      this.commitSelection(new Set(this.filtered().filter((it) => !this.isDisabled(it))));
       return;
     }
     if (event.key === ' ' || event.key === 'Spacebar') {
       event.preventDefault();
-      this.toggle(index);
-      this.selectionAnchor.set(this.filtered()[index] ?? null);
+      const item = this.filtered()[index];
+      // Space toggles + re-anchors, but only on an enabled row: a disabled row is a no-op and must not
+      // silently move the range anchor onto itself (a later Shift+range would extend from the wrong origin).
+      if (item !== undefined && !this.isDisabled(item)) {
+        this.toggle(index);
+        this.selectionAnchor.set(item);
+      }
       return;
     }
     if (event.key === 'Escape') {
@@ -726,10 +842,10 @@ export class CaeOrderList<T = unknown> {
     this.optionEls()[target]?.nativeElement.focus();
   }
 
-  /** Toggle one row's membership in the selection. */
+  /** Toggle one row's membership in the selection (no-op on a disabled row). */
   private toggle(index: number): void {
     const item = this.filtered()[index];
-    if (item === undefined) return;
+    if (item === undefined || this.isDisabled(item)) return;
     const set = new Set(this.selection());
     if (set.has(item)) set.delete(item);
     else set.add(item);
@@ -751,7 +867,10 @@ export class CaeOrderList<T = unknown> {
     const lo = Math.max(0, Math.min(from, focus));
     const hi = Math.min(items.length - 1, Math.max(from, focus));
     const set = new Set<T>();
-    for (let i = lo; i <= hi; i++) set.add(items[i]);
+    // Only enabled rows in the span join the selection; disabled ones are skipped (they can't be moved).
+    for (let i = lo; i <= hi; i++) {
+      if (!this.isDisabled(items[i])) set.add(items[i]);
+    }
     this.commitSelection(set);
   }
 
