@@ -36,6 +36,7 @@ const ROWS = (): Row[] => [
       (selectionChange)="selection.set($event)"
       [ariaLabel]="ariaLabel()"
       [ariaLabelledby]="ariaLabelledby()"
+      [controlsPosition]="controlsPosition()"
       (reorder)="lastReorder.set($event)"
     >
       <ng-template
@@ -57,6 +58,7 @@ class OrderListHost {
   readonly selection = signal<readonly Row[]>([]);
   readonly ariaLabel = signal('');
   readonly ariaLabelledby = signal('');
+  readonly controlsPosition = signal<'before' | 'after'>('before');
   readonly lastReorder = signal<CaeOrderListReorderEvent<Row> | null>(null);
 }
 
@@ -136,13 +138,19 @@ describe('CaeOrderList', () => {
   const filterFixtures: ComponentFixture<unknown>[] = [];
 
   function render(
-    opts: { items?: readonly Row[]; ariaLabel?: string; ariaLabelledby?: string } = {},
+    opts: {
+      items?: readonly Row[];
+      ariaLabel?: string;
+      ariaLabelledby?: string;
+      controlsPosition?: 'before' | 'after';
+    } = {},
   ): void {
     fixture = TestBed.createComponent(OrderListHost);
     host = fixture.componentInstance;
     host.items.set(opts.items ?? ROWS());
     if (opts.ariaLabel !== undefined) host.ariaLabel.set(opts.ariaLabel);
     if (opts.ariaLabelledby !== undefined) host.ariaLabelledby.set(opts.ariaLabelledby);
+    if (opts.controlsPosition !== undefined) host.controlsPosition.set(opts.controlsPosition);
     // Attach to the document so `.focus()` moves `document.activeElement` (jsdom requirement).
     document.body.appendChild(fixture.nativeElement);
     fixture.detectChanges();
@@ -268,6 +276,38 @@ describe('CaeOrderList', () => {
       expect(box.getAttribute('aria-labelledby')).toBe('external-heading'); // ...but does not name the list
       expect(box.getAttribute('aria-labelledby')).not.toBe(header!.id);
       expect(box.getAttribute('aria-label')).toBeNull();
+    });
+  });
+
+  describe('controls position', () => {
+    /** The reorder-button column (a single instance — stamped once, before OR after the list). */
+    function controlsEl(): HTMLElement {
+      return fixture.nativeElement.querySelector('.cae-order-list__controls') as HTMLElement;
+    }
+
+    it('places the control column before the list by default', () => {
+      render();
+      // The listbox DOM-follows the controls ⇒ controls render first (inline-start).
+      expect(
+        controlsEl().compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    });
+
+    it('moves the control column after the list when [controlsPosition] is "after"', () => {
+      render({ controlsPosition: 'after' });
+      // The listbox DOM-precedes the controls ⇒ controls render last; DOM order = tab order (WCAG 2.4.3).
+      expect(
+        controlsEl().compareDocumentPosition(list) & Node.DOCUMENT_POSITION_PRECEDING,
+      ).toBeTruthy();
+    });
+
+    it('keeps the move buttons operative with the controls after the list', () => {
+      render({ controlsPosition: 'after', items: ROWS() });
+      expect(host.items().map((r) => r.name)).toEqual(['Alpha', 'Bravo', 'Charlie']);
+      clickRow(0); // select + focus Alpha
+      btn('Move down').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      fixture.detectChanges();
+      expect(host.items().map((r) => r.name)).toEqual(['Bravo', 'Alpha', 'Charlie']);
     });
   });
 

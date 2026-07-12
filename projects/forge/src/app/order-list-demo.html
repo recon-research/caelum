@@ -9,11 +9,25 @@
     <code>role="listbox"</code>, so it is fully operable without a pointer. Its visible
     <strong>header</strong> also names the list for a screen reader. Type in the
     <strong>filter box</strong> to narrow the sections by name — reorder is disabled while
-    filtering, since a partial view has no coherent "move up".
+    filtering, since a partial view has no coherent "move up". Toggle
+    <strong>controls after list</strong> to move the button column to the other side (it mirrors for
+    free under RTL).
   </p>
+
+  <!-- Constant accessible name + aria-pressed for the toggle state (the WAI-ARIA toggle-button
+       pattern, matching the pick-list demo's direction toggle); the pressed fill is the visual on-state. -->
+  <button
+    type="button"
+    class="forge-order-list-controls-toggle"
+    [attr.aria-pressed]="controlsAfter()"
+    (click)="controlsAfter.set(!controlsAfter())"
+  >
+    Controls after list
+  </button>
 
   <cae-order-list
     class="forge-order-list-control"
+    [controlsPosition]="controlsAfter() ? 'after' : 'before'"
     [value]="widgets()"
     (valueChange)="widgets.set($event)"
     [selection]="selected()"

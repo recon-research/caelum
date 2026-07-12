@@ -129,9 +129,11 @@ export class CaeOrderListHeaderDef {
  * let-selected="selected">` to render rich rows (context: item, `index`, `active` = focused,
  * `selected`); without one, rows render `{{ item }}`. Rows must be **distinct references** (objects, or
  * unique primitives) — reorder + selection track by identity so the moved DOM node follows the item; a
- * custom `trackBy` is an additive follow-up. **RTL** needs no code: the control column mirrors for
- * free through the host's logical flex row and the reorder glyphs are vertical (nothing to flip),
- * unlike `cae-pick-list`'s horizontal transfer axis (Book 04 §3.5; visual-regression gated at M4/#240).
+ * custom `trackBy` is an additive follow-up. The reorder-button column sits at the inline-start by
+ * default; `[controlsPosition]="'after'"` moves it to the inline-end (DOM-reordered, so tab order tracks
+ * visual order). **RTL** needs no code: the control column mirrors for free through the host's logical
+ * flex row (either `controlsPosition`) and the reorder glyphs are vertical (nothing to flip), unlike
+ * `cae-pick-list`'s horizontal transfer axis (Book 04 §3.5; visual-regression gated at M4/#240).
  *
  * **Filtering** (opt-in via `[filter]`). A labelled `type="search"` box above the list narrows the
  * rendered rows through `[filterMatch]` (default: case-insensitive substring on `String(item)`).
@@ -167,44 +169,52 @@ export class CaeOrderListHeaderDef {
   imports: [NgTemplateOutlet, CdkDropList, CdkDrag],
   host: { class: 'cae-order-list' },
   template: `
-    <div class="cae-order-list__controls" role="group" aria-label="Reorder controls">
-      <button
-        type="button"
-        class="cae-order-list__btn"
-        aria-label="Move up"
-        [attr.aria-disabled]="!canMoveUp() ? 'true' : null"
-        (click)="moveUp()"
-      >
-        <span aria-hidden="true">&#8593;</span>
-      </button>
-      <button
-        type="button"
-        class="cae-order-list__btn"
-        aria-label="Move to top"
-        [attr.aria-disabled]="!canMoveUp() ? 'true' : null"
-        (click)="moveTop()"
-      >
-        <span aria-hidden="true">&#8607;</span>
-      </button>
-      <button
-        type="button"
-        class="cae-order-list__btn"
-        aria-label="Move down"
-        [attr.aria-disabled]="!canMoveDown() ? 'true' : null"
-        (click)="moveDown()"
-      >
-        <span aria-hidden="true">&#8595;</span>
-      </button>
-      <button
-        type="button"
-        class="cae-order-list__btn"
-        aria-label="Move to bottom"
-        [attr.aria-disabled]="!canMoveDown() ? 'true' : null"
-        (click)="moveBottom()"
-      >
-        <span aria-hidden="true">&#8609;</span>
-      </button>
-    </div>
+    <ng-template #controlsTpl>
+      <div class="cae-order-list__controls" role="group" aria-label="Reorder controls">
+        <button
+          type="button"
+          class="cae-order-list__btn"
+          aria-label="Move up"
+          [attr.aria-disabled]="!canMoveUp() ? 'true' : null"
+          (click)="moveUp()"
+        >
+          <span aria-hidden="true">&#8593;</span>
+        </button>
+        <button
+          type="button"
+          class="cae-order-list__btn"
+          aria-label="Move to top"
+          [attr.aria-disabled]="!canMoveUp() ? 'true' : null"
+          (click)="moveTop()"
+        >
+          <span aria-hidden="true">&#8607;</span>
+        </button>
+        <button
+          type="button"
+          class="cae-order-list__btn"
+          aria-label="Move down"
+          [attr.aria-disabled]="!canMoveDown() ? 'true' : null"
+          (click)="moveDown()"
+        >
+          <span aria-hidden="true">&#8595;</span>
+        </button>
+        <button
+          type="button"
+          class="cae-order-list__btn"
+          aria-label="Move to bottom"
+          [attr.aria-disabled]="!canMoveDown() ? 'true' : null"
+          (click)="moveBottom()"
+        >
+          <span aria-hidden="true">&#8609;</span>
+        </button>
+      </div>
+    </ng-template>
+
+    <!-- 'after' is the special case; anything else (incl. an out-of-contract runtime value) renders the
+         default inline-start layout, so the reorder buttons — the only non-drag path — never vanish. -->
+    @if (controlsPosition() !== 'after') {
+      <ng-container [ngTemplateOutlet]="controlsTpl" />
+    }
 
     <div class="cae-order-list__main">
       @if (headerDef(); as header) {
@@ -279,6 +289,10 @@ export class CaeOrderListHeaderDef {
         }
       </ul>
     </div>
+
+    @if (controlsPosition() === 'after') {
+      <ng-container [ngTemplateOutlet]="controlsTpl" />
+    }
   `,
   styles: `
     :host {
@@ -431,6 +445,13 @@ export class CaeOrderList<T = unknown> {
   readonly ariaLabel = input('');
   /** `id` of a visible element labelling the list — preferred when a heading is shown. */
   readonly ariaLabelledby = input('');
+  /**
+   * Which side the reorder-button column sits on (`p-orderList` `controlsPosition`, ported to logical
+   * values like the library's `labelPosition`): `'before'` (default) = inline-start, `'after'` =
+   * inline-end — both mirror under RTL. DOM-reordered (not CSS `order`) so tab order tracks visual
+   * order (WCAG 2.4.3).
+   */
+  readonly controlsPosition = input<'before' | 'after'>('before');
 
   /**
    * Show a text filter above the list (`p-orderList` `[filter]`). Off by default — when off the

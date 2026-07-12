@@ -20,6 +20,28 @@
   color: var(--cae-color-on-surface);
 }
 
+// Controls-position toggle — token-styled like the picker's own buttons (no literal colours, Book 04 §3.6).
+.forge-order-list-controls-toggle {
+  margin: 0 0 var(--cae-space-3);
+  padding: var(--cae-space-1) var(--cae-space-3);
+  border: 1px solid var(--cae-color-border);
+  border-radius: var(--cae-radius-sm);
+  background: var(--cae-surface-raised);
+  color: var(--cae-color-on-surface);
+  font: inherit;
+  cursor: pointer;
+}
+.forge-order-list-controls-toggle[aria-pressed='true'] {
+  background: var(--cae-color-primary);
+  color: var(--cae-color-on-primary);
+}
+.forge-order-list-controls-toggle:focus-visible {
+  outline: 2px solid var(--cae-color-primary);
+  outline-offset: 2px;
+  // Surface halo keeps the ring visible over the primary-filled pressed state (WCAG 1.4.11).
+  box-shadow: 0 0 0 4px var(--cae-surface-raised);
+}
+
 .forge-order-list-control {
   max-inline-size: 24rem;
 }

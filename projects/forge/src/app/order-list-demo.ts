@@ -67,6 +67,9 @@ export class OrderListDemo {
   /** The last move, echoed into a polite live region. */
   protected readonly lastMove = signal<string | null>(null);
 
+  /** Live toggle for the reorder-control column's side (#341 `controlsPosition`: before ↔ after). */
+  protected readonly controlsAfter = signal(false);
+
   protected onReorder(event: CaeOrderListReorderEvent<Widget>): void {
     this.lastMove.set(
       `${event.items[event.currentIndex].name} → position ${event.currentIndex + 1}`,
