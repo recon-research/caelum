@@ -17,6 +17,7 @@ import {
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { CdkDrag, CdkDragDrop, CdkDropList, moveItemInArray } from '@angular/cdk/drag-drop';
+import { Directionality } from '@angular/cdk/bidi';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 
 /** Per-instance id source for the aria-describedby instructions (SSR/hydration-stable, unlike random). */
@@ -146,9 +147,13 @@ function clampActive(raw: number, n: number): number {
  * *keyboard-path-for-every-drag* invariant holds for the reorder drag too. Either path updates that
  * side's model, emits `(reorder)` (with the `side`), and announces the move.
  *
- * **Scope.** Transfer, within-list reorder, per-side header slots, and per-side in-list filtering all
- * ship complete and accessible. Still deferred (#342): RTL of the transfer axis, and virtualization
+ * **Scope.** Transfer, within-list reorder, per-side header slots, per-side in-list filtering, and
+ * RTL of the transfer axis all ship complete and accessible. Still deferred (#342): virtualization
  * (#240-gated).
+ *
+ * **RTL.** Under an `rtl` {@link Directionality} the two panes mirror for free (the host is a logical
+ * flex row), so only the centre transfer glyphs flip (via the `--rtl` host class); the aria-labels stay
+ * direction-agnostic and the drag op is already RTL-correct via the CDK (Book 04 §3.5, Book 11 §3.5).
  *
  * **Filtering** (opt-in via `[filter]`, on both lists). A labelled `type="search"` box above each list
  * narrows *its* rows through the shared `[filterMatch]` predicate (default: case-insensitive substring
@@ -209,7 +214,10 @@ function clampActive(raw: number, n: number): number {
   selector: 'cae-pick-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [NgTemplateOutlet, CdkDropList, CdkDrag],
-  host: { class: 'cae-pick-list' },
+  host: {
+    class: 'cae-pick-list',
+    '[class.cae-pick-list--rtl]': 'isRtl()',
+  },
   template: `
     <div class="cae-pick-list__pane">
       @if (sourceHeaderDef(); as header) {
@@ -553,6 +561,13 @@ function clampActive(raw: number, n: number): number {
       opacity: 0.5;
       cursor: default;
     }
+    /* RTL: the panes mirror through the host's logical flex flow, so each transfer glyph (an
+       aria-hidden horizontal arrow) must point the other way. Scoped to the centre transfer column —
+       the reorder columns hold vertical glyphs and stay put; the aria-labels are direction-agnostic,
+       so this is purely visual (Book 04 §3.5). */
+    :host(.cae-pick-list--rtl) .cae-pick-list__controls .cae-pick-list__btn > span {
+      transform: scaleX(-1);
+    }
     /* Column holding a pane's filter box above its list, so the pane's reorder button column stays a
        sibling beside both (the pane-body is a row). */
     .cae-pick-list__list-col {
@@ -641,6 +656,18 @@ function clampActive(raw: number, n: number): number {
 })
 export class CaePickList<T = unknown> {
   private readonly announcer = inject(LiveAnnouncer);
+  /**
+   * Ambient text direction (Book 04 §3.5), driving the `--rtl` host class. In RTL the two panes mirror
+   * for free — the host is a logical flex row — so only the centre transfer glyphs (aria-hidden
+   * horizontal arrows) must flip; the reorder columns are vertical and untouched, and the aria-labels
+   * are direction-agnostic. Reads the signal-backed `Directionality.value` directly (reactive on both
+   * the root service and a `Dir` ancestor, which writes that signal before it starts emitting `change`),
+   * so even a born-rtl `[dir]` binding flips the glyphs on first paint — a case the
+   * `toSignal(change,{initialValue})` idiom misses. Root-provided, defaults to 'ltr'. (#364 aligns the
+   * still-change-based cae-splitter / cae-image-compare to this.)
+   */
+  private readonly directionality = inject(Directionality);
+  protected readonly isRtl = computed(() => this.directionality.value === 'rtl');
   private readonly sourceOptionEls = viewChildren<ElementRef<HTMLElement>>('sourceOption');
   private readonly targetOptionEls = viewChildren<ElementRef<HTMLElement>>('targetOption');
 

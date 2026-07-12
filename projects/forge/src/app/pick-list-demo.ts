@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
+import { Dir } from '@angular/cdk/bidi';
 
 import { CaeCard } from 'caelum/card';
 import {
@@ -17,7 +18,9 @@ interface Role {
 
 /**
  * The deferred "Pick list" `cae-pick-list` demo (#337; multi-select + within-list reorder + header
- * slots + in-list filter #342) — the second drag-drop-cluster component. It assigns roles two ways: drag
+ * slots + in-list filter + RTL transfer axis #342) — the second drag-drop-cluster component. A
+ * **direction toggle** wraps the picker in a `dir` ancestor so the transfer glyphs mirror under RTL
+ * (the panes flip for free via the logical flex row). It assigns roles two ways: drag
  * a role across, or **multi-select** roles (click / Ctrl+click / Shift+click; Space, Shift+Arrow, Ctrl+A
  * by keyboard) and move the whole block with the transfer buttons. Each list can also be **reordered in
  * place** — drag a row, or use its outer up / top / down / bottom buttons. A per-list **filter** box
@@ -35,6 +38,7 @@ interface Role {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     CaeCard,
+    Dir,
     CaePickList,
     CaePickListItemDef,
     CaePickListSourceHeaderDef,
@@ -86,6 +90,10 @@ export class PickListDemo {
 
   /** The last within-list reorder, echoed (visual only — the component already announces it). */
   protected readonly lastReorder = signal<string | null>(null);
+
+  /** Ambient text direction for the picker — the toggle wraps it in a `dir` ancestor so the transfer
+   * glyphs mirror (the panes flip for free), the one pre-M4 way to eyeball the RTL axis (#342). */
+  protected readonly rtl = signal(false);
 
   protected onTransfer(event: CaePickListTransferEvent<Role>): void {
     const n = event.items.length;
