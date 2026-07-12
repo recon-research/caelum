@@ -107,7 +107,9 @@ export class CaeOrderListItemDef<T = unknown> {
  * let-selected="selected">` to render rich rows (context: item, `index`, `active` = focused,
  * `selected`); without one, rows render `{{ item }}`. Rows must be **distinct references** (objects, or
  * unique primitives) — reorder + selection track by identity so the moved DOM node follows the item; a
- * custom `trackBy` and RTL are additive follow-ups.
+ * custom `trackBy` is an additive follow-up. **RTL** needs no code: the control column mirrors for
+ * free through the host's logical flex row and the reorder glyphs are vertical (nothing to flip),
+ * unlike `cae-pick-list`'s horizontal transfer axis (Book 04 §3.5; visual-regression gated at M4/#240).
  *
  * **Filtering** (opt-in via `[filter]`). A labelled `type="search"` box above the list narrows the
  * rendered rows through `[filterMatch]` (default: case-insensitive substring on `String(item)`).

@@ -8,27 +8,41 @@
     is announced to a screen reader. Type in a list's <strong>filter</strong> box to narrow it by
     name — reorder is disabled while a list is filtered, but transfer stays live. Each list carries
     a projected <strong>header</strong> that is also its accessible name, and is a
-    <code>role="listbox"</code>, so the whole picker is operable without a pointer.
+    <code>role="listbox"</code>, so the whole picker is operable without a pointer. Toggle
+    <strong>right-to-left</strong> to see the transfer glyphs mirror (the panes flip for free).
   </p>
 
-  <cae-pick-list
-    class="forge-pick-list-control"
-    [source]="available()"
-    (sourceChange)="available.set($event)"
-    [target]="assigned()"
-    (targetChange)="assigned.set($event)"
-    [sourceSelection]="availableSel()"
-    (sourceSelectionChange)="availableSel.set($event)"
-    [filter]="true"
-    [filterMatch]="roleFilter"
-    filterPlaceholder="Filter roles…"
-    (transfer)="onTransfer($event)"
-    (reorder)="onReorder($event)"
+  <!-- Constant accessible name + aria-pressed for the toggle state (the WAI-ARIA toggle-button
+       pattern, matching cae-password's visibility toggle); the pressed fill is the visual on-state. -->
+  <button
+    type="button"
+    class="forge-pick-list-rtl-toggle"
+    [attr.aria-pressed]="rtl()"
+    (click)="rtl.set(!rtl())"
   >
-    <ng-template caePickListSourceHeader>Available roles</ng-template>
-    <ng-template caePickListTargetHeader>Assigned roles</ng-template>
-    <ng-template caePickListItem let-role>{{ $any(role).name }}</ng-template>
-  </cae-pick-list>
+    Right-to-left
+  </button>
+
+  <div [dir]="rtl() ? 'rtl' : 'ltr'">
+    <cae-pick-list
+      class="forge-pick-list-control"
+      [source]="available()"
+      (sourceChange)="available.set($event)"
+      [target]="assigned()"
+      (targetChange)="assigned.set($event)"
+      [sourceSelection]="availableSel()"
+      (sourceSelectionChange)="availableSel.set($event)"
+      [filter]="true"
+      [filterMatch]="roleFilter"
+      filterPlaceholder="Filter roles…"
+      (transfer)="onTransfer($event)"
+      (reorder)="onReorder($event)"
+    >
+      <ng-template caePickListSourceHeader>Available roles</ng-template>
+      <ng-template caePickListTargetHeader>Assigned roles</ng-template>
+      <ng-template caePickListItem let-role>{{ $any(role).name }}</ng-template>
+    </cae-pick-list>
+  </div>
 
   <p class="forge-pick-list-assigned">
     Assigned: <strong>{{ assignedText() }}</strong>

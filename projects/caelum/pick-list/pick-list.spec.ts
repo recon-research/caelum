@@ -1,6 +1,7 @@
 import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { Dir, Direction } from '@angular/cdk/bidi';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { vi } from 'vitest';
 
@@ -164,6 +165,24 @@ class PickListFilterHost {
   readonly lastReorder = signal<CaePickListReorderEvent<Row> | null>(null);
   readonly match = (item: Row, q: string): boolean =>
     item.name.toLowerCase().includes(q.toLowerCase());
+}
+
+/** Wraps the pick-list under a CDK `Dir` ancestor so a test can flip the ambient direction reactively. */
+@Component({
+  selector: 'cae-pick-list-rtl-host',
+  imports: [CaePickList, CaePickListItemDef, Dir],
+  template: `
+    <div [dir]="direction()">
+      <cae-pick-list [source]="sourceItems()" [target]="targetItems()">
+        <ng-template caePickListItem let-item>{{ $any(item).name }}</ng-template>
+      </cae-pick-list>
+    </div>
+  `,
+})
+class PickListRtlHost {
+  readonly direction = signal<Direction>('ltr');
+  readonly sourceItems = signal<readonly Row[]>(ROWS());
+  readonly targetItems = signal<readonly Row[]>([]);
 }
 
 describe('CaePickList', () => {
@@ -1050,5 +1069,69 @@ describe('CaePickList', () => {
     r.type(r.srcInput(), ''); // clear — index 2 must survive against the full model, not clamp to 0
     const tabStop = r.srcList().querySelector('[tabindex="0"]') as HTMLElement;
     expect(tabStop.textContent!.trim()).toBe('Charlie'); // NOT Alpha
+  });
+
+  // The host is a logical flex row, so the panes mirror for free under rtl; only the centre transfer
+  // glyphs flip (via the `--rtl` host class + a CSS scaleX). The visual flip needs real layout, so it's
+  // a visual-regression concern (M4/#240) — here we lock the class hook via the ambient Directionality
+  // change contract (a scoped `Dir` ancestor, the reactive path the demo uses), plus that the transfer
+  // aria-labels stay semantic (never "left/right") so RTL never regresses the accessible name.
+  describe('RTL (transfer axis)', () => {
+    function renderDir(): ComponentFixture<PickListRtlHost> {
+      const f = TestBed.createComponent(PickListRtlHost);
+      filterFixtures.push(f); // drained by afterEach
+      f.detectChanges();
+      return f;
+    }
+    const pickListEl = (f: ComponentFixture<PickListRtlHost>): HTMLElement =>
+      (f.nativeElement as HTMLElement).querySelector('.cae-pick-list') as HTMLElement;
+    const hasRtl = (f: ComponentFixture<PickListRtlHost>): boolean =>
+      pickListEl(f).classList.contains('cae-pick-list--rtl');
+
+    it('adds the --rtl host class when the ambient direction becomes rtl', () => {
+      const f = renderDir();
+      expect(hasRtl(f)).toBe(false); // ltr baseline — no flip
+      f.componentInstance.direction.set('rtl');
+      f.detectChanges();
+      expect(hasRtl(f)).toBe(true);
+    });
+
+    it('flips on first paint under a born-rtl [dir] binding (not just a post-init toggle)', () => {
+      // Set rtl BEFORE the first detectChanges: the parent Dir binds rtl in the same update pass but
+      // never emits `change` (it's pre-init), so the older toSignal(change,{initialValue}) idiom would
+      // stay ltr here. Reading the signal-backed Directionality.value catches it. (Guards #342 vs #364.)
+      const f = TestBed.createComponent(PickListRtlHost);
+      filterFixtures.push(f);
+      f.componentInstance.direction.set('rtl');
+      f.detectChanges();
+      expect(hasRtl(f)).toBe(true);
+    });
+
+    it('removes the --rtl host class when the ambient direction flips back to ltr', () => {
+      const f = renderDir();
+      f.componentInstance.direction.set('rtl');
+      f.detectChanges();
+      expect(hasRtl(f)).toBe(true);
+      f.componentInstance.direction.set('ltr');
+      f.detectChanges();
+      expect(hasRtl(f)).toBe(false);
+    });
+
+    it('keeps the transfer button aria-labels direction-agnostic (semantic, not "left/right")', () => {
+      const f = renderDir();
+      f.componentInstance.direction.set('rtl');
+      f.detectChanges();
+      // The visual glyph flips; the accessible name never does — the same four semantic labels appear.
+      const root = f.nativeElement as HTMLElement;
+      const labels = Array.from(
+        root.querySelectorAll<HTMLButtonElement>('.cae-pick-list__controls .cae-pick-list__btn'),
+      ).map((b) => b.getAttribute('aria-label'));
+      expect(labels).toEqual([
+        'Move selected to target',
+        'Move all to target',
+        'Move selected to source',
+        'Move all to source',
+      ]);
+    });
   });
 });
