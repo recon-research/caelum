@@ -146,8 +146,19 @@ function clampActive(raw: number, n: number): number {
  * *keyboard-path-for-every-drag* invariant holds for the reorder drag too. Either path updates that
  * side's model, emits `(reorder)` (with the `side`), and announces the move.
  *
- * **Scope.** Transfer, within-list reorder, and per-side header slots all ship complete and accessible.
- * Still deferred (#342): in-list filtering, RTL of the transfer axis, and virtualization (#240-gated).
+ * **Scope.** Transfer, within-list reorder, per-side header slots, and per-side in-list filtering all
+ * ship complete and accessible. Still deferred (#342): RTL of the transfer axis, and virtualization
+ * (#240-gated).
+ *
+ * **Filtering** (opt-in via `[filter]`, on both lists). A labelled `type="search"` box above each list
+ * narrows *its* rows through the shared `[filterMatch]` predicate (default: case-insensitive substring
+ * on `String(item)`). Filtering is a lens for *finding*: it is per-list, selection is by reference so it
+ * survives filtering, and **transfer stays fully live** (the primary use — filter to find, select, move;
+ * move-selected acts on the whole selection, move-all on the whole list). Only **within-list reorder**
+ * (a list's move buttons + its rows' drag) is disabled while that list filters — reordering a partial
+ * view is ambiguous for a keyboard/AT user (Book 11 §3.5). When a list's query is blank its filtered
+ * view *is* its model by reference, so the unfiltered paths are byte-for-byte unchanged. Each list
+ * announces its visible-row count via `LiveAnnouncer` and shows `[emptyMessage]` on no match.
  *
  * **Selection & focus model (per list; ARIA listbox multiselect).** Each list is an independent
  * `role="listbox"` (`aria-multiselectable`) whose rows are `role="option"`. Focus and selection are
@@ -245,49 +256,72 @@ function clampActive(raw: number, n: number): number {
             <span aria-hidden="true">&#8609;</span>
           </button>
         </div>
-        <ul
-          class="cae-pick-list__list"
-          role="listbox"
-          aria-multiselectable="true"
-          cdkDropList
-          #sourceDrop="cdkDropList"
-          [cdkDropListData]="source()"
-          [cdkDropListConnectedTo]="[targetDrop]"
-          [attr.aria-label]="sourceLabelledby() ? null : sourceAriaLabel().trim() || 'Source list'"
-          [attr.aria-labelledby]="sourceLabelledby() || null"
-          (cdkDropListDropped)="onDrop($event, 'source')"
-        >
-          @for (item of source(); track item; let i = $index) {
-            <li
-              #sourceOption
-              class="cae-pick-list__option"
-              [class.cae-pick-list__option--active]="i === sourceActive()"
-              [class.cae-pick-list__option--selected]="isSelected('source', item)"
-              role="option"
-              cdkDrag
-              [attr.aria-selected]="isSelected('source', item)"
-              [attr.aria-describedby]="instructionsId"
-              [tabindex]="i === sourceTabStop() ? 0 : -1"
-              (focus)="activate('source', i)"
-              (click)="onOptionClick('source', i, $event)"
-              (keydown)="onKeydown('source', i, $event)"
-            >
-              @if (itemDef(); as def) {
-                <ng-container
-                  [ngTemplateOutlet]="def.template"
-                  [ngTemplateOutletContext]="{
-                    $implicit: item,
-                    index: i,
-                    active: i === sourceActive(),
-                    selected: isSelected('source', item),
-                  }"
-                />
-              } @else {
-                {{ item }}
-              }
-            </li>
+        <div class="cae-pick-list__list-col">
+          @if (filter()) {
+            <input
+              type="search"
+              class="cae-pick-list__filter"
+              [attr.aria-label]="sourceFilterName()"
+              [attr.placeholder]="filterPlaceholder() || null"
+              [value]="sourceFilterQuery()"
+              [attr.aria-describedby]="
+                sourceIsFiltering() && sourceFiltered().length === 0 ? sourceEmptyId : null
+              "
+              (input)="onFilterInput('source', $event)"
+            />
           }
-        </ul>
+          <ul
+            class="cae-pick-list__list"
+            role="listbox"
+            aria-multiselectable="true"
+            cdkDropList
+            #sourceDrop="cdkDropList"
+            [cdkDropListData]="source()"
+            [cdkDropListConnectedTo]="[targetDrop]"
+            [attr.aria-label]="
+              sourceLabelledby() ? null : sourceAriaLabel().trim() || 'Source list'
+            "
+            [attr.aria-labelledby]="sourceLabelledby() || null"
+            (cdkDropListDropped)="onDrop($event, 'source')"
+          >
+            @for (item of sourceFiltered(); track item; let i = $index) {
+              <li
+                #sourceOption
+                class="cae-pick-list__option"
+                [class.cae-pick-list__option--active]="i === sourceActive()"
+                [class.cae-pick-list__option--selected]="isSelected('source', item)"
+                role="option"
+                cdkDrag
+                [cdkDragDisabled]="sourceIsFiltering()"
+                [attr.aria-selected]="isSelected('source', item)"
+                [attr.aria-describedby]="instructionsId"
+                [tabindex]="i === sourceTabStop() ? 0 : -1"
+                (focus)="activate('source', i)"
+                (click)="onOptionClick('source', i, $event)"
+                (keydown)="onKeydown('source', i, $event)"
+              >
+                @if (itemDef(); as def) {
+                  <ng-container
+                    [ngTemplateOutlet]="def.template"
+                    [ngTemplateOutletContext]="{
+                      $implicit: item,
+                      index: i,
+                      active: i === sourceActive(),
+                      selected: isSelected('source', item),
+                    }"
+                  />
+                } @else {
+                  {{ item }}
+                }
+              </li>
+            }
+            @if (sourceIsFiltering() && sourceFiltered().length === 0) {
+              <li [id]="sourceEmptyId" class="cae-pick-list__empty" role="presentation">
+                {{ emptyMessage() }}
+              </li>
+            }
+          </ul>
+        </div>
       </div>
     </div>
 
@@ -296,7 +330,7 @@ function clampActive(raw: number, n: number): number {
         type="button"
         class="cae-pick-list__btn"
         aria-label="Move selected to target"
-        [attr.aria-disabled]="!canMoveToTarget() ? 'true' : null"
+        [attr.aria-disabled]="!canMoveSelectedToTarget() ? 'true' : null"
         (click)="moveSelectedToTarget()"
       >
         <span aria-hidden="true">&#8594;</span>
@@ -305,7 +339,7 @@ function clampActive(raw: number, n: number): number {
         type="button"
         class="cae-pick-list__btn"
         aria-label="Move all to target"
-        [attr.aria-disabled]="!canMoveToTarget() ? 'true' : null"
+        [attr.aria-disabled]="!canMoveAllToTarget() ? 'true' : null"
         (click)="moveAllToTarget()"
       >
         <span aria-hidden="true">&#8658;</span>
@@ -314,7 +348,7 @@ function clampActive(raw: number, n: number): number {
         type="button"
         class="cae-pick-list__btn"
         aria-label="Move selected to source"
-        [attr.aria-disabled]="!canMoveToSource() ? 'true' : null"
+        [attr.aria-disabled]="!canMoveSelectedToSource() ? 'true' : null"
         (click)="moveSelectedToSource()"
       >
         <span aria-hidden="true">&#8592;</span>
@@ -323,7 +357,7 @@ function clampActive(raw: number, n: number): number {
         type="button"
         class="cae-pick-list__btn"
         aria-label="Move all to source"
-        [attr.aria-disabled]="!canMoveToSource() ? 'true' : null"
+        [attr.aria-disabled]="!canMoveAllToSource() ? 'true' : null"
         (click)="moveAllToSource()"
       >
         <span aria-hidden="true">&#8656;</span>
@@ -337,49 +371,72 @@ function clampActive(raw: number, n: number): number {
         </div>
       }
       <div class="cae-pick-list__pane-body">
-        <ul
-          class="cae-pick-list__list"
-          role="listbox"
-          aria-multiselectable="true"
-          cdkDropList
-          #targetDrop="cdkDropList"
-          [cdkDropListData]="target()"
-          [cdkDropListConnectedTo]="[sourceDrop]"
-          [attr.aria-label]="targetLabelledby() ? null : targetAriaLabel().trim() || 'Target list'"
-          [attr.aria-labelledby]="targetLabelledby() || null"
-          (cdkDropListDropped)="onDrop($event, 'target')"
-        >
-          @for (item of target(); track item; let i = $index) {
-            <li
-              #targetOption
-              class="cae-pick-list__option"
-              [class.cae-pick-list__option--active]="i === targetActive()"
-              [class.cae-pick-list__option--selected]="isSelected('target', item)"
-              role="option"
-              cdkDrag
-              [attr.aria-selected]="isSelected('target', item)"
-              [attr.aria-describedby]="instructionsId"
-              [tabindex]="i === targetTabStop() ? 0 : -1"
-              (focus)="activate('target', i)"
-              (click)="onOptionClick('target', i, $event)"
-              (keydown)="onKeydown('target', i, $event)"
-            >
-              @if (itemDef(); as def) {
-                <ng-container
-                  [ngTemplateOutlet]="def.template"
-                  [ngTemplateOutletContext]="{
-                    $implicit: item,
-                    index: i,
-                    active: i === targetActive(),
-                    selected: isSelected('target', item),
-                  }"
-                />
-              } @else {
-                {{ item }}
-              }
-            </li>
+        <div class="cae-pick-list__list-col">
+          @if (filter()) {
+            <input
+              type="search"
+              class="cae-pick-list__filter"
+              [attr.aria-label]="targetFilterName()"
+              [attr.placeholder]="filterPlaceholder() || null"
+              [value]="targetFilterQuery()"
+              [attr.aria-describedby]="
+                targetIsFiltering() && targetFiltered().length === 0 ? targetEmptyId : null
+              "
+              (input)="onFilterInput('target', $event)"
+            />
           }
-        </ul>
+          <ul
+            class="cae-pick-list__list"
+            role="listbox"
+            aria-multiselectable="true"
+            cdkDropList
+            #targetDrop="cdkDropList"
+            [cdkDropListData]="target()"
+            [cdkDropListConnectedTo]="[sourceDrop]"
+            [attr.aria-label]="
+              targetLabelledby() ? null : targetAriaLabel().trim() || 'Target list'
+            "
+            [attr.aria-labelledby]="targetLabelledby() || null"
+            (cdkDropListDropped)="onDrop($event, 'target')"
+          >
+            @for (item of targetFiltered(); track item; let i = $index) {
+              <li
+                #targetOption
+                class="cae-pick-list__option"
+                [class.cae-pick-list__option--active]="i === targetActive()"
+                [class.cae-pick-list__option--selected]="isSelected('target', item)"
+                role="option"
+                cdkDrag
+                [cdkDragDisabled]="targetIsFiltering()"
+                [attr.aria-selected]="isSelected('target', item)"
+                [attr.aria-describedby]="instructionsId"
+                [tabindex]="i === targetTabStop() ? 0 : -1"
+                (focus)="activate('target', i)"
+                (click)="onOptionClick('target', i, $event)"
+                (keydown)="onKeydown('target', i, $event)"
+              >
+                @if (itemDef(); as def) {
+                  <ng-container
+                    [ngTemplateOutlet]="def.template"
+                    [ngTemplateOutletContext]="{
+                      $implicit: item,
+                      index: i,
+                      active: i === targetActive(),
+                      selected: isSelected('target', item),
+                    }"
+                  />
+                } @else {
+                  {{ item }}
+                }
+              </li>
+            }
+            @if (targetIsFiltering() && targetFiltered().length === 0) {
+              <li [id]="targetEmptyId" class="cae-pick-list__empty" role="presentation">
+                {{ emptyMessage() }}
+              </li>
+            }
+          </ul>
+        </div>
         <div class="cae-pick-list__reorder" role="group" aria-label="Reorder target list">
           <button
             type="button"
@@ -423,8 +480,20 @@ function clampActive(raw: number, n: number): number {
 
     <span [id]="instructionsId" class="cae-pick-list__sr-only">
       Space toggles selection; Shift plus Arrow, Home, or End extends it; Control plus A selects
-      all; Escape clears. Reorder within a list with its move buttons or by dragging a row; move the
-      selection to the other list with the transfer buttons or a cross-list drag.
+      all; Escape clears.
+      @if (sourceIsFiltering() && targetIsFiltering()) {
+        Both lists are filtered — reordering and dragging are disabled in each; clear a list's
+        filter to reorder it. The transfer buttons still move the selection between the lists.
+      } @else if (sourceIsFiltering()) {
+        The source list is filtered — reordering and dragging are disabled there; clear its filter
+        to reorder it. The transfer buttons still move the selection between the lists.
+      } @else if (targetIsFiltering()) {
+        The target list is filtered — reordering and dragging are disabled there; clear its filter
+        to reorder it. The transfer buttons still move the selection between the lists.
+      } @else {
+        Reorder within a list with its move buttons or by dragging a row; move the selection to the
+        other list with the transfer buttons or a cross-list drag.
+      }
     </span>
   `,
   styles: `
@@ -484,6 +553,27 @@ function clampActive(raw: number, n: number): number {
       opacity: 0.5;
       cursor: default;
     }
+    /* Column holding a pane's filter box above its list, so the pane's reorder button column stays a
+       sibling beside both (the pane-body is a row). */
+    .cae-pick-list__list-col {
+      flex: 1 1 auto;
+      min-inline-size: 0;
+      display: flex;
+      flex-direction: column;
+      gap: var(--cae-space-1);
+    }
+    .cae-pick-list__filter {
+      padding: var(--cae-space-2) var(--cae-space-3);
+      border: 1px solid var(--cae-color-border);
+      border-radius: var(--cae-radius-md);
+      background: var(--cae-surface-base);
+      color: var(--cae-color-on-surface);
+      font: inherit;
+    }
+    .cae-pick-list__filter:focus-visible {
+      outline: 2px solid var(--cae-color-primary);
+      outline-offset: 2px;
+    }
     .cae-pick-list__list {
       flex: 1 1 auto;
       margin: 0;
@@ -493,6 +583,13 @@ function clampActive(raw: number, n: number): number {
       border-radius: var(--cae-radius-md);
       background: var(--cae-surface-base);
       overflow: auto;
+    }
+    /* Empty-filter row — role="presentation" (not a fake option) so each listbox holds only real
+       options; the visible-count is also announced via LiveAnnouncer for non-visual users. */
+    .cae-pick-list__empty {
+      padding: var(--cae-space-2) var(--cae-space-3);
+      color: var(--cae-color-on-surface);
+      opacity: 0.7;
     }
     .cae-pick-list__option {
       display: block;
@@ -554,6 +651,9 @@ export class CaePickList<T = unknown> {
   /** Ids the projected headers carry, so each listbox can point its `aria-labelledby` at its own header. */
   protected readonly sourceHeaderId = `cae-pick-list-source-header-${this.uid}`;
   protected readonly targetHeaderId = `cae-pick-list-target-header-${this.uid}`;
+  /** Ids for each side's no-match row, so that list's filter box can persistently describe its empty state. */
+  protected readonly sourceEmptyId = `cae-pick-list-source-empty-${this.uid}`;
+  protected readonly targetEmptyId = `cae-pick-list-target-empty-${this.uid}`;
 
   /** The left/source list, two-way. Transfers replace it with a fresh array. */
   readonly source = model<readonly T[]>([]);
@@ -576,6 +676,27 @@ export class CaePickList<T = unknown> {
   readonly sourceAriaLabelledby = input('');
   /** `id` of a visible element labelling the target list — preferred when a heading is shown. */
   readonly targetAriaLabelledby = input('');
+
+  /**
+   * Show a text filter above **both** lists (`p-pickList` `[filterBy]`). Off by default — when off the
+   * filter boxes, the filtered views, and every filter code path are inert, so the shipped
+   * transfer/reorder/selection behaviour is byte-for-byte unchanged.
+   */
+  readonly filter = input(false);
+  /** Placeholder for both filter boxes (not an accessible name; each box is named from its list). */
+  readonly filterPlaceholder = input('');
+  /** Row shown in a list when its filter matches nothing (`p-pickList` `emptyFilterMessage`). */
+  readonly emptyMessage = input('No results');
+  /**
+   * Predicate deciding whether a row survives its list's filter query (shared by both lists). The
+   * default is a case-insensitive substring test over `String(item)`, so it only works for
+   * **string/primitive rows** — object rows stringify to `"[object Object]"` and **must** supply a
+   * predicate (e.g. `(u, q) => u.name.toLowerCase().includes(q.toLowerCase())`).
+   */
+  readonly filterMatch = input<(item: T, query: string) => boolean>((item, query) =>
+    String(item).toLowerCase().includes(query.toLowerCase()),
+  );
+
   /** Emits on every transfer (drag or button) with the moved item(s), the direction, and both new orders. */
   readonly transfer = output<CaePickListTransferEvent<T>>();
   /** Emits on every within-list reorder (drag or move button) with the side, its new order, and moved indices. */
@@ -599,16 +720,43 @@ export class CaePickList<T = unknown> {
     () => this.targetAriaLabelledby().trim() || (this.targetHeaderDef() ? this.targetHeaderId : ''),
   );
 
+  /** Each list's filter query (raw text from its box); blank ⇒ that list is not filtering. */
+  protected readonly sourceFilterQuery = signal('');
+  protected readonly targetFilterQuery = signal('');
+  /** Whether a list is actively narrowing (the filter box is on AND that list's query is non-blank). */
+  protected readonly sourceIsFiltering = computed(
+    () => this.filter() && this.sourceFilterQuery().trim().length > 0,
+  );
+  protected readonly targetIsFiltering = computed(
+    () => this.filter() && this.targetFilterQuery().trim().length > 0,
+  );
+  /**
+   * Each list's rendered rows. **When that list is not filtering this is its model array by reference**
+   * — so indices, `track` identity, and its whole transfer/reorder/selection path are unchanged. The
+   * roving-focus + selection model of a side operates over *its* filtered view; the reorder model stays
+   * over the full model and is disabled while that side filters. Transfer stays live and acts on the
+   * selection (which is by reference, so it survives filtering) — filtering is a lens for *finding*.
+   */
+  protected readonly sourceFiltered = computed<readonly T[]>(() => this.computeFiltered('source'));
+  protected readonly targetFiltered = computed<readonly T[]>(() => this.computeFiltered('target'));
+  /** Accessible name for each side's filter box, derived from that list's `aria-label`. */
+  protected readonly sourceFilterName = computed(() => this.filterNameOf('source'));
+  protected readonly targetFilterName = computed(() => this.filterNameOf('target'));
+
   /** Raw active indices; may momentarily exceed a list's length after a transfer (clamped on read). */
   private readonly sourceActiveIndex = signal(0);
   private readonly targetActiveIndex = signal(0);
 
-  /** Active index of each list, clamped into range (or `-1` when empty) — the a11y-authoritative value. */
+  /**
+   * Active index of each list, clamped into its *rendered* (filtered) range (or `-1` when empty) — the
+   * a11y-authoritative value. Reads the filtered view so roving focus roves over the visible rows; the
+   * reclamp effect keeps the *stored* raw index coherent with the full model (see the constructor).
+   */
   protected readonly sourceActive = computed(() =>
-    clampActive(this.sourceActiveIndex(), this.source().length),
+    clampActive(this.sourceActiveIndex(), this.sourceFiltered().length),
   );
   protected readonly targetActive = computed(() =>
-    clampActive(this.targetActiveIndex(), this.target().length),
+    clampActive(this.targetActiveIndex(), this.targetFiltered().length),
   );
   /** Each list's single tab stop — its `active()` floored at 0 so a non-empty list always has one tabbable row. */
   protected readonly sourceTabStop = computed(() => Math.max(this.sourceActive(), 0));
@@ -628,9 +776,20 @@ export class CaePickList<T = unknown> {
     return this.selectedSetOf(side).has(item);
   }
 
-  /** Transfer to a side is possible iff its source (the *other* list) has items to move. */
-  protected readonly canMoveToTarget = computed(() => this.source().length > 0);
-  protected readonly canMoveToSource = computed(() => this.target().length > 0);
+  /** Move-**all** is live iff the source (the *other* list) has any items — the whole full model moves. */
+  protected readonly canMoveAllToTarget = computed(() => this.source().length > 0);
+  protected readonly canMoveAllToSource = computed(() => this.target().length > 0);
+  /**
+   * Move-**selected** is live iff the source has a non-empty move set (its selection, or — with nothing
+   * selected — its focused visible row). So when a source is filtered to zero matches with no standing
+   * selection, "move selected" correctly disables instead of being an enabled no-op.
+   */
+  protected readonly canMoveSelectedToTarget = computed(
+    () => this.moveIndicesOf('source').length > 0,
+  );
+  protected readonly canMoveSelectedToSource = computed(
+    () => this.moveIndicesOf('target').length > 0,
+  );
 
   /** Per-side reorder bounds — each list's move-up/top (down/bottom) buttons are live off its own edges. */
   protected readonly sourceCanMoveUp = computed(() => this.canReorderUp('source'));
@@ -639,10 +798,11 @@ export class CaePickList<T = unknown> {
   protected readonly targetCanMoveDown = computed(() => this.canReorderDown('target'));
 
   constructor() {
-    // Clamp each RAW active index whenever its list changes, so a shrink can't leave a stale
-    // out-of-range index that would "resurrect" (jump to a different item) if the list grows back.
-    // The `active()` computeds clamp on read; this keeps the stored indices coherent too. Guarded so
-    // it's a no-op once clamped (can't loop).
+    // Clamp each RAW active index against the FULL model length (not the filtered view) whenever a list
+    // changes, so a shrink can't leave a stale out-of-range index that would "resurrect" if the list
+    // grows back. Clamping to the filtered length here would destructively shrink the stored index while
+    // filtering and strand the tab stop after the query clears; the `active()` computeds read-clamp to
+    // the filtered length for rendering instead. Guarded so it's a no-op once clamped (can't loop).
     effect(() => {
       this.reclamp(this.sourceActiveIndex, this.source().length);
       this.reclamp(this.targetActiveIndex, this.target().length);
@@ -673,13 +833,33 @@ export class CaePickList<T = unknown> {
     this.activeSignal(side).set(index);
   }
 
+  /** Update `side`'s filter query from its box and announce the new visible-row count (or the clear). */
+  protected onFilterInput(side: CaePickListSide, event: Event): void {
+    // Keep `side`'s roving focus on the same ITEM across the query change: capture the focused item from
+    // the OLD view, then remap the raw active index to its position in the NEW view (or the top if it is
+    // now filtered out). Without this, focus is index-stable but not item-stable across a filter change.
+    const prevItem = this.filteredOf(side)[this.activeOf(side)];
+    this.filterQueryOf(side).set((event.target as HTMLInputElement).value);
+    const remapped = prevItem !== undefined ? this.filteredOf(side).indexOf(prevItem) : -1;
+    this.activeSignal(side).set(remapped >= 0 ? remapped : 0);
+    if (!this.isFilteringOf(side)) {
+      this.announcer.announce(`Filter cleared in the ${side} list`);
+      return;
+    }
+    const n = this.filteredOf(side).length;
+    // A no-match announces the SAME text the empty-state row shows, so the two channels agree.
+    this.announcer.announce(
+      n === 0 ? this.emptyMessage() : `${n} result${n === 1 ? '' : 's'} in the ${side} list`,
+    );
+  }
+
   /**
    * Pointer selection within `side` (ARIA listbox multiselect): plain click selects only this row;
    * Ctrl/Cmd-click toggles it; Shift-click selects the contiguous range from the anchor. Always focuses.
    */
   protected onOptionClick(side: CaePickListSide, index: number, event: MouseEvent): void {
     this.activeSignal(side).set(index);
-    const item = this.read(side)[index];
+    const item = this.filteredOf(side)[index];
     if (item === undefined) return;
     if (event.shiftKey) {
       this.selectRange(side, index, index);
@@ -693,16 +873,16 @@ export class CaePickList<T = unknown> {
   }
 
   protected moveSelectedToTarget(): void {
-    if (this.canMoveToTarget()) this.transferSelected('source', 'target');
+    if (this.canMoveSelectedToTarget()) this.transferSelected('source', 'target');
   }
   protected moveSelectedToSource(): void {
-    if (this.canMoveToSource()) this.transferSelected('target', 'source');
+    if (this.canMoveSelectedToSource()) this.transferSelected('target', 'source');
   }
   protected moveAllToTarget(): void {
-    if (this.canMoveToTarget()) this.transferAll('source', 'target');
+    if (this.canMoveAllToTarget()) this.transferAll('source', 'target');
   }
   protected moveAllToSource(): void {
-    if (this.canMoveToSource()) this.transferAll('target', 'source');
+    if (this.canMoveAllToSource()) this.transferAll('target', 'source');
   }
 
   /** Reorder `side`'s selected block (or its focused row) one step up / to the top of that list. */
@@ -726,11 +906,16 @@ export class CaePickList<T = unknown> {
    */
   protected onDrop(event: CdkDragDrop<readonly T[]>, dropSide: CaePickListSide): void {
     if (event.previousContainer === event.container) {
+      if (this.isFilteringOf(dropSide)) return; // no within-list reorder while filtering (defensive; rows are drag-disabled)
       this.reorderAt(dropSide, event.previousIndex, event.currentIndex);
       return;
     }
     const fromSide: CaePickListSide = dropSide === 'source' ? 'target' : 'source';
-    this.transferAt(fromSide, event.previousIndex, dropSide, event.currentIndex);
+    // If the destination is filtered, the CDK drop index is relative to the visible subset — append to
+    // the full list instead of inserting at an ambiguous full-model position. (The drag source is never
+    // a filtering pane: its rows are cdkDragDisabled, so `previousIndex` is always a full-model index.)
+    const toIndex = this.isFilteringOf(dropSide) ? this.read(dropSide).length : event.currentIndex;
+    this.transferAt(fromSide, event.previousIndex, dropSide, toIndex);
   }
 
   /**
@@ -739,12 +924,14 @@ export class CaePickList<T = unknown> {
    * in that list; Escape clears it. Transfers are the buttons' job (a data list has no default action).
    */
   protected onKeydown(side: CaePickListSide, index: number, event: KeyboardEvent): void {
-    const items = this.read(side);
+    // Nav + selection operate over the RENDERED (filtered) rows; the template `$index` is filter-relative.
+    const items = this.filteredOf(side);
     const last = items.length - 1;
     if (last < 0) return;
 
     if ((event.ctrlKey || event.metaKey) && (event.key === 'a' || event.key === 'A')) {
       event.preventDefault();
+      // Select-all means all *visible* rows — identical to the whole list when not filtering.
       this.commitSelection(side, new Set(items));
       return;
     }
@@ -790,7 +977,7 @@ export class CaePickList<T = unknown> {
 
   /** Toggle row `index` of `side` in/out of that list's selection. */
   private toggle(side: CaePickListSide, index: number): void {
-    const item = this.read(side)[index];
+    const item = this.filteredOf(side)[index];
     if (item === undefined) return;
     const set = new Set(this.selectionModel(side)());
     if (set.has(item)) set.delete(item);
@@ -804,7 +991,8 @@ export class CaePickList<T = unknown> {
    * one is established at `fallbackFrom` (the origin row) so subsequent extends grow from there.
    */
   private selectRange(side: CaePickListSide, focus: number, fallbackFrom: number): void {
-    const items = this.read(side);
+    // Ranges are drawn over the rendered (filtered) rows; `commitSelection` re-orders to full-list order.
+    const items = this.filteredOf(side);
     const anchorItem = this.anchorSignal(side)();
     const anchorIdx = anchorItem != null ? items.indexOf(anchorItem) : -1;
     const from = anchorIdx >= 0 ? anchorIdx : fallbackFrom;
@@ -828,7 +1016,12 @@ export class CaePickList<T = unknown> {
     );
   }
 
-  /** Ascending indices the transfer acts on for `side`: its selected rows, or its focused row when none. */
+  /**
+   * Ascending **full-model** indices the transfer/reorder acts on for `side`: its selected rows
+   * (filter-independent — selection is by identity), or its focused row when none. The focused-row
+   * fallback maps the (filtered) active index back through its item, so it stays a correct full-model
+   * index while filtering — transfer must keep working on the focused visible row even then.
+   */
   private moveIndicesOf(side: CaePickListSide): readonly number[] {
     const items = this.read(side);
     const sel = this.selectedSetOf(side);
@@ -838,16 +1031,21 @@ export class CaePickList<T = unknown> {
     }, []);
     if (picked.length) return picked;
     const a = this.activeOf(side);
-    return a >= 0 ? [a] : [];
+    if (a < 0) return [];
+    const focusedItem = this.filteredOf(side)[a];
+    const full = focusedItem !== undefined ? items.indexOf(focusedItem) : -1;
+    return full >= 0 ? [full] : [];
   }
 
-  /** `side`'s move-up/top is live iff its move set is non-empty and not already at the top. */
+  /** `side`'s move-up/top is live iff not filtering AND its move set is non-empty and not at the top. */
   private canReorderUp(side: CaePickListSide): boolean {
+    if (this.isFilteringOf(side)) return false; // reorder is disabled while filtering (partial-view indices are ambiguous)
     const m = this.moveIndicesOf(side);
     return m.length > 0 && m[0] > 0;
   }
-  /** `side`'s move-down/bottom is live iff its move set is non-empty and not already at the bottom. */
+  /** `side`'s move-down/bottom is live iff not filtering AND its move set is non-empty and not at the bottom. */
   private canReorderDown(side: CaePickListSide): boolean {
+    if (this.isFilteringOf(side)) return false;
     const m = this.moveIndicesOf(side);
     return m.length > 0 && m[m.length - 1] < this.read(side).length - 1;
   }
@@ -933,8 +1131,10 @@ export class CaePickList<T = unknown> {
     const idx = this.moveIndicesOf(side);
     if (!idx.length) return;
     const items = [...this.read(side)];
+    // Resolve the focused item from the filtered (rendered) view, so a filtered index never mis-slices
+    // the full `items` array (reorder is gated off while filtering, so this is defensive parity).
     const activeIdx = this.activeOf(side);
-    const focusedItem = activeIdx >= 0 ? items[activeIdx] : undefined;
+    const focusedItem = activeIdx >= 0 ? this.filteredOf(side)[activeIdx] : undefined;
     const firstMoved = items[idx[0]];
     const picked = new Set(idx.map((i) => items[i]));
 
@@ -1035,5 +1235,26 @@ export class CaePickList<T = unknown> {
   }
   private activeOf(side: CaePickListSide): number {
     return side === 'source' ? this.sourceActive() : this.targetActive();
+  }
+  private isFilteringOf(side: CaePickListSide): boolean {
+    return side === 'source' ? this.sourceIsFiltering() : this.targetIsFiltering();
+  }
+  private filteredOf(side: CaePickListSide): readonly T[] {
+    return side === 'source' ? this.sourceFiltered() : this.targetFiltered();
+  }
+  private filterQueryOf(side: CaePickListSide): WritableSignal<string> {
+    return side === 'source' ? this.sourceFilterQuery : this.targetFilterQuery;
+  }
+  /** `side`'s rendered rows: its model by reference when not filtering, else the query-matched subset. */
+  private computeFiltered(side: CaePickListSide): readonly T[] {
+    if (!this.isFilteringOf(side)) return this.read(side);
+    const q = this.filterQueryOf(side)().trim();
+    const match = this.filterMatch();
+    return this.read(side).filter((it) => match(it, q));
+  }
+  /** Accessible name for `side`'s filter box — `"Filter <ariaLabel>"`, else `"Filter source/target list"`. */
+  private filterNameOf(side: CaePickListSide): string {
+    const listName = (side === 'source' ? this.sourceAriaLabel() : this.targetAriaLabel()).trim();
+    return listName ? `Filter ${listName}` : `Filter ${side} list`;
   }
 }

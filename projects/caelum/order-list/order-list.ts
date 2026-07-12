@@ -533,7 +533,13 @@ export class CaeOrderList<T = unknown> {
 
   /** Update the filter query from the box and announce the new visible-row count (or the clear). */
   protected onFilterInput(event: Event): void {
+    // Keep the roving focus on the same ITEM across the query change: capture the focused item from the
+    // OLD view, then remap the focus index to its position in the NEW view (or the top if it's now
+    // filtered out). Without this, focus is index-stable but not item-stable across a filter round-trip.
+    const prevItem = this.filtered()[this.active()];
     this.filterQuery.set((event.target as HTMLInputElement).value);
+    const remapped = prevItem !== undefined ? this.filtered().indexOf(prevItem) : -1;
+    this.focusIndex.set(remapped >= 0 ? remapped : 0);
     if (!this.isFiltering()) {
       this.announcer.announce('Filter cleared');
       return;
@@ -701,7 +707,9 @@ export class CaeOrderList<T = unknown> {
     const idx = this.moveIndices();
     if (!idx.length) return;
     const items = [...this.value()];
-    const focusedItem = this.active() >= 0 ? items[this.active()] : undefined;
+    // Resolve the focused item from the filtered (rendered) view, so a filtered index never mis-slices
+    // the full `items` array (reorder is gated off while filtering, so this is defensive parity).
+    const focusedItem = this.active() >= 0 ? this.filtered()[this.active()] : undefined;
     const firstMoved = items[idx[0]];
     const picked = new Set(idx.map((i) => items[i]));
 
