@@ -7,27 +7,40 @@
     and use the <strong>move buttons</strong> to move the whole set — every move is announced to a
     screen reader. Arrow keys move focus; the list is a multi-selectable
     <code>role="listbox"</code>, so it is fully operable without a pointer. Its visible
-    <strong>header</strong> also names the list for a screen reader. Type in the
+    <strong>header</strong> also names the list for a screen reader. <strong>Billing</strong> is
+    <strong>locked</strong> — dimmed and non-movable, but still keyboard-navigable. Type in the
     <strong>filter box</strong> to narrow the sections by name — reorder is disabled while
     filtering, since a partial view has no coherent "move up". Toggle
     <strong>controls after list</strong> to move the button column to the other side (it mirrors for
-    free under RTL).
+    free under RTL), or <strong>drag handle</strong> to drag rows only by their grip.
   </p>
 
   <!-- Constant accessible name + aria-pressed for the toggle state (the WAI-ARIA toggle-button
        pattern, matching the pick-list demo's direction toggle); the pressed fill is the visual on-state. -->
-  <button
-    type="button"
-    class="forge-order-list-controls-toggle"
-    [attr.aria-pressed]="controlsAfter()"
-    (click)="controlsAfter.set(!controlsAfter())"
-  >
-    Controls after list
-  </button>
+  <div class="forge-order-list-toggles">
+    <button
+      type="button"
+      class="forge-order-list-toggle"
+      [attr.aria-pressed]="controlsAfter()"
+      (click)="controlsAfter.set(!controlsAfter())"
+    >
+      Controls after list
+    </button>
+    <button
+      type="button"
+      class="forge-order-list-toggle"
+      [attr.aria-pressed]="dragHandle()"
+      (click)="dragHandle.set(!dragHandle())"
+    >
+      Drag handle
+    </button>
+  </div>
 
   <cae-order-list
     class="forge-order-list-control"
     [controlsPosition]="controlsAfter() ? 'after' : 'before'"
+    [dragHandle]="dragHandle()"
+    [disabledMatch]="widgetLocked"
     [value]="widgets()"
     (valueChange)="widgets.set($event)"
     [selection]="selected()"
@@ -39,7 +52,12 @@
     (reorder)="onReorder($event)"
   >
     <ng-template caeOrderListHeader>Dashboard sections</ng-template>
-    <ng-template caeOrderListItem let-widget>{{ $any(widget).name }}</ng-template>
+    <ng-template caeOrderListItem let-widget let-disabled="disabled"
+      >{{ $any(widget).name }}
+      @if (disabled) {
+        <span class="forge-order-list-locked"> (locked)</span>
+      }
+    </ng-template>
   </cae-order-list>
 
   <p class="forge-order-list-order">

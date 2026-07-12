@@ -2,6 +2,7 @@ import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
+import { CdkDragHandle } from '@angular/cdk/drag-drop';
 import type { CdkDragDrop } from '@angular/cdk/drag-drop';
 import { vi } from 'vitest';
 
@@ -37,6 +38,8 @@ const ROWS = (): Row[] => [
       [ariaLabel]="ariaLabel()"
       [ariaLabelledby]="ariaLabelledby()"
       [controlsPosition]="controlsPosition()"
+      [disabledMatch]="disabledMatch()"
+      [dragHandle]="dragHandle()"
       (reorder)="lastReorder.set($event)"
     >
       <ng-template
@@ -45,9 +48,11 @@ const ROWS = (): Row[] => [
         let-i="index"
         let-active="active"
         let-selected="selected"
+        let-disabled="disabled"
       >
         <span class="tpl"
-          >{{ $any(item).name }}#{{ i }}{{ active ? '*' : '' }}{{ selected ? '+' : '' }}</span
+          >{{ $any(item).name }}#{{ i }}{{ active ? '*' : '' }}{{ selected ? '+' : ''
+          }}{{ disabled ? '!' : '' }}</span
         >
       </ng-template>
     </cae-order-list>
@@ -59,6 +64,8 @@ class OrderListHost {
   readonly ariaLabel = signal('');
   readonly ariaLabelledby = signal('');
   readonly controlsPosition = signal<'before' | 'after'>('before');
+  readonly disabledMatch = signal<(item: Row) => boolean>(() => false);
+  readonly dragHandle = signal(false);
   readonly lastReorder = signal<CaeOrderListReorderEvent<Row> | null>(null);
 }
 
@@ -143,6 +150,8 @@ describe('CaeOrderList', () => {
       ariaLabel?: string;
       ariaLabelledby?: string;
       controlsPosition?: 'before' | 'after';
+      disabledMatch?: (item: Row) => boolean;
+      dragHandle?: boolean;
     } = {},
   ): void {
     fixture = TestBed.createComponent(OrderListHost);
@@ -151,6 +160,8 @@ describe('CaeOrderList', () => {
     if (opts.ariaLabel !== undefined) host.ariaLabel.set(opts.ariaLabel);
     if (opts.ariaLabelledby !== undefined) host.ariaLabelledby.set(opts.ariaLabelledby);
     if (opts.controlsPosition !== undefined) host.controlsPosition.set(opts.controlsPosition);
+    if (opts.disabledMatch !== undefined) host.disabledMatch.set(opts.disabledMatch);
+    if (opts.dragHandle !== undefined) host.dragHandle.set(opts.dragHandle);
     // Attach to the document so `.focus()` moves `document.activeElement` (jsdom requirement).
     document.body.appendChild(fixture.nativeElement);
     fixture.detectChanges();
@@ -308,6 +319,126 @@ describe('CaeOrderList', () => {
       btn('Move down').dispatchEvent(new MouseEvent('click', { bubbles: true }));
       fixture.detectChanges();
       expect(host.items().map((r) => r.name)).toEqual(['Bravo', 'Alpha', 'Charlie']);
+    });
+  });
+
+  describe('disabled rows', () => {
+    // ROWS() ids are a/b/c; disable the middle row (Bravo) unless a test overrides.
+    const disableBravo = (r: Row): boolean => r.id === 'b';
+
+    it('marks a disabled row aria-disabled + dimmed but keeps it focusable and navigable', () => {
+      render({ disabledMatch: disableBravo });
+      const [alpha, bravo] = options();
+      expect(bravo.getAttribute('aria-disabled')).toBe('true');
+      expect(bravo.classList.contains('cae-order-list__option--disabled')).toBe(true);
+      expect(alpha.getAttribute('aria-disabled')).toBeNull(); // enabled rows carry no aria-disabled
+      // Arrow navigation still lands on the disabled row (WAI-ARIA: disabled options stay perceivable).
+      alpha.focus();
+      key(alpha, 'ArrowDown');
+      expect(document.activeElement).toBe(bravo);
+      expect(bravo.getAttribute('tabindex')).toBe('0');
+    });
+
+    it('does not select a disabled row on click or Space — focuses it only', () => {
+      render({ disabledMatch: disableBravo });
+      clickRow(1); // Bravo
+      expect(options()[1].getAttribute('aria-selected')).toBe('false');
+      expect(options()[1].getAttribute('tabindex')).toBe('0'); // focus still moves onto it
+      expect(host.selection()).toEqual([]);
+      key(options()[1], ' '); // Space on the focused disabled row is likewise a no-op
+      expect(host.selection()).toEqual([]);
+    });
+
+    it('excludes disabled rows from select-all and range selection', () => {
+      render({ disabledMatch: disableBravo });
+      options()[0].focus();
+      key(options()[0], 'a', { ctrlKey: true }); // select all — Bravo must be skipped
+      expect(host.selection().map((r) => r.name)).toEqual(['Alpha', 'Charlie']);
+      // A shift-range spanning the disabled middle row also skips it.
+      clickRow(0);
+      clickRow(2, { shiftKey: true });
+      expect(host.selection().map((r) => r.name)).toEqual(['Alpha', 'Charlie']);
+    });
+
+    it('will not move a disabled focused row (the move buttons go aria-disabled)', () => {
+      render({ disabledMatch: (r) => r.id === 'a' }); // disable Alpha (row 0), focused by default
+      // Nothing selected → the fallback would be the focused row, but it's disabled ⇒ no movable set.
+      expect(disabled('Move down')).toBe(true);
+      expect(disabled('Move to bottom')).toBe(true);
+      btn('Move down').click();
+      fixture.detectChanges();
+      expect(host.items().map((r) => r.name)).toEqual(['Alpha', 'Bravo', 'Charlie']); // unmoved
+    });
+
+    it('lets an enabled row move past a disabled one (a disabled row does not pin the list)', () => {
+      render({ disabledMatch: (r) => r.id === 'a' }); // Alpha disabled at the top
+      clickRow(1); // select Bravo (enabled)
+      btn('Move up').click();
+      fixture.detectChanges();
+      // Bravo moves above the disabled Alpha — a disabled row is not-actionable itself, not a barrier.
+      expect(host.items().map((r) => r.name)).toEqual(['Bravo', 'Alpha', 'Charlie']);
+    });
+
+    it('keeps the buttons inert when the whole selection becomes disabled (no ghost move of focus)', () => {
+      render(); // nothing disabled yet
+      clickRow(1); // select Bravo, focus Bravo
+      key(options()[1], 'ArrowUp'); // focus → Alpha (row 0); selection stays [Bravo] (focus ≠ selection)
+      expect(host.selection().map((r) => r.name)).toEqual(['Bravo']);
+      expect(focusedText()).toContain('Alpha');
+      // An external predicate now disables the still-selected Bravo.
+      host.disabledMatch.set((r) => r.id === 'b');
+      fixture.detectChanges();
+      // Bravo stays selected by reference, now also aria-disabled...
+      expect(options()[1].getAttribute('aria-selected')).toBe('true');
+      expect(options()[1].getAttribute('aria-disabled')).toBe('true');
+      // ...and the move set is empty, so the buttons must NOT retarget the focused, unselected Alpha.
+      expect(disabled('Move up')).toBe(true);
+      expect(disabled('Move down')).toBe(true);
+      btn('Move down').click();
+      fixture.detectChanges();
+      expect(host.items().map((r) => r.name)).toEqual(['Alpha', 'Bravo', 'Charlie']); // unmoved
+    });
+
+    it('a no-op Space on a disabled row leaves the range anchor intact', () => {
+      render({ disabledMatch: disableBravo });
+      clickRow(0); // select + anchor Alpha
+      expect(host.selection().map((r) => r.name)).toEqual(['Alpha']);
+      key(options()[1], ' '); // Space on disabled Bravo — no toggle, and must NOT move the anchor onto it
+      // Shift-range down to Charlie still extends from the Alpha anchor (skipping disabled Bravo) →
+      // [Alpha, Charlie]; a clobbered Bravo anchor would have produced just [Charlie].
+      clickRow(2, { shiftKey: true });
+      expect(host.selection().map((r) => r.name)).toEqual(['Alpha', 'Charlie']);
+    });
+  });
+
+  describe('drag handle', () => {
+    function handles(): HTMLElement[] {
+      return Array.from(list.querySelectorAll<HTMLElement>('.cae-order-list__handle'));
+    }
+
+    it('renders no handle by default — the whole row is the drag surface', () => {
+      render();
+      expect(handles().length).toBe(0);
+      expect(
+        options().every((o) => !o.classList.contains('cae-order-list__option--has-handle')),
+      ).toBe(true);
+    });
+
+    it('renders one aria-hidden, non-focusable cdkDragHandle grip per row when [dragHandle] is set', () => {
+      render({ dragHandle: true });
+      const hs = handles();
+      expect(hs.length).toBe(3); // one grip per row
+      // The grip is a pointer-only affordance: hidden from AT and never a tab stop (keyboard reorder
+      // stays the move buttons, and a role="option" must hold no focusable descendant).
+      expect(hs.every((h) => h.getAttribute('aria-hidden') === 'true')).toBe(true);
+      expect(hs.every((h) => h.getAttribute('tabindex') === null)).toBe(true);
+      expect(hs.every((h) => h.tagName.toLowerCase() === 'span')).toBe(true);
+      expect(
+        options().every((o) => o.classList.contains('cae-order-list__option--has-handle')),
+      ).toBe(true);
+      // The cdkDragHandle directive is actually applied on each grip, so CDK restricts drag initiation
+      // to it (not just a decorative span).
+      expect(fixture.debugElement.queryAll(By.directive(CdkDragHandle)).length).toBe(3);
     });
   });
 

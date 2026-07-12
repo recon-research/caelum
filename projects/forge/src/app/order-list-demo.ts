@@ -15,13 +15,15 @@ interface Widget {
 
 /**
  * The deferred "Order list" `cae-order-list` demo (#336; multi-select + in-list filter + header slot
- * #341). It reorders a set of dashboard sections two ways: drag a row (`cdkDropList`), or
- * **multi-select** rows (click / Ctrl+click / Shift+click; Space, Shift+Arrow, Ctrl+A by keyboard) and
- * move the whole block with the buttons — both paths announce to a screen reader. A projected
- * `caeOrderListHeader` gives the list a **visible title that also names it** for a screen reader. A
- * `[filter]` box narrows the list by name (reorder is intentionally disabled while filtering — a partial
- * view has no coherent "move up"). The current order and the live selection echo below so the
- * interaction is visibly live end-to-end (DoD liveness).
+ * + per-item disabled + drag handle #341). It reorders a set of dashboard sections two ways: drag a row
+ * (`cdkDropList`), or **multi-select** rows (click / Ctrl+click / Shift+click; Space, Shift+Arrow, Ctrl+A
+ * by keyboard) and move the whole block with the buttons — both paths announce to a screen reader. A
+ * projected `caeOrderListHeader` gives the list a **visible title that also names it** for a screen
+ * reader. One section is **locked** (`[disabledMatch]`) — dimmed, `aria-disabled`, and non-movable, yet
+ * still keyboard-navigable. The **drag-handle** toggle restricts dragging to a per-row grip. A `[filter]`
+ * box narrows the list by name (reorder is intentionally disabled while filtering — a partial view has no
+ * coherent "move up"). The current order and the live selection echo below so the interaction is visibly
+ * live end-to-end (DoD liveness).
  *
  * `@defer`'d from App (#85): keeping the demo — and the `@angular/cdk/drag-drop` it pulls in — in its
  * own lazy chunk holds those bytes off Forge's initial bundle (the #142 / D-16 budget).
@@ -63,6 +65,12 @@ export class OrderListDemo {
   /** Matches a section by its display name (object rows can't use the default `String(item)` matcher). */
   protected readonly widgetFilter = (widget: Widget, query: string): boolean =>
     widget.name.toLowerCase().includes(query.toLowerCase());
+
+  /** "Billing" is locked (`[disabledMatch]`): dimmed + `aria-disabled`, non-selectable and non-movable. */
+  protected readonly widgetLocked = (widget: Widget): boolean => widget.id === 'billing';
+
+  /** Live toggle for `[dragHandle]`: whole-row drag ↔ drag only via a per-row grip handle. */
+  protected readonly dragHandle = signal(false);
 
   /** The last move, echoed into a polite live region. */
   protected readonly lastMove = signal<string | null>(null);
