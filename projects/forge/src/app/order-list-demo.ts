@@ -9,11 +9,13 @@ interface Widget {
 }
 
 /**
- * The deferred "Order list" `cae-order-list` demo (#336; multi-select #341). It reorders a set of
- * dashboard sections two ways: drag a row (`cdkDropList`), or **multi-select** rows (click / Ctrl+click /
- * Shift+click; Space, Shift+Arrow, Ctrl+A by keyboard) and move the whole block with the buttons — both
- * paths announce to a screen reader. The current order and the live selection echo below so the
- * interaction is visibly live end-to-end (DoD liveness).
+ * The deferred "Order list" `cae-order-list` demo (#336; multi-select + in-list filter #341). It
+ * reorders a set of dashboard sections two ways: drag a row (`cdkDropList`), or **multi-select** rows
+ * (click / Ctrl+click / Shift+click; Space, Shift+Arrow, Ctrl+A by keyboard) and move the whole block
+ * with the buttons — both paths announce to a screen reader. A `[filter]` box narrows the list by name
+ * (reorder is intentionally disabled while filtering — a partial view has no coherent "move up"). The
+ * current order and the live selection echo below so the interaction is visibly live end-to-end (DoD
+ * liveness).
  *
  * `@defer`'d from App (#85): keeping the demo — and the `@angular/cdk/drag-drop` it pulls in — in its
  * own lazy chunk holds those bytes off Forge's initial bundle (the #142 / D-16 budget).
@@ -51,6 +53,10 @@ export class OrderListDemo {
       .map((w) => w.name)
       .join(' · '),
   );
+
+  /** Matches a section by its display name (object rows can't use the default `String(item)` matcher). */
+  protected readonly widgetFilter = (widget: Widget, query: string): boolean =>
+    widget.name.toLowerCase().includes(query.toLowerCase());
 
   /** The last move, echoed into a polite live region. */
   protected readonly lastMove = signal<string | null>(null);

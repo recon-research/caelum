@@ -6,7 +6,9 @@
     <kbd>Space</kbd>, <kbd>Shift</kbd>+<kbd>Arrow</kbd>, <kbd>Ctrl</kbd>+<kbd>A</kbd> by keyboard)
     and use the <strong>move buttons</strong> to move the whole set — every move is announced to a
     screen reader. Arrow keys move focus; the list is a multi-selectable
-    <code>role="listbox"</code>, so it is fully operable without a pointer.
+    <code>role="listbox"</code>, so it is fully operable without a pointer. Type in the
+    <strong>filter box</strong> to narrow the sections by name — reorder is disabled while
+    filtering, since a partial view has no coherent "move up".
   </p>
 
   <cae-order-list
@@ -15,6 +17,9 @@
     (valueChange)="widgets.set($event)"
     [selection]="selected()"
     (selectionChange)="selected.set($event)"
+    [filter]="true"
+    [filterMatch]="widgetFilter"
+    filterPlaceholder="Filter sections…"
     ariaLabel="Dashboard sections"
     (reorder)="onReorder($event)"
   >

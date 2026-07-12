@@ -65,11 +65,53 @@ class FallbackHost {
   readonly items = signal<readonly string[]>(['x', 'y', 'z']);
 }
 
+/** Host with the filter box enabled — object rows need a custom `filterMatch` (String(row) can't match). */
+@Component({
+  selector: 'cae-order-list-filter-host',
+  imports: [CaeOrderList, CaeOrderListItemDef],
+  template: `
+    <cae-order-list
+      [value]="items()"
+      (valueChange)="items.set($event)"
+      [selection]="selection()"
+      (selectionChange)="selection.set($event)"
+      [filter]="true"
+      [filterMatch]="match"
+      filterPlaceholder="Search roles"
+      [emptyMessage]="emptyMessage()"
+      ariaLabel="Roles"
+      (reorder)="lastReorder.set($event)"
+    >
+      <ng-template caeOrderListItem let-item>{{ $any(item).name }}</ng-template>
+    </cae-order-list>
+  `,
+})
+class OrderListFilterHost {
+  readonly items = signal<readonly Row[]>(ROWS());
+  readonly selection = signal<readonly Row[]>([]);
+  readonly emptyMessage = signal('No results');
+  readonly lastReorder = signal<CaeOrderListReorderEvent<Row> | null>(null);
+  readonly match = (item: Row, q: string): boolean =>
+    item.name.toLowerCase().includes(q.toLowerCase());
+}
+
+/** Filter over PLAIN STRINGS — exercises the DEFAULT `String(item)` substring matcher (no predicate). */
+@Component({
+  selector: 'cae-order-list-filter-default-host',
+  imports: [CaeOrderList],
+  template: `<cae-order-list [value]="items()" [filter]="true" />`,
+})
+class FilterDefaultHost {
+  readonly items = signal<readonly string[]>(['apple', 'apricot', 'banana']);
+}
+
 describe('CaeOrderList', () => {
   let fixture: ComponentFixture<OrderListHost>;
   let host: OrderListHost;
   let list: HTMLElement;
   let announce: ReturnType<typeof vi.spyOn>;
+  /** Local fixtures the filter tests create with their own host type — drained in afterEach. */
+  const filterFixtures: ComponentFixture<unknown>[] = [];
 
   function render(
     opts: { items?: readonly Row[]; ariaLabel?: string; ariaLabelledby?: string } = {},
@@ -94,6 +136,10 @@ describe('CaeOrderList', () => {
   afterEach(() => {
     fixture?.nativeElement.remove();
     fixture?.destroy();
+    for (const f of filterFixtures.splice(0)) {
+      f.nativeElement.remove();
+      f.destroy();
+    }
     vi.restoreAllMocks();
   });
 
@@ -503,5 +549,197 @@ describe('CaeOrderList', () => {
     btn('Move down').click();
     fixture.detectChanges();
     expect(host.lastReorder()!.movedIndices).toEqual([0, 2]); // both moved rows' previous indices
+  });
+
+  // --- In-list filter (#341) ---------------------------------------------------------------------
+
+  function renderFilter(items?: readonly Row[]) {
+    const f = TestBed.createComponent(OrderListFilterHost);
+    filterFixtures.push(f);
+    const fh = f.componentInstance;
+    if (items) fh.items.set(items);
+    document.body.appendChild(f.nativeElement);
+    f.detectChanges();
+    const el = f.nativeElement as HTMLElement;
+    const lb = el.querySelector('[role="listbox"]') as HTMLElement;
+    const input = el.querySelector('input[type="search"]') as HTMLInputElement;
+    const opts = (): HTMLElement[] =>
+      Array.from(lb.querySelectorAll<HTMLElement>('[role="option"]'));
+    const texts = (): string[] => opts().map((o) => o.textContent!.trim());
+    const type = (q: string): void => {
+      input.value = q;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      f.detectChanges();
+    };
+    const btnDisabled = (label: string): boolean =>
+      (el.querySelector(`button[aria-label="${label}"]`) as HTMLButtonElement).getAttribute(
+        'aria-disabled',
+      ) === 'true';
+    const cmp = f.debugElement.query(By.directive(CaeOrderList))
+      .componentInstance as CaeOrderList<Row>;
+    return { f, fh, el, lb, input, opts, texts, type, btnDisabled, cmp };
+  }
+
+  it('shows no filter box when [filter] is off (the default host)', () => {
+    render();
+    expect(fixture.nativeElement.querySelector('input[type="search"]')).toBeNull();
+  });
+
+  it('renders a labelled search box and narrows the rows through [filterMatch]', () => {
+    const r = renderFilter();
+    expect(r.input).toBeTruthy();
+    expect(r.input.getAttribute('aria-label')).toBe('Filter Roles'); // derived from the list name
+    expect(r.input.getAttribute('placeholder')).toBe('Search roles');
+    expect(r.texts()).toEqual(['Alpha', 'Bravo', 'Charlie']);
+
+    r.type('l'); // matches Alpha + Charlie, not Bravo
+    expect(r.texts()).toEqual(['Alpha', 'Charlie']);
+    expect(announce).toHaveBeenCalledWith('2 results');
+  });
+
+  it('uses the DEFAULT String(item) matcher for plain-string rows', () => {
+    const f = TestBed.createComponent(FilterDefaultHost);
+    filterFixtures.push(f);
+    document.body.appendChild(f.nativeElement);
+    f.detectChanges();
+    const input = f.nativeElement.querySelector('input[type="search"]') as HTMLInputElement;
+    input.value = 'ap';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    f.detectChanges();
+    const texts = Array.from(
+      (f.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('[role="option"]'),
+    ).map((el) => el.textContent!.trim());
+    expect(texts).toEqual(['apple', 'apricot']); // 'banana' filtered out
+  });
+
+  it('returns value() by reference when the query is blank (identity preserved, zero-cost)', () => {
+    const r = renderFilter();
+    const cmp = r.cmp as unknown as { filtered(): readonly Row[]; value(): readonly Row[] };
+    expect(cmp.filtered()).toBe(cmp.value()); // same array ref → indices + track identity unchanged
+    r.type('l');
+    expect(cmp.filtered()).not.toBe(cmp.value()); // now a filtered copy
+    r.type('');
+    expect(cmp.filtered()).toBe(cmp.value()); // cleared → back to the source ref
+  });
+
+  it('disables reorder (buttons + drag) while filtering, and restores it when cleared', () => {
+    const r = renderFilter();
+    r.type('l'); // filtering active
+    expect(r.btnDisabled('Move up')).toBe(true);
+    expect(r.btnDisabled('Move to top')).toBe(true);
+    expect(r.btnDisabled('Move down')).toBe(true);
+    expect(r.btnDisabled('Move to bottom')).toBe(true);
+    // CdkDrag stamps this class on each row when disabled.
+    expect(r.opts().every((o) => o.classList.contains('cdk-drag-disabled'))).toBe(true);
+    // A drop while filtering is a defensive no-op.
+    (
+      r.cmp as unknown as { onDrop(e: { previousIndex: number; currentIndex: number }): void }
+    ).onDrop({ previousIndex: 1, currentIndex: 0 });
+    r.f.detectChanges();
+    expect(r.fh.items().map((x) => x.name)).toEqual(['Alpha', 'Bravo', 'Charlie']); // unchanged
+    expect(r.fh.lastReorder()).toBeNull();
+
+    r.type(''); // clear → reorder live again (row 0 focused ⇒ down/bottom enabled)
+    expect(r.opts().some((o) => o.classList.contains('cdk-drag-disabled'))).toBe(false);
+    expect(r.btnDisabled('Move down')).toBe(false);
+  });
+
+  it('maps a filtered-row click to the right item (index-safe selection under filter)', () => {
+    const r = renderFilter();
+    r.type('l'); // visible: [Alpha (0), Charlie (1)] — Charlie is value-index 2 but filtered-index 1
+    r.opts()[1].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    r.f.detectChanges();
+    // A naive value()[1] would wrongly select Bravo; resolving from filtered() selects Charlie.
+    expect(r.fh.selection().map((x) => x.name)).toEqual(['Charlie']);
+  });
+
+  it('Ctrl+A while filtering selects only the visible rows', () => {
+    const r = renderFilter();
+    r.type('l'); // visible Alpha + Charlie
+    r.opts()[0].focus();
+    r.opts()[0].dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'a', ctrlKey: true, bubbles: true }),
+    );
+    r.f.detectChanges();
+    expect(r.fh.selection().map((x) => x.name)).toEqual(['Alpha', 'Charlie']); // not Bravo
+  });
+
+  it('shows the empty-state row and announces the count when nothing matches; focus stays on the box', () => {
+    const r = renderFilter();
+    r.input.focus();
+    r.type('zzz');
+    expect(r.opts()).toEqual([]); // no real options
+    const empty = r.lb.querySelector('.cae-order-list__empty') as HTMLElement;
+    expect(empty?.textContent?.trim()).toBe('No results');
+    expect(empty.getAttribute('role')).toBe('presentation'); // not a fake option
+    expect(announce).toHaveBeenCalledWith('No results'); // announce matches the visible empty text
+    expect(document.activeElement).toBe(r.input); // typing never strands focus into the emptied list
+  });
+
+  it('announces "Filter cleared" and restores all rows when the query is emptied', () => {
+    const r = renderFilter();
+    r.type('l');
+    expect(r.texts()).toEqual(['Alpha', 'Charlie']);
+    r.type('');
+    expect(r.texts()).toEqual(['Alpha', 'Bravo', 'Charlie']);
+    expect(announce).toHaveBeenCalledWith('Filter cleared');
+  });
+
+  it('keeps a hidden-but-selected row in the selection (filter is a lens, not a delete)', () => {
+    const r = renderFilter();
+    r.opts()[1].dispatchEvent(new MouseEvent('click', { bubbles: true })); // select Bravo
+    r.f.detectChanges();
+    expect(r.fh.selection().map((x) => x.name)).toEqual(['Bravo']);
+    r.type('l'); // Bravo filtered out of view...
+    expect(r.texts()).toEqual(['Alpha', 'Charlie']);
+    expect(r.fh.selection().map((x) => x.name)).toEqual(['Bravo']); // ...but stays selected
+    r.type(''); // and reappears selected when cleared
+    expect(r.fh.selection().map((x) => x.name)).toEqual(['Bravo']);
+  });
+
+  it('restores the roving tab stop to the same item after a filter round-trip (focus not clamped away)', () => {
+    const r = renderFilter();
+    r.opts()[2].dispatchEvent(new MouseEvent('click', { bubbles: true })); // focus Charlie (index 2)
+    r.f.detectChanges();
+    r.type('char'); // filter down to just Charlie
+    expect(r.texts()).toEqual(['Charlie']);
+    r.type(''); // clear — index 2 must survive against value(), not clamp to 0 while filtered
+    const tabStop = r.lb.querySelector('[tabindex="0"]') as HTMLElement;
+    expect(tabStop.textContent!.trim()).toBe('Charlie'); // NOT Alpha
+  });
+
+  it('a replace action while filtering drops a hidden selection (Ctrl+A = select-all-visible)', () => {
+    const r = renderFilter();
+    r.opts()[1].dispatchEvent(new MouseEvent('click', { bubbles: true })); // select Bravo
+    r.f.detectChanges();
+    r.type('l'); // hide Bravo; visible = [Alpha, Charlie]
+    r.opts()[0].focus();
+    r.opts()[0].dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'a', ctrlKey: true, bubbles: true }),
+    );
+    r.f.detectChanges();
+    // Documented replace semantic: select-all-visible drops the hidden Bravo (not [Bravo, Alpha, Charlie]).
+    expect(r.fh.selection().map((x) => x.name)).toEqual(['Alpha', 'Charlie']);
+  });
+
+  it('the described-by instructions tell AT to clear the filter to reorder (truthful while filtering)', () => {
+    const r = renderFilter();
+    const instr = r.el.querySelector('.cae-order-list__sr-only') as HTMLElement;
+    expect(instr.textContent).toContain('Use the move buttons to reorder');
+    r.type('l');
+    expect(instr.textContent).toContain('Clear the filter to reorder'); // reorder is disabled now
+    expect(instr.textContent).not.toContain('Use the move buttons to reorder');
+  });
+
+  it('describes the search box by the empty-state row when nothing matches (persistent forms-mode cue)', () => {
+    const r = renderFilter();
+    expect(r.input.getAttribute('aria-describedby')).toBeNull(); // no cue when there are results
+    r.type('zzz');
+    const describedby = r.input.getAttribute('aria-describedby');
+    expect(describedby).toBeTruthy();
+    const empty = r.lb.querySelector(`#${describedby}`) as HTMLElement;
+    expect(empty?.textContent?.trim()).toBe('No results');
+    r.type('l'); // matches again → the cue is dropped
+    expect(r.input.getAttribute('aria-describedby')).toBeNull();
   });
 });
