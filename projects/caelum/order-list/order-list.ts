@@ -72,6 +72,25 @@ export class CaeOrderListItemDef<T = unknown> {
 }
 
 /**
+ * Marks the `<ng-template>` that renders the list's header (`p-orderList`'s `header` parity). Usage:
+ * `<ng-template caeOrderListHeader>Selected columns</ng-template>`. When present, the header is rendered
+ * above the list **and** becomes the listbox's `aria-labelledby` accessible name — so a visible title
+ * also names the list, the WCAG-preferred labelling (an on-screen name a sighted and an AT user share).
+ * The header text therefore **is** the accessible name: an empty or icon-only header leaves the listbox
+ * unnamed (WCAG 4.1.2), and because a present header always wins over `[ariaLabel]`, `[ariaLabel]` cannot
+ * rescue a textless one. For an icon-only or empty title, name the list with `[ariaLabel]` and **omit the
+ * header slot**, or point `[ariaLabelledby]` at an external heading (which outranks a header). If you also
+ * enable `[filter]`, set `[filterLabel]` (or keep `[ariaLabel]`) so the filter box keeps a specific name
+ * — the header's projected text can't be derived into it. It labels a `role="listbox"`, not a landmark.
+ * Mirrors `cae-pick-list`'s per-pane header slots (#358).
+ */
+@Directive({ selector: 'ng-template[caeOrderListHeader]' })
+export class CaeOrderListHeaderDef {
+  /** The captured header template (no `let-` context — a header renders no per-row data). */
+  readonly template = inject<TemplateRef<void>>(TemplateRef);
+}
+
+/**
  * `cae-order-list` — a keyboard-operable, drag-reorderable list (`p-orderList` parity; Book 11 §3.3,
  * the drag-drop cluster). Book 11 §3.3 settles the build: *"One `cdkDropList`; reorder within.
  * Provide non-drag controls (move up/down/top/bottom buttons) and announce moves via the CDK
@@ -97,8 +116,11 @@ export class CaeOrderListItemDef<T = unknown> {
  * through a reorder for free. Because rows track by identity, the focused `<li>` moves on reorder, so
  * focus is never stranded.
  *
- * **Accessibility.** Name the list with `[ariaLabel]` (default `"Order list"`) or `[ariaLabelledby]`
- * (a `role="listbox"` needs an accessible name). Move buttons are real `<button>`s with `aria-label`s,
+ * **Accessibility.** Name the list one of three ways (a `role="listbox"` needs an accessible name):
+ * a projected `<ng-template caeOrderListHeader>` (a visible title that *also* names the list — the
+ * WCAG-preferred form, `p-orderList`'s `header` parity), `[ariaLabelledby]` (an external heading the
+ * consumer owns — highest precedence), or the `[ariaLabel]` string (default `"Order list"`). Move
+ * buttons are real `<button>`s with `aria-label`s,
  * `aria-disabled` at the bounds (up/top when the move set is already at the top; down/bottom when at
  * the bottom). State (order, focus index, selection) lives in signals, so it repaints under a zoneless
  * host (Book 01 §3.2); drag pointer math is CDK's, and the drop lands in the `[(value)]` signal.
@@ -185,6 +207,11 @@ export class CaeOrderListItemDef<T = unknown> {
     </div>
 
     <div class="cae-order-list__main">
+      @if (headerDef(); as header) {
+        <div class="cae-order-list__header" [id]="headerId">
+          <ng-container [ngTemplateOutlet]="header.template" />
+        </div>
+      }
       @if (filter()) {
         <input
           type="search"
@@ -210,8 +237,8 @@ export class CaeOrderListItemDef<T = unknown> {
         role="listbox"
         aria-multiselectable="true"
         cdkDropList
-        [attr.aria-label]="ariaLabelledby() ? null : ariaLabel().trim() || 'Order list'"
-        [attr.aria-labelledby]="ariaLabelledby() || null"
+        [attr.aria-label]="labelledby() ? null : ariaLabel().trim() || 'Order list'"
+        [attr.aria-labelledby]="labelledby() || null"
         (cdkDropListDropped)="onDrop($event)"
       >
         @for (item of filtered(); track item; let i = $index) {
@@ -298,6 +325,11 @@ export class CaeOrderListItemDef<T = unknown> {
       flex-direction: column;
       gap: var(--cae-space-1);
     }
+    /* Projected header: labels its listbox (aria-labelledby) and reads as the list's visible title. */
+    .cae-order-list__header {
+      padding: var(--cae-space-1) var(--cae-space-2);
+      color: var(--cae-color-on-surface);
+    }
     .cae-order-list__filter {
       padding: var(--cae-space-2) var(--cae-space-3);
       border: 1px solid var(--cae-color-border);
@@ -383,6 +415,8 @@ export class CaeOrderList<T = unknown> {
   protected readonly instructionsId = `cae-order-list-instructions-${nextUniqueId++}`;
   /** Stable id for the no-match row, so the filter box can persistently describe the empty state. */
   protected readonly emptyMessageId = `cae-order-list-empty-${nextUniqueId++}`;
+  /** Stable id the projected header carries, so the listbox can point its `aria-labelledby` at it. */
+  protected readonly headerId = `cae-order-list-header-${nextUniqueId++}`;
 
   /** The ordered list, two-way. Reordering (drag or button) replaces it with a fresh array. */
   readonly value = model<readonly T[]>([]);
@@ -433,6 +467,17 @@ export class CaeOrderList<T = unknown> {
 
   /** The projected row template, if the consumer supplied one. */
   protected readonly itemDef = contentChild(CaeOrderListItemDef<T>);
+  /** The projected header template, if supplied — it labels the listbox and is its visible title. */
+  protected readonly headerDef = contentChild(CaeOrderListHeaderDef);
+
+  /**
+   * The `id` the listbox points its `aria-labelledby` at (empty ⇒ it falls back to the `aria-label`
+   * string). Precedence: an explicit `[ariaLabelledby]` (an external heading the consumer owns) wins;
+   * else a projected header labels the list; else neither, and the `aria-label` string names it.
+   */
+  protected readonly labelledby = computed(
+    () => this.ariaLabelledby().trim() || (this.headerDef() ? this.headerId : ''),
+  );
 
   /** The current filter query (raw text from the box); blank ⇒ not filtering. */
   protected readonly filterQuery = signal('');

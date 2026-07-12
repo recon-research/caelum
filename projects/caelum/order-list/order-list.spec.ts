@@ -5,7 +5,12 @@ import { LiveAnnouncer } from '@angular/cdk/a11y';
 import type { CdkDragDrop } from '@angular/cdk/drag-drop';
 import { vi } from 'vitest';
 
-import { CaeOrderList, CaeOrderListItemDef, CaeOrderListReorderEvent } from './order-list';
+import {
+  CaeOrderList,
+  CaeOrderListHeaderDef,
+  CaeOrderListItemDef,
+  CaeOrderListReorderEvent,
+} from './order-list';
 
 interface Row {
   id: string;
@@ -103,6 +108,23 @@ class OrderListFilterHost {
 })
 class FilterDefaultHost {
   readonly items = signal<readonly string[]>(['apple', 'apricot', 'banana']);
+}
+
+/** Host with a projected header — exercises the header-as-accessible-name slot and its precedence. */
+@Component({
+  selector: 'cae-order-list-header-host',
+  imports: [CaeOrderList, CaeOrderListItemDef, CaeOrderListHeaderDef],
+  template: `
+    <cae-order-list [value]="items()" [ariaLabel]="ariaLabel()" [ariaLabelledby]="ariaLabelledby()">
+      <ng-template caeOrderListHeader><h4 class="hdr">Selected columns</h4></ng-template>
+      <ng-template caeOrderListItem let-item>{{ $any(item).name }}</ng-template>
+    </cae-order-list>
+  `,
+})
+class OrderListHeaderHost {
+  readonly items = signal<readonly Row[]>(ROWS());
+  readonly ariaLabel = signal('');
+  readonly ariaLabelledby = signal('');
 }
 
 describe('CaeOrderList', () => {
@@ -205,6 +227,48 @@ describe('CaeOrderList', () => {
     render({ ariaLabel: 'ignored', ariaLabelledby: 'heading-id' });
     expect(list.getAttribute('aria-labelledby')).toBe('heading-id');
     expect(list.getAttribute('aria-label')).toBeNull(); // labelledby wins; no double name
+  });
+
+  describe('header slot', () => {
+    /** Render the header host, tracking the fixture for afterEach cleanup. Returns its listbox + header. */
+    function renderHeader(opts: { ariaLabel?: string; ariaLabelledby?: string } = {}): {
+      box: HTMLElement;
+      header: HTMLElement | null;
+    } {
+      const f = TestBed.createComponent(OrderListHeaderHost);
+      if (opts.ariaLabel !== undefined) f.componentInstance.ariaLabel.set(opts.ariaLabel);
+      if (opts.ariaLabelledby !== undefined)
+        f.componentInstance.ariaLabelledby.set(opts.ariaLabelledby);
+      document.body.appendChild(f.nativeElement);
+      f.detectChanges();
+      filterFixtures.push(f);
+      const el = f.nativeElement as HTMLElement;
+      return {
+        box: el.querySelector('[role="listbox"]') as HTMLElement,
+        header: el.querySelector<HTMLElement>('.cae-order-list__header'),
+      };
+    }
+
+    it('labels the listbox from a projected header, rendering it above the list', () => {
+      // ariaLabel is set but must lose to the header (the visible title is the preferred name).
+      const { box, header } = renderHeader({ ariaLabel: 'ignored' });
+      expect(header).toBeTruthy();
+      expect(header!.textContent).toContain('Selected columns');
+      // The listbox points aria-labelledby at the header's id, and carries no competing aria-label.
+      expect(box.getAttribute('aria-labelledby')).toBe(header!.id);
+      expect(header!.id).toBeTruthy();
+      expect(box.getAttribute('aria-label')).toBeNull();
+      // Visible title ⇒ the header renders before the list in the DOM.
+      expect(header!.compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('defers to an explicit [ariaLabelledby] over the projected header', () => {
+      const { box, header } = renderHeader({ ariaLabelledby: 'external-heading' });
+      expect(header).toBeTruthy(); // header still renders as a visible title...
+      expect(box.getAttribute('aria-labelledby')).toBe('external-heading'); // ...but does not name the list
+      expect(box.getAttribute('aria-labelledby')).not.toBe(header!.id);
+      expect(box.getAttribute('aria-label')).toBeNull();
+    });
   });
 
   it('focuses the first row by default (sole tab stop) with nothing selected (multiselectable)', () => {
