@@ -107,7 +107,19 @@ export class CaeOrderListItemDef<T = unknown> {
  * let-selected="selected">` to render rich rows (context: item, `index`, `active` = focused,
  * `selected`); without one, rows render `{{ item }}`. Rows must be **distinct references** (objects, or
  * unique primitives) — reorder + selection track by identity so the moved DOM node follows the item; a
- * custom `trackBy`, in-list filtering, and RTL are additive follow-ups.
+ * custom `trackBy` and RTL are additive follow-ups.
+ *
+ * **Filtering** (opt-in via `[filter]`). A labelled `type="search"` box above the list narrows the
+ * rendered rows through `[filterMatch]` (default: case-insensitive substring on `String(item)`).
+ * Filtering is a *lens over the options*: selection is by reference so it survives filtering, and
+ * **reorder (drag + move buttons) is disabled while a query is active** — reordering a partial view is
+ * ambiguous for a keyboard/AT user (Book 11 §3.5). When the query is blank the filtered view *is*
+ * `value()` by reference, so the unfiltered reorder/selection paths are byte-for-byte unchanged. The
+ * visible-row count is announced via `LiveAnnouncer`; a no-match query shows `[emptyMessage]`.
+ * Selection semantics while filtering match the unfiltered ones: *replace* actions (plain click,
+ * Ctrl/Cmd+A = select-all-**visible**, Shift-range) set the selection to exactly the visible set they
+ * compute — so a row the filter currently hides is dropped from a replace — while *additive* actions
+ * (Ctrl/Cmd+click, Space) and the passive prune keep hidden selections intact.
  *
  * **Binding the value.** `[value]` is a `model()` — bind it **two-way**. With a `WritableSignal`
  * (the library's idiom) decompose it as below; a plain field can use `[(value)]`. A **one-way**
@@ -170,50 +182,74 @@ export class CaeOrderListItemDef<T = unknown> {
       </button>
     </div>
 
-    <span [id]="instructionsId" class="cae-order-list__sr-only">
-      Space toggles selection; Shift plus Arrow, Home, or End extends it; Control plus A selects
-      all; Escape clears. Use the move buttons to reorder the selection.
-    </span>
-    <ul
-      class="cae-order-list__list"
-      role="listbox"
-      aria-multiselectable="true"
-      cdkDropList
-      [attr.aria-label]="ariaLabelledby() ? null : ariaLabel().trim() || 'Order list'"
-      [attr.aria-labelledby]="ariaLabelledby() || null"
-      (cdkDropListDropped)="onDrop($event)"
-    >
-      @for (item of value(); track item; let i = $index) {
-        <li
-          #optionEl
-          class="cae-order-list__option"
-          [class.cae-order-list__option--active]="i === active()"
-          [class.cae-order-list__option--selected]="isSelected(item)"
-          role="option"
-          cdkDrag
-          [attr.aria-selected]="isSelected(item)"
-          [attr.aria-describedby]="instructionsId"
-          [tabindex]="i === activeTabStop() ? 0 : -1"
-          (focus)="activate(i)"
-          (click)="onOptionClick(i, $event)"
-          (keydown)="onKeydown(i, $event)"
-        >
-          @if (itemDef(); as def) {
-            <ng-container
-              [ngTemplateOutlet]="def.template"
-              [ngTemplateOutletContext]="{
-                $implicit: item,
-                index: i,
-                active: i === active(),
-                selected: isSelected(item),
-              }"
-            />
-          } @else {
-            {{ item }}
-          }
-        </li>
+    <div class="cae-order-list__main">
+      @if (filter()) {
+        <input
+          type="search"
+          class="cae-order-list__filter"
+          [attr.aria-label]="filterName()"
+          [attr.placeholder]="filterPlaceholder() || null"
+          [value]="filterQuery()"
+          [attr.aria-describedby]="isFiltering() && filtered().length === 0 ? emptyMessageId : null"
+          (input)="onFilterInput($event)"
+        />
       }
-    </ul>
+      <span [id]="instructionsId" class="cae-order-list__sr-only">
+        Space toggles selection; Shift plus Arrow, Home, or End extends it; Control plus A selects
+        all; Escape clears.
+        @if (isFiltering()) {
+          Clear the filter to reorder.
+        } @else {
+          Use the move buttons to reorder the selection.
+        }
+      </span>
+      <ul
+        class="cae-order-list__list"
+        role="listbox"
+        aria-multiselectable="true"
+        cdkDropList
+        [attr.aria-label]="ariaLabelledby() ? null : ariaLabel().trim() || 'Order list'"
+        [attr.aria-labelledby]="ariaLabelledby() || null"
+        (cdkDropListDropped)="onDrop($event)"
+      >
+        @for (item of filtered(); track item; let i = $index) {
+          <li
+            #optionEl
+            class="cae-order-list__option"
+            [class.cae-order-list__option--active]="i === active()"
+            [class.cae-order-list__option--selected]="isSelected(item)"
+            role="option"
+            cdkDrag
+            [cdkDragDisabled]="isFiltering()"
+            [attr.aria-selected]="isSelected(item)"
+            [attr.aria-describedby]="instructionsId"
+            [tabindex]="i === activeTabStop() ? 0 : -1"
+            (focus)="activate(i)"
+            (click)="onOptionClick(i, $event)"
+            (keydown)="onKeydown(i, $event)"
+          >
+            @if (itemDef(); as def) {
+              <ng-container
+                [ngTemplateOutlet]="def.template"
+                [ngTemplateOutletContext]="{
+                  $implicit: item,
+                  index: i,
+                  active: i === active(),
+                  selected: isSelected(item),
+                }"
+              />
+            } @else {
+              {{ item }}
+            }
+          </li>
+        }
+        @if (isFiltering() && filtered().length === 0) {
+          <li [id]="emptyMessageId" class="cae-order-list__empty" role="presentation">
+            {{ emptyMessage() }}
+          </li>
+        }
+      </ul>
+    </div>
   `,
   styles: `
     :host {
@@ -251,6 +287,27 @@ export class CaeOrderListItemDef<T = unknown> {
       opacity: 0.5;
       cursor: default;
     }
+    /* Column wrapper holding the filter box above the list, so the control button column stays a
+       sibling to the left of both (host is a row). */
+    .cae-order-list__main {
+      flex: 1 1 auto;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: var(--cae-space-1);
+    }
+    .cae-order-list__filter {
+      padding: var(--cae-space-2) var(--cae-space-3);
+      border: 1px solid var(--cae-color-border);
+      border-radius: var(--cae-radius-md);
+      background: var(--cae-surface-base);
+      color: var(--cae-color-on-surface);
+      font: inherit;
+    }
+    .cae-order-list__filter:focus-visible {
+      outline: 2px solid var(--cae-color-primary);
+      outline-offset: 2px;
+    }
     .cae-order-list__list {
       flex: 1 1 auto;
       margin: 0;
@@ -260,6 +317,13 @@ export class CaeOrderListItemDef<T = unknown> {
       border-radius: var(--cae-radius-md);
       background: var(--cae-surface-base);
       overflow: auto;
+    }
+    /* Empty-filter row — role="presentation" (not a fake option) so the listbox holds only real
+       options; the visible-count is also announced via LiveAnnouncer for non-visual users. */
+    .cae-order-list__empty {
+      padding: var(--cae-space-2) var(--cae-space-3);
+      color: var(--cae-color-on-surface);
+      opacity: 0.7;
     }
     .cae-order-list__option {
       display: block;
@@ -315,6 +379,8 @@ export class CaeOrderList<T = unknown> {
 
   /** Stable id linking the listbox to its visually-hidden reorder instructions (aria-describedby). */
   protected readonly instructionsId = `cae-order-list-instructions-${nextUniqueId++}`;
+  /** Stable id for the no-match row, so the filter box can persistently describe the empty state. */
+  protected readonly emptyMessageId = `cae-order-list-empty-${nextUniqueId++}`;
 
   /** The ordered list, two-way. Reordering (drag or button) replaces it with a fresh array. */
   readonly value = model<readonly T[]>([]);
@@ -329,17 +395,74 @@ export class CaeOrderList<T = unknown> {
   readonly ariaLabel = input('');
   /** `id` of a visible element labelling the list — preferred when a heading is shown. */
   readonly ariaLabelledby = input('');
+
+  /**
+   * Show a text filter above the list (`p-orderList` `[filter]`). Off by default — when off the
+   * filter box, the {@link filtered} view, and every filter code path are inert, so the shipped
+   * reorder/selection behaviour is byte-for-byte unchanged.
+   */
+  readonly filter = input(false);
+  /**
+   * Placeholder for the filter box (not an accessible name — see {@link filterLabel}). For
+   * voice-control parity (WCAG 2.5.3) keep this text consistent with {@link filterLabel} so the
+   * visible prompt and the spoken name don't diverge.
+   */
+  readonly filterPlaceholder = input('');
+  /**
+   * Accessible name for the filter box; a placeholder is not a name (WCAG 4.1.2). Defaults to
+   * `"Filter <ariaLabel>"` when the list is named, else `"Filter list"`.
+   */
+  readonly filterLabel = input('');
+  /** Row shown when a filter matches nothing (`p-orderList` `emptyFilterMessage`). */
+  readonly emptyMessage = input('No results');
+  /**
+   * Predicate deciding whether a row survives the current filter query. The default is a
+   * case-insensitive substring test over `String(item)`, so it only works for **string/primitive
+   * rows** — object rows stringify to `"[object Object]"` and **must** supply a predicate
+   * (e.g. `(u, q) => u.name.toLowerCase().includes(q.toLowerCase())`). The `p-orderList`
+   * `filterBy`/`filterMatchMode` pair maps onto this single type-safe seam.
+   */
+  readonly filterMatch = input<(item: T, query: string) => boolean>((item, query) =>
+    String(item).toLowerCase().includes(query.toLowerCase()),
+  );
+
   /** Emits on every reorder (drag or button) with the new order and the moved indices. */
   readonly reorder = output<CaeOrderListReorderEvent<T>>();
 
   /** The projected row template, if the consumer supplied one. */
   protected readonly itemDef = contentChild(CaeOrderListItemDef<T>);
 
+  /** The current filter query (raw text from the box); blank ⇒ not filtering. */
+  protected readonly filterQuery = signal('');
+  /** Whether a filter is actively narrowing the list (box enabled AND query non-blank). */
+  protected readonly isFiltering = computed(
+    () => this.filter() && this.filterQuery().trim().length > 0,
+  );
+  /**
+   * The rendered rows. **When not filtering this is `value()` by reference** — so indices, `track`
+   * identity, and the whole reorder/selection path are identical to the unfiltered component. The
+   * roving-focus and selection model operate over *this* (the rendered list); the reorder model
+   * stays over {@link value}, and reorder is disabled while filtering so the two views stay coherent.
+   */
+  protected readonly filtered = computed<readonly T[]>(() => {
+    if (!this.isFiltering()) return this.value();
+    const q = this.filterQuery().trim();
+    const match = this.filterMatch();
+    return this.value().filter((it) => match(it, q));
+  });
+  /** Accessible name for the filter box (from {@link filterLabel}, else derived from {@link ariaLabel}). */
+  protected readonly filterName = computed(() => {
+    const explicit = this.filterLabel().trim();
+    if (explicit) return explicit;
+    const listName = this.ariaLabel().trim();
+    return listName ? `Filter ${listName}` : 'Filter list';
+  });
+
   /** Raw focus index; may momentarily exceed the list length after a shrink (clamped by {@link active}). */
   private readonly focusIndex = signal(0);
   /** Focused (roving tab stop) index clamped into range, or `-1` when the list is empty. Focus ≠ selection. */
   protected readonly active = computed(() => {
-    const n = this.value().length;
+    const n = this.filtered().length;
     return n ? Math.min(Math.max(this.focusIndex(), 0), n - 1) : -1;
   });
   /** The single tab stop — `active()` floored at 0 so the list always has exactly one tabbable row. */
@@ -359,6 +482,7 @@ export class CaeOrderList<T = unknown> {
 
   /** Ascending indices the move buttons act on: the selected rows, or the focused row when none selected. */
   private readonly moveIndices = computed<readonly number[]>(() => {
+    if (this.isFiltering()) return []; // reorder is disabled while filtering (partial-view indices are ambiguous)
     const items = this.value();
     const sel = this.selectedSet();
     const picked = items.reduce<number[]>((acc, it, i) => {
@@ -382,6 +506,11 @@ export class CaeOrderList<T = unknown> {
     // out-of-range index that would "resurrect" (jump to a different item) if the list later grows back.
     // `active()` already clamps on read; this keeps the stored index coherent too. The guard makes it a
     // no-op once clamped, so it can't loop.
+    // Clamp against value() (the stable data), NOT filtered(): the effect *writes* focusIndex, so
+    // clamping to the filtered length would destructively shrink the stored index while filtering and
+    // strand the tab stop on the wrong row after the query clears. active() read-clamps to the
+    // filtered length for rendering; because value() is unchanged across a filter toggle, keeping the
+    // stored index coherent with value() makes index-preservation = item-preservation.
     effect(() => {
       const n = this.value().length;
       const clamped = n ? Math.min(Math.max(this.focusIndex(), 0), n - 1) : 0;
@@ -402,13 +531,25 @@ export class CaeOrderList<T = unknown> {
     this.focusIndex.set(index);
   }
 
+  /** Update the filter query from the box and announce the new visible-row count (or the clear). */
+  protected onFilterInput(event: Event): void {
+    this.filterQuery.set((event.target as HTMLInputElement).value);
+    if (!this.isFiltering()) {
+      this.announcer.announce('Filter cleared');
+      return;
+    }
+    const n = this.filtered().length;
+    // A no-match announces the SAME text the empty-state row shows, so the two channels agree.
+    this.announcer.announce(n === 0 ? this.emptyMessage() : `${n} result${n === 1 ? '' : 's'}`);
+  }
+
   /**
    * Pointer selection (ARIA listbox multiselect): plain click selects only this row; Ctrl/Cmd-click
    * toggles it; Shift-click selects the contiguous range from the anchor. Always focuses the row.
    */
   protected onOptionClick(index: number, event: MouseEvent): void {
     this.focusIndex.set(index);
-    const item = this.value()[index];
+    const item = this.filtered()[index];
     if (item === undefined) return;
     if (event.shiftKey) {
       this.selectRange(index, index);
@@ -436,6 +577,7 @@ export class CaeOrderList<T = unknown> {
 
   /** A drop reorders the single dragged row (multi-move is the buttons' job); it becomes focused. */
   protected onDrop(event: CdkDragDrop<readonly T[]>): void {
+    if (this.isFiltering()) return; // drag is disabled while filtering; defensive no-op
     if (event.previousIndex === event.currentIndex) return;
     const next = [...this.value()];
     moveItemInArray(next, event.previousIndex, event.currentIndex);
@@ -462,18 +604,19 @@ export class CaeOrderList<T = unknown> {
    * Escape clears. Moves are the buttons' job (a data list has no "activate" default action to overload).
    */
   protected onKeydown(index: number, event: KeyboardEvent): void {
-    const last = this.value().length - 1;
+    const last = this.filtered().length - 1;
     if (last < 0) return;
 
     if ((event.ctrlKey || event.metaKey) && (event.key === 'a' || event.key === 'A')) {
       event.preventDefault();
-      this.commitSelection(new Set(this.value()));
+      // Select-all means all *visible* rows — identical to the whole list when not filtering.
+      this.commitSelection(new Set(this.filtered()));
       return;
     }
     if (event.key === ' ' || event.key === 'Spacebar') {
       event.preventDefault();
       this.toggle(index);
-      this.selectionAnchor.set(this.value()[index] ?? null);
+      this.selectionAnchor.set(this.filtered()[index] ?? null);
       return;
     }
     if (event.key === 'Escape') {
@@ -511,7 +654,7 @@ export class CaeOrderList<T = unknown> {
 
   /** Toggle one row's membership in the selection. */
   private toggle(index: number): void {
-    const item = this.value()[index];
+    const item = this.filtered()[index];
     if (item === undefined) return;
     const set = new Set(this.selection());
     if (set.has(item)) set.delete(item);
@@ -525,7 +668,8 @@ export class CaeOrderList<T = unknown> {
    * one is established at `fallbackFrom` (the origin row) so subsequent extends grow from there.
    */
   private selectRange(focus: number, fallbackFrom: number): void {
-    const items = this.value();
+    // Ranges are drawn over the rendered (filtered) rows; `commitSelection` re-orders to full-list order.
+    const items = this.filtered();
     const anchorItem = this.selectionAnchor();
     const anchorIdx = anchorItem != null ? items.indexOf(anchorItem) : -1;
     const from = anchorIdx >= 0 ? anchorIdx : fallbackFrom;
