@@ -129,10 +129,49 @@ class PickListHeaderHost {
   readonly sourceAriaLabelledby = signal('');
 }
 
+/** Host with the per-side filter enabled — object rows need a custom `filterMatch`. */
+@Component({
+  selector: 'cae-pick-list-filter-host',
+  imports: [CaePickList, CaePickListItemDef],
+  template: `
+    <cae-pick-list
+      [source]="sourceItems()"
+      (sourceChange)="sourceItems.set($event)"
+      [target]="targetItems()"
+      (targetChange)="targetItems.set($event)"
+      [sourceSelection]="sourceSel()"
+      (sourceSelectionChange)="sourceSel.set($event)"
+      [targetSelection]="targetSel()"
+      (targetSelectionChange)="targetSel.set($event)"
+      [filter]="true"
+      [filterMatch]="match"
+      filterPlaceholder="Search"
+      sourceAriaLabel="Available roles"
+      targetAriaLabel="Assigned roles"
+      (transfer)="lastTransfer.set($event)"
+      (reorder)="lastReorder.set($event)"
+    >
+      <ng-template caePickListItem let-item>{{ $any(item).name }}</ng-template>
+    </cae-pick-list>
+  `,
+})
+class PickListFilterHost {
+  readonly sourceItems = signal<readonly Row[]>(ROWS());
+  readonly targetItems = signal<readonly Row[]>([]);
+  readonly sourceSel = signal<readonly Row[]>([]);
+  readonly targetSel = signal<readonly Row[]>([]);
+  readonly lastTransfer = signal<CaePickListTransferEvent<Row> | null>(null);
+  readonly lastReorder = signal<CaePickListReorderEvent<Row> | null>(null);
+  readonly match = (item: Row, q: string): boolean =>
+    item.name.toLowerCase().includes(q.toLowerCase());
+}
+
 describe('CaePickList', () => {
   let fixture: ComponentFixture<PickListHost>;
   let host: PickListHost;
   let announce: ReturnType<typeof vi.spyOn>;
+  /** Local fixtures the filter tests create with their own host type — drained in afterEach. */
+  const filterFixtures: ComponentFixture<unknown>[] = [];
 
   function render(
     opts: {
@@ -158,6 +197,10 @@ describe('CaePickList', () => {
   afterEach(() => {
     fixture?.nativeElement.remove();
     fixture?.destroy();
+    for (const f of filterFixtures.splice(0)) {
+      f.nativeElement.remove();
+      f.destroy();
+    }
     vi.restoreAllMocks();
   });
 
@@ -810,5 +853,202 @@ describe('CaePickList', () => {
     expect(evt.previousIndex).toBe(2);
     expect(evt.currentIndex).toBe(0);
     expect(announce).toHaveBeenCalledWith('Moved to position 1 of 3 in the target list');
+  });
+
+  // --- Per-side in-list filter (#342) ------------------------------------------------------------
+
+  function renderFilter(source?: readonly Row[], target?: readonly Row[]) {
+    const f = TestBed.createComponent(PickListFilterHost);
+    filterFixtures.push(f);
+    const fh = f.componentInstance;
+    if (source) fh.sourceItems.set(source);
+    if (target) fh.targetItems.set(target);
+    document.body.appendChild(f.nativeElement);
+    f.detectChanges();
+    const el = f.nativeElement as HTMLElement;
+    const lbs = (): HTMLElement[] =>
+      Array.from(el.querySelectorAll<HTMLElement>('[role="listbox"]'));
+    const srcList = (): HTMLElement => lbs()[0];
+    const tgtList = (): HTMLElement => lbs()[1];
+    const searchInputs = (): HTMLInputElement[] =>
+      Array.from(el.querySelectorAll<HTMLInputElement>('input[type="search"]'));
+    const srcInput = (): HTMLInputElement => searchInputs()[0];
+    const tgtInput = (): HTMLInputElement => searchInputs()[1];
+    const opts = (list: HTMLElement): HTMLElement[] =>
+      Array.from(list.querySelectorAll<HTMLElement>('[role="option"]'));
+    const texts = (list: HTMLElement): string[] => opts(list).map((o) => o.textContent!.trim());
+    const type = (inp: HTMLInputElement, q: string): void => {
+      inp.value = q;
+      inp.dispatchEvent(new Event('input', { bubbles: true }));
+      f.detectChanges();
+    };
+    const button = (label: string): HTMLButtonElement =>
+      el.querySelector(`button[aria-label="${label}"]`) as HTMLButtonElement;
+    const btnDisabled = (label: string): boolean =>
+      button(label).getAttribute('aria-disabled') === 'true';
+    const cmp = f.debugElement.query(By.directive(CaePickList))
+      .componentInstance as CaePickList<Row>;
+    return {
+      f,
+      fh,
+      el,
+      srcList,
+      tgtList,
+      srcInput,
+      tgtInput,
+      opts,
+      texts,
+      type,
+      button,
+      btnDisabled,
+      cmp,
+    };
+  }
+
+  it('renders no filter boxes when [filter] is off (the default host)', () => {
+    render({ source: ROWS(), target: [] });
+    expect(fixture.nativeElement.querySelectorAll('input[type="search"]').length).toBe(0);
+  });
+
+  it('renders a labelled search box per list, named from each list', () => {
+    const r = renderFilter();
+    expect(r.srcInput().getAttribute('aria-label')).toBe('Filter Available roles');
+    expect(r.tgtInput().getAttribute('aria-label')).toBe('Filter Assigned roles');
+    expect(r.srcInput().getAttribute('placeholder')).toBe('Search');
+  });
+
+  it('narrows only the list whose box you type in; announces its result count', () => {
+    const r = renderFilter(ROWS(), [
+      { id: 't1', name: 'Tango' },
+      { id: 't2', name: 'Lima' },
+    ]);
+    r.type(r.srcInput(), 'l'); // source: Alpha + Charlie
+    expect(r.texts(r.srcList())).toEqual(['Alpha', 'Charlie']);
+    expect(r.texts(r.tgtList())).toEqual(['Tango', 'Lima']); // target box untouched → unchanged
+    expect(announce).toHaveBeenCalledWith('2 results in the source list');
+  });
+
+  it('returns the model by reference when a list query is blank (identity preserved)', () => {
+    const r = renderFilter();
+    const cmp = r.cmp as unknown as {
+      sourceFiltered(): readonly Row[];
+      source(): readonly Row[];
+    };
+    expect(cmp.sourceFiltered()).toBe(cmp.source());
+    r.type(r.srcInput(), 'l');
+    expect(cmp.sourceFiltered()).not.toBe(cmp.source());
+    r.type(r.srcInput(), '');
+    expect(cmp.sourceFiltered()).toBe(cmp.source());
+  });
+
+  it('disables reorder on the filtering list only; transfer and the other list stay live', () => {
+    const r = renderFilter(ROWS(), FOUR());
+    r.type(r.srcInput(), 'l'); // source filtering
+    expect(r.btnDisabled('Move up in the source list')).toBe(true);
+    expect(r.btnDisabled('Move to bottom in the source list')).toBe(true);
+    expect(r.opts(r.srcList()).every((o) => o.classList.contains('cdk-drag-disabled'))).toBe(true);
+    // Target is NOT filtering → its reorder stays live and its rows remain draggable.
+    expect(r.btnDisabled('Move down in the target list')).toBe(false);
+    expect(r.opts(r.tgtList()).some((o) => o.classList.contains('cdk-drag-disabled'))).toBe(false);
+    // Transfer stays live (both lists non-empty) — the whole point of filtering.
+    expect(r.btnDisabled('Move selected to target')).toBe(false);
+    expect(r.btnDisabled('Move all to target')).toBe(false);
+  });
+
+  it('maps a filtered source-row click to the right item (index-safe under filter)', () => {
+    const r = renderFilter();
+    r.type(r.srcInput(), 'l'); // visible [Alpha (0), Charlie (1)] — Charlie is full-index 2
+    r.opts(r.srcList())[1].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    r.f.detectChanges();
+    expect(names(r.fh.sourceSel())).toEqual(['Charlie']); // not Bravo
+  });
+
+  it('Ctrl+A while filtering the source selects only its visible rows', () => {
+    const r = renderFilter();
+    r.type(r.srcInput(), 'l'); // Alpha, Charlie visible
+    r.opts(r.srcList())[0].focus();
+    r.opts(r.srcList())[0].dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'a', ctrlKey: true, bubbles: true }),
+    );
+    r.f.detectChanges();
+    expect(names(r.fh.sourceSel())).toEqual(['Alpha', 'Charlie']); // not Bravo
+  });
+
+  it('transfers the selection while filtering (filter to find, then move)', () => {
+    const r = renderFilter();
+    r.type(r.srcInput(), 'l'); // visible Alpha, Charlie
+    r.opts(r.srcList())[1].dispatchEvent(new MouseEvent('click', { bubbles: true })); // select Charlie
+    r.f.detectChanges();
+    r.button('Move selected to target').click();
+    r.f.detectChanges();
+    expect(names(r.fh.targetItems())).toEqual(['Charlie']);
+    expect(names(r.fh.sourceItems())).toEqual(['Alpha', 'Bravo']); // Charlie left source
+    expect(r.fh.lastTransfer()!.to).toBe('target');
+  });
+
+  it('move-selected includes a filter-hidden selected row (transfer acts on the whole selection)', () => {
+    const r = renderFilter();
+    r.opts(r.srcList())[1].dispatchEvent(new MouseEvent('click', { bubbles: true })); // select Bravo (no filter)
+    r.f.detectChanges();
+    expect(names(r.fh.sourceSel())).toEqual(['Bravo']);
+    r.type(r.srcInput(), 'l'); // Bravo hidden from view...
+    expect(r.texts(r.srcList())).toEqual(['Alpha', 'Charlie']);
+    r.button('Move selected to target').click();
+    r.f.detectChanges();
+    expect(names(r.fh.targetItems())).toEqual(['Bravo']); // ...but it still transfers
+    expect(names(r.fh.sourceItems())).toEqual(['Alpha', 'Charlie']);
+  });
+
+  it('shows the empty-state row for a no-match list; describes its box; announces; keeps focus on the box', () => {
+    const r = renderFilter();
+    r.srcInput().focus();
+    r.type(r.srcInput(), 'zzz');
+    expect(r.opts(r.srcList())).toEqual([]); // no real options
+    const describedby = r.srcInput().getAttribute('aria-describedby');
+    expect(describedby).toBeTruthy();
+    const empty = r.srcList().querySelector(`#${describedby}`) as HTMLElement;
+    expect(empty?.textContent?.trim()).toBe('No results');
+    expect(empty.getAttribute('role')).toBe('presentation'); // not a fake option
+    expect(announce).toHaveBeenCalledWith('No results');
+    expect(document.activeElement).toBe(r.srcInput());
+  });
+
+  it('names the filtered side in the described-by instructions (unambiguous for the other list)', () => {
+    const r = renderFilter();
+    const instr = r.el.querySelector('.cae-pick-list__sr-only') as HTMLElement;
+    expect(instr.textContent).toContain('Reorder within a list with its move buttons');
+    r.type(r.srcInput(), 'l'); // only the source is filtering
+    expect(instr.textContent).toContain('The source list is filtered');
+    expect(instr.textContent).toContain('transfer buttons still move the selection');
+    // Names SOURCE, not a generic "a list" — a user reading the still-live target list isn't misled.
+    expect(instr.textContent).not.toContain('The target list is filtered');
+  });
+
+  it('disables Move selected (not Move all) when the source filters to zero matches with no selection', () => {
+    const r = renderFilter();
+    r.type(r.srcInput(), 'zzz'); // no matches, nothing selected → no move-set
+    expect(r.btnDisabled('Move selected to target')).toBe(true); // not an enabled dead no-op
+    expect(r.btnDisabled('Move all to target')).toBe(false); // move-all still moves the full model
+  });
+
+  it('keeps the source focus on a row focused WHILE filtering, across clearing (item-stable)', () => {
+    const r = renderFilter();
+    r.type(r.srcInput(), 'l'); // visible [Alpha, Charlie]
+    r.opts(r.srcList())[1].dispatchEvent(new MouseEvent('click', { bubbles: true })); // Charlie (filtered idx 1)
+    r.f.detectChanges();
+    r.type(r.srcInput(), ''); // clear — focus remaps to Charlie, not the stale filtered idx 1 (Bravo)
+    const tabStop = r.srcList().querySelector('[tabindex="0"]') as HTMLElement;
+    expect(tabStop.textContent!.trim()).toBe('Charlie'); // NOT Bravo
+  });
+
+  it('restores the source tab stop to the same item after a filter round-trip (focus not clamped away)', () => {
+    const r = renderFilter();
+    r.opts(r.srcList())[2].dispatchEvent(new MouseEvent('click', { bubbles: true })); // focus Charlie (index 2)
+    r.f.detectChanges();
+    r.type(r.srcInput(), 'char'); // filter down to just Charlie
+    expect(r.texts(r.srcList())).toEqual(['Charlie']);
+    r.type(r.srcInput(), ''); // clear — index 2 must survive against the full model, not clamp to 0
+    const tabStop = r.srcList().querySelector('[tabindex="0"]') as HTMLElement;
+    expect(tabStop.textContent!.trim()).toBe('Charlie'); // NOT Alpha
   });
 });

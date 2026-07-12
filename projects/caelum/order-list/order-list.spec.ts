@@ -708,6 +708,16 @@ describe('CaeOrderList', () => {
     expect(tabStop.textContent!.trim()).toBe('Charlie'); // NOT Alpha
   });
 
+  it('keeps focus on a row focused WHILE filtering, across clearing (item-stable, not index-stable)', () => {
+    const r = renderFilter();
+    r.type('l'); // visible [Alpha, Charlie]
+    r.opts()[1].dispatchEvent(new MouseEvent('click', { bubbles: true })); // focus Charlie (filtered idx 1)
+    r.f.detectChanges();
+    r.type(''); // clear — focus remaps to Charlie (full idx 2), not the stale filtered idx 1 (Bravo)
+    const tabStop = r.lb.querySelector('[tabindex="0"]') as HTMLElement;
+    expect(tabStop.textContent!.trim()).toBe('Charlie'); // NOT Bravo
+  });
+
   it('a replace action while filtering drops a hidden selection (Ctrl+A = select-all-visible)', () => {
     const r = renderFilter();
     r.opts()[1].dispatchEvent(new MouseEvent('click', { bubbles: true })); // select Bravo

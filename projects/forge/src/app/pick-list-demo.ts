@@ -17,14 +17,15 @@ interface Role {
 
 /**
  * The deferred "Pick list" `cae-pick-list` demo (#337; multi-select + within-list reorder + header
- * slots #342) — the second drag-drop-cluster component. It assigns roles two ways: drag a role across,
- * or **multi-select** roles (click / Ctrl+click / Shift+click; Space, Shift+Arrow, Ctrl+A by keyboard)
- * and move the whole block with the transfer buttons. Each list can also be **reordered in place** —
- * drag a row, or use its outer up / top / down / bottom buttons. Projected **header slots**
- * (`caePickListSourceHeader`/`caePickListTargetHeader`) give each list a visible title that is also its
- * `aria-labelledby` accessible name. Every move announces to a screen reader. The assigned set, the
- * live source selection, the last transfer, and the last reorder echo below so the interaction is visibly
- * live end-to-end (DoD liveness).
+ * slots + in-list filter #342) — the second drag-drop-cluster component. It assigns roles two ways: drag
+ * a role across, or **multi-select** roles (click / Ctrl+click / Shift+click; Space, Shift+Arrow, Ctrl+A
+ * by keyboard) and move the whole block with the transfer buttons. Each list can also be **reordered in
+ * place** — drag a row, or use its outer up / top / down / bottom buttons. A per-list **filter** box
+ * narrows each list by name (reorder is disabled while a list filters; transfer stays live). Projected
+ * **header slots** (`caePickListSourceHeader`/`caePickListTargetHeader`) give each list a visible title
+ * that is also its `aria-labelledby` accessible name. Every move announces to a screen reader. The
+ * assigned set, the live source selection, the last transfer, and the last reorder echo below so the
+ * interaction is visibly live end-to-end (DoD liveness).
  *
  * `@defer`'d from App (#85): keeping the demo — and the `@angular/cdk/drag-drop` it pulls in — in its
  * own lazy chunk holds those bytes off Forge's initial bundle (the #142 / D-16 budget).
@@ -78,6 +79,10 @@ export class PickListDemo {
 
   /** The last transfer, echoed (visual only — cae-pick-list already announces via LiveAnnouncer). */
   protected readonly lastTransfer = signal<string | null>(null);
+
+  /** Matches a role by its display name (object rows can't use the default `String(item)` matcher). */
+  protected readonly roleFilter = (role: Role, query: string): boolean =>
+    role.name.toLowerCase().includes(query.toLowerCase());
 
   /** The last within-list reorder, echoed (visual only — the component already announces it). */
   protected readonly lastReorder = signal<string | null>(null);
