@@ -1,4 +1,5 @@
 import {
+  booleanAttribute,
   ChangeDetectionStrategy,
   Component,
   computed,
@@ -88,8 +89,12 @@ export class CaeSplitterPanel {
  *
  * **State persistence** (`p-splitter` `stateKey`/`stateStorage` parity, #325): set `[stateKey]` to persist the
  * live sizes to Web Storage and restore them on the next mount (best-effort — SSR-safe, storage-failure-safe).
- * Remaining deferred parity extras (collapse/expand, px min/max, double-click reset, `gutterSize`) are tracked
- * in the follow-ups filed on landing.
+ *
+ * **Collapse / expand** (WAI-ARIA APG Window Splitter *optional* Enter behaviour, #325): set `[collapsible]` so
+ * that **Enter** on a divider collapses its leading (primary) pane to its `minSize` (a true 0 for the default),
+ * and Enter again restores it to its pre-collapse size. Remaining deferred parity extras (a pointer collapse
+ * affordance + programmatic `[collapsed]` model, px min/max, double-click reset, `gutterSize`) are tracked in
+ * the follow-ups filed on landing.
  */
 @Component({
   selector: 'cae-splitter',
@@ -218,6 +223,24 @@ export class CaeSplitter {
   readonly step = input(10, { transform: numberAttribute });
   /** Accessible name applied to every divider separator (they're distinguished by `aria-valuenow`). */
   readonly ariaLabel = input('Resize panels');
+  /**
+   * Enable the APG Window-Splitter *optional* collapse behaviour: when `true`, pressing **Enter** on a divider
+   * collapses its leading (primary) pane to its `minSize` (a true 0 for the default `minSize`), and Enter again
+   * restores it to the size it held before collapsing. Default `false` — Enter is otherwise inert on a
+   * separator, so the default splitter's keyboard behaviour is byte-for-byte unchanged. Collapse targets
+   * `minSize` and never goes below it, so `aria-valuenow` stays ≥ `aria-valuemin` (the ARIA-coherence
+   * invariant). A manual resize (drag or arrow keys) of a collapsed divider clears its restore point — moving
+   * the pane un-collapses it. Keyboard-only for now: a pointer collapse affordance and a programmatic two-way
+   * `[collapsed]` model are tracked as follow-ups (#325). Only the leading pane of each divider is collapsible;
+   * the trailing-most pane has no divider after it, so it cannot be collapsed this way.
+   *
+   * **`[collapsible]` + `[stateKey]` interaction:** the collapse *restore point* is session-transient (not
+   * persisted). If you reload while a pane is persisted-collapsed, Enter can't restore its pre-collapse size —
+   * that size wasn't saved — so it stays inert until you resize the pane once (drag/arrow) to establish a new
+   * baseline, then Enter toggles again. The deferred `[collapsed]` model is the proper home for persisted
+   * collapse state.
+   */
+  readonly collapsible = input(false, { transform: booleanAttribute });
   /** Emits the live sizes array (summing 100) at the end of a pointer drag and after each keyboard resize. */
   readonly resizeEnd = output<number[]>();
 
@@ -251,6 +274,16 @@ export class CaeSplitter {
   private dragIndex = -1;
   /** Whether the active pointer drag has actually moved a divider — gates the `resizeEnd` on pointerup. */
   private dragChanged = false;
+  /**
+   * Collapse restore points, keyed by divider index → the leading pane's pre-collapse size. An entry is written
+   * by an Enter *collapse* and consumed by the next Enter *restore* ({@link collapsible}); a manual resize of
+   * that divider clears it (in {@link setLeading}), so dragging a collapsed pane open un-collapses it. Not a
+   * signal — it's read/written only inside synchronous keydown handling, never in the template (the visible
+   * collapse flows through `override`/`sizes`). Promote it to a signal if a future template binding or computed
+   * ever needs to *read* collapse state (a deferred `aria-expanded` / `[collapsed]` model). Session-transient
+   * (not persisted) and cleared when the panel set changes structurally (the indices would go stale).
+   */
+  private readonly collapseMemory = new Map<number, number>();
 
   /**
    * The size layout has two layers so the initial seed and live resizes don't fight. `seed` is a *pure*
@@ -353,6 +386,15 @@ export class CaeSplitter {
         this.stateRestored = true;
         this.override.set(restored);
       }
+    });
+
+    // A structural change to the panel set (a pane added/removed) shifts every divider index, so the
+    // index-keyed collapse restore points go stale — discard them. `contentChildren` only re-emits when the
+    // projected set actually changes, so this fires on structural changes (and the initial resolve, a no-op on
+    // the empty map), not on a collapse/resize (which mutates `override`/`sizes`, not `panels`).
+    effect(() => {
+      this.panels();
+      this.collapseMemory.clear();
     });
   }
 
@@ -475,11 +517,23 @@ export class CaeSplitter {
     // A user resize closes the restore window: once someone has moved a divider, a late-arriving persisted
     // entry (panels still resolving, or a `[stateKey]` set async) must never clobber the live interaction.
     this.stateRestored = true;
+    // Any committed move of this divider clears its collapse restore point — dragging or arrowing a collapsed
+    // pane open un-collapses it. The Enter *collapse* path re-records the memory AFTER this returns, so its own
+    // `setLeading(i, min)` clearing the (empty) entry here is harmless.
+    this.collapseMemory.delete(i);
     return true;
   }
 
   /** The accessible resize path (Book 11 §3.5 #1). Axis is per-layout; horizontal arrows invert under RTL. */
   protected onKeydown(event: KeyboardEvent, i: number): void {
+    // Enter toggles collapse/restore of the leading pane — but ONLY when opted in. Left inert by default, so
+    // the default splitter's keyboard behaviour is byte-for-byte unchanged (WAI-ARIA APG optional behaviour).
+    if (event.key === 'Enter') {
+      if (!this.collapsible()) return;
+      event.preventDefault();
+      this.toggleCollapse(i);
+      return;
+    }
     const step = this.step();
     const horizontal = this.layout() === 'horizontal';
     const rtl = this.isRtl();
@@ -520,6 +574,37 @@ export class CaeSplitter {
     // when the size actually moved (no spurious resizeEnd when held against the min/max).
     event.preventDefault();
     if (this.setLeading(i, target)) {
+      this.persistState();
+      this.resizeEnd.emit(this.sizes());
+    }
+  }
+
+  /**
+   * Toggle divider `i`'s leading (primary) pane between collapsed and restored (WAI-ARIA APG Window Splitter,
+   * the optional Enter behaviour). **Collapse** targets the pane's `minSize` — a true 0 for the default, and
+   * never below it, so `aria-valuenow` stays ≥ `aria-valuemin`; the pre-collapse size is remembered. **Restore**
+   * returns the pane to that remembered size. A pane already at its minimum can't collapse further, so that's a
+   * no-op storing no restore point (no spurious restore-to-min on the next Enter). Each committed move
+   * persists + emits `resizeEnd`, exactly like a keyboard/pointer resize.
+   */
+  private toggleCollapse(i: number): void {
+    const restore = this.collapseMemory.get(i);
+    if (restore != null) {
+      // Restore to the remembered pre-collapse size. `setLeading` clears the memory on a *successful* move; if
+      // the restore is currently a no-op (an adjacent divider is also collapsed, pinning this pair at 0 with no
+      // room to grow), the memory is deliberately KEPT so a later Enter can restore once the pair reopens —
+      // dropping it here would strand the pane collapsed with no keyboard way back.
+      if (this.setLeading(i, restore)) {
+        this.persistState();
+        this.resizeEnd.emit(this.sizes());
+      }
+      return;
+    }
+    // Collapse to the leading pane's minimum, remembering where it was so Enter can restore it. `setLeading`
+    // returns false (and stores no memory) when the pane is already at its min — nothing to collapse.
+    const current = this.sizes()[i] ?? 0;
+    if (this.setLeading(i, this.minSizeAt(i))) {
+      this.collapseMemory.set(i, current);
       this.persistState();
       this.resizeEnd.emit(this.sizes());
     }
