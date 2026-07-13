@@ -26,6 +26,7 @@ interface PanelSpec {
       [layout]="layout()"
       [step]="step()"
       [ariaLabel]="ariaLabel()"
+      [collapsible]="collapsible()"
       [stateKey]="stateKey()"
       [stateStorage]="stateStorage()"
       (resizeEnd)="onResize($event)"
@@ -42,6 +43,7 @@ class SplitterHost {
   readonly layout = signal<'horizontal' | 'vertical'>('horizontal');
   readonly step = signal(10);
   readonly ariaLabel = signal('Resize panels');
+  readonly collapsible = signal(false);
   readonly stateKey = signal('');
   readonly stateStorage = signal<'local' | 'session'>('session');
   readonly panels = signal<PanelSpec[]>([
@@ -64,6 +66,7 @@ describe('CaeSplitter', () => {
       layout?: 'horizontal' | 'vertical';
       step?: number;
       ariaLabel?: string;
+      collapsible?: boolean;
       panels?: PanelSpec[];
       dir?: Direction;
       stateKey?: string;
@@ -82,6 +85,7 @@ describe('CaeSplitter', () => {
     if (opts.layout) host.layout.set(opts.layout);
     if (opts.step != null) host.step.set(opts.step);
     if (opts.ariaLabel != null) host.ariaLabel.set(opts.ariaLabel);
+    if (opts.collapsible != null) host.collapsible.set(opts.collapsible);
     // stateKey/stateStorage must be set BEFORE the first detectChanges so the one-shot restore effect
     // (which fires when the projected panels first resolve) sees them.
     if (opts.stateKey != null) host.stateKey.set(opts.stateKey);
@@ -838,6 +842,215 @@ describe('CaeSplitter', () => {
     fixture.detectChanges();
     await fixture.whenStable();
     expect(basis(0)).toBe('20%'); // teeth vs an eager latch: the async key still restores
+  });
+
+  // --- Collapse / expand ([collapsible], Enter — APG Window Splitter optional behaviour, #325) ---
+
+  it('collapses the leading pane to its min on Enter and restores it on a second Enter', async () => {
+    await render({
+      collapsible: true,
+      panels: [
+        { size: 30, label: 'A' },
+        { size: 70, label: 'B' },
+      ],
+    });
+    const ev = key(0, 'Enter'); // collapse
+    expect(ev.defaultPrevented).toBe(true); // we handled Enter — no browser default
+    expect(basis(0)).toBe('0%'); // default minSize is 0 → a true collapse
+    expect(valueNow(0)).toBe('0');
+    expect(host.lastResize).toEqual([0, 100]);
+
+    key(0, 'Enter'); // restore
+    expect(basis(0)).toBe('30%'); // back to the pre-collapse size
+    expect(valueNow(0)).toBe('30');
+  });
+
+  it('leaves Enter inert when [collapsible] is false (default) — no resize, no preventDefault', async () => {
+    await render({
+      panels: [
+        { size: 30, label: 'A' },
+        { size: 70, label: 'B' },
+      ],
+    }); // collapsible defaults false
+    const ev = key(0, 'Enter');
+    expect(ev.defaultPrevented).toBe(false); // untouched — the default keyboard path is byte-identical
+    expect(basis(0)).toBe('30%');
+    expect(host.lastResize).toBeNull();
+  });
+
+  it('collapses to minSize (never below), keeping aria-valuenow >= aria-valuemin', async () => {
+    await render({
+      collapsible: true,
+      panels: [
+        { size: 40, min: 15, label: 'A' },
+        { size: 60, label: 'B' },
+      ],
+    });
+    key(0, 'Enter'); // collapse to the pane's min, not to 0
+    expect(basis(0)).toBe('15%');
+    expect(valueNow(0)).toBe('15');
+    expect(dividers()[0].getAttribute('aria-valuemin')).toBe('15'); // valuenow (15) >= valuemin (15): coherent
+    key(0, 'Enter'); // restore
+    expect(basis(0)).toBe('40%');
+  });
+
+  it('does nothing when the leading pane is already at its min (no restore point, no spurious emit)', async () => {
+    await render({
+      collapsible: true,
+      panels: [
+        { size: 20, min: 20, label: 'A' },
+        { size: 80, label: 'B' },
+      ],
+    });
+    host.lastResize = null;
+    key(0, 'Enter'); // already at min → collapse is a no-op, stores no memory
+    expect(basis(0)).toBe('20%');
+    expect(host.lastResize).toBeNull();
+    key(0, 'Enter'); // and a second Enter must not "restore-to-min" — still a clean no-op
+    expect(basis(0)).toBe('20%');
+    expect(host.lastResize).toBeNull();
+  });
+
+  it('emits resizeEnd and persists the collapsed layout when a [stateKey] is set', async () => {
+    await render({
+      collapsible: true,
+      stateKey: 'collapse-persist',
+      panels: [
+        { size: 30, label: 'A' },
+        { size: 70, label: 'B' },
+      ],
+    });
+    key(0, 'Enter'); // collapse
+    expect(host.lastResize).toEqual([0, 100]);
+    expect(JSON.parse(sessionStorage.getItem('collapse-persist')!)).toEqual([0, 100]);
+  });
+
+  it('clears the restore point when the divider is manually resized (dragging a collapsed pane open un-collapses it)', async () => {
+    await render({
+      collapsible: true,
+      panels: [
+        { size: 30, label: 'A' },
+        { size: 70, label: 'B' },
+      ],
+    });
+    key(0, 'Enter'); // collapse (memory: restore → 30)
+    expect(basis(0)).toBe('0%');
+    key(0, 'ArrowRight'); // manual resize grows it to 10 — this must clear the restore point
+    expect(basis(0)).toBe('10%');
+    key(0, 'Enter'); // no memory → collapses AGAIN (does NOT restore to the stale 30)
+    expect(basis(0)).toBe('0%');
+    key(0, 'Enter'); // restore now returns to 10 (the re-based pre-collapse size), proving the memory re-based
+    expect(basis(0)).toBe('10%');
+  });
+
+  it('collapses on Enter in a vertical splitter too (collapse is axis-independent)', async () => {
+    await render({
+      layout: 'vertical',
+      collapsible: true,
+      panels: [
+        { size: 30, label: 'A' },
+        { size: 70, label: 'B' },
+      ],
+    });
+    key(0, 'Enter');
+    expect(basis(0)).toBe('0%');
+    expect(host.lastResize).toEqual([0, 100]);
+  });
+
+  it('drops a stale restore point when the panel set changes structurally (indices shift)', async () => {
+    await render({
+      collapsible: true,
+      panels: [
+        { size: 30, label: 'A' },
+        { size: 70, label: 'B' },
+      ],
+    });
+    key(0, 'Enter'); // collapse A → memory{0:30}
+    expect(basis(0)).toBe('0%');
+    // Insert a pane at the front: divider 0 now sits between the NEW pane and A. The stale memory{0} MUST be
+    // dropped, or the next Enter "restores" the wrong divider to a stale size instead of collapsing.
+    host.panels.set([
+      { size: 20, label: 'X' },
+      { size: 30, label: 'A' },
+      { size: 50, label: 'B' },
+    ]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    key(0, 'Enter'); // memory cleared → a FRESH collapse of the new leading pane (0%), not a stale restore (30%)
+    expect(basis(0)).toBe('0%');
+  });
+
+  it('keeps a restore point through a no-op restore so a later Enter recovers (adjacent double-collapse)', async () => {
+    await render({
+      collapsible: true,
+      panels: [
+        { size: 40, label: 'A' },
+        { size: 40, label: 'B' },
+        { size: 20, label: 'C' },
+      ],
+    });
+    key(0, 'Enter'); // collapse A → [0,80,20], memory{0:40}
+    expect(basis(0)).toBe('0%');
+    key(1, 'Enter'); // collapse B → [0,0,100], memory{0:40,1:80}
+    expect(basis(1)).toBe('0%');
+    key(0, 'Enter'); // restoring A is a NO-OP now (the A/B pair is pinned at 0) — memory{0} must SURVIVE
+    expect(basis(0)).toBe('0%');
+    key(1, 'Enter'); // restore B → [0,80,20]
+    expect(basis(1)).toBe('80%');
+    key(0, 'Enter'); // NOW restore A succeeds → 40%, proving memory{0} survived the earlier no-op restore
+    expect(basis(0)).toBe('40%');
+  });
+
+  it('clears the restore point on a pointer drag too (docstring: a drag un-collapses, not just arrows)', async () => {
+    await render({
+      collapsible: true,
+      panels: [
+        { size: 30, label: 'A' },
+        { size: 70, label: 'B' },
+      ],
+    });
+    mockRect({ width: 200, height: 200 });
+    key(0, 'Enter'); // collapse A → 0, memory{0:30}
+    expect(basis(0)).toBe('0%');
+    pointerDown(0, { x: 50 }); // drag to 50/200 = 25% — a committed drag clears the restore point
+    pointerUp(0);
+    expect(basis(0)).toBe('25%');
+    key(0, 'Enter'); // no memory → collapses AGAIN (does not restore the stale 30)
+    expect(basis(0)).toBe('0%');
+  });
+
+  it('collapses on Enter under RTL identically (collapse never reads the direction)', async () => {
+    await render({
+      dir: 'rtl',
+      collapsible: true,
+      panels: [
+        { size: 30, label: 'A' },
+        { size: 70, label: 'B' },
+      ],
+    });
+    key(0, 'Enter');
+    expect(basis(0)).toBe('0%'); // same as LTR — toggleCollapse/setLeading never consult isRtl()
+    expect(host.lastResize).toEqual([0, 100]);
+    key(0, 'Enter');
+    expect(basis(0)).toBe('30%');
+  });
+
+  it('an Enter-collapse before an async [stateKey] restore closes the restore window (no clobber)', async () => {
+    // A previous session saved a 50/50 layout under the key.
+    sessionStorage.setItem('late-collapse-key', JSON.stringify([50, 50]));
+    await render({
+      collapsible: true,
+      panels: [
+        { size: 30, label: 'A' },
+        { size: 70, label: 'B' },
+      ],
+    }); // key blank at content-init
+    key(0, 'Enter'); // user collapses A BEFORE the key arrives — this must close the restore latch
+    expect(basis(0)).toBe('0%');
+    host.stateKey.set('late-collapse-key'); // the key arrives late (async binding); the restore effect re-runs
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(basis(0)).toBe('0%'); // the stored 50/50 must NOT clobber the live collapse
   });
 });
 
