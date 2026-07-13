@@ -1,7 +1,7 @@
 import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import { CaeBreadcrumb, CaeBreadcrumbItem } from './breadcrumb';
+import { CaeBreadcrumb, CaeBreadcrumbItem, CaeBreadcrumbSelectEvent } from './breadcrumb';
 
 /** Host that drives the breadcrumb's inputs from signals so a test can flip them at runtime. */
 @Component({
@@ -13,7 +13,7 @@ import { CaeBreadcrumb, CaeBreadcrumbItem } from './breadcrumb';
       [home]="home()"
       [separator]="separator()"
       [ariaLabel]="ariaLabel()"
-      (itemSelect)="selected.set($event)"
+      (itemSelect)="onSelect($event)"
     />
   `,
 })
@@ -22,7 +22,14 @@ class BreadcrumbHost {
   readonly home = signal<CaeBreadcrumbItem | null>(null);
   readonly separator = signal('/');
   readonly ariaLabel = signal('');
-  readonly selected = signal<CaeBreadcrumbItem | null>(null);
+  readonly selected = signal<CaeBreadcrumbSelectEvent | null>(null);
+  /** When true, the handler intercepts the trail by preventing the crumb's native navigation. */
+  intercept = false;
+  /** Stand-in for a real consumer's (itemSelect) handler — records the event and optionally intercepts. */
+  onSelect(event: CaeBreadcrumbSelectEvent): void {
+    this.selected.set(event);
+    if (this.intercept) event.originalEvent.preventDefault();
+  }
 }
 
 describe('CaeBreadcrumb', () => {
@@ -169,20 +176,84 @@ describe('CaeBreadcrumb', () => {
     expect(nav.querySelector('li:first-child .cae-breadcrumb__sep')).toBeNull();
   });
 
-  it('emits (itemSelect) when a link crumb is activated, but not for text/current crumbs', () => {
+  it('emits (itemSelect) with { item, originalEvent } when a link crumb is activated, but not for text/current crumbs', () => {
     render({ items: TRAIL });
     const links = Array.from(nav.querySelectorAll('a'));
-    // Swallow the native href navigation (jsdom can't navigate) — the component intentionally does
-    // NOT preventDefault, so a real browser follows the link; here we only assert the emit.
+    // Swallow the native href navigation (jsdom can't navigate) — the component itself does NOT
+    // preventDefault, so a real browser follows the link unless the consumer intercepts.
     links[0].addEventListener('click', (e) => e.preventDefault());
-    (links[0] as HTMLAnchorElement).dispatchEvent(new MouseEvent('click', { cancelable: true }));
-    expect(hostCmp.selected()?.label).toBe('Reports');
+    const ev = new MouseEvent('click', { cancelable: true });
+    (links[0] as HTMLAnchorElement).dispatchEvent(ev);
+    expect(hostCmp.selected()?.item.label).toBe('Reports');
+    expect(hostCmp.selected()?.originalEvent).toBe(ev); // the DOM event is handed to the consumer
 
     // The current page is a span, so there is nothing to click for it — assert it stays uninvolved.
     hostCmp.selected.set(null);
     const current = nav.querySelector('[aria-current="page"]') as HTMLElement;
     current.dispatchEvent(new MouseEvent('click', { cancelable: true }));
     expect(hostCmp.selected()).toBeNull();
+  });
+
+  it('lets a consumer intercept a link crumb by calling originalEvent.preventDefault() through (itemSelect)', () => {
+    render({ items: TRAIL });
+    hostCmp.intercept = true; // the host's (itemSelect) handler will preventDefault the originalEvent
+    const link = nav.querySelector('a') as HTMLAnchorElement;
+    const ev = new MouseEvent('click', { cancelable: true });
+    link.dispatchEvent(ev);
+    // The suppression runs through the real path: component emit → host onSelect → originalEvent.preventDefault().
+    expect(hostCmp.selected()?.item.label).toBe('Reports'); // event emitted
+    expect(ev.defaultPrevented).toBe(true); // and the consumer's preventDefault took effect on the live event
+  });
+
+  it('renders a url-less [command] crumb as a real <button> that emits without an href', () => {
+    render({
+      items: [
+        { label: 'Workspace', url: '/ws' },
+        { label: 'Reindex', command: true },
+        { label: 'Done' },
+      ],
+    });
+    // 'Reindex' has no url but is command → a button, not inert text and not a link.
+    const button = nav.querySelector('button') as HTMLButtonElement;
+    expect(button).toBeTruthy();
+    // A real <button type="button"> carries native keyboard activation (Enter AND Space → click) and
+    // never form-submits; the template adds no (keydown) that could suppress it, so activation rides the
+    // platform (jsdom can't synthesize click-from-keydown — we assert the semantics, not re-test the UA).
+    expect(button.type).toBe('button');
+    expect(button.textContent!.trim()).toBe('Reindex');
+    expect(button.hasAttribute('href')).toBe(false);
+    expect(nav.querySelectorAll('a').length).toBe(1); // only 'Workspace' is a link
+
+    const ev = new MouseEvent('click', { cancelable: true });
+    button.dispatchEvent(ev);
+    expect(hostCmp.selected()?.item.label).toBe('Reindex');
+    expect(hostCmp.selected()?.originalEvent).toBe(ev);
+  });
+
+  it('ignores [command] when the crumb also has a url (a link takes precedence)', () => {
+    render({ items: [{ label: 'Both', url: '/both', command: true }, { label: 'End' }] });
+    expect(nav.querySelector('a')?.getAttribute('href')).toBe('/both'); // rendered as a link
+    expect(nav.querySelector('button')).toBeNull();
+  });
+
+  it('never makes the current page or a disabled crumb a command button', () => {
+    // A command crumb that is the LAST crumb is the current page (inert span), never a button.
+    render({
+      items: [
+        { label: 'Root', url: '/' },
+        { label: 'Current', command: true },
+      ],
+    });
+    expect(nav.querySelector('button')).toBeNull();
+    expect(nav.querySelector('[aria-current="page"]')!.tagName.toLowerCase()).toBe('span');
+
+    // A disabled command crumb falls through to inert aria-disabled text.
+    render({ items: [{ label: 'Off', command: true, disabled: true }, { label: 'Here' }] });
+    expect(nav.querySelector('button')).toBeNull();
+    const off = Array.from(nav.querySelectorAll('span')).find(
+      (s) => s.textContent!.trim() === 'Off',
+    )!;
+    expect(off.getAttribute('aria-disabled')).toBe('true');
   });
 
   it('renders a single-crumb trail as just the current page, with no ancestors', () => {

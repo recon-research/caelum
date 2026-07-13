@@ -2,26 +2,49 @@
   <h3 class="forge-breadcrumb-card__title">Breadcrumb</h3>
   <p class="forge-breadcrumb-card__lead">
     A semantic <code>&lt;nav aria-label&gt;</code> → <code>&lt;ol&gt;</code> trail: hyperlink
-    ancestors, the current page marked <code>aria-current="page"</code> (never a link), and
-    CSS-drawn token separators. <code>Tab</code> moves through the links; a page reader announces
-    the trail as an ordered list.
+    ancestors, the current page marked <code>aria-current="page"</code> (never a link), and token
+    separators. <code>Tab</code> moves through the links; a page reader announces the trail as an
+    ordered list. <code>(itemSelect)</code> emits
+    <code>{{ '{' }} item, originalEvent {{ '}' }}</code
+    >, so this demo <code>preventDefault()</code>s to intercept navigation and stay on the page.
   </p>
 
   <div class="forge-breadcrumb-row">
     <span class="forge-breadcrumb-row__label">Default <code>/</code> separator</span>
-    <cae-breadcrumb [home]="home" [items]="trail" (itemSelect)="lastSelected.set($event.label)" />
+    <cae-breadcrumb [home]="home" [items]="trail" (itemSelect)="onSelect($event)" />
   </div>
 
   <div class="forge-breadcrumb-row">
     <span class="forge-breadcrumb-row__label">Configurable <code>›</code> separator</span>
-    <cae-breadcrumb [home]="home" [items]="trail" separator="›" ariaLabel="Documentation trail" />
+    <cae-breadcrumb
+      [home]="home"
+      [items]="trail"
+      separator="›"
+      ariaLabel="Documentation trail"
+      (itemSelect)="onSelect($event)"
+    />
+  </div>
+
+  <div class="forge-breadcrumb-row">
+    <span class="forge-breadcrumb-row__label"
+      >Command crumb (<code>&lt;button&gt;</code>, no url)</span
+    >
+    <cae-breadcrumb
+      [items]="commandTrail"
+      ariaLabel="Workspace trail"
+      (itemSelect)="onSelect($event)"
+    />
   </div>
 
   <p class="forge-breadcrumb-echo" role="status" aria-live="polite">
-    @if (lastSelected(); as label) {
-      Last crumb activated: <strong>{{ label }}</strong>
+    @if (lastSelected(); as sel) {
+      Last crumb activated: <strong>{{ sel.label }}</strong>
+      @if (sel.count > 1) {
+        (×{{ sel.count }})
+      }
     } @else {
-      Activate a crumb to see <code>(itemSelect)</code> fire.
+      Activate a crumb (link or the <strong>Reindex</strong> command) to see
+      <code>(itemSelect)</code> fire.
     }
   </p>
 </cae-card>
