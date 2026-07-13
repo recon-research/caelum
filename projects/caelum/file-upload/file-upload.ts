@@ -4,7 +4,9 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  contentChild,
   DestroyRef,
+  Directive,
   effect,
   ElementRef,
   forwardRef,
@@ -14,7 +16,9 @@ import {
   numberAttribute,
   output,
   signal,
+  TemplateRef,
 } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 import {
   HttpClient,
@@ -89,6 +93,60 @@ export interface CaeFileUploadError {
 }
 
 /**
+ * The context handed to a `caeFileUploadFile` row template: the tracked file, its index, the preview
+ * URL, and the three row action callbacks. Lets a consumer own a row's inner rendering while the
+ * component keeps managing state/progress/upload — `p-fileUpload`'s `#file` template parity.
+ */
+export interface CaeFileUploadFileContext {
+  /** The file this row renders — `status`, `progress`, `error`, and the underlying browser `File`. */
+  $implicit: CaeUploadFile;
+  /** The file's current index in the queue. */
+  readonly index: number;
+  /** The object-URL thumbnail for an image file when `previewImages` is on, else `null`. */
+  readonly previewUrl: string | null;
+  /** Remove this file from the queue (aborts an in-flight upload first). */
+  readonly remove: () => void;
+  /** Cancel this file's in-flight upload (no-op unless it is `uploading`). */
+  readonly cancel: () => void;
+  /** Retry a failed/canceled upload (no-op for any other status). */
+  readonly retry: () => void;
+}
+
+/**
+ * Marks the `<ng-template>` that renders one `cae-file-upload` row, so the queue is content-agnostic
+ * (`p-fileUpload`'s `#file` template parity). Usage:
+ * `<ng-template caeFileUploadFile let-file let-remove="remove">`. Absent ⇒ the built-in row (thumbnail,
+ * name, size, progress, status, Cancel/Retry/Remove) renders. Import it alongside `CaeFileUpload`.
+ *
+ * The component still owns the `<li>` list semantics and the `data-status` styling hook; only the row's
+ * **inner** content is yours. Wire the row's actions through the context callbacks
+ * (`remove`/`cancel`/`retry`) — they run the same guarded methods the built-in buttons do, so focus
+ * management (WCAG 2.4.3) and `LiveAnnouncer` announcements keep working. Focus-restore keys off the row
+ * itself, so it stays safe (falls back to the file input, never `<body>`) even for a bare projected
+ * button; add `[attr.data-action-id]="file.id"` (Cancel/Retry) and `[attr.data-remove-id]="file.id"`
+ * (Remove) only if you want the restore to land *precisely* on the neighbouring row's button.
+ *
+ * A custom row **replaces** the built-in progress bar, the persistent "Uploaded" text status (WCAG 1.4.1,
+ * not colour alone), and the error text. If you set `[url]`, re-provide visible equivalents from the
+ * context's `status`/`progress`/`error` so an upload's state stays perceivable without relying on colour.
+ */
+@Directive({ selector: 'ng-template[caeFileUploadFile]' })
+export class CaeFileUploadFileDef {
+  /** The captured template, typed for the `let-` bindings above. */
+  readonly template = inject<TemplateRef<CaeFileUploadFileContext>>(TemplateRef);
+
+  /** Narrows the `let-` context types for the template type-checker. */
+  static ngTemplateContextGuard(
+    _dir: CaeFileUploadFileDef,
+    ctx: unknown,
+  ): ctx is CaeFileUploadFileContext {
+    // Compile-time only (Angular never calls this at runtime); `void` marks ctx intentionally unused.
+    void ctx;
+    return true;
+  }
+}
+
+/**
  * `cae-file-upload` — the third and final member of the Book 11 §3.3 drag-drop cluster
  * (`reference/COMPARISON.md`: `p-fileUpload` → `cae-file-upload`). A **keyboard-reachable native
  * `<input type=file>`** paired with a **pointer drop affordance**, uploading each file via
@@ -128,6 +186,11 @@ export interface CaeFileUploadError {
  * blob URL never outlives its row (no memory leak). The thumbnail is decorative (`alt=""`); the filename
  * beside it carries the accessible name. Off by default — additive, non-breaking, no network.
  *
+ * **Custom rows.** Project a `<ng-template caeFileUploadFile let-file>` ({@link CaeFileUploadFileDef}) to
+ * own a row's inner rendering (`p-fileUpload`'s `#file` template parity); the component keeps the `<li>`
+ * list semantics and manages state/progress/upload, and the row wires its actions through the context's
+ * `remove`/`cancel`/`retry` callbacks. Absent ⇒ the built-in row renders. Fully content-agnostic.
+ *
  * Token-only theming (`--cae-*`/`--mat-sys-*`), `OnPush` + signal state (zoneless), Angular core +
  * `@angular/common/http` + `@angular/cdk/a11y` only — no foreign uploader (Book 03 provenance clean).
  */
@@ -135,6 +198,7 @@ export interface CaeFileUploadError {
   selector: 'cae-file-upload',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'cae-file-upload' },
+  imports: [NgTemplateOutlet],
   providers: [
     { provide: NG_VALUE_ACCESSOR, useExisting: forwardRef(() => CaeFileUpload), multi: true },
   ],
@@ -168,70 +232,91 @@ export interface CaeFileUploadError {
     </div>
 
     @if (files().length) {
-      <ul class="cae-file-upload__list">
+      <!-- role="list"/"listitem": list-style:none strips WebKit/VoiceOver's implicit list semantics, so
+           name them explicitly — the list is the contract surface a custom row plugs into. -->
+      <ul class="cae-file-upload__list" role="list">
         @for (f of files(); track f.id) {
-          <li class="cae-file-upload__item" [attr.data-status]="f.status">
-            <!-- Decorative thumbnail (alt=""): the filename beside it already carries the a11y name, so
+          <li
+            class="cae-file-upload__item"
+            role="listitem"
+            [attr.data-status]="f.status"
+            [attr.data-file-id]="f.id"
+          >
+            @if (fileDef(); as def) {
+              <!-- Consumer owns the row's inner content; the component keeps the <li> list semantics +
+                   the data-status hook + focus management. Focus-restore keys off the row (data-file-id),
+                   so an async completion that unmounts the projected control still rescues focus to the
+                   file input (never <body>). The __custom-row wrapper makes a multi-root projected row lay
+                   out as ONE unit, not N gap-separated flex items of the <li>. -->
+              <span class="cae-file-upload__custom-row">
+                <ng-container
+                  [ngTemplateOutlet]="def.template"
+                  [ngTemplateOutletContext]="fileContext(f, $index)"
+                />
+              </span>
+            } @else {
+              <!-- Decorative thumbnail (alt=""): the filename beside it already carries the a11y name, so
                  an alt would double-announce. Object-URL-backed; minted by the effect, revoked on exit. -->
-            @if (previewImages() && previewUrl(f.id); as src) {
-              <img class="cae-file-upload__thumb" [src]="src" alt="" />
-            }
-            <span class="cae-file-upload__name">{{ f.file.name }}</span>
-            <span class="cae-file-upload__size">{{ formatSize(f.file.size) }}</span>
+              @if (previewImages() && previewUrl(f.id); as src) {
+                <img class="cae-file-upload__thumb" [src]="src" alt="" />
+              }
+              <span class="cae-file-upload__name">{{ f.file.name }}</span>
+              <span class="cae-file-upload__size">{{ formatSize(f.file.size) }}</span>
 
-            @if (f.status === 'uploading' || f.status === 'success') {
-              <progress
-                class="cae-file-upload__progress"
-                max="100"
-                [value]="f.progress"
-                [attr.aria-label]="'Upload progress for ' + f.file.name"
-              ></progress>
-              <span class="cae-file-upload__percent">{{ f.progress }}%</span>
-            }
+              @if (f.status === 'uploading' || f.status === 'success') {
+                <progress
+                  class="cae-file-upload__progress"
+                  max="100"
+                  [value]="f.progress"
+                  [attr.aria-label]="'Upload progress for ' + f.file.name"
+                ></progress>
+                <span class="cae-file-upload__percent">{{ f.progress }}%</span>
+              }
 
-            <!-- A persistent TEXT status for success (not color alone — WCAG 1.4.1); other terminal
+              <!-- A persistent TEXT status for success (not color alone — WCAG 1.4.1); other terminal
                  states render their reason in the error span above. -->
-            @if (f.status === 'success') {
-              <span class="cae-file-upload__done">Uploaded</span>
-            }
-            @if (f.status === 'error' || f.status === 'invalid' || f.status === 'canceled') {
-              <span class="cae-file-upload__error">{{ f.error }}</span>
-            }
+              @if (f.status === 'success') {
+                <span class="cae-file-upload__done">Uploaded</span>
+              }
+              @if (f.status === 'error' || f.status === 'invalid' || f.status === 'canceled') {
+                <span class="cae-file-upload__error">{{ f.error }}</span>
+              }
 
-            <!-- Cancel and Retry share the same logical action slot (mutually exclusive) and carry the
+              <!-- Cancel and Retry share the same logical action slot (mutually exclusive) and carry the
                  same data-action-id, so focus management can land on "the row's action button" whichever
                  one is currently rendered — this is what stops focus stranding to <body> when they swap. -->
-            @if (f.status === 'uploading') {
+              @if (f.status === 'uploading') {
+                <button
+                  type="button"
+                  class="cae-file-upload__action"
+                  [attr.data-action-id]="f.id"
+                  [attr.aria-label]="'Cancel upload of ' + f.file.name"
+                  (click)="cancel(f.id)"
+                >
+                  Cancel
+                </button>
+              }
+              @if (f.status === 'error' || f.status === 'canceled') {
+                <button
+                  type="button"
+                  class="cae-file-upload__action"
+                  [attr.data-action-id]="f.id"
+                  [attr.aria-label]="'Retry upload of ' + f.file.name"
+                  (click)="retry(f.id)"
+                >
+                  Retry
+                </button>
+              }
               <button
                 type="button"
                 class="cae-file-upload__action"
-                [attr.data-action-id]="f.id"
-                [attr.aria-label]="'Cancel upload of ' + f.file.name"
-                (click)="cancel(f.id)"
+                [attr.data-remove-id]="f.id"
+                [attr.aria-label]="'Remove ' + f.file.name"
+                (click)="removeFile(f.id)"
               >
-                Cancel
+                Remove
               </button>
             }
-            @if (f.status === 'error' || f.status === 'canceled') {
-              <button
-                type="button"
-                class="cae-file-upload__action"
-                [attr.data-action-id]="f.id"
-                [attr.aria-label]="'Retry upload of ' + f.file.name"
-                (click)="retry(f.id)"
-              >
-                Retry
-              </button>
-            }
-            <button
-              type="button"
-              class="cae-file-upload__action"
-              [attr.data-remove-id]="f.id"
-              [attr.aria-label]="'Remove ' + f.file.name"
-              (click)="removeFile(f.id)"
-            >
-              Remove
-            </button>
           </li>
         }
       </ul>
@@ -336,6 +421,13 @@ export interface CaeFileUploadError {
       padding: 0.5rem 0.75rem;
       border-radius: var(--mat-sys-corner-small, 0.5rem);
       background: var(--mat-sys-surface-container, rgba(0, 0, 0, 0.04));
+    }
+
+    /* Custom-row wrapper: one full-width flex child of the item, so a multi-root projected row lays out
+       as a single unit the consumer controls — not N gap-separated flex items of the __item. */
+    .cae-file-upload__custom-row {
+      flex: 1 1 100%;
+      min-inline-size: 0;
     }
 
     /* Small leading thumbnail for image files (previewImages); token-rounded, cropped to a square. */
@@ -498,6 +590,9 @@ export class CaeFileUpload implements ControlValueAccessor {
   readonly uploadError = output<CaeFileUploadError>();
   /** A file was removed from the queue. */
   readonly remove = output<File>();
+
+  /** A projected `caeFileUploadFile` row template, if any — else the built-in row renders. */
+  protected readonly fileDef = contentChild(CaeFileUploadFileDef);
 
   /** The upload queue — the single source of truth the template renders (zoneless: a signal). */
   protected readonly files = signal<readonly CaeUploadFile[]>([]);
@@ -779,11 +874,15 @@ export class CaeFileUpload implements ControlValueAccessor {
   // Cancel and Retry share `data-action-id` (one logical slot), so `focusRowAction` lands on whichever
   // is current. All focus moves are one-shot post-render (afterNextRender) so the new element exists.
 
-  /** Whether this row's action button (Cancel/Retry) currently holds focus — the async-rescue guard. */
+  /**
+   * Whether focus currently lives anywhere inside this row — the async-rescue guard. Matches on the row
+   * (`data-file-id`), not the specific action button, so a custom row whose projected control lacks
+   * `data-action-id` is still caught: when that control unmounts on an async completion, the rescue fires
+   * and `focusAfterRender` lands focus on the file input (never `<body>`).
+   */
   private actionHasFocus(id: number): boolean {
-    return (
-      this.host.nativeElement.querySelector(`[data-action-id="${id}"]`) === document.activeElement
-    );
+    const row = this.host.nativeElement.querySelector(`[data-file-id="${id}"]`);
+    return row?.contains(document.activeElement) ?? false;
   }
 
   /** After render, focus this row's current action button (Cancel or Retry). */
@@ -818,6 +917,29 @@ export class CaeFileUpload implements ControlValueAccessor {
   /** The object-URL thumbnail for a file id, or `null` — a pure lookup (the effect does the minting). */
   protected previewUrl(id: number): string | null {
     return this.previews.get(id) ?? null;
+  }
+
+  /**
+   * Build the render context for a projected `caeFileUploadFile` row — the file, its index, its preview
+   * URL, and the three action callbacks bound to this file's id. `previewUrl` is gated on `previewImages`
+   * (mirroring the built-in row and the field's `null`-when-off contract; the object URL is retained in
+   * the Map when toggled off, but the context hides it). The callbacks route through the same guarded
+   * methods the built-in buttons do, so a custom row keeps focus management + announcements.
+   *
+   * A fresh object with three closures is allocated per change-detection pass (the callbacks must close
+   * over `f.id`, so — unlike order-list's data-only inline literal — it can't be a stable literal). This
+   * is cheap for a small upload queue, and `NgTemplateOutlet` updates the context in place rather than
+   * re-creating the view, so a consumer's row DOM/focus is preserved across passes.
+   */
+  protected fileContext(f: CaeUploadFile, index: number): CaeFileUploadFileContext {
+    return {
+      $implicit: f,
+      index,
+      previewUrl: this.previewImages() ? this.previewUrl(f.id) : null,
+      remove: () => this.removeFile(f.id),
+      cancel: () => this.cancel(f.id),
+      retry: () => this.retry(f.id),
+    };
   }
 
   /** Revoke and forget one file's preview URL (called when its row leaves the queue). */

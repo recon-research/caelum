@@ -4,8 +4,10 @@
     <strong>Choose files</strong> with the keyboard (Tab to the control, then Enter) or
     <strong>drop</strong> them on the zone. Images up to 512&nbsp;KB are accepted; anything larger
     or non-image is <strong>rejected before upload</strong> at the trust boundary and announced to a
-    screen reader. Each accepted image shows an inline <strong>thumbnail preview</strong>. Wiring
-    <code>[url]</code> turns on the <code>HttpClient</code> progress / cancel / retry upload.
+    screen reader. Each row is drawn by a
+    <strong>custom <code>caeFileUploadFile</code> template</strong> — its own thumbnail, name, size,
+    and Remove. Wiring <code>[url]</code> turns on the <code>HttpClient</code> progress / cancel /
+    retry upload.
   </p>
 
   <cae-file-upload
@@ -19,7 +21,28 @@
     ariaLabel="Upload images"
     (filesSelected)="onSelect($event)"
     (uploadError)="onError($event)"
-  />
+  >
+    <!-- Own the row rendering with caeFileUploadFile: the thumbnail comes from the context's previewUrl,
+         and Remove is wired to the context callback (which keeps the component's focus management). -->
+    <ng-template caeFileUploadFile let-file let-preview="previewUrl" let-remove="remove">
+      <span class="forge-file-upload-row">
+        @if (preview) {
+          <img class="forge-file-upload-row__thumb" [src]="preview" alt="" />
+        }
+        <span class="forge-file-upload-row__name">{{ file.file.name }}</span>
+        <span class="forge-file-upload-row__size">{{ sizeKb(file.file.size) }}</span>
+        <button
+          type="button"
+          class="forge-file-upload-row__remove"
+          [attr.data-remove-id]="file.id"
+          [attr.aria-label]="'Remove ' + file.file.name"
+          (click)="remove()"
+        >
+          Remove
+        </button>
+      </span>
+    </ng-template>
+  </cae-file-upload>
 
   <p class="forge-file-upload-accepted">
     Accepted: <strong>{{ acceptedText() }}</strong>

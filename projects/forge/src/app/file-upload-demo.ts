@@ -1,24 +1,26 @@
 import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
 
 import { CaeCard } from 'caelum/card';
-import { CaeFileUpload, CaeFileUploadError } from 'caelum/file-upload';
+import { CaeFileUpload, CaeFileUploadError, CaeFileUploadFileDef } from 'caelum/file-upload';
 
 /**
  * The deferred "File upload" `cae-file-upload` demo (#338) — the third and final drag-drop-cluster
  * component. It exercises the **live, self-contained** path end-to-end: choose files with the keyboard
  * (the native `<input type=file>`) or drop them on the zone, oversize/wrong-type files are **rejected at
  * the trust boundary** (announced + shown), and the accepted set echoes below — no backend needed (DoD
- * liveness). `[previewImages]` renders an inline thumbnail for each accepted image (#345), so dropping a
- * picture is visibly live. This demo runs **selection-only** (no `[url]`), so it needs no `HttpClient`; wiring `[url]`
- * turns on the `HttpClient` progress/cancel/retry upload path (verified in the spec via
- * `HttpTestingController`) and would add `provideHttpClient()` to `app.config`.
+ * liveness). Each row is rendered by a projected **`caeFileUploadFile` template** (#345), which draws its
+ * own thumbnail from the context's `previewUrl` and wires Remove through the context callback — so the
+ * demo doubles as the copy-paste example for owning row markup. This demo runs **selection-only** (no
+ * `[url]`), so it needs no `HttpClient`; wiring `[url]` turns on the `HttpClient` progress/cancel/retry
+ * upload path (verified in the spec via `HttpTestingController`) and would add `provideHttpClient()` to
+ * `app.config`.
  *
  * `@defer`'d from App (#85): keeps the demo off Forge's initial bundle (the #142 / D-16 budget).
  */
 @Component({
   selector: 'app-file-upload-demo',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CaeCard, CaeFileUpload],
+  imports: [CaeCard, CaeFileUpload, CaeFileUploadFileDef],
   templateUrl: './file-upload-demo.html',
   styleUrl: './file-upload-demo.scss',
 })
@@ -39,6 +41,11 @@ export class FileUploadDemo {
 
   /** 512 KB cap for the demo, so a large image visibly trips the trust boundary. */
   protected readonly maxSize = 512 * 1024;
+
+  /** Round a byte count to KB for the custom row's size label. */
+  protected sizeKb(bytes: number): string {
+    return `${Math.round(bytes / 1024)} KB`;
+  }
 
   protected onSelect(files: readonly File[]): void {
     this.accepted.set(files);
