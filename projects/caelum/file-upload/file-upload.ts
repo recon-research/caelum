@@ -110,8 +110,9 @@ export interface CaeFileUploadError {
  * an error message, emits `(uploadError)` with `kind: 'validation'`, and is **never** sent. Client-side
  * validation is UX, not security — the server must re-validate; documented, not implied.
  *
- * **Upload.** With `url` set, `POST`s a `multipart/form-data` body (field `name`, default `file`) via
- * `HttpClient` with `reportProgress`, driving a per-file progress bar. `cancel()` unsubscribes the
+ * **Upload.** With `url` set, uploads a `multipart/form-data` body (field `name`, default `file`) via
+ * `HttpClient` with `reportProgress` — `POST` by default, or `PUT` via {@link method} — driving a
+ * per-file progress bar. `cancel()` unsubscribes the
  * request (aborting the underlying XHR); `retry()` re-sends a failed/canceled file. `auto` uploads on
  * add; otherwise call `upload()`. With `url` unset it is a **selection-only** control (value exposed,
  * no network) — `HttpClient` is injected `optional`, so the component works without `provideHttpClient`.
@@ -414,13 +415,20 @@ export class CaeFileUpload implements ControlValueAccessor {
   protected readonly inputId = `cae-file-upload-${nextComponentId++}`;
 
   /**
-   * The endpoint each file is `POST`ed to. Empty → **selection-only** (validate + expose the value,
-   * never hit the network). Tune the request with {@link withCredentials}, {@link headers}, and
-   * {@link params}.
+   * The endpoint each file is uploaded to (`POST` by default, or `PUT` via {@link method}). Empty →
+   * **selection-only** (validate + expose the value, never hit the network). Tune the request with
+   * {@link withCredentials}, {@link headers}, and {@link params}.
    */
   readonly url = input('');
   /** The `multipart/form-data` field name each file is sent under. */
   readonly name = input('file');
+  /**
+   * The HTTP method for the upload request — `'POST'` (default) or `'PUT'`. Some backends (an S3
+   * presigned URL, a REST resource replace) require `PUT`. Case-insensitive; any other value falls
+   * back to `POST`, so a template binding can never send a malformed method. Ignored in
+   * selection-only mode (no {@link url}).
+   */
+  readonly method = input<'POST' | 'PUT'>('POST', { transform: uploadMethod });
   /** Send credentials (cookies / TLS certs) with the upload — `XMLHttpRequest.withCredentials`. */
   readonly withCredentials = input(false, { transform: booleanAttribute });
   /**
@@ -691,7 +699,7 @@ export class CaeFileUpload implements ControlValueAccessor {
 
     const body = new FormData();
     body.append(this.name(), entry.file, entry.file.name);
-    const request = new HttpRequest('POST', url, body, {
+    const request = new HttpRequest(this.method(), url, body, {
       reportProgress: true,
       withCredentials: this.withCredentials(),
       headers: this.resolvedHeaders(),
@@ -907,4 +915,17 @@ function nullableNumber(value: unknown): number | null {
   if (value == null || value === '') return null;
   const n = numberAttribute(value, NaN);
   return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+/**
+ * Normalize the upload HTTP method: uppercase and accept only `PUT`, otherwise `POST`. Keeps the
+ * request method well-formed no matter what a template binding passes (invalid → the safe default),
+ * and lets migrators pass the lowercase `'post'`/`'put'` PrimeNG spelling.
+ */
+function uploadMethod(value: unknown): 'POST' | 'PUT' {
+  return String(value ?? '')
+    .trim()
+    .toUpperCase() === 'PUT'
+    ? 'PUT'
+    : 'POST';
 }

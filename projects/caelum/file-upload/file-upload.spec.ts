@@ -245,6 +245,33 @@ describe('CaeFileUpload', () => {
       expect(req.request.params.keys()).toEqual([]);
       req.flush({ ok: true });
     });
+
+    it('POSTs by default', () => {
+      const req = uploadOne();
+      expect(req.request.method).toBe('POST');
+      req.flush({ ok: true });
+    });
+
+    it('sends PUT (case-insensitive) when [method] is put — e.g. an S3 presigned URL', () => {
+      fixture.componentRef.setInput('method', 'put'); // lowercase PrimeNG spelling, normalized
+      const req = uploadOne();
+      expect(req.request.method).toBe('PUT');
+      req.flush({ ok: true });
+    });
+
+    it('trims surrounding whitespace before matching (a padded binding still means PUT)', () => {
+      fixture.componentRef.setInput('method', ' PUT ');
+      const req = uploadOne();
+      expect(req.request.method).toBe('PUT');
+      req.flush({ ok: true });
+    });
+
+    it('falls back to POST for an unsupported method so a binding can never send a malformed verb', () => {
+      fixture.componentRef.setInput('method', 'DELETE');
+      const req = uploadOne();
+      expect(req.request.method).toBe('POST');
+      req.flush({ ok: true });
+    });
   });
 
   it('waits for upload() in manual mode; the Upload button is aria-disabled (not native) with no pending', () => {
