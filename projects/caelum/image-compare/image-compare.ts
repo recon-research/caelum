@@ -27,12 +27,14 @@ const clamp = (v: number, min: number, max: number): number =>
  * clips the top ("before") image so the bottom ("after") image shows through on the trailing side.
  *
  * **The divider is the APG *window splitter* pattern** (Book 11 §3.2 — the same separator work `cae-splitter`
- * will need): a focusable `role="separator"` with `aria-orientation`, `aria-valuenow/min/max`, and a full
- * **keyboard resize path** (Book 11 §3.5 non-negotiable #1) — a mouse-only reveal fails parity. Left/Right
- * nudge by `step` (the APG minimum for a vertical separator), Home/End snap, PageUp/Down step coarsely, and
- * Up/Down mirror Left/Right as a convenience. The drag axis and the horizontal
- * arrow keys resolve through {@link Directionality} for RTL (Book 04 §3.5): the reveal is always measured
- * from the inline-**start** edge, so in RTL "before" reveals from the right and Left/Right invert.
+ * shares): a focusable `role="separator"` with `aria-orientation`, `aria-valuenow/min/max`, and a full
+ * **keyboard resize path** (Book 11 §3.5 non-negotiable #1) — a mouse-only reveal fails parity. The primary
+ * axis follows `[layout]`: horizontal (default) reveals left↔right (Left/Right nudge by `step`, Up/Down a
+ * convenience mirror); vertical stacks the plates and reveals top↔bottom (Down/Up primary, Left/Right the
+ * mirror). Home/End snap, PageUp/Down step coarsely. The horizontal drag axis and its arrow keys resolve
+ * through {@link Directionality} for RTL (Book 04 §3.5): the reveal is measured from the inline-**start**
+ * edge, so in RTL "before" reveals from the right and Left/Right invert; the vertical (block) axis is
+ * direction-independent.
  *
  * **No LiveAnnouncer** (unlike the drag-drop cluster's move announcements, Book 11 §3.5 #2): the reveal % is
  * a *continuous* value on a focusable separator, so `aria-valuenow`/`aria-valuetext` are announced by the SR
@@ -51,18 +53,22 @@ const clamp = (v: number, min: number, max: number): number =>
  *
  * Ships as its own entry point `caelum/image-compare` (the ticket's flagged fork — a distinct substrate
  * from the `caelum/image` dialog-lightbox, so it is not folded in). Token-only styling (Book 04 §3.6).
- * Deferred parity extras (vertical orientation, click-the-track-to-jump, a content-projection variant, an
- * i18n `aria-valuetext` formatter) are tracked in #318.
+ * Vertical orientation shipped via `[layout]` (#318); the remaining deferred parity extras
+ * (click-the-track-to-jump, a content-projection variant, an i18n `aria-valuetext` formatter) stay in #318.
  */
 @Component({
   selector: 'cae-image-compare',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  host: { class: 'cae-image-compare' },
+  host: {
+    class: 'cae-image-compare',
+    '[class.cae-image-compare--vertical]': "layout() === 'vertical'",
+  },
   template: `
     <div #track class="cae-image-compare__track">
       <!-- Base ("after"): in flow, defines the box; fully visible underneath. -->
       <img class="cae-image-compare__img" [src]="afterSrc()" [alt]="afterAlt()" draggable="false" />
-      <!-- Revealed ("before"): absolute overlay, clipped to show only pct% from the inline-start edge. -->
+      <!-- Revealed ("before"): absolute overlay, clipped to show pct% from the start edge (inline-start
+           when horizontal, block-start/top when vertical). -->
       <img
         class="cae-image-compare__img cae-image-compare__img--before"
         [src]="beforeSrc()"
@@ -75,13 +81,14 @@ const clamp = (v: number, min: number, max: number): number =>
         class="cae-image-compare__divider"
         role="separator"
         tabindex="0"
-        aria-orientation="vertical"
+        [attr.aria-orientation]="orientation()"
         aria-valuemin="0"
         aria-valuemax="100"
         [attr.aria-valuenow]="rounded()"
         [attr.aria-valuetext]="valueText()"
         [attr.aria-label]="ariaLabel() || null"
-        [style.inset-inline-start.%]="pct()"
+        [style.inset-inline-start.%]="layout() === 'vertical' ? null : pct()"
+        [style.inset-block-start.%]="layout() === 'vertical' ? pct() : null"
         (keydown)="onKeydown($event)"
         (pointerdown)="onPointerDown($event)"
         (pointermove)="onPointerMove($event)"
@@ -165,6 +172,29 @@ const clamp = (v: number, min: number, max: number): number =>
       /* A surface-coloured halo under the outline keeps the ring visible over any image backdrop. */
       box-shadow: 0 0 0 4px var(--cae-surface-raised);
     }
+    /* --- Vertical layout: a full-width horizontal divider revealing top↔bottom. --- */
+    :host(.cae-image-compare--vertical) .cae-image-compare__divider {
+      inset-block: auto;
+      inset-inline: 0;
+      inline-size: auto;
+      block-size: 2px;
+      transform: translateY(-50%);
+      cursor: ns-resize;
+    }
+    /* Re-point the horizontal chevrons to up/down: the reveal axis is now block, so the triangles point
+       along it. border-block:0 clears the horizontal-mode transparent caps; border-inline becomes the new
+       transparent sides; the colored border moves to the block edge. */
+    :host(.cae-image-compare--vertical) .cae-image-compare__handle::before,
+    :host(.cae-image-compare--vertical) .cae-image-compare__handle::after {
+      border-block: 0;
+      border-inline: 4px solid transparent;
+    }
+    :host(.cae-image-compare--vertical) .cae-image-compare__handle::before {
+      border-block-end: 6px solid currentColor;
+    }
+    :host(.cae-image-compare--vertical) .cae-image-compare__handle::after {
+      border-block-start: 6px solid currentColor;
+    }
   `,
 })
 export class CaeImageCompare implements OnInit {
@@ -179,7 +209,7 @@ export class CaeImageCompare implements OnInit {
   private readonly directionality = inject(Directionality);
   protected readonly isRtl = computed(() => this.directionality.value === 'rtl');
 
-  /** The revealed image (top layer, clipped from the inline-start edge). */
+  /** The revealed image (top layer, clipped from the start edge — inline-start horizontal, block-start vertical). */
   readonly beforeSrc = input.required<string>();
   readonly beforeAlt = input('');
   /** The base image (underneath, fully visible on the trailing side). */
@@ -187,7 +217,8 @@ export class CaeImageCompare implements OnInit {
   readonly afterAlt = input('');
 
   /**
-   * Reveal position, 0–100 (% of the "before" image shown, measured from the inline-start edge). Two-way
+   * Reveal position, 0–100 (% of the "before" image shown, measured from the start edge — inline-start when
+   * horizontal, block-start (top) when vertical). Two-way
    * bindable; an out-of-range or non-finite write is normalized back into [0, 100] (the constructor effect),
    * so a consumer reading `value()` back always sees the position the UI renders.
    */
@@ -196,6 +227,15 @@ export class CaeImageCompare implements OnInit {
   readonly step = input(1, { transform: numberAttribute });
   /** Accessible name for the divider separator — required for a focusable separator; dev-warns if absent. */
   readonly ariaLabel = input<string>();
+  /**
+   * Reveal axis. `horizontal` (default) reveals left↔right with a vertical divider (the separator's
+   * `aria-orientation` is `vertical`); `vertical` stacks the plates and reveals top↔bottom with a horizontal
+   * divider (`aria-orientation="horizontal"`, Down/Up the primary keys). Mirrors the `cae-splitter` `[layout]`
+   * vocabulary — and its counterintuitive separator convention (the divider's orientation is the inverse of
+   * the reveal axis; #293/#318). The block (vertical) axis is direction-independent, so RTL affects the
+   * horizontal reveal only.
+   */
+  readonly layout = input<'horizontal' | 'vertical'>('horizontal');
 
   private readonly track = viewChild.required<ElementRef<HTMLElement>>('track');
   /** True only while THIS divider's pointer drag is active (set on primary-button pointerdown). */
@@ -220,12 +260,25 @@ export class CaeImageCompare implements OnInit {
   protected readonly valueText = computed(() => `${this.rounded()}%`);
 
   /**
-   * Clip the "before" layer to show `pct%` from the inline-start edge. `clip-path: inset()` takes PHYSICAL
-   * edges (it has no logical form), so the hidden side is resolved through {@link Directionality}: LTR hides
-   * the right, RTL hides the left. The divider uses logical `inset-inline-start` and needs no such flip.
+   * The separator's `aria-orientation` — the INVERSE of the reveal axis (APG window-splitter convention,
+   * confirmed by the #293 a11y review): a divider dragged left/right (horizontal reveal) is a *vertical*
+   * separator; one dragged up/down (vertical reveal) is *horizontal*. Mirrors `cae-splitter`. Branches on
+   * `=== 'vertical'` (not `'horizontal'`) so an out-of-union value's announced orientation matches the
+   * horizontal *behavior* the rest of the component falls back to for that value.
+   */
+  protected readonly orientation = computed(() =>
+    this.layout() === 'vertical' ? 'horizontal' : 'vertical',
+  );
+
+  /**
+   * Clip the "before" layer to show `pct%` from the start edge. `clip-path: inset()` takes PHYSICAL edges
+   * (it has no logical form). Horizontal reveals from the inline-start edge, so the hidden side is resolved
+   * through {@link Directionality}: LTR hides the right, RTL hides the left. Vertical reveals from the
+   * block-start (top) edge and hides the bottom — the block axis is direction-independent, so no RTL flip.
    */
   protected readonly clipPath = computed(() => {
     const hidden = 100 - this.pct();
+    if (this.layout() === 'vertical') return `inset(0 0 ${hidden}% 0)`;
     return this.isRtl() ? `inset(0 0 0 ${hidden}%)` : `inset(0 ${hidden}% 0 0)`;
   });
 
@@ -253,29 +306,36 @@ export class CaeImageCompare implements OnInit {
     }
   }
 
-  /** The accessible resize path (Book 11 §3.5 non-negotiable #1). Left/Right invert under RTL. */
+  /**
+   * The accessible resize path (Book 11 §3.5 non-negotiable #1). The primary axis follows `[layout]`:
+   * horizontal → Left/Right (inverted under RTL), vertical → Down/Up (grow/shrink the top reveal). The
+   * cross-axis arrows stay wired as a convenience mirror (Up/Down in horizontal, Right/Left in vertical);
+   * PageUp/PageDown track the primary axis coarsely; Home/End snap to 0/100. Only the *horizontal* keys
+   * invert under RTL — the vertical (block) reveal axis and its Right/Left mirror are direction-independent.
+   */
   protected onKeydown(event: KeyboardEvent): void {
     const s = this.step();
     const rtl = this.isRtl();
+    const vertical = this.layout() === 'vertical';
     let next: number;
     switch (event.key) {
       case 'ArrowRight':
-        next = this.pct() + (rtl ? -s : s);
+        next = this.pct() + (vertical ? s : rtl ? -s : s);
         break;
       case 'ArrowLeft':
-        next = this.pct() + (rtl ? s : -s);
+        next = this.pct() + (vertical ? -s : rtl ? s : -s);
         break;
       case 'ArrowUp':
-        next = this.pct() + s;
+        next = this.pct() + (vertical ? -s : s);
         break;
       case 'ArrowDown':
-        next = this.pct() - s;
+        next = this.pct() + (vertical ? s : -s);
         break;
       case 'PageUp':
-        next = this.pct() + PAGE_STEP;
+        next = this.pct() + (vertical ? -PAGE_STEP : PAGE_STEP);
         break;
       case 'PageDown':
-        next = this.pct() - PAGE_STEP;
+        next = this.pct() + (vertical ? PAGE_STEP : -PAGE_STEP);
         break;
       case 'Home':
         next = 0;
@@ -303,25 +363,33 @@ export class CaeImageCompare implements OnInit {
     // preventDefault (below) doesn't block focus, but this makes it deterministic across browsers.
     target?.focus?.();
     event.preventDefault();
-    this.moveTo(event.clientX);
+    this.moveFromPointer(event);
   }
 
   protected onPointerMove(event: PointerEvent): void {
     // Only track moves that belong to THIS divider's active drag (set on pointerdown, cleared on up/cancel)
     // — a `buttons`-only guard would also honor an unrelated cross-element drag passing over the divider.
     if (!this.dragging) return;
-    this.moveTo(event.clientX);
+    this.moveFromPointer(event);
   }
 
   protected onPointerUp(): void {
     this.dragging = false;
   }
 
-  /** Map a client X to a reveal %, measured from the inline-start edge (right edge under RTL). */
-  private moveTo(clientX: number): void {
+  /**
+   * Map a pointer position to a reveal %. Horizontal measures clientX from the inline-start edge (the right
+   * edge under RTL); vertical measures clientY from the block-start (top) edge (direction-independent).
+   */
+  private moveFromPointer(event: PointerEvent): void {
     const rect = this.track().nativeElement.getBoundingClientRect();
+    if (this.layout() === 'vertical') {
+      if (rect.height === 0) return;
+      this.setPct(((event.clientY - rect.top) / rect.height) * 100);
+      return;
+    }
     if (rect.width === 0) return;
-    const fromStart = this.isRtl() ? rect.right - clientX : clientX - rect.left;
+    const fromStart = this.isRtl() ? rect.right - event.clientX : event.clientX - rect.left;
     this.setPct((fromStart / rect.width) * 100);
   }
 

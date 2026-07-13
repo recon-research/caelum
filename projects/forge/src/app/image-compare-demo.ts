@@ -1,8 +1,10 @@
 import { DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 
 import { CaeCard } from 'caelum/card';
 import { CaeImageCompare } from 'caelum/image-compare';
+import { CaeSelectButton, CaeSelectButtonOption } from 'caelum/select-button';
 
 /**
  * Build a self-contained SVG "photo" as a data URI — a coloured plate with a label. Authored inline so the
@@ -27,7 +29,8 @@ function panel(bg: string, label: string): string {
  * The deferred "Image compare" `cae-image-compare` demo (#293) — the ★ media family's before/after reveal
  * slider. It shows the component end-to-end: drag the divider (or focus it and use the arrow keys / Home /
  * End) to reveal the "before" plate over the "after" plate. The reveal % is two-way bound so the readout
- * tracks the divider — proving `[(value)]` and the keyboard path in one view.
+ * tracks the divider — proving `[(value)]` and the keyboard path in one view. A `cae-select-button` drives
+ * the `[layout]` input live (#318), so the same slider flips between a left↔right and a top↔bottom reveal.
  *
  * `@defer`'d from App (#85): keeping the slider in its own lazy chunk holds those bytes off Forge's initial
  * bundle (the #142 / D-16 budget).
@@ -35,7 +38,7 @@ function panel(bg: string, label: string): string {
 @Component({
   selector: 'app-image-compare-demo',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CaeCard, CaeImageCompare, DecimalPipe],
+  imports: [CaeCard, CaeImageCompare, CaeSelectButton, FormsModule, DecimalPipe],
   templateUrl: './image-compare-demo.html',
   styleUrl: './image-compare-demo.scss',
 })
@@ -45,4 +48,10 @@ export class ImageCompareDemo {
   protected readonly afterSrc = panel('#1e7f5f', 'After');
   /** Two-way bound to the divider so the readout mirrors the reveal. */
   protected readonly reveal = signal(50);
+  /** Drives the `[layout]` input live (#318) — a cae-select-button controlling the reveal axis. */
+  protected readonly layout = signal<'horizontal' | 'vertical'>('horizontal');
+  protected readonly layouts: readonly CaeSelectButtonOption[] = [
+    { value: 'horizontal', label: 'Horizontal' },
+    { value: 'vertical', label: 'Vertical' },
+  ];
 }

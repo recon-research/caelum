@@ -17,6 +17,17 @@
   color: var(--cae-color-primary);
 }
 
+// The layout toggle row above the slider (#318).
+.forge-image-compare-card__controls {
+  display: flex;
+  align-items: center;
+  gap: var(--cae-space-3);
+  margin: 0 0 var(--cae-space-4);
+}
+.forge-image-compare-card__control-label {
+  color: var(--cae-color-on-surface-variant);
+}
+
 // Cap the comparison to a realistic content width rather than stretching the full card; round the corners.
 .forge-image-compare {
   max-inline-size: 32rem;

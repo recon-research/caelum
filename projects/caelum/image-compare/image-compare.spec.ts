@@ -96,6 +96,26 @@ describe('CaeImageCompare', () => {
     divider().dispatchEvent(new MouseEvent('pointerup', { bubbles: true }));
     fixture.detectChanges();
   }
+  // Vertical-layout variants that also carry a clientY (the block axis the vertical reveal reads).
+  function pointerDownAt(clientX: number, clientY: number, button = 0): void {
+    divider().dispatchEvent(
+      new MouseEvent('pointerdown', {
+        clientX,
+        clientY,
+        button,
+        bubbles: true,
+        cancelable: true,
+        buttons: 1,
+      }),
+    );
+    fixture.detectChanges();
+  }
+  function pointerMoveAt(clientX: number, clientY: number, buttons = 1): void {
+    divider().dispatchEvent(
+      new MouseEvent('pointermove', { clientX, clientY, bubbles: true, buttons }),
+    );
+    fixture.detectChanges();
+  }
 
   // --- Structure & default state ---
 
@@ -259,6 +279,88 @@ describe('CaeImageCompare', () => {
     mockRect(0, 200);
     pointerDown(150); // (200 - 150) / 200 = 25%
     expect(valueNow()).toBe('25');
+  });
+
+  // --- Vertical layout (#318) ---
+
+  it('is a horizontal separator positioned by inset-block-start in vertical layout', async () => {
+    await render({ layout: 'vertical' });
+    const d = divider();
+    // The separator's orientation is the INVERSE of the reveal axis (APG window-splitter convention).
+    expect(d.getAttribute('aria-orientation')).toBe('horizontal');
+    expect(el.classList.contains('cae-image-compare--vertical')).toBe(true);
+    expect(d.style.getPropertyValue('inset-block-start')).toBe('50%');
+    // The horizontal inline-start offset is removed (null) in vertical layout — the CSS full-width inset wins.
+    expect(d.style.getPropertyValue('inset-inline-start')).toBe('');
+  });
+
+  it('clips the "before" layer from the block-start (top) edge in vertical layout', async () => {
+    await render({ layout: 'vertical' });
+    expect(clip()).toBe('inset(0 0 50% 0)'); // reveal the top 50%, hide the bottom 50%
+    expect(beforeImg().style.getPropertyValue('clip-path')).toBe('inset(0 0 50% 0)');
+    fixture.componentRef.setInput('value', 30);
+    fixture.detectChanges();
+    expect(clip()).toBe('inset(0 0 70% 0)');
+  });
+
+  it('makes Down/Up the primary keys in vertical layout, with Right/Left as the mirror', async () => {
+    await render({ layout: 'vertical' });
+    key('ArrowDown'); // divider down → more revealed from the top
+    expect(valueNow()).toBe('51');
+    key('ArrowUp');
+    key('ArrowUp');
+    expect(valueNow()).toBe('49');
+    key('ArrowRight'); // convenience mirror (right = more)
+    expect(valueNow()).toBe('50');
+    key('ArrowLeft');
+    key('ArrowLeft');
+    expect(valueNow()).toBe('48');
+  });
+
+  it('steps coarsely along the block axis with PageDown/PageUp in vertical layout', async () => {
+    await render({ layout: 'vertical' });
+    key('PageDown'); // coarse down → more
+    expect(valueNow()).toBe('60');
+    key('PageUp');
+    key('PageUp');
+    expect(valueNow()).toBe('40');
+  });
+
+  it('maps a vertical pointer drag to a reveal %, measured from the top edge', async () => {
+    await render({ layout: 'vertical' });
+    mockRect(0, 200); // top:0, height:100
+    pointerDownAt(0, 75); // clientY 75 of height 100 → 75% (clientX ignored on the block axis)
+    expect(valueNow()).toBe('75');
+    pointerMoveAt(0, 25);
+    expect(valueNow()).toBe('25');
+  });
+
+  it('snaps with Home/End and clamps at the bounds in vertical layout', async () => {
+    await render({ layout: 'vertical' });
+    key('End');
+    expect(valueNow()).toBe('100');
+    key('ArrowDown'); // already at the max — clamps, does not overflow
+    key('PageDown');
+    expect(valueNow()).toBe('100');
+    key('Home');
+    expect(valueNow()).toBe('0');
+    key('ArrowUp'); // already at the min — clamps
+    key('PageUp');
+    expect(valueNow()).toBe('0');
+  });
+
+  it('does not flip the vertical axis under RTL (the block axis is direction-independent)', async () => {
+    await render({ layout: 'vertical' }, 'rtl');
+    expect(clip()).toBe('inset(0 0 50% 0)'); // identical to LTR vertical — no inline flip
+    key('ArrowDown'); // Down still reveals more, RTL notwithstanding
+    expect(valueNow()).toBe('51');
+  });
+
+  it('does not flip the vertical POINTER axis under RTL (clientY measured from the top edge)', async () => {
+    await render({ layout: 'vertical' }, 'rtl');
+    mockRect(0, 200); // top:0, height:100
+    pointerDownAt(0, 75); // 75 / 100 → 75%, regardless of direction (RTL flips the inline axis only)
+    expect(valueNow()).toBe('75');
   });
 
   // --- Accessible-name dev-warn ---
