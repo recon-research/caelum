@@ -24,6 +24,34 @@
   max-inline-size: 36rem;
 }
 
+// Custom row projected via caeFileUploadFile (#345): thumbnail + name + size + Remove. Structural
+// literals only for layout; every colour resolves to a `--cae-*` token (D-04). The thumb mirrors the
+// component's own preview sizing (`--mat-sys-corner-small`, 2rem square) so the two read consistently.
+.forge-file-upload-row {
+  display: flex;
+  align-items: center;
+  gap: var(--cae-space-3);
+  inline-size: 100%;
+}
+.forge-file-upload-row__thumb {
+  inline-size: 2rem;
+  block-size: 2rem;
+  border-radius: var(--mat-sys-corner-small, 0.5rem);
+  object-fit: cover;
+  flex: none;
+}
+.forge-file-upload-row__name {
+  color: var(--cae-color-on-surface);
+  font-weight: 500;
+}
+.forge-file-upload-row__size {
+  margin-inline-start: auto;
+  color: var(--cae-color-on-surface-variant);
+}
+.forge-file-upload-row__remove {
+  color: var(--cae-color-primary);
+}
+
 .forge-file-upload-accepted {
   margin: var(--cae-space-4) 0 0;
   color: var(--cae-color-on-surface-variant);

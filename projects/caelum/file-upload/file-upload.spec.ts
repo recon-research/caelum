@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
@@ -10,6 +10,7 @@ import {
   CaeFileUpload,
   CaeFileUploadError,
   CaeFileUploadEvent,
+  CaeFileUploadFileDef,
   CaeFileUploadProgress,
 } from './file-upload';
 
@@ -674,5 +675,196 @@ describe('CaeFileUpload — forms (CVA)', () => {
     fixture.detectChanges();
     const input = fixture.nativeElement.querySelector('input[type="file"]') as HTMLInputElement;
     expect(input.disabled).toBe(true);
+  });
+});
+
+// --- Custom row template (#345 — p-fileUpload #file template parity) -------------------------------
+
+@Component({
+  template: `
+    <cae-file-upload
+      [url]="url()"
+      [auto]="auto()"
+      [multiple]="true"
+      [previewImages]="previewImages()"
+      (remove)="removed = removed + 1"
+    >
+      <ng-template
+        caeFileUploadFile
+        let-file
+        let-i="index"
+        let-preview="previewUrl"
+        let-remove="remove"
+        let-cancel="cancel"
+        let-retry="retry"
+      >
+        <span class="custom-row" [attr.data-idx]="i" [attr.data-preview]="preview">
+          {{ file.file.name }} — {{ file.status }}
+        </span>
+        <!-- Cancel/Retry render conditionally (mirroring the built-in row) and carry NO data-action-id,
+             so the async focus-restore must survive on row containment alone. -->
+        @if (file.status === 'uploading') {
+          <button class="custom-cancel" type="button" (click)="cancel()">cancel</button>
+        }
+        @if (file.status === 'error' || file.status === 'canceled') {
+          <button class="custom-retry" type="button" (click)="retry()">retry</button>
+        }
+        <button class="custom-remove" type="button" (click)="remove()">remove</button>
+      </ng-template>
+    </cae-file-upload>
+  `,
+  imports: [CaeFileUpload, CaeFileUploadFileDef],
+})
+class RowTemplateHost {
+  // Signals, not plain fields: under zoneless, mutating a plain host prop + detectChanges does NOT
+  // push to a child signal input — the value must flow through a signal (memory: zoneless signal inputs).
+  readonly url = signal('');
+  readonly auto = signal(false);
+  readonly previewImages = signal(false);
+  removed = 0;
+}
+
+describe('CaeFileUpload — custom row template (#345)', () => {
+  let fixture: ComponentFixture<RowTemplateHost>;
+  let host: RowTemplateHost;
+  let cmp: CaeFileUpload;
+  let http: HttpTestingController;
+
+  // jsdom lacks createObjectURL; stub it via the real constructor (URL is shadowed at module scope).
+  const G = globalThis.URL;
+  let origCreate: typeof G.createObjectURL | undefined;
+  let origRevoke: typeof G.revokeObjectURL | undefined;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      imports: [RowTemplateHost],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    });
+    http = TestBed.inject(HttpTestingController);
+    vi.spyOn(TestBed.inject(LiveAnnouncer), 'announce').mockResolvedValue(
+      undefined as unknown as void,
+    );
+    origCreate = G.createObjectURL;
+    origRevoke = G.revokeObjectURL;
+    let n = 0;
+    G.createObjectURL = vi.fn(() => `blob:mock-${n++}`) as unknown as typeof G.createObjectURL;
+    G.revokeObjectURL = vi.fn() as unknown as typeof G.revokeObjectURL;
+    fixture = TestBed.createComponent(RowTemplateHost);
+    host = fixture.componentInstance;
+    document.body.appendChild(fixture.nativeElement);
+    fixture.detectChanges();
+    cmp = fixture.debugElement.query(By.directive(CaeFileUpload)).componentInstance;
+  });
+
+  afterEach(() => {
+    G.createObjectURL = origCreate!;
+    G.revokeObjectURL = origRevoke!;
+    try {
+      http.verify();
+    } finally {
+      fixture.destroy();
+      fixture.nativeElement.remove();
+    }
+  });
+
+  function ingest(files: File[]): void {
+    (cmp as unknown as { ingest(f: readonly File[]): void }).ingest(files);
+    fixture.detectChanges();
+  }
+  const queueLen = () => (cmp as unknown as { files(): readonly unknown[] }).files().length;
+  const one = (sel: string) => fixture.nativeElement.querySelector(sel) as HTMLElement | null;
+  const all = (sel: string) =>
+    Array.from(fixture.nativeElement.querySelectorAll(sel)) as HTMLElement[];
+
+  it('renders the projected row and suppresses the built-in row', () => {
+    ingest([makeFile('a.txt', 10)]);
+    const row = one('.custom-row');
+    expect(row?.textContent).toContain('a.txt');
+    expect(row?.textContent).toContain('pending');
+    // The built-in row markup must NOT render when a template is projected (the @else branch is bypassed).
+    expect(one('.cae-file-upload__name')).toBeNull();
+    expect(one('.cae-file-upload__action')).toBeNull();
+    // The component still owns the <li> list semantics around the projected content.
+    expect(one('li.cae-file-upload__item')?.contains(row)).toBe(true);
+  });
+
+  it('exposes each row file and its index in the template context', () => {
+    ingest([makeFile('a.txt', 10), makeFile('b.txt', 10)]);
+    const rows = all('.custom-row');
+    expect(rows.length).toBe(2);
+    expect(rows[0].getAttribute('data-idx')).toBe('0');
+    expect(rows[1].getAttribute('data-idx')).toBe('1');
+    expect(rows[1].textContent).toContain('b.txt');
+  });
+
+  it('removes the file through the projected remove callback (and fires the (remove) output)', () => {
+    ingest([makeFile('a.txt', 10), makeFile('b.txt', 10)]);
+    expect(queueLen()).toBe(2);
+    all('.custom-remove')[0].click();
+    fixture.detectChanges();
+    expect(queueLen()).toBe(1);
+    expect(host.removed).toBe(1);
+    expect(one('.custom-row')?.textContent).toContain('b.txt');
+  });
+
+  it('cancels and retries an in-flight upload through the projected callbacks', () => {
+    host.url.set(URL);
+    host.auto.set(true);
+    fixture.detectChanges();
+    ingest([makeFile('a.txt', 10)]);
+
+    const req1 = http.expectOne(URL);
+    expect(one('.custom-row')?.textContent).toContain('uploading');
+    one('.custom-cancel')!.click();
+    fixture.detectChanges();
+    expect(req1.cancelled).toBe(true);
+    expect(one('.custom-row')?.textContent).toContain('canceled');
+
+    one('.custom-retry')!.click();
+    fixture.detectChanges();
+    const req2 = http.expectOne(URL);
+    expect(one('.custom-row')?.textContent).toContain('uploading');
+    req2.flush({ ok: true });
+  });
+
+  it('exposes the object-URL previewUrl in the context when previewImages is on', () => {
+    host.previewImages.set(true);
+    fixture.detectChanges();
+    ingest([makeFile('pic.png', 10, 'image/png')]);
+    fixture.detectChanges();
+    expect(one('.custom-row')?.getAttribute('data-preview')).toBe('blob:mock-0');
+  });
+
+  it('nulls the context previewUrl when previewImages is toggled off (matches the built-in row)', () => {
+    host.previewImages.set(true);
+    fixture.detectChanges();
+    ingest([makeFile('pic.png', 10, 'image/png')]);
+    fixture.detectChanges();
+    expect(one('.custom-row')?.getAttribute('data-preview')).toBe('blob:mock-0');
+    // Toggling off retains the object URL in the Map (no leak-by-revoke), but the context gates on
+    // previewImages — so a custom row bound to previewUrl stops showing the "disabled" thumbnail.
+    host.previewImages.set(false);
+    fixture.detectChanges();
+    expect(one('.custom-row')?.getAttribute('data-preview')).toBeNull();
+  });
+
+  it('does not strand focus to <body> when an async upload completes on a custom row without data-* hooks', async () => {
+    host.url.set(URL);
+    host.auto.set(true);
+    fixture.detectChanges();
+    ingest([makeFile('a.txt', 10)]);
+
+    const req = http.expectOne(URL);
+    const cancelBtn = one('.custom-cancel')!; // rendered while uploading; carries no data-action-id
+    cancelBtn.focus();
+    expect(document.activeElement).toBe(cancelBtn);
+
+    req.flush({ ok: true }); // async success → status success → the focused Cancel unmounts
+    fixture.detectChanges();
+    await fixture.whenStable(); // flush the afterNextRender focus move
+
+    // Row-containment rescue: focus lands on the file input (no data-remove-id to be precise), never <body>.
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement).toBe(one('.cae-file-upload__input'));
   });
 });
