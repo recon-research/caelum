@@ -21,6 +21,30 @@ export interface CaeBreadcrumbItem {
    * (no tab stop, not activatable).
    */
   disabled?: boolean;
+  /**
+   * Mark a **url-less** crumb as an activatable action rather than inert text: it renders as a real
+   * `<button type="button">` (keyboard-activatable, focusable) that fires `(itemSelect)` without
+   * navigating — the framework-free equivalent of `p-breadcrumb`'s `MenuItem.command`. Ignored when
+   * `url` is set (a link takes precedence — intercept its navigation via the event's `originalEvent`),
+   * on the current/last crumb (never interactive), or when `disabled`. Wire the action to `(itemSelect)`.
+   * Give it a non-empty `label`: that text is the button's accessible name (an empty label yields a
+   * nameless button — axe `button-name`, WCAG 4.1.2), the same requirement a link crumb's label carries.
+   */
+  command?: boolean;
+}
+
+/**
+ * Payload of `(itemSelect)`: the activated crumb plus the DOM event that triggered it. `originalEvent`
+ * lets a consumer intercept — e.g. `originalEvent.preventDefault()` on a link crumb to suppress the
+ * native `href` navigation and handle it in-app (the hook a router-driven trail needs). The `click`
+ * event fires for both link (`<a>`) and command (`<button>`) crumbs, including keyboard activation of
+ * the button (Enter/Space synthesize a click).
+ */
+export interface CaeBreadcrumbSelectEvent {
+  /** The crumb that was activated. */
+  item: CaeBreadcrumbItem;
+  /** The DOM `click` event — call `preventDefault()` to intercept a link crumb's native navigation. */
+  originalEvent: MouseEvent;
 }
 
 /**
@@ -47,11 +71,14 @@ export interface CaeBreadcrumbItem {
  * breadcrumb technique. Token-styled (D-04); the glyph is plain text interpolation, so it is
  * XSS-safe and never touches the CSS parser.
  *
- * **Navigation is honest hyperlinks.** A `url` crumb navigates natively; `(itemSelect)` also fires
- * on activation for observation (analytics, or a consumer intercepting the trail). Following the
- * `cae-tab-menu` precedent, router-linked mode (`routerLink`/`routerLinkActive`), a
- * `{ item, originalEvent }` payload for click interception, and per-item icons are deferred additive
- * follow-ups. Zoneless-compatible: `OnPush` + signal inputs (Book 01 §3.2).
+ * **Navigation is honest hyperlinks — or honest buttons.** A `url` crumb navigates natively and fires
+ * `(itemSelect)` with `{ item, originalEvent }`, so a consumer can `preventDefault()` to intercept the
+ * trail (analytics, or in-app routing). A **url-less crumb marked `command`** renders as a real
+ * `<button>` that fires the same event without navigating — the framework-free equivalent of
+ * `p-breadcrumb`'s `MenuItem.command` (a control that acts, not navigates, is a button, not a link —
+ * WAI-ARIA APG). Following the `cae-tab-menu` precedent, `routerLink`/`routerLinkActive` mode and
+ * per-item icons remain deferred additive follow-ups (#333). Zoneless-compatible: `OnPush` + signal
+ * inputs (Book 01 §3.2).
  *
  * **Multiple breadcrumbs on one page** must each carry a distinct `[ariaLabel]` — two default
  * `"Breadcrumb"` names collide as non-unique landmarks (axe `landmark-unique`).
@@ -81,9 +108,20 @@ export interface CaeBreadcrumbItem {
               @if (last) {
                 <span class="cae-breadcrumb__current" aria-current="page">{{ item.label }}</span>
               } @else if (item.url && !item.disabled) {
-                <a class="cae-breadcrumb__link" [href]="item.url" (click)="itemSelect.emit(item)">{{
-                  item.label
-                }}</a>
+                <a
+                  class="cae-breadcrumb__link"
+                  [href]="item.url"
+                  (click)="itemSelect.emit({ item, originalEvent: $event })"
+                  >{{ item.label }}</a
+                >
+              } @else if (item.command && !item.disabled) {
+                <button
+                  type="button"
+                  class="cae-breadcrumb__link cae-breadcrumb__button"
+                  (click)="itemSelect.emit({ item, originalEvent: $event })"
+                >
+                  {{ item.label }}
+                </button>
               } @else {
                 <span
                   class="cae-breadcrumb__text"
@@ -132,6 +170,16 @@ export interface CaeBreadcrumbItem {
          contrast) — mirrors the sibling layout components' focus treatment. */
       box-shadow: 0 0 0 4px var(--cae-surface-raised);
     }
+    /* A command crumb is a real <button> (activate without navigating) that reads as a link — strip the
+       native button chrome so it matches the __link affordance it shares (colour + underline inherited). */
+    .cae-breadcrumb__button {
+      background: none;
+      border: 0;
+      padding: 0;
+      font: inherit;
+      line-height: inherit;
+      cursor: pointer;
+    }
     /* Inert ancestor text and the current page differ by colour (and aria-current), not weight —
        Caelum ships no font-weight token, and colour + the ARIA state carry the distinction. */
     .cae-breadcrumb__text {
@@ -155,10 +203,13 @@ export class CaeBreadcrumb {
   /** Accessible name for the `<nav>` landmark (default `"Breadcrumb"`). */
   readonly ariaLabel = input('');
   /**
-   * Emits the activated crumb on click of a link crumb (never for the current page or a disabled or
-   * url-less crumb). Native `href` navigation still proceeds — this is an observation hook.
+   * Emits `{ item, originalEvent }` when a **link** crumb (`<a>`) or a **command** crumb (`<button>`)
+   * is activated — never for the current page, a disabled crumb, or an inert url-less crumb. For a link
+   * crumb the native `href` navigation still proceeds unless the consumer calls
+   * `originalEvent.preventDefault()` (the interception hook a router-driven trail needs); a command
+   * crumb never navigates. See {@link CaeBreadcrumbSelectEvent}.
    */
-  readonly itemSelect = output<CaeBreadcrumbItem>();
+  readonly itemSelect = output<CaeBreadcrumbSelectEvent>();
 
   /** `[home]` (if any) pinned before `[items]` as one ordered trail; `$last` is the current page. */
   protected readonly crumbs = computed<readonly CaeBreadcrumbItem[]>(() => {
