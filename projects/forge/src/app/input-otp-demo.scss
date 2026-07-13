@@ -32,6 +32,19 @@
   margin-block-start: var(--cae-space-2);
   color: var(--cae-color-on-surface-variant);
 }
+.forge-inputotp-field__toggle {
+  margin-block-start: var(--cae-space-2);
+  padding: var(--cae-space-1) var(--cae-space-3);
+  border: 1px solid var(--cae-color-border);
+  border-radius: var(--cae-radius-md);
+  background: var(--cae-surface-raised);
+  color: var(--cae-color-primary);
+  cursor: pointer;
+}
+.forge-inputotp-field__toggle:focus-visible {
+  outline: var(--cae-focus-ring);
+  outline-offset: var(--cae-focus-ring-offset);
+}
 
 // Visually-hidden completion live region (clip-based; structural only, no theming). Kept in the DOM
 // so its text change at the complete() transition is announced by a screen reader.

@@ -44,4 +44,43 @@
       Serial: <strong>{{ serial() || '—' }}</strong>
     </p>
   </div>
+
+  <div class="forge-inputotp-field">
+    <span id="forge-pin-label" class="forge-inputotp-field__label">Masked PIN</span>
+    <cae-input-otp
+      [length]="4"
+      [mask]="!reveal()"
+      ariaLabelledby="forge-pin-label"
+      [ngModel]="pin()"
+      (ngModelChange)="pin.set($event)"
+    />
+    <button
+      type="button"
+      class="forge-inputotp-field__toggle"
+      [attr.aria-pressed]="reveal()"
+      (click)="reveal.set(!reveal())"
+    >
+      {{ reveal() ? 'Hide' : 'Reveal' }}
+    </button>
+    <p class="forge-inputotp-field__note">
+      <code>[mask]</code> dots out a sensitive code (<code>type=password</code>); the value still
+      round-trips — entered <strong>{{ pin().length }}</strong> of 4.
+    </p>
+  </div>
+
+  <div class="forge-inputotp-field">
+    <span id="forge-backup-label" class="forge-inputotp-field__label">Backup code (read-only)</span>
+    <cae-input-otp
+      [length]="6"
+      [readonly]="true"
+      [integerOnly]="false"
+      ariaLabelledby="forge-backup-label"
+      [ngModel]="backupCode()"
+      (ngModelChange)="backupCode.set($event)"
+    />
+    <p class="forge-inputotp-field__note">
+      <code>[readonly]</code> stays focusable and copyable (Tab in, arrow across, select) but not
+      editable — unlike a disabled field, it remains in the a11y tree.
+    </p>
+  </div>
 </cae-card>
