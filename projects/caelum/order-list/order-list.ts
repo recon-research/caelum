@@ -1,4 +1,5 @@
 import {
+  afterRenderEffect,
   ChangeDetectionStrategy,
   Component,
   computed,
@@ -12,6 +13,7 @@ import {
   output,
   signal,
   TemplateRef,
+  untracked,
   viewChildren,
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
@@ -262,6 +264,8 @@ export class CaeOrderListHeaderDef {
         [attr.aria-label]="labelledby() ? null : ariaLabel().trim() || 'Order list'"
         [attr.aria-labelledby]="labelledby() || null"
         (cdkDropListDropped)="onDrop($event)"
+        (focusin)="onListFocusIn($event)"
+        (focusout)="onListFocusOut($event)"
       >
         @for (item of filtered(); track keyOf(item); let i = $index) {
           <li
@@ -757,6 +761,57 @@ export class CaeOrderList<T = unknown> {
       const changed = kept.length !== cur.length || kept.some((it, i) => it !== cur[i]);
       if (changed) this.selection.set(kept);
     });
+    // #350: restore roving focus when an external `value` change destroys the focused row. `@for` removing
+    // the focused `<li>` sends `document.activeElement` to `<body>` (WCAG 2.4.3 Focus Order); the follow/
+    // clamp effect above moves the tab stop but never re-focuses the DOM, so the next Tab restarts from the
+    // top of the page. Re-run after each render where `value` changed and, only when the listbox held focus,
+    // move DOM focus onto the (clamped) tab stop. `value()` is the sole tracked dep; the rest reads inside
+    // `untracked` so a `focus()`-driven re-entry can't feed back.
+    afterRenderEffect(() => {
+      this.value(); // trigger: re-check after each external value change
+      untracked(() => this.restoreFocusIfLost());
+    });
+  }
+
+  /**
+   * The listbox option that currently (or most recently) held DOM focus, or `null` when focus is outside
+   * the listbox. Captured on the listbox `focusin` and kept through a focus loss to `<body>`, so
+   * {@link restoreFocusIfLost} can tell a **removed** focused row (this node becomes disconnected) from a
+   * user who merely **parked** focus on `<body>` by clicking blank space (the node stays connected — and
+   * must NOT be yanked back, WCAG 3.2.5). Cleared when focus moves to a real element outside the listbox.
+   */
+  private focusedRow: HTMLElement | null = null;
+
+  /** Track the option that took focus, so a later removal can be distinguished from a park-on-`<body>`. */
+  protected onListFocusIn(event: FocusEvent): void {
+    this.focusedRow = event.target as HTMLElement;
+  }
+
+  /** Drop the pending restore when focus genuinely leaves the listbox for another element (not `<body>`). */
+  protected onListFocusOut(event: FocusEvent): void {
+    const next = event.relatedTarget as Node | null;
+    const list = event.currentTarget as HTMLElement;
+    if (next && !list.contains(next)) this.focusedRow = null;
+  }
+
+  /**
+   * Re-focus the tab-stop row after an external `value` change, but ONLY when the row that held focus was
+   * genuinely REMOVED — {@link focusedRow} is now disconnected from the document. A user who parked focus
+   * on `<body>` (row still connected) or a surviving/reordered row (its reused node still connected) is left
+   * alone; re-focusing them would steal focus (WCAG 3.2.5). Also bail when focus has since landed on a live
+   * real element, or the list is empty. `activeElement` may be `<body>`/`<html>` (real browsers null focus
+   * there) or a detached node (jsdom keeps focus on a removed node) — all count as "focus lost".
+   */
+  private restoreFocusIfLost(): void {
+    if (this.active() < 0) return;
+    const row = this.focusedRow;
+    if (!row || row.isConnected) return; // no focused row, or it survived (park-on-body / reorder) — don't steal
+    const ae = document.activeElement;
+    const lost = !ae || ae === document.body || ae === document.documentElement || !ae.isConnected;
+    if (!lost) return; // focus already moved to a live real element — don't steal
+    const target = this.optionEls()[this.activeTabStop()]?.nativeElement ?? null;
+    target?.focus();
+    this.focusedRow = target; // track the row we restored to (focusin also sets this; explicit for jsdom)
   }
 
   /** Move the roving focus (tab stop) to row `index` — does not change selection. */
