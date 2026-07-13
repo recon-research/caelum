@@ -121,8 +121,8 @@ export class CaeOrderListHeaderDef {
  * toggles the focused row, Shift+Arrow/Home/End range-extend from the anchor, Ctrl/Cmd+A selects all,
  * Escape clears. Like `cae-input-otp`, focus is a **roving-tabindex-without-a-key-manager** over a `@for`
  * (no child option components), and keeping focus + anchor in signals lets them *follow the item*
- * through a reorder for free. Because rows track by identity, the focused `<li>` moves on reorder, so
- * focus is never stranded.
+ * through a reorder for free. Because rows track by their {@link trackBy} key (identity by default),
+ * the focused `<li>` moves on reorder, so focus is never stranded.
  *
  * **Accessibility.** Name the list one of three ways (a `role="listbox"` needs an accessible name):
  * a projected `<ng-template caeOrderListHeader>` (a visible title that *also* names the list — the
@@ -135,9 +135,10 @@ export class CaeOrderListHeaderDef {
  *
  * **Content-agnostic.** Project a `<ng-template caeOrderListItem let-item let-i="index"
  * let-selected="selected" let-disabled="disabled">` to render rich rows (context: item, `index`,
- * `active` = focused, `selected`, `disabled`); without one, rows render `{{ item }}`. Rows must be
- * **distinct references** (objects, or unique primitives) — reorder + selection track by identity so the
- * moved DOM node follows the item; a custom `trackBy` is an additive follow-up. Mark rows non-actionable
+ * `active` = focused, `selected`, `disabled`); without one, rows render `{{ item }}`. Rows are keyed by
+ * `[trackBy]` (default: the item itself, so distinct references / unique primitives work out of the box);
+ * key object rows by a business field (`[trackBy]="(c) => c.id"`) to survive an immutable `[value]`
+ * refresh and to reorder rows with repeated display values. Mark rows non-actionable
  * with `[disabledMatch]` (a predicate; disabled rows are dimmed + `aria-disabled`, can't be selected,
  * moved, or dragged, but stay focusable), and set `[dragHandle]` to restrict drag initiation to a
  * rendered grip (the whole row is the drag surface by default). The reorder-button column sits at the
@@ -262,7 +263,7 @@ export class CaeOrderListHeaderDef {
         [attr.aria-labelledby]="labelledby() || null"
         (cdkDropListDropped)="onDrop($event)"
       >
-        @for (item of filtered(); track item; let i = $index) {
+        @for (item of filtered(); track keyOf(item); let i = $index) {
           <li
             #optionEl
             class="cae-order-list__option"
@@ -504,15 +505,32 @@ export class CaeOrderList<T = unknown> {
   /** The ordered list, two-way. Reordering (drag or button) replaces it with a fresh array. */
   readonly value = model<readonly T[]>([]);
   /**
-   * The multi-selection, two-way — the *items* (by identity) the move buttons act on. Empty by default
-   * (`p-orderList` parity); the emitted array is always in list order. Selection follows items through a
-   * reorder for free (it stores references, not indices), and is pruned to items still present in
-   * {@link value}. A row that becomes **disabled** while selected stays selected (selection is by
-   * reference and survives, as it does across a reorder) but is barred from moves — it clears only when
+   * The multi-selection, two-way — the *items* (by {@link trackBy} key) the move buttons act on. Empty by
+   * default (`p-orderList` parity); the emitted array is always in list order. Selection follows items
+   * through a reorder for free (it matches by key, not index), and is pruned to keys still present in
+   * {@link value} — re-pointed onto `value`'s current references so an immutable refresh keeps it live.
+   * A row that becomes **disabled** while selected stays selected (its key survives, as it does across a
+   * reorder) but is barred from moves — it clears only when
    * removed from {@link value} or explicitly deselected, so `selection()` may momentarily hold a disabled
    * row. With nothing selected, the move buttons fall back to acting on the focused row.
    */
   readonly selection = model<readonly T[]>([]);
+  /**
+   * How a row's **identity** is derived (`p-orderList` `dataKey`, expressed as the Angular `trackBy` idiom
+   * the sibling data components use). A pure function from an item to a **stable, unique key**; the default
+   * is identity (`(item) => item`), so the shipped behaviour is byte-for-byte unchanged. Supply one to key
+   * **object rows by a business field** — `[trackBy]="(c) => c.id"` — which does two things: a `[value]`
+   * refresh yielding *new object instances with the same keys* keeps the current selection and roving focus
+   * (they match by key, not reference — the identity-decoupling `p-orderList`'s `dataKey` gives), and the
+   * "distinct references" requirement is lifted, so a dataset with **repeated primitive display values**
+   * works once wrapped with a unique key (`{ id, label }` keyed by `id`). The key must be a pure function of
+   * the *item*, never its position: an index-derived key would change under a reorder and strand
+   * selection/focus, so the signature deliberately omits the index. Bare, genuinely-identical primitives
+   * (`['a', 'a']`) have no unique key to give and still collide (`@for` NG0955) — wrap them. Keys must be
+   * **non-null** (a `null`/`undefined` key aliases the internal "no range anchor" sentinel, so such a row
+   * can't seed a Shift-range) — `null`/`undefined` fails the stable-unique contract anyway.
+   */
+  readonly trackBy = input<(item: T) => unknown>((item) => item);
   /** Accessible name for the `role="listbox"` (default `"Order list"`); ignored if `ariaLabelledby` is set. */
   readonly ariaLabel = input('');
   /** `id` of a visible element labelling the list — preferred when a heading is shown. */
@@ -621,6 +639,15 @@ export class CaeOrderList<T = unknown> {
 
   /** Raw focus index; may momentarily exceed the list length after a shrink (clamped by {@link active}). */
   private readonly focusIndex = signal(0);
+  /**
+   * Memo backing the roving-focus *follow* (the constructor effect): the `value` array + the focused
+   * item's key as of the last settled focus. On an EXTERNAL `value` change the effect looks up
+   * `prevFocusKey` in the new list and moves the tab stop with its item; INTERNAL reorders
+   * (onDrop/reorderSelection) stamp `prevFocusValue` themselves, so the effect leaves their deliberate
+   * focus placement (e.g. onDrop focusing the *dropped* row) alone rather than chasing the old item.
+   */
+  private prevFocusValue: readonly T[] | null = null;
+  private prevFocusKey: unknown = null;
   /** Focused (roving tab stop) index clamped into range, or `-1` when the list is empty. Focus ≠ selection. */
   protected readonly active = computed(() => {
     const n = this.filtered().length;
@@ -629,37 +656,49 @@ export class CaeOrderList<T = unknown> {
   /** The single tab stop — `active()` floored at 0 so the list always has exactly one tabbable row. */
   protected readonly activeTabStop = computed(() => Math.max(this.active(), 0));
 
+  /** A row's identity key (via {@link trackBy}; default = the item itself). Item-pure, so it survives reorders. */
+  protected keyOf(item: T): unknown {
+    return this.trackBy()(item);
+  }
   /**
-   * Range anchor for Shift+click / Shift+Arrow — stored as the *item* (not an index) so it survives a
-   * reorder or an external `value` edit that shifts indices (an index anchor would silently mis-range).
+   * Range anchor for Shift+click / Shift+Arrow — stored as the anchor row's *key* (not an index) so it
+   * survives a reorder or an external `value` edit that shifts indices (an index anchor would mis-range);
+   * `null` means no live anchor.
    */
-  private readonly selectionAnchor = signal<T | null>(null);
-  /** The current selection as a `Set` for O(1) membership tests in the template. */
-  private readonly selectedSet = computed(() => new Set<T>(this.selection()));
+  private readonly selectionAnchor = signal<unknown>(null);
+  /** The selection's keys as a `Set` for O(1) membership tests (keyed via {@link trackBy}). */
+  private readonly selectedKeys = computed(
+    () => new Set(this.selection().map((it) => this.keyOf(it))),
+  );
   /** Whether `item` is in the current selection (template hot path). */
   protected isSelected(item: T): boolean {
-    return this.selectedSet().has(item);
+    return this.selectedKeys().has(this.keyOf(item));
   }
-  /** Disabled rows as a `Set` (evaluated over {@link value}) for O(1) membership in the template/guards. */
-  private readonly disabledSet = computed<ReadonlySet<T>>(() => {
+  /** Disabled rows' keys as a `Set` (evaluated over {@link value}) for O(1) membership in template/guards. */
+  private readonly disabledKeys = computed<ReadonlySet<unknown>>(() => {
     const match = this.disabledMatch();
-    return new Set<T>(this.value().filter(match));
+    return new Set(
+      this.value()
+        .filter(match)
+        .map((it) => this.keyOf(it)),
+    );
   });
   /** Whether `item` is disabled — not selectable, movable, or draggable (template hot path). */
   protected isDisabled(item: T): boolean {
-    return this.disabledSet().has(item);
+    return this.disabledKeys().has(this.keyOf(item));
   }
 
   /** Ascending indices the move buttons act on: the selected rows, or the focused row when none selected. */
   private readonly moveIndices = computed<readonly number[]>(() => {
     if (this.isFiltering()) return []; // reorder is disabled while filtering (partial-view indices are ambiguous)
     const items = this.value();
-    const sel = this.selectedSet();
-    const dis = this.disabledSet();
+    const sel = this.selectedKeys();
+    const dis = this.disabledKeys();
     // Disabled rows never move — excluded from the selected picks (a row selected *then* disabled by a
     // dynamic predicate is dropped here, not just at selection time) and from the focused-row fallback.
     const picked = items.reduce<number[]>((acc, it, i) => {
-      if (sel.has(it) && !dis.has(it)) acc.push(i);
+      const k = this.keyOf(it);
+      if (sel.has(k) && !dis.has(k)) acc.push(i);
       return acc;
     }, []);
     if (picked.length) return picked;
@@ -667,7 +706,7 @@ export class CaeOrderList<T = unknown> {
     // back to the focused (unselected) row, which would silently move a row the user never picked.
     if (sel.size) return [];
     const a = this.active();
-    return a >= 0 && !dis.has(items[a]) ? [a] : [];
+    return a >= 0 && !dis.has(this.keyOf(items[a])) ? [a] : [];
   });
   protected readonly canMoveUp = computed(() => {
     const m = this.moveIndices();
@@ -679,27 +718,44 @@ export class CaeOrderList<T = unknown> {
   });
 
   constructor() {
-    // Clamp the RAW focus index whenever the list changes externally, so a shrink can't leave a stale
-    // out-of-range index that would "resurrect" (jump to a different item) if the list later grows back.
-    // `active()` already clamps on read; this keeps the stored index coherent too. The guard makes it a
-    // no-op once clamped, so it can't loop.
-    // Clamp against value() (the stable data), NOT filtered(): the effect *writes* focusIndex, so
-    // clamping to the filtered length would destructively shrink the stored index while filtering and
-    // strand the tab stop on the wrong row after the query clears. active() read-clamps to the
-    // filtered length for rendering; because value() is unchanged across a filter toggle, keeping the
-    // stored index coherent with value() makes index-preservation = item-preservation.
+    // Keep the roving tab stop coherent whenever `value` changes externally — two jobs:
+    // (1) FOLLOW the focused item by key across an external reorder/immutable refresh, so the tab stop
+    //     (and `--active` highlight) stay on the same row the reused DOM node — and browser focus — moved
+    //     to. Guarded on `items !== prevValue` so ordinary focus navigation (value unchanged) never gets
+    //     overridden, and so it can't fight the user's Arrow keys. Mirrors the remaps in
+    //     onFilterInput/reorderSelection; only fires on a value *reference* change, so filtering (which
+    //     leaves value untouched) is unaffected — the #341 focus-follow leg.
+    // (2) CLAMP the raw index so a shrink can't leave a stale out-of-range index that would "resurrect"
+    //     if the list later grows back. Clamp against value() (the stable data), NOT filtered(): clamping
+    //     to the filtered length would destructively shrink the stored index while filtering and strand
+    //     the tab stop after the query clears. active() read-clamps to the filtered length for rendering.
+    // The guard makes both a no-op once settled, so the effect converges (no loop).
     effect(() => {
-      const n = this.value().length;
-      const clamped = n ? Math.min(Math.max(this.focusIndex(), 0), n - 1) : 0;
-      if (clamped !== this.focusIndex()) this.focusIndex.set(clamped);
+      const items = this.value();
+      const fi = this.focusIndex();
+      let idx = fi;
+      if (items !== this.prevFocusValue && this.prevFocusKey != null) {
+        const found = items.findIndex((it) => this.keyOf(it) === this.prevFocusKey);
+        if (found >= 0) idx = found;
+      }
+      const n = items.length;
+      const clamped = n ? Math.min(Math.max(idx, 0), n - 1) : 0;
+      if (clamped !== fi) this.focusIndex.set(clamped);
+      this.prevFocusValue = items;
+      this.prevFocusKey = n ? this.keyOf(items[clamped]) : null;
     });
-    // Prune selection to items still present after an external `value` change (selection is by identity,
-    // so replaced/removed items must drop out). Guarded on length so it converges (no effect loop).
+    // Reconcile selection against `value` after an external change: drop keys no longer present (prune)
+    // AND re-point surviving keys onto `value`'s current references, so an immutable refresh that swaps
+    // in new same-key instances keeps the selection live (matching by key, not reference). Compare
+    // element-wise by reference — a pure length guard would miss the same-count ref-swap. Converges:
+    // once `selection` holds `value`'s own refs the recomputed `kept` is reference-equal, so it stops.
     effect(() => {
-      const present = this.selectedSet(); // reads selection
+      const present = this.selectedKeys(); // reads selection (as keys)
       if (present.size === 0) return;
-      const kept = this.value().filter((it) => present.has(it));
-      if (kept.length !== this.selection().length) this.selection.set(kept);
+      const cur = this.selection();
+      const kept = this.value().filter((it) => present.has(this.keyOf(it)));
+      const changed = kept.length !== cur.length || kept.some((it, i) => it !== cur[i]);
+      if (changed) this.selection.set(kept);
     });
   }
 
@@ -714,8 +770,10 @@ export class CaeOrderList<T = unknown> {
     // OLD view, then remap the focus index to its position in the NEW view (or the top if it's now
     // filtered out). Without this, focus is index-stable but not item-stable across a filter round-trip.
     const prevItem = this.filtered()[this.active()];
+    const prevKey = prevItem === undefined ? undefined : this.keyOf(prevItem);
     this.filterQuery.set((event.target as HTMLInputElement).value);
-    const remapped = prevItem !== undefined ? this.filtered().indexOf(prevItem) : -1;
+    const remapped =
+      prevItem === undefined ? -1 : this.filtered().findIndex((it) => this.keyOf(it) === prevKey);
     this.focusIndex.set(remapped >= 0 ? remapped : 0);
     if (!this.isFiltering()) {
       this.announcer.announce('Filter cleared');
@@ -739,10 +797,10 @@ export class CaeOrderList<T = unknown> {
       this.selectRange(index, index);
     } else if (event.ctrlKey || event.metaKey) {
       this.toggle(index);
-      this.selectionAnchor.set(item);
+      this.selectionAnchor.set(this.keyOf(item));
     } else {
-      this.commitSelection(new Set([item]));
-      this.selectionAnchor.set(item);
+      this.commitSelection(new Set([this.keyOf(item)]));
+      this.selectionAnchor.set(this.keyOf(item));
     }
   }
 
@@ -767,11 +825,14 @@ export class CaeOrderList<T = unknown> {
     moveItemInArray(next, event.previousIndex, event.currentIndex);
     this.value.set(next);
     this.focusIndex.set(event.currentIndex);
+    // A drop deliberately focuses the DROPPED row — stamp the focus memo so the roving-follow effect
+    // treats this as handled, not as an external reorder to chase the previously-focused item.
+    this.prevFocusValue = next;
     // Keep the emitted selection in list order if the dragged row was selected (drag can reorder it
     // relative to other selected rows; the length-only prune guard wouldn't catch a same-size reorder).
-    const set = this.selectedSet();
-    if (set.has(next[event.currentIndex])) {
-      this.selection.set(next.filter((it) => set.has(it)));
+    const set = this.selectedKeys();
+    if (set.has(this.keyOf(next[event.currentIndex]))) {
+      this.selection.set(next.filter((it) => set.has(this.keyOf(it))));
     }
     this.reorder.emit({
       items: next,
@@ -794,8 +855,14 @@ export class CaeOrderList<T = unknown> {
     if ((event.ctrlKey || event.metaKey) && (event.key === 'a' || event.key === 'A')) {
       event.preventDefault();
       // Select-all means all *visible, enabled* rows — identical to the whole list when nothing is
-      // filtered or disabled.
-      this.commitSelection(new Set(this.filtered().filter((it) => !this.isDisabled(it))));
+      // filtered or disabled. commitSelection takes a set of KEYS, so map through keyOf.
+      this.commitSelection(
+        new Set(
+          this.filtered()
+            .filter((it) => !this.isDisabled(it))
+            .map((it) => this.keyOf(it)),
+        ),
+      );
       return;
     }
     if (event.key === ' ' || event.key === 'Spacebar') {
@@ -805,7 +872,7 @@ export class CaeOrderList<T = unknown> {
       // silently move the range anchor onto itself (a later Shift+range would extend from the wrong origin).
       if (item !== undefined && !this.isDisabled(item)) {
         this.toggle(index);
-        this.selectionAnchor.set(item);
+        this.selectionAnchor.set(this.keyOf(item));
       }
       return;
     }
@@ -846,9 +913,10 @@ export class CaeOrderList<T = unknown> {
   private toggle(index: number): void {
     const item = this.filtered()[index];
     if (item === undefined || this.isDisabled(item)) return;
-    const set = new Set(this.selection());
-    if (set.has(item)) set.delete(item);
-    else set.add(item);
+    const key = this.keyOf(item);
+    const set = new Set(this.selection().map((it) => this.keyOf(it)));
+    if (set.has(key)) set.delete(key);
+    else set.add(key);
     this.commitSelection(set);
   }
 
@@ -860,23 +928,27 @@ export class CaeOrderList<T = unknown> {
   private selectRange(focus: number, fallbackFrom: number): void {
     // Ranges are drawn over the rendered (filtered) rows; `commitSelection` re-orders to full-list order.
     const items = this.filtered();
-    const anchorItem = this.selectionAnchor();
-    const anchorIdx = anchorItem != null ? items.indexOf(anchorItem) : -1;
+    const anchorKey = this.selectionAnchor();
+    const anchorIdx =
+      anchorKey != null ? items.findIndex((it) => this.keyOf(it) === anchorKey) : -1;
     const from = anchorIdx >= 0 ? anchorIdx : fallbackFrom;
-    if (anchorIdx < 0) this.selectionAnchor.set(items[fallbackFrom] ?? null);
+    if (anchorIdx < 0) {
+      const seed = items[fallbackFrom];
+      this.selectionAnchor.set(seed === undefined ? null : this.keyOf(seed));
+    }
     const lo = Math.max(0, Math.min(from, focus));
     const hi = Math.min(items.length - 1, Math.max(from, focus));
-    const set = new Set<T>();
+    const set = new Set<unknown>();
     // Only enabled rows in the span join the selection; disabled ones are skipped (they can't be moved).
     for (let i = lo; i <= hi; i++) {
-      if (!this.isDisabled(items[i])) set.add(items[i]);
+      if (!this.isDisabled(items[i])) set.add(this.keyOf(items[i]));
     }
     this.commitSelection(set);
   }
 
-  /** Commit a new selection: emit it in list order and announce the count. */
-  private commitSelection(set: ReadonlySet<T>): void {
-    const ordered = this.value().filter((it) => set.has(it));
+  /** Commit a new selection (a set of *keys*): emit the matching items in list order, announce the count. */
+  private commitSelection(set: ReadonlySet<unknown>): void {
+    const ordered = this.value().filter((it) => set.has(this.keyOf(it)));
     this.selection.set(ordered);
     this.announcer.announce(
       ordered.length === 0
@@ -897,25 +969,26 @@ export class CaeOrderList<T = unknown> {
     // Resolve the focused item from the filtered (rendered) view, so a filtered index never mis-slices
     // the full `items` array (reorder is gated off while filtering, so this is defensive parity).
     const focusedItem = this.active() >= 0 ? this.filtered()[this.active()] : undefined;
-    const firstMoved = items[idx[0]];
-    const picked = new Set(idx.map((i) => items[i]));
+    const firstMovedKey = this.keyOf(items[idx[0]]);
+    const picked = new Set(idx.map((i) => this.keyOf(items[i])));
+    const isPicked = (it: T): boolean => picked.has(this.keyOf(it));
 
     let next: T[];
     if (dir === 'top') {
-      next = [...idx.map((i) => items[i]), ...items.filter((it) => !picked.has(it))];
+      next = [...idx.map((i) => items[i]), ...items.filter((it) => !isPicked(it))];
     } else if (dir === 'bottom') {
-      next = [...items.filter((it) => !picked.has(it)), ...idx.map((i) => items[i])];
+      next = [...items.filter((it) => !isPicked(it)), ...idx.map((i) => items[i])];
     } else if (dir === 'up') {
       next = [...items];
       for (let i = 1; i < next.length; i++) {
-        if (picked.has(next[i]) && !picked.has(next[i - 1])) {
+        if (isPicked(next[i]) && !isPicked(next[i - 1])) {
           [next[i - 1], next[i]] = [next[i], next[i - 1]];
         }
       }
     } else {
       next = [...items];
       for (let i = next.length - 2; i >= 0; i--) {
-        if (picked.has(next[i]) && !picked.has(next[i + 1])) {
+        if (isPicked(next[i]) && !isPicked(next[i + 1])) {
           [next[i + 1], next[i]] = [next[i], next[i + 1]];
         }
       }
@@ -923,19 +996,24 @@ export class CaeOrderList<T = unknown> {
 
     this.value.set(next);
     if (focusedItem !== undefined) {
-      const ni = next.indexOf(focusedItem);
+      const fk = this.keyOf(focusedItem);
+      const ni = next.findIndex((it) => this.keyOf(it) === fk);
       if (ni >= 0) this.focusIndex.set(ni);
     }
+    // This path already moved focus with its item; stamp the memo so the roving-follow effect doesn't
+    // re-run the same remap (belt-and-suspenders — it would compute the identical index anyway).
+    this.prevFocusValue = next;
     const count = idx.length;
+    const currentIndex = next.findIndex((it) => this.keyOf(it) === firstMovedKey);
     this.reorder.emit({
       items: next,
       previousIndex: idx[0],
-      currentIndex: next.indexOf(firstMoved),
+      currentIndex,
       movedIndices: idx,
     });
     this.announcer.announce(
       count === 1
-        ? `Moved to position ${next.indexOf(firstMoved) + 1} of ${next.length}`
+        ? `Moved to position ${currentIndex + 1} of ${next.length}`
         : `Moved ${count} items ${dir === 'top' ? 'to top' : dir === 'bottom' ? 'to bottom' : dir}`,
     );
   }
