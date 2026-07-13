@@ -8,7 +8,8 @@ import { CaeFileUpload, CaeFileUploadError } from 'caelum/file-upload';
  * component. It exercises the **live, self-contained** path end-to-end: choose files with the keyboard
  * (the native `<input type=file>`) or drop them on the zone, oversize/wrong-type files are **rejected at
  * the trust boundary** (announced + shown), and the accepted set echoes below — no backend needed (DoD
- * liveness). This demo runs **selection-only** (no `[url]`), so it needs no `HttpClient`; wiring `[url]`
+ * liveness). `[previewImages]` renders an inline thumbnail for each accepted image (#345), so dropping a
+ * picture is visibly live. This demo runs **selection-only** (no `[url]`), so it needs no `HttpClient`; wiring `[url]`
  * turns on the `HttpClient` progress/cancel/retry upload path (verified in the spec via
  * `HttpTestingController`) and would add `provideHttpClient()` to `app.config`.
  *

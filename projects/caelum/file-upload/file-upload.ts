@@ -5,6 +5,7 @@ import {
   Component,
   computed,
   DestroyRef,
+  effect,
   ElementRef,
   forwardRef,
   inject,
@@ -121,6 +122,11 @@ export interface CaeFileUploadError {
  * consumer-owned (no `<mat-error>`): point `ariaDescribedby` at your message (#47), forwarded onto the
  * focusable input.
  *
+ * **Previews.** With `previewImages`, each image file (`image/*`) shows a small leading thumbnail — an
+ * object URL minted lazily and revoked when its row leaves the queue or the component is destroyed, so a
+ * blob URL never outlives its row (no memory leak). The thumbnail is decorative (`alt=""`); the filename
+ * beside it carries the accessible name. Off by default — additive, non-breaking, no network.
+ *
  * Token-only theming (`--cae-*`/`--mat-sys-*`), `OnPush` + signal state (zoneless), Angular core +
  * `@angular/common/http` + `@angular/cdk/a11y` only — no foreign uploader (Book 03 provenance clean).
  */
@@ -164,6 +170,11 @@ export interface CaeFileUploadError {
       <ul class="cae-file-upload__list">
         @for (f of files(); track f.id) {
           <li class="cae-file-upload__item" [attr.data-status]="f.status">
+            <!-- Decorative thumbnail (alt=""): the filename beside it already carries the a11y name, so
+                 an alt would double-announce. Object-URL-backed; minted by the effect, revoked on exit. -->
+            @if (previewImages() && previewUrl(f.id); as src) {
+              <img class="cae-file-upload__thumb" [src]="src" alt="" />
+            }
             <span class="cae-file-upload__name">{{ f.file.name }}</span>
             <span class="cae-file-upload__size">{{ formatSize(f.file.size) }}</span>
 
@@ -326,6 +337,15 @@ export interface CaeFileUploadError {
       background: var(--mat-sys-surface-container, rgba(0, 0, 0, 0.04));
     }
 
+    /* Small leading thumbnail for image files (previewImages); token-rounded, cropped to a square. */
+    .cae-file-upload__thumb {
+      inline-size: 2rem;
+      block-size: 2rem;
+      object-fit: cover;
+      border-radius: var(--mat-sys-corner-small, 0.5rem);
+      flex: 0 0 auto;
+    }
+
     .cae-file-upload__name {
       font-weight: 500;
     }
@@ -430,6 +450,17 @@ export class CaeFileUpload implements ControlValueAccessor {
   readonly maxFileSize = input<number | null>(null, { transform: nullableNumber });
   /** Upload each accepted file immediately on add (else wait for {@link upload}). */
   readonly auto = input(false, { transform: booleanAttribute });
+  /**
+   * Show an inline thumbnail for image files (`image/*`). Each preview is an object URL minted lazily
+   * for a non-`invalid` image and **revoked** when its row is removed/replaced or the component is
+   * destroyed, so a blob URL never outlives its row (no memory leak). Off by default — additive and
+   * non-breaking; a non-image file never gets a thumbnail, and `invalid` files show their error instead.
+   * The image is decorative (`alt=""`, the `cae-image` house pattern — WCAG 1.1.1 / H67): the filename
+   * shown beside it already carries the accessible name, so it stays the sole per-row identifier for a
+   * screen reader by design. Toggling this off at runtime hides the thumbnails but keeps their (tracked)
+   * URLs until each row is removed/replaced or the component is destroyed — off never means "leaked".
+   */
+  readonly previewImages = input(false, { transform: booleanAttribute });
   /** Template-driven disable; merged with reactive-forms `setDisabledState`. */
   readonly disabled = input(false, { transform: booleanAttribute });
 
@@ -486,14 +517,40 @@ export class CaeFileUpload implements ControlValueAccessor {
   // Active HttpClient subscriptions keyed by file id (non-reactive: cancel/cleanup only).
   private readonly subs = new Map<number, Subscription>();
 
+  // Object-URL image previews keyed by file id — a managed browser resource kept OUT of the immutable
+  // CaeUploadFile model. Minted by the effect below (when previewImages is on); every entry here MUST be
+  // revoked on removal/replace/destroy — that symmetry is what prevents a blob-URL memory leak.
+  private readonly previews = new Map<number, string>();
+
   private onChangeFn: (value: readonly File[]) => void = () => {};
   protected onTouched: () => void = () => {};
 
   constructor() {
-    // Abort any in-flight uploads if the component is torn down, so a pending XHR can't leak.
+    // Mint an object-URL thumbnail for each non-invalid image file while previews are enabled. Reactive
+    // to files()/previewImages(), so files added later — or previews toggled on later — are covered; the
+    // `has` guard makes it idempotent (mint once per id). No-ops without createObjectURL (SSR/older
+    // hosts); effects are browser-only anyway, so SSR never mints a URL it couldn't revoke. Writes no
+    // signal, so it converges. Revocation lives on the disposal paths, never here.
+    effect(() => {
+      if (!this.previewImages()) return;
+      if (typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') return;
+      for (const f of this.files()) {
+        if (
+          f.status !== 'invalid' &&
+          f.file.type.startsWith('image/') &&
+          !this.previews.has(f.id)
+        ) {
+          this.previews.set(f.id, URL.createObjectURL(f.file));
+        }
+      }
+    });
+
+    // Abort any in-flight uploads AND revoke every preview URL when torn down, so neither a pending XHR
+    // nor a blob URL can leak past the component.
     inject(DestroyRef).onDestroy(() => {
       this.subs.forEach((s) => s.unsubscribe());
       this.subs.clear();
+      this.revokeAllPreviews();
     });
   }
 
@@ -549,8 +606,9 @@ export class CaeFileUpload implements ControlValueAccessor {
     if (this.multiple()) {
       this.files.update((cur) => [...cur, ...added]);
     } else {
-      // Single mode replaces the queue — cancel whatever it displaces first.
+      // Single mode replaces the queue — cancel whatever it displaces and revoke its previews first.
       this.cancelAll();
+      this.revokeAllPreviews();
       this.files.set(added);
     }
 
@@ -694,6 +752,7 @@ export class CaeFileUpload implements ControlValueAccessor {
     const entry = cur[idx];
     this.subs.get(id)?.unsubscribe();
     this.subs.delete(id);
+    this.revokePreview(id);
     // Pick the focus target (next row's Remove, else previous) BEFORE the row is filtered out.
     const neighbor = cur[idx + 1] ?? cur[idx - 1];
     this.files.update((c) => c.filter((f) => f.id !== id));
@@ -748,6 +807,29 @@ export class CaeFileUpload implements ControlValueAccessor {
     this.subs.clear();
   }
 
+  /** The object-URL thumbnail for a file id, or `null` — a pure lookup (the effect does the minting). */
+  protected previewUrl(id: number): string | null {
+    return this.previews.get(id) ?? null;
+  }
+
+  /** Revoke and forget one file's preview URL (called when its row leaves the queue). */
+  private revokePreview(id: number): void {
+    const url = this.previews.get(id);
+    // Same guard shape as revokeAllPreviews: `typeof URL` shields the bare global before the member read.
+    if (url && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
+      URL.revokeObjectURL(url);
+    }
+    this.previews.delete(id);
+  }
+
+  /** Revoke every preview URL (the queue was replaced, or the component is being destroyed). */
+  private revokeAllPreviews(): void {
+    if (typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
+      this.previews.forEach((url) => URL.revokeObjectURL(url));
+    }
+    this.previews.clear();
+  }
+
   /** The CVA value = accepted files (everything not rejected at the trust boundary). */
   private acceptedFiles(): readonly File[] {
     return this.files()
@@ -786,6 +868,7 @@ export class CaeFileUpload implements ControlValueAccessor {
    */
   writeValue(value: readonly File[] | null | undefined): void {
     this.cancelAll();
+    this.revokeAllPreviews();
     if (!value || !value.length) {
       this.files.set([]);
       return;
