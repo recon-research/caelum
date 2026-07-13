@@ -432,6 +432,154 @@ describe('CaeFileUpload', () => {
     fixture.destroy();
     expect(req.cancelled).toBe(true);
   });
+
+  // Object-URL image previews (#345). jsdom doesn't implement createObjectURL/revokeObjectURL, so mock
+  // both — which also lets us assert the revoke lifecycle (a leaked blob URL never surfaces in a spec,
+  // so the revoke SYMMETRY is the only thing that catches a leak). The component guards on `typeof`, so
+  // these mocks satisfy that guard too.
+  describe('image thumbnails / preview (#345)', () => {
+    // NB: this spec shadows the global `URL` with a string const (the endpoint), so reach the real
+    // constructor via `globalThis.URL` to stub the object-URL factory/revoker.
+    const G = globalThis.URL;
+    let createSpy: ReturnType<typeof vi.fn>;
+    let revokeSpy: ReturnType<typeof vi.fn>;
+    let origCreate: typeof G.createObjectURL | undefined;
+    let origRevoke: typeof G.revokeObjectURL | undefined;
+    let n: number;
+
+    beforeEach(() => {
+      n = 0;
+      origCreate = G.createObjectURL;
+      origRevoke = G.revokeObjectURL;
+      createSpy = vi.fn(() => `blob:mock-${n++}`);
+      revokeSpy = vi.fn();
+      G.createObjectURL = createSpy as unknown as typeof G.createObjectURL;
+      G.revokeObjectURL = revokeSpy as unknown as typeof G.revokeObjectURL;
+    });
+
+    afterEach(() => {
+      G.createObjectURL = origCreate!;
+      G.revokeObjectURL = origRevoke!;
+    });
+
+    const thumbs = () =>
+      Array.from(
+        fixture.nativeElement.querySelectorAll('img.cae-file-upload__thumb'),
+      ) as HTMLImageElement[];
+
+    it('renders a decorative object-URL thumbnail for an image file when previewImages is on', () => {
+      fixture.componentRef.setInput('previewImages', true);
+      fixture.componentRef.setInput('multiple', true);
+      fixture.detectChanges();
+      ingest([makeFile('photo.png', 10, 'image/png')]);
+      const imgs = thumbs();
+      expect(imgs.length).toBe(1);
+      expect(imgs[0].getAttribute('src')).toBe('blob:mock-0');
+      // Decorative: an empty alt keeps it out of the a11y tree (the filename already names the row).
+      expect(imgs[0].getAttribute('alt')).toBe('');
+      expect(createSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not thumbnail a non-image file', () => {
+      fixture.componentRef.setInput('previewImages', true);
+      fixture.detectChanges();
+      ingest([makeFile('notes.txt', 10, 'text/plain')]);
+      expect(thumbs().length).toBe(0);
+      expect(createSpy).not.toHaveBeenCalled();
+    });
+
+    it('does not thumbnail when previewImages is off (default) — behavior byte-for-byte unchanged', () => {
+      ingest([makeFile('photo.png', 10, 'image/png')]);
+      expect(thumbs().length).toBe(0);
+      expect(createSpy).not.toHaveBeenCalled();
+    });
+
+    it('does not thumbnail an invalid (rejected) image', () => {
+      fixture.componentRef.setInput('previewImages', true);
+      fixture.componentRef.setInput('maxFileSize', 5);
+      fixture.detectChanges();
+      ingest([makeFile('huge.png', 999, 'image/png')]);
+      expect(files()[0].status).toBe('invalid');
+      expect(thumbs().length).toBe(0);
+      expect(createSpy).not.toHaveBeenCalled();
+    });
+
+    it('previews a file added later — the effect covers late additions', () => {
+      fixture.componentRef.setInput('previewImages', true);
+      fixture.componentRef.setInput('multiple', true);
+      fixture.detectChanges();
+      ingest([makeFile('a.png', 10, 'image/png')]);
+      expect(thumbs().length).toBe(1);
+      ingest([makeFile('b.png', 10, 'image/png')]);
+      expect(thumbs().length).toBe(2);
+      expect(createSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it('revokes the object URL when its file is removed', () => {
+      fixture.componentRef.setInput('previewImages', true);
+      fixture.componentRef.setInput('multiple', true);
+      fixture.detectChanges();
+      ingest([makeFile('a.png', 10, 'image/png'), makeFile('b.png', 10, 'image/png')]);
+      expect(createSpy).toHaveBeenCalledTimes(2);
+      const firstId = files()[0].id;
+      cmp.removeFile(firstId);
+      fixture.detectChanges();
+      expect(revokeSpy).toHaveBeenCalledWith('blob:mock-0');
+      expect(revokeSpy).toHaveBeenCalledTimes(1);
+      // Only the removed file's thumbnail is gone; the survivor keeps its own URL.
+      expect(thumbs().length).toBe(1);
+    });
+
+    it('revokes the displaced URL and mints a new one on a single-mode replace', () => {
+      fixture.componentRef.setInput('previewImages', true); // multiple defaults false → each pick replaces
+      fixture.detectChanges();
+      ingest([makeFile('first.png', 10, 'image/png')]);
+      expect(createSpy).toHaveBeenCalledTimes(1);
+      ingest([makeFile('second.png', 10, 'image/png')]);
+      expect(revokeSpy).toHaveBeenCalledWith('blob:mock-0');
+      expect(createSpy).toHaveBeenCalledTimes(2);
+      expect(thumbs()[0].getAttribute('src')).toBe('blob:mock-1');
+    });
+
+    it('revokes every preview URL on destroy — no blob-URL leak', () => {
+      fixture.componentRef.setInput('previewImages', true);
+      fixture.componentRef.setInput('multiple', true);
+      fixture.detectChanges();
+      ingest([makeFile('a.png', 10, 'image/png'), makeFile('b.png', 10, 'image/png')]);
+      expect(createSpy).toHaveBeenCalledTimes(2);
+      fixture.destroy();
+      expect(revokeSpy).toHaveBeenCalledWith('blob:mock-0');
+      expect(revokeSpy).toHaveBeenCalledWith('blob:mock-1');
+      expect(revokeSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it('revokes previews when the form model is cleared via writeValue([])', () => {
+      fixture.componentRef.setInput('previewImages', true);
+      fixture.componentRef.setInput('multiple', true);
+      fixture.detectChanges();
+      ingest([makeFile('a.png', 10, 'image/png'), makeFile('b.png', 10, 'image/png')]);
+      expect(createSpy).toHaveBeenCalledTimes(2);
+      cmp.writeValue([]);
+      fixture.detectChanges();
+      expect(revokeSpy).toHaveBeenCalledWith('blob:mock-0');
+      expect(revokeSpy).toHaveBeenCalledWith('blob:mock-1');
+      expect(revokeSpy).toHaveBeenCalledTimes(2);
+      expect(thumbs().length).toBe(0);
+    });
+
+    it('revokes the old preview and mints a fresh one when writeValue seeds a new list', () => {
+      fixture.componentRef.setInput('previewImages', true);
+      fixture.componentRef.setInput('multiple', true);
+      fixture.detectChanges();
+      ingest([makeFile('old.png', 10, 'image/png')]);
+      expect(createSpy).toHaveBeenCalledTimes(1);
+      cmp.writeValue([makeFile('new.png', 10, 'image/png')]);
+      fixture.detectChanges();
+      expect(revokeSpy).toHaveBeenCalledWith('blob:mock-0');
+      expect(createSpy).toHaveBeenCalledTimes(2);
+      expect(thumbs()[0].getAttribute('src')).toBe('blob:mock-1');
+    });
+  });
 });
 
 // --- Forms integration (controlled CVA) -----------------------------------------------------------
