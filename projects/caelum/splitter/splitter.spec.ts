@@ -1,6 +1,6 @@
 import { Component, EventEmitter, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { Direction, Directionality } from '@angular/cdk/bidi';
+import { Dir, Direction, Directionality } from '@angular/cdk/bidi';
 import { vi } from 'vitest';
 
 import { CaeSplitter, CaeSplitterPanel } from './splitter';
@@ -595,5 +595,52 @@ describe('CaeSplitter', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     await render();
     expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+// --- Born-rtl [dir] (#364) ---
+// The seeded-FakeDirectionality RTL tests above pass under BOTH the old toSignal(change,{initialValue})
+// idiom and the direct value read — the double reports 'rtl' from construction. Only a real CDK `Dir`
+// ancestor bound rtl by a *property* binding reproduces the born-rtl gap this slice closes, so it needs
+// its own host. Mirrors the pick-list #342/#364 guard.
+
+/** Wraps the splitter under a CDK `Dir` ancestor bound rtl before the first paint. */
+@Component({
+  selector: 'cae-splitter-rtl-host',
+  imports: [CaeSplitter, CaeSplitterPanel, Dir],
+  template: `
+    <div [dir]="direction()">
+      <cae-splitter ariaLabel="Resize panels">
+        <cae-splitter-panel [size]="30">A</cae-splitter-panel>
+        <cae-splitter-panel [size]="70">B</cae-splitter-panel>
+      </cae-splitter>
+    </div>
+  `,
+})
+class SplitterRtlHost {
+  readonly direction = signal<Direction>('rtl');
+}
+
+describe('CaeSplitter — born-rtl [dir] (#364)', () => {
+  it('measures the horizontal axis as RTL on first paint under a born-rtl [dir] binding', async () => {
+    // rtl is bound BEFORE the first detectChanges: the parent Dir applies rtl in the same update pass
+    // but never emits `change` (it's pre-init), so the older toSignal(change,{initialValue}) idiom would
+    // read 'ltr' and mis-measure the drag axis on first paint. Reading the signal-backed
+    // Directionality.value catches it.
+    const fixture = TestBed.createComponent(SplitterRtlHost);
+    document.body.appendChild(fixture.nativeElement);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const divider = (fixture.nativeElement as HTMLElement).querySelector('[role="separator"]')!;
+    // ArrowRight moves toward the RTL start edge (right) → the leading pane SHRINKS 30 → 20 (step 10).
+    // Under the born-rtl bug isRtl() would be false and ArrowRight would GROW it to 40.
+    divider.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }),
+    );
+    fixture.detectChanges();
+    expect(divider.getAttribute('aria-valuenow')).toBe('20');
+
+    fixture.nativeElement.remove();
   });
 });

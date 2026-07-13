@@ -1,6 +1,6 @@
 import { Component, EventEmitter, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { Direction, Directionality } from '@angular/cdk/bidi';
+import { Dir, Direction, Directionality } from '@angular/cdk/bidi';
 import { vi } from 'vitest';
 
 import { CaeImageCompare } from './image-compare';
@@ -316,6 +316,54 @@ describe('CaeImageCompare — two-way binding', () => {
     fixture.detectChanges();
     expect(divider.getAttribute('aria-valuenow')).toBe('41');
     expect(fixture.componentInstance.pos()).toBe(41); // component → host
+
+    fixture.nativeElement.remove();
+  });
+});
+
+// --- Born-rtl [dir] (#364) ---
+// The seeded-FakeDirectionality RTL tests above pass under BOTH the old toSignal(change,{initialValue})
+// idiom and the direct value read — the double reports 'rtl' from construction. Only a real CDK `Dir`
+// ancestor bound rtl by a *property* binding reproduces the born-rtl gap this slice closes. Mirrors the
+// pick-list #342/#364 guard.
+
+/** Wraps the slider under a CDK `Dir` ancestor bound rtl before the first paint. */
+@Component({
+  selector: 'cae-compare-rtl-host',
+  imports: [CaeImageCompare, Dir],
+  template: `
+    <div [dir]="direction()">
+      <cae-image-compare
+        beforeSrc="b.png"
+        afterSrc="a.png"
+        ariaLabel="Reveal"
+        beforeAlt="B"
+        afterAlt="A"
+      />
+    </div>
+  `,
+})
+class CompareRtlHost {
+  readonly direction = signal<Direction>('rtl');
+}
+
+describe('CaeImageCompare — born-rtl [dir] (#364)', () => {
+  it('measures the reveal axis as RTL on first paint under a born-rtl [dir] binding', async () => {
+    // rtl is bound BEFORE the first detectChanges: the parent Dir applies rtl in the same update pass
+    // but never emits `change` (it's pre-init), so the older toSignal(change,{initialValue}) idiom would
+    // read 'ltr' and mis-clip (and mis-measure the drag axis) on first paint. Reading the signal-backed
+    // Directionality.value catches it.
+    const fixture = TestBed.createComponent(CompareRtlHost);
+    document.body.appendChild(fixture.nativeElement);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const before = (fixture.nativeElement as HTMLElement).querySelector(
+      '.cae-image-compare__img--before',
+    ) as HTMLImageElement;
+    // RTL hides the (physical) left at the default 50% position; under the born-rtl bug isRtl() would be
+    // false and the clip would be the LTR form `inset(0 50% 0 0)`.
+    expect(before.style.getPropertyValue('clip-path')).toBe('inset(0 0 0 50%)');
 
     fixture.nativeElement.remove();
   });
