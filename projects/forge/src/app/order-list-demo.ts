@@ -1,4 +1,5 @@
-import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { LiveAnnouncer } from '@angular/cdk/a11y';
 
 import { CaeCard } from 'caelum/card';
 import {
@@ -68,6 +69,22 @@ export class OrderListDemo {
 
   /** "Billing" is locked (`[disabledMatch]`): dimmed + `aria-disabled`, non-selectable and non-movable. */
   protected readonly widgetLocked = (widget: Widget): boolean => widget.id === 'billing';
+
+  /** Identity key (`[trackBy]`): key rows by `id` so selection/focus survive an immutable data refresh. */
+  protected readonly widgetKey = (widget: Widget): unknown => widget.id;
+
+  /** Announces the refresh, so a screen-reader user gets confirmation the (visually-silent) action ran. */
+  private readonly announcer = inject(LiveAnnouncer);
+
+  /**
+   * Replace every row with a **fresh object instance** carrying the same `id` — the shape of an
+   * immutable server refresh. Because the list is keyed by `id` ({@link widgetKey}), the selection and
+   * roving focus survive; without `[trackBy]` this would drop both (nothing matches by reference).
+   */
+  protected refreshData(): void {
+    this.widgets.set(this.widgets().map((w) => ({ ...w })));
+    this.announcer.announce('Data refreshed; your selection is preserved');
+  }
 
   /** Live toggle for `[dragHandle]`: whole-row drag ↔ drag only via a per-row grip handle. */
   protected readonly dragHandle = signal(false);

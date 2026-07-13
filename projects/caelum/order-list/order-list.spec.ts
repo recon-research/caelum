@@ -40,6 +40,7 @@ const ROWS = (): Row[] => [
       [controlsPosition]="controlsPosition()"
       [disabledMatch]="disabledMatch()"
       [dragHandle]="dragHandle()"
+      [trackBy]="trackBy()"
       (reorder)="lastReorder.set($event)"
     >
       <ng-template
@@ -66,6 +67,7 @@ class OrderListHost {
   readonly controlsPosition = signal<'before' | 'after'>('before');
   readonly disabledMatch = signal<(item: Row) => boolean>(() => false);
   readonly dragHandle = signal(false);
+  readonly trackBy = signal<(item: Row) => unknown>((item) => item);
   readonly lastReorder = signal<CaeOrderListReorderEvent<Row> | null>(null);
 }
 
@@ -152,6 +154,7 @@ describe('CaeOrderList', () => {
       controlsPosition?: 'before' | 'after';
       disabledMatch?: (item: Row) => boolean;
       dragHandle?: boolean;
+      trackBy?: (item: Row) => unknown;
     } = {},
   ): void {
     fixture = TestBed.createComponent(OrderListHost);
@@ -162,6 +165,7 @@ describe('CaeOrderList', () => {
     if (opts.controlsPosition !== undefined) host.controlsPosition.set(opts.controlsPosition);
     if (opts.disabledMatch !== undefined) host.disabledMatch.set(opts.disabledMatch);
     if (opts.dragHandle !== undefined) host.dragHandle.set(opts.dragHandle);
+    if (opts.trackBy !== undefined) host.trackBy.set(opts.trackBy);
     // Attach to the document so `.focus()` moves `document.activeElement` (jsdom requirement).
     document.body.appendChild(fixture.nativeElement);
     fixture.detectChanges();
@@ -439,6 +443,109 @@ describe('CaeOrderList', () => {
       // The cdkDragHandle directive is actually applied on each grip, so CDK restricts drag initiation
       // to it (not just a decorative span).
       expect(fixture.debugElement.queryAll(By.directive(CdkDragHandle)).length).toBe(3);
+    });
+  });
+
+  describe('trackBy / identity keying', () => {
+    const byId = (r: Row): unknown => r.id;
+
+    it('keys selection by [trackBy], so an immutable refresh with same-id rows keeps it selected', () => {
+      render({ trackBy: byId });
+      clickRow(1); // select Bravo (id 'b')
+      expect(host.selection().map((r) => r.name)).toEqual(['Bravo']);
+      const staleBravo = host.selection()[0];
+      // Parent replaces value with FRESH object instances carrying the same ids (an immutable refresh).
+      const fresh = ROWS();
+      host.items.set(fresh);
+      fixture.detectChanges();
+      // Bravo is still shown selected (matched by key, not reference)...
+      expect(options()[1].getAttribute('aria-selected')).toBe('true');
+      expect(selectedTexts()).toEqual(['Bravo#1*+']);
+      // ...and the emitted selection is re-pointed onto the FRESH reference, not the stale one, so the
+      // parent never holds a row absent from value().
+      expect(host.selection()[0]).toBe(fresh[1]);
+      expect(host.selection()[0]).not.toBe(staleBravo);
+    });
+
+    it('by default (identity [trackBy]) an immutable refresh drops the selection (reference match)', () => {
+      render(); // default trackBy = the item itself
+      clickRow(1);
+      expect(host.selection().map((r) => r.name)).toEqual(['Bravo']);
+      host.items.set(ROWS()); // fresh references, no shared identity
+      fixture.detectChanges();
+      expect(selectedTexts()).toEqual([]); // pruned — nothing matches by reference
+      expect(host.selection()).toEqual([]);
+    });
+
+    it('reuses row DOM nodes across a same-key refresh, so browser focus is retained', () => {
+      render({ trackBy: byId });
+      const bravo = options()[1];
+      bravo.focus();
+      expect(document.activeElement).toBe(bravo);
+      host.items.set(ROWS()); // fresh refs, same ids → @for keys unchanged → nodes reused in place
+      fixture.detectChanges();
+      expect(options()[1]).toBe(bravo); // same DOM node survived
+      expect(document.activeElement).toBe(bravo); // and kept focus (never blurred to <body>)
+    });
+
+    it('by default (identity [trackBy]) a fresh-reference refresh rebuilds the row nodes', () => {
+      render();
+      const bravo = options()[1];
+      bravo.focus();
+      host.items.set(ROWS()); // fresh refs → new @for keys → old nodes torn down, new ones created
+      fixture.detectChanges();
+      expect(options()[1]).not.toBe(bravo); // a new DOM node replaced it (why keyed refresh keeps focus)
+    });
+
+    it('lets rows with repeated display values reorder independently when keyed by a unique field', () => {
+      const dup: Row[] = [
+        { id: '1', name: 'Dup' },
+        { id: '2', name: 'Solo' },
+        { id: '3', name: 'Dup' },
+      ];
+      render({ items: dup, trackBy: byId });
+      clickRow(2); // select the SECOND 'Dup' (id '3'), indistinguishable from the first by name
+      expect(host.selection().map((r) => r.id)).toEqual(['3']);
+      btn('Move to top').click();
+      fixture.detectChanges();
+      // Only the id-'3' Dup lifted to the top; the id-'1' Dup stayed — key identity, not display value.
+      expect(host.items().map((r) => r.id)).toEqual(['3', '1', '2']);
+    });
+
+    it('select-all (Ctrl/Cmd+A) selects every enabled row under a custom [trackBy]', () => {
+      render({ trackBy: byId });
+      options()[0].focus();
+      // commitSelection takes KEYS; select-all must map items → keys or it matches nothing (the bug).
+      key(options()[0], 'a', { ctrlKey: true });
+      expect(host.selection().map((r) => r.name)).toEqual(['Alpha', 'Bravo', 'Charlie']);
+    });
+
+    it('ranges from the Space anchor (stored as a key) after a Space toggle under a custom [trackBy]', () => {
+      render({ trackBy: byId });
+      options()[0].focus();
+      key(options()[0], ' '); // Space toggles + anchors Alpha — the anchor is stored as a KEY
+      key(options()[0], 'ArrowDown'); // focus → Bravo
+      key(options()[1], 'ArrowDown', { shiftKey: true }); // Shift+Arrow → Charlie, range from the anchor
+      // The range spans the Alpha anchor → Charlie = all three. A raw-item anchor (the bug) would be
+      // unresolvable, re-seeding from the origin row (Bravo) → only [Bravo, Charlie].
+      expect(host.selection().map((r) => r.name)).toEqual(['Alpha', 'Bravo', 'Charlie']);
+    });
+
+    it('moves the roving tab stop to follow the focused item across an external reorder (same keys)', () => {
+      render({ trackBy: byId });
+      expect(focusedText()).toContain('Alpha'); // default tab stop = row 0 (Alpha, id 'a')
+      // Parent externally reorders to [Bravo, Alpha, Charlie] with the SAME keys (a re-sorted refresh).
+      host.items.set([
+        { id: 'b', name: 'Bravo' },
+        { id: 'a', name: 'Alpha' },
+        { id: 'c', name: 'Charlie' },
+      ]);
+      fixture.detectChanges();
+      // The tab stop follows Alpha to its new index (1) — it does not stay on index 0 (now Bravo), which
+      // would split the tab stop from the reused, still-focused Alpha node (WCAG 2.4.3 / 2.4.7).
+      expect(focusedText()).toContain('Alpha');
+      expect(options()[1].getAttribute('tabindex')).toBe('0');
+      expect(options()[0].getAttribute('tabindex')).toBe('-1');
     });
   });
 

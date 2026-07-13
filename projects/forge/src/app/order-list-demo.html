@@ -12,7 +12,11 @@
     <strong>filter box</strong> to narrow the sections by name — reorder is disabled while
     filtering, since a partial view has no coherent "move up". Toggle
     <strong>controls after list</strong> to move the button column to the other side (it mirrors for
-    free under RTL), or <strong>drag handle</strong> to drag rows only by their grip.
+    free under RTL), or <strong>drag handle</strong> to drag rows only by their grip. The list is
+    <strong>keyed by id</strong> (<code>[trackBy]</code>): press <strong>Refresh data</strong> —
+    which swaps in brand-new row objects carrying the same ids — and your
+    <strong>selection</strong> stays put (watch the <em>Selected</em> line below); the roving
+    keyboard focus is preserved the same way.
   </p>
 
   <!-- Constant accessible name + aria-pressed for the toggle state (the WAI-ARIA toggle-button
@@ -34,6 +38,11 @@
     >
       Drag handle
     </button>
+    <!-- A momentary ACTION (no aria-pressed): swaps in fresh row objects with the same ids to prove
+         [trackBy] keeps the selection and roving focus across an immutable data refresh. -->
+    <button type="button" class="forge-order-list-toggle" (click)="refreshData()">
+      Refresh data
+    </button>
   </div>
 
   <cae-order-list
@@ -41,6 +50,7 @@
     [controlsPosition]="controlsAfter() ? 'after' : 'before'"
     [dragHandle]="dragHandle()"
     [disabledMatch]="widgetLocked"
+    [trackBy]="widgetKey"
     [value]="widgets()"
     (valueChange)="widgets.set($event)"
     [selection]="selected()"
