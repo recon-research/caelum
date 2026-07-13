@@ -418,3 +418,70 @@ describe('CaeCarousel dev-warnings', () => {
     fixture.nativeElement.remove();
   });
 });
+
+// A host that binds a pre-set two-way [(page)] against an initially-empty (async-loaded) value — the
+// case #290 guards. Uses the signal-safe explicit [page]/(pageChange) form (table.spec precedent). It is
+// a separate host because the primary suite seeds a non-empty value, which can't reproduce the
+// empty-value clobber the reconcile effect used to cause.
+@Component({
+  imports: [CaeCarousel, CaeCarouselItem],
+  template: `
+    <cae-carousel
+      [value]="items()"
+      [page]="page()"
+      (pageChange)="page.set($event)"
+      ariaLabel="Async carousel"
+    >
+      <ng-template caeCarouselItem let-item>{{ item }}</ng-template>
+    </cae-carousel>
+  `,
+})
+class AsyncHost {
+  readonly items = signal<string[]>([]);
+  readonly page = signal(3);
+}
+
+describe('CaeCarousel — async-loaded value with a pre-set page (#290)', () => {
+  let fixture: ComponentFixture<AsyncHost>;
+  let host: AsyncHost;
+
+  async function mount(): Promise<void> {
+    await TestBed.configureTestingModule({ imports: [AsyncHost] }).compileComponents();
+    fixture = TestBed.createComponent(AsyncHost);
+    host = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+  }
+
+  afterEach(() => fixture.nativeElement.remove());
+
+  it('does not clobber a pre-set page to 0 while value is transiently empty', async () => {
+    await mount();
+    // value is [] here; without the guard the reconcile effect would have reset page to 0 (totalPages=1).
+    expect(host.items()).toHaveLength(0);
+    expect(host.page()).toBe(3);
+  });
+
+  it('preserves the pre-set page once the async items arrive (in range → no clamp), and renders it', async () => {
+    await mount();
+    host.items.set(['a', 'b', 'c', 'd', 'e', 'f']); // 6 items, numVisible 1 → pages 0..5
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(host.page()).toBe(3);
+    // the render tracks the preserved page: the active indicator is the 4th of six.
+    const indicators = Array.from(
+      fixture.nativeElement.querySelectorAll('.cae-carousel__indicator'),
+    ) as HTMLElement[];
+    expect(indicators).toHaveLength(6);
+    expect(indicators.findIndex((b) => b.getAttribute('aria-current') === 'true')).toBe(3);
+  });
+
+  it('still clamps a now-out-of-range page down once a shorter set loads (convergence preserved)', async () => {
+    await mount(); // page pre-set to 3, value empty → guarded, page stays 3
+    expect(host.page()).toBe(3);
+    host.items.set(['a', 'b', 'c']); // 3 items, numVisible 1 → pages 0..2; page 3 is now out of range
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(host.page()).toBe(2); // reconciled down to the last valid page
+  });
+});

@@ -437,9 +437,13 @@ export class CaeCarousel<T = unknown> {
 
     // Keep the two-way page model in range when value/numVisible/numScroll shrink the page count (or a
     // consumer over-sets it). Runs after CD, so no ExpressionChanged hazard; the guard prevents a loop.
+    // Skip while `value` is empty: an async-loaded carousel bound to a pre-set `[(page)]` reports
+    // totalPages=1 (so clampedPage=0) before its items arrive — reconciling then would clobber the
+    // consumer's intended page to 0. Once items load the effect re-runs (value() is a dependency) and
+    // clamps as needed, converging identically (mirrors the cae-galleria #274 count>0 guard). #290.
     effect(() => {
       const clamped = this.clampedPage();
-      if (this.page() !== clamped) this.page.set(clamped);
+      if (this.value().length > 0 && this.page() !== clamped) this.page.set(clamped);
     });
 
     // Dev-only guidance: a carousel with no accessible name, or slides with no item template.
