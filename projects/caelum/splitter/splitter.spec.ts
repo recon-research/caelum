@@ -1,4 +1,4 @@
-import { Component, EventEmitter, signal } from '@angular/core';
+import { Component, EventEmitter, PLATFORM_ID, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Dir, Direction, Directionality } from '@angular/cdk/bidi';
 import { vi } from 'vitest';
@@ -26,6 +26,8 @@ interface PanelSpec {
       [layout]="layout()"
       [step]="step()"
       [ariaLabel]="ariaLabel()"
+      [stateKey]="stateKey()"
+      [stateStorage]="stateStorage()"
       (resizeEnd)="onResize($event)"
     >
       @for (p of panels(); track $index) {
@@ -40,6 +42,8 @@ class SplitterHost {
   readonly layout = signal<'horizontal' | 'vertical'>('horizontal');
   readonly step = signal(10);
   readonly ariaLabel = signal('Resize panels');
+  readonly stateKey = signal('');
+  readonly stateStorage = signal<'local' | 'session'>('session');
   readonly panels = signal<PanelSpec[]>([
     { size: 30, label: 'A' },
     { size: 70, label: 'B' },
@@ -62,16 +66,26 @@ describe('CaeSplitter', () => {
       ariaLabel?: string;
       panels?: PanelSpec[];
       dir?: Direction;
+      stateKey?: string;
+      stateStorage?: 'local' | 'session';
+      platform?: object | string;
     } = {},
   ): Promise<void> {
     if (opts.dir === 'rtl') {
       TestBed.overrideProvider(Directionality, { useValue: new FakeDirectionality('rtl') });
+    }
+    if (opts.platform != null) {
+      TestBed.overrideProvider(PLATFORM_ID, { useValue: opts.platform });
     }
     fixture = TestBed.createComponent(SplitterHost);
     host = fixture.componentInstance;
     if (opts.layout) host.layout.set(opts.layout);
     if (opts.step != null) host.step.set(opts.step);
     if (opts.ariaLabel != null) host.ariaLabel.set(opts.ariaLabel);
+    // stateKey/stateStorage must be set BEFORE the first detectChanges so the one-shot restore effect
+    // (which fires when the projected panels first resolve) sees them.
+    if (opts.stateKey != null) host.stateKey.set(opts.stateKey);
+    if (opts.stateStorage != null) host.stateStorage.set(opts.stateStorage);
     if (opts.panels) host.panels.set(opts.panels);
     // Pointer geometry needs a live tree.
     document.body.appendChild(fixture.nativeElement);
@@ -80,9 +94,17 @@ describe('CaeSplitter', () => {
     await fixture.whenStable();
   }
 
+  beforeEach(() => {
+    // Each persistence test owns its keys; a shared jsdom Storage would otherwise leak across tests.
+    localStorage.clear();
+    sessionStorage.clear();
+  });
+
   afterEach(() => {
     fixture?.nativeElement.remove();
     vi.restoreAllMocks();
+    localStorage.clear();
+    sessionStorage.clear();
   });
 
   const dividers = (): HTMLElement[] =>
@@ -595,6 +617,227 @@ describe('CaeSplitter', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     await render();
     expect(warn).not.toHaveBeenCalled();
+  });
+
+  // --- State persistence (`p-splitter` stateKey/stateStorage parity, #325) ---
+
+  it('does not touch storage on resize when [stateKey] is unset (persistence off by default)', async () => {
+    const setSession = vi.spyOn(Storage.prototype, 'setItem');
+    await render(); // no stateKey
+    key(0, 'ArrowRight');
+    expect(valueNow(0)).toBe('40'); // the resize still happens
+    expect(setSession).not.toHaveBeenCalled(); // …but nothing is persisted
+  });
+
+  it('persists the live sizes to sessionStorage (the default) after a keyboard resize', async () => {
+    await render({ stateKey: 'splitA' });
+    expect(sessionStorage.getItem('splitA')).toBeNull(); // nothing until a resize commits
+    key(0, 'ArrowRight');
+    expect(JSON.parse(sessionStorage.getItem('splitA')!)).toEqual([40, 60]);
+    expect(localStorage.getItem('splitA')).toBeNull(); // default backing is session, not local
+  });
+
+  it('persists to localStorage when [stateStorage]="local"', async () => {
+    await render({ stateKey: 'splitB', stateStorage: 'local' });
+    key(0, 'ArrowRight');
+    expect(JSON.parse(localStorage.getItem('splitB')!)).toEqual([40, 60]);
+    expect(sessionStorage.getItem('splitB')).toBeNull();
+  });
+
+  it('persists after a pointer drag too', async () => {
+    await render({ stateKey: 'splitC' });
+    mockRect({ width: 200 });
+    pointerDown(0, { x: 120 }); // 60%
+    pointerUp(0);
+    expect(JSON.parse(sessionStorage.getItem('splitC')!)).toEqual([60, 40]);
+  });
+
+  it('restores a persisted layout on mount, overriding the declared [size] seed', async () => {
+    sessionStorage.setItem('splitD', JSON.stringify([20, 80]));
+    await render({
+      stateKey: 'splitD',
+      panels: [
+        { size: 30, label: 'A' }, // declared seed is 30/70…
+        { size: 70, label: 'B' },
+      ],
+    });
+    expect(basis(0)).toBe('20%'); // …but the stored 20/80 wins
+    expect(basis(1)).toBe('80%');
+    expect(valueNow(0)).toBe('20'); // and the ARIA triple tracks the restored size
+  });
+
+  it('restores from localStorage when [stateStorage]="local"', async () => {
+    localStorage.setItem('splitE', JSON.stringify([15, 85]));
+    await render({ stateKey: 'splitE', stateStorage: 'local' });
+    expect(basis(0)).toBe('15%');
+  });
+
+  it('does not emit (resizeEnd) on restore (a restore is not a user resize)', async () => {
+    sessionStorage.setItem('splitF', JSON.stringify([20, 80]));
+    await render({ stateKey: 'splitF' });
+    expect(basis(0)).toBe('20%'); // it did restore…
+    expect(host.lastResize).toBeNull(); // …without firing the output
+  });
+
+  it('ignores a corrupt stored entry, falling back to the declared seed', async () => {
+    sessionStorage.setItem('splitG', 'not-json{');
+    await render({ stateKey: 'splitG' });
+    expect(basis(0)).toBe('30%'); // seed, not a thrown error
+  });
+
+  it('ignores a stored entry whose length no longer matches the panel set (structural change)', async () => {
+    sessionStorage.setItem('splitH', JSON.stringify([50, 50])); // saved with 2 panes…
+    await render({
+      stateKey: 'splitH',
+      panels: [
+        { size: 20, label: 'A' }, // …restored under 3 → mismatch → ignored
+        { size: 30, label: 'B' },
+        { size: 50, label: 'C' },
+      ],
+    });
+    expect(basis(0)).toBe('20%'); // the fresh 3-pane seed wins
+    expect(basis(2)).toBe('50%');
+  });
+
+  it('ignores a stored entry with a non-numeric element', async () => {
+    sessionStorage.setItem('splitI', JSON.stringify([20, 'oops']));
+    await render({ stateKey: 'splitI' });
+    expect(basis(0)).toBe('30%'); // seed
+  });
+
+  it('sanitizes a tampered stored entry whose values do not sum to 100', async () => {
+    // A right-length numeric array is still untrusted (another origin script / a hand-edit) — [1000, 1000]
+    // must not render a 1000%/1000% layout; it's re-normalized to the 50/50 it proportionally describes.
+    sessionStorage.setItem('splitM', JSON.stringify([1000, 1000]));
+    await render({ stateKey: 'splitM' });
+    expect(basis(0)).toBe('50%');
+    expect(basis(1)).toBe('50%');
+  });
+
+  it('clamps a tampered negative stored value up to 0 (aria stays in range)', async () => {
+    sessionStorage.setItem('splitN', JSON.stringify([-50, 150]));
+    await render({ stateKey: 'splitN' });
+    // normalize keeps the sum at 100, then min-enforcement raises the negative pane to its 0 minimum.
+    expect(parseFloat(basis(0))).toBeGreaterThanOrEqual(0);
+    expect(Number(valueNow(0))).toBeGreaterThanOrEqual(
+      Number(dividers()[0].getAttribute('aria-valuemin')),
+    );
+  });
+
+  it('re-enforces minSize on a restored layout (an out-of-range stored value cannot be announced)', async () => {
+    // Stored 90/10 but pane B now declares min 30 — the restore is corrected to [70, 30] so aria stays valid.
+    sessionStorage.setItem('splitJ', JSON.stringify([90, 10]));
+    await render({
+      stateKey: 'splitJ',
+      panels: [
+        { size: 50, label: 'A' },
+        { size: 50, min: 30, label: 'B' },
+      ],
+    });
+    expect(parseFloat(basis(1))).toBeGreaterThanOrEqual(30);
+    const now = Number(valueNow(0));
+    expect(now).toBeLessThanOrEqual(Number(dividers()[0].getAttribute('aria-valuemax')));
+  });
+
+  it('is SSR-safe: no storage access and no throw under a server platform', async () => {
+    const setItem = vi.spyOn(Storage.prototype, 'setItem');
+    await render({ stateKey: 'splitK', platform: 'server' });
+    key(0, 'ArrowRight');
+    expect(valueNow(0)).toBe('40'); // the resize still works…
+    expect(setItem).not.toHaveBeenCalled(); // …but persistence is a no-op off the browser
+    expect(sessionStorage.getItem('splitK')).toBeNull();
+  });
+
+  it('is best-effort: a storage write that throws (quota/disabled) does not break the resize', async () => {
+    await render({ stateKey: 'splitL' });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('QuotaExceededError');
+    });
+    expect(() => key(0, 'ArrowRight')).not.toThrow();
+    expect(valueNow(0)).toBe('40'); // the resize committed…
+    expect(host.lastResize).toEqual([40, 60]); // …and resizeEnd still emitted
+  });
+
+  it('does not re-restore after a live [stateKey] change (the latch holds), but persists under the new key', async () => {
+    sessionStorage.setItem('old-key', JSON.stringify([20, 80]));
+    sessionStorage.setItem('new-key', JSON.stringify([55, 45])); // a DIFFERENT stored layout under the new key
+    await render({ stateKey: 'old-key' });
+    expect(basis(0)).toBe('20%'); // restored once from old-key
+    host.stateKey.set('new-key'); // consumer swaps the key at runtime
+    fixture.detectChanges();
+    expect(basis(0)).toBe('20%'); // teeth: the latch holds — it must NOT jump to new-key's 55/45
+    key(0, 'ArrowRight'); // a fresh resize persists under the NEW key (20→30)…
+    expect(JSON.parse(sessionStorage.getItem('new-key')!)).toEqual([30, 70]); // …overwriting the seeded 55/45
+    expect(JSON.parse(sessionStorage.getItem('old-key')!)).toEqual([20, 80]); // old key untouched
+  });
+
+  it('falls back to the seed when READING storage throws (private mode / sandboxed iframe)', async () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new DOMException('SecurityError');
+    });
+    await render({ stateKey: 'splitO' });
+    expect(basis(0)).toBe('30%'); // the read throw is swallowed → declared seed, not a page-breaking crash
+  });
+
+  it('ignores a stored value that parses to a non-array object', async () => {
+    // An array-LIKE object must not be treated as an array (only `Array.isArray` passes the gate).
+    sessionStorage.setItem('splitP', JSON.stringify({ 0: 50, 1: 50, length: 2 }));
+    await render({ stateKey: 'splitP' });
+    expect(basis(0)).toBe('30%'); // seed
+  });
+
+  it('does not pollute Object.prototype from a crafted __proto__ payload', async () => {
+    sessionStorage.setItem('splitQ', '{"__proto__":{"polluted":123}}');
+    await render({ stateKey: 'splitQ' });
+    expect(basis(0)).toBe('30%'); // non-array → ignored
+    expect(({} as Record<string, unknown>)['polluted']).toBeUndefined(); // JSON.parse doesn't walk the setter
+  });
+
+  it('is SSR-safe on the READ path too: a seeded entry is not restored under a server platform', async () => {
+    sessionStorage.setItem('splitSSR', JSON.stringify([20, 80]));
+    await render({ stateKey: 'splitSSR', platform: 'server' });
+    expect(basis(0)).toBe('30%'); // storage is never read off the browser → declared seed
+  });
+
+  it('sanitizes a tampered entry whose values overflow the sum to Infinity (no all-zero collapse)', async () => {
+    sessionStorage.setItem('splitInf', JSON.stringify([1e308, 1e308]));
+    await render({ stateKey: 'splitInf' });
+    // normalize treats the non-finite sum as the equal-split fallback, not the degenerate 0%/0% x/Infinity gives.
+    expect(basis(0)).toBe('50%');
+    expect(basis(1)).toBe('50%');
+  });
+
+  it('restores a saved layout even when the panel count grows across ticks (the latch waits for a match)', async () => {
+    sessionStorage.setItem('splitGrow', JSON.stringify([25, 25, 50])); // saved with THREE panes
+    await render({
+      stateKey: 'splitGrow',
+      panels: [
+        { size: 30, label: 'A' }, // …but mounts with only TWO (a 3rd arrives async, e.g. behind an @if)
+        { size: 70, label: 'B' },
+      ],
+    });
+    expect(basis(0)).toBe('30%'); // stored length 3 ≠ 2 → not yet restored (the 2-pane seed shows)
+    host.panels.set([
+      { size: 40, label: 'A' },
+      { size: 40, label: 'B' },
+      { size: 20, label: 'C' },
+    ]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    // Now the counts match → the saved 25/25/50 restores, NOT the fresh 40/40/20 seed. Teeth vs an eager latch
+    // (which would have closed on the 2-pane tick and dropped this legitimate restore forever).
+    expect(basis(0)).toBe('25%');
+    expect(basis(2)).toBe('50%');
+  });
+
+  it('restores after [stateKey] is set asynchronously (blank at content-init does not close the latch)', async () => {
+    sessionStorage.setItem('late-key', JSON.stringify([20, 80]));
+    await render({ stateKey: '' }); // no key at mount…
+    expect(basis(0)).toBe('30%'); // …nothing restored yet
+    host.stateKey.set('late-key'); // the key arrives after content-init
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(basis(0)).toBe('20%'); // teeth vs an eager latch: the async key still restores
   });
 });
 

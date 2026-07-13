@@ -10,11 +10,12 @@ import {
   isDevMode,
   numberAttribute,
   output,
+  PLATFORM_ID,
   signal,
   TemplateRef,
   viewChild,
 } from '@angular/core';
-import { NgTemplateOutlet } from '@angular/common';
+import { isPlatformBrowser, NgTemplateOutlet } from '@angular/common';
 import { Directionality } from '@angular/cdk/bidi';
 
 /** PageUp/PageDown coarse step, in percentage points (arrow keys use the finer `step` input). */
@@ -85,8 +86,10 @@ export class CaeSplitterPanel {
  * </cae-splitter>
  * ```
  *
- * Deferred parity extras (state persistence, collapse/expand, px min/max, double-click reset, `gutterSize`)
- * are tracked in the follow-ups filed on landing.
+ * **State persistence** (`p-splitter` `stateKey`/`stateStorage` parity, #325): set `[stateKey]` to persist the
+ * live sizes to Web Storage and restore them on the next mount (best-effort — SSR-safe, storage-failure-safe).
+ * Remaining deferred parity extras (collapse/expand, px min/max, double-click reset, `gutterSize`) are tracked
+ * in the follow-ups filed on landing.
  */
 @Component({
   selector: 'cae-splitter',
@@ -218,6 +221,31 @@ export class CaeSplitter {
   /** Emits the live sizes array (summing 100) at the end of a pointer drag and after each keyboard resize. */
   readonly resizeEnd = output<number[]>();
 
+  /**
+   * Persist the live sizes across reloads under this key (`p-splitter` `stateKey` parity). Blank (the default)
+   * disables persistence — the splitter stays byte-for-byte its stateless self. When set, the sizes are written
+   * to {@link stateStorage} after every committed resize and restored once the panels resolve. A stored entry
+   * whose length no longer matches the panel set (a structural change) or that is corrupt/non-numeric is
+   * ignored, falling back to the declared `[size]` seed; a restored layout is re-run through the same
+   * normalize + `minSize`-enforcement pipeline as the seed, so it can't announce an out-of-range value even if
+   * a panel's `[minSize]` changed since it was saved. **Each key must be unique on the page** — two splitters
+   * sharing a `[stateKey]` write to the same slot and overwrite each other's layout (a flat storage namespace).
+   */
+  readonly stateKey = input('');
+  /**
+   * Which Web Storage backs {@link stateKey}: `'session'` (default — cleared when the tab closes, matching
+   * `p-splitter`'s `stateStorage`) or `'local'` (persists indefinitely). Ignored when `stateKey` is blank or
+   * storage is unavailable (SSR / a sandboxed iframe / privacy mode); persistence is always best-effort and
+   * never breaks a resize.
+   */
+  readonly stateStorage = input<'local' | 'session'>('session');
+
+  /** Whether we're in a browser (persistence is a no-op under SSR — no `window`/Web Storage). */
+  private readonly isBrowser = isPlatformBrowser(inject(PLATFORM_ID));
+  /** Latch: the stored layout is restored at most once. Closes when a restore is applied OR on the first user
+   *  resize (`setLeading`) — never merely on the first panels tick, so an async panel/key can still restore. */
+  private stateRestored = false;
+
   private readonly container = viewChild.required<ElementRef<HTMLElement>>('container');
   /** Index of the divider currently being pointer-dragged, or -1. Set on primary-button pointerdown only. */
   private dragIndex = -1;
@@ -233,9 +261,22 @@ export class CaeSplitter {
    */
   private readonly seed = computed(() => this.seedSizes(this.panels()));
   private readonly override = signal<number[] | null>(null);
-  protected readonly sizes = computed<number[]>(() => {
+  /**
+   * The live pane sizes (percentages summing ~100), in panel order — the seed, or a length-matching resize/
+   * restore override. **Public + read-only** so a consumer can observe the layout reactively, including a
+   * `[stateKey]` restore, which applies silently (it emits no `resizeEnd` — a restore is not a user resize, so
+   * mirroring `resizeEnd` alone would miss it). Read it in a template via a ref (`#s.sizes()`) or in an
+   * `effect`.
+   */
+  readonly sizes = computed<number[]>(() => {
+    const panels = this.panels();
     const o = this.override();
-    return o && o.length === this.panels().length ? o : this.seed();
+    // A length-matching override wins, re-run through min-enforcement *reactively* — so a restored layout
+    // (whose panels' `[minSize]` may still be propagating when it's applied) or a later `[minSize]` change is
+    // corrected, keeping every separator's `aria-valuenow` in range. It's a no-op for a live resize, which
+    // `setLeading` already clamped ≥ each min: `enforceMinSizes` returns the array untouched (byte-for-byte,
+    // no float dust) when nothing is below its minimum.
+    return o && o.length === panels.length ? this.enforceMinSizes(o, panels) : this.seed();
   });
 
   /**
@@ -294,6 +335,25 @@ export class CaeSplitter {
         }
       });
     }
+
+    // Restore a persisted layout ONCE. The latch closes only when a restore is actually APPLIED (or on the
+    // first user resize, in `setLeading`) — NOT merely on the first non-empty panels tick. Latching eagerly
+    // would drop a legitimate restore whose entry isn't readable yet on that first tick: a panel set that
+    // grows across two ticks (an `@if`/async pane — the saved length wouldn't match the partial set) or a
+    // `[stateKey]` bound to a signal still blank at content-init. Leaving the latch open lets the effect retry
+    // as `panels()`/`stateKey()` settle; the `setLeading` latch guarantees a late-arriving entry can never
+    // clobber an interaction that already happened. `restoreState` sum-normalizes the entry; the `sizes`
+    // computed then min-enforces it reactively (so a value saved before a `[minSize]` change — or read back
+    // before the panels' `[minSize]` inputs have propagated — can't announce out of range).
+    effect(() => {
+      const panels = this.panels();
+      if (this.stateRestored || panels.length === 0) return;
+      const restored = this.restoreState(panels);
+      if (restored) {
+        this.stateRestored = true;
+        this.override.set(restored);
+      }
+    });
   }
 
   /**
@@ -315,10 +375,12 @@ export class CaeSplitter {
     return this.enforceMinSizes(this.normalize(raw.map((v) => v ?? each)), panels);
   }
 
-  /** Scale an array of sizes to sum exactly 100; a non-positive total falls back to an equal split. */
+  /** Scale an array of sizes to sum exactly 100; a non-positive *or non-finite* total falls back to an equal
+   *  split. The non-finite guard matters on the restore trust-boundary: a tampered `[1e308, 1e308]` overflows
+   *  the sum to `Infinity`, and `x / Infinity` would otherwise collapse every pane to a degenerate `0%`. */
   private normalize(sizes: number[]): number[] {
     const sum = sizes.reduce((a, b) => a + b, 0);
-    if (!(sum > 0)) return sizes.map(() => 100 / sizes.length);
+    if (!(sum > 0) || !Number.isFinite(sum)) return sizes.map(() => 100 / sizes.length);
     return sizes.map((s) => (s / sum) * 100);
   }
 
@@ -410,6 +472,9 @@ export class CaeSplitter {
     sizes[i] = newA;
     sizes[i + 1] = total - newA;
     this.override.set(sizes);
+    // A user resize closes the restore window: once someone has moved a divider, a late-arriving persisted
+    // entry (panels still resolving, or a `[stateKey]` set async) must never clobber the live interaction.
+    this.stateRestored = true;
     return true;
   }
 
@@ -454,7 +519,10 @@ export class CaeSplitter {
     // Prevent the browser's own scroll for a handled key even at a clamp boundary, but only announce a resize
     // when the size actually moved (no spurious resizeEnd when held against the min/max).
     event.preventDefault();
-    if (this.setLeading(i, target)) this.resizeEnd.emit(this.sizes());
+    if (this.setLeading(i, target)) {
+      this.persistState();
+      this.resizeEnd.emit(this.sizes());
+    }
   }
 
   protected onPointerDown(event: PointerEvent, i: number): void {
@@ -485,7 +553,10 @@ export class CaeSplitter {
     const changed = this.dragChanged;
     this.dragIndex = -1;
     this.dragChanged = false;
-    if (changed) this.resizeEnd.emit(this.sizes()); // one resizeEnd per drag, and only if it moved
+    if (changed) {
+      this.persistState(); // one persist + resizeEnd per drag, and only if it moved
+      this.resizeEnd.emit(this.sizes());
+    }
   }
 
   /** Map the pointer position to the leading pane's target size, measured from the splitter's start edge. */
@@ -507,5 +578,71 @@ export class CaeSplitter {
       .slice(0, i)
       .reduce((sum, s) => sum + s, 0);
     if (this.setLeading(i, posPct - preceding)) this.dragChanged = true;
+  }
+
+  // --- State persistence (`p-splitter` stateKey/stateStorage parity, #325) ---
+
+  /**
+   * The chosen Web Storage, or `null` when unusable. Guarded for SSR (no `window`) and for the browsers that
+   * throw merely *accessing* `window.localStorage` (sandboxed iframe / privacy mode) — every persistence path
+   * treats `null` as "skip", so a locked-down storage degrades to no-persistence, never an error.
+   */
+  private storage(): Storage | null {
+    if (!this.isBrowser) return null;
+    try {
+      return this.stateStorage() === 'local' ? window.localStorage : window.sessionStorage;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Write the live sizes under `[stateKey]`. Best-effort: a blank key, unusable storage, or a `setItem`
+   *  failure (quota exceeded / disabled) is swallowed — persistence must never break a resize. */
+  private persistState(): void {
+    const key = this.stateKey().trim();
+    if (!key) return;
+    const store = this.storage();
+    if (!store) return;
+    try {
+      store.setItem(key, JSON.stringify(this.sizes()));
+    } catch {
+      // quota / disabled — best-effort only
+    }
+  }
+
+  /**
+   * Read + validate a persisted layout for the CURRENT panel set. Returns the stored sizes only when the entry
+   * is a JSON array of finite numbers whose length matches `panels` (a structural change since the save
+   * invalidates it); a missing/corrupt/mismatched entry returns `null` so the caller keeps the declared seed.
+   * The returned array is applied raw — the `sizes` computed enforces each panel's `minSize` reactively.
+   */
+  private restoreState(panels: readonly CaeSplitterPanel[]): number[] | null {
+    const key = this.stateKey().trim();
+    if (!key) return null;
+    const store = this.storage();
+    if (!store) return null;
+    let raw: string | null;
+    try {
+      raw = store.getItem(key);
+    } catch {
+      return null;
+    }
+    if (!raw) return null;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return null; // corrupt entry — ignore, don't throw
+    }
+    if (!Array.isArray(parsed) || parsed.length !== panels.length) return null;
+    const nums = parsed.map((v) => (typeof v === 'number' && Number.isFinite(v) ? v : NaN));
+    if (nums.some(Number.isNaN)) return null;
+    // Web Storage is a trust boundary — another origin script, an extension, or a hand-edit can leave a
+    // right-length numeric array that no longer sums to 100 (or holds negatives). Re-normalize to 100 so a
+    // tampered entry can't render an absurd layout; the `sizes` computed then min-enforces it. Normalizing an
+    // entry that sums to exactly 100 is byte-exact (verified for the integer round-trip case); a fractional
+    // saved layout (e.g. thirds summing to 99.999…) is rescaled with sub-pixel dust that `aria-valuenow`'s
+    // rounding hides — visually and semantically a no-op.
+    return this.normalize(nums);
   }
 }

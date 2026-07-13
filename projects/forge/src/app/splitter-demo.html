@@ -4,20 +4,26 @@
     Drag a divider to resize — or focus it and use the arrow keys (<code>Home</code> /
     <code>End</code> snap to the min/max). The outer splitter is horizontal; its right pane nests a
     vertical splitter, so resizing composes. Each divider is a keyboard-operable
-    <code>role="separator"</code>.
+    <code>role="separator"</code>. Both splitters carry a <code>[stateKey]</code>, so your layout is
+    remembered — resize, reload the page, and the panes come back the way you left them.
   </p>
 
   <div class="forge-splitter">
     <cae-splitter
+      #outer
       layout="horizontal"
       ariaLabel="Resize sidebar and content"
-      (resizeEnd)="onOuterResize($event)"
+      stateKey="forge-splitter-outer"
     >
       <cae-splitter-panel [size]="30" [minSize]="15">
         <div class="forge-splitter__pane">Sidebar</div>
       </cae-splitter-panel>
       <cae-splitter-panel [size]="70">
-        <cae-splitter layout="vertical" ariaLabel="Resize preview and details">
+        <cae-splitter
+          layout="vertical"
+          ariaLabel="Resize preview and details"
+          stateKey="forge-splitter-inner"
+        >
           <cae-splitter-panel [size]="60">
             <div class="forge-splitter__pane">Preview</div>
           </cae-splitter-panel>
@@ -29,8 +35,10 @@
     </cae-splitter>
   </div>
 
+  <!-- Reads the splitter's public sizes() signal directly, so the readout tracks a restore too (which emits
+       no resizeEnd) — not just live resizes. -->
   <dl class="forge-splitter-card__readout">
     <dt>Sidebar / content</dt>
-    <dd>{{ outerSizes()[0] | number: '1.0-0' }}% / {{ outerSizes()[1] | number: '1.0-0' }}%</dd>
+    <dd>{{ outer.sizes()[0] | number: '1.0-0' }}% / {{ outer.sizes()[1] | number: '1.0-0' }}%</dd>
   </dl>
 </cae-card>
