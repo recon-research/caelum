@@ -396,6 +396,136 @@ describe('CaeInputOtp', () => {
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('no accessible name'));
     f.destroy();
   });
+
+  // --- mask (#309) ---
+  it('mask=false (default) shows the glyphs as type=text', () => {
+    expect(cells().every((c) => c.type === 'text')).toBe(true);
+  });
+
+  it('mask renders the cells as type=password to obscure the glyphs', () => {
+    fixture.componentRef.setInput('mask', true);
+    fixture.detectChanges();
+    expect(cells().every((c) => c.type === 'password')).toBe(true);
+  });
+
+  it('masking is display-only: entry/paste still round-trip the real value, not dots', () => {
+    fixture.componentRef.setInput('mask', true);
+    fixture.detectChanges();
+    let latest: string | undefined;
+    component.registerOnChange((v) => (latest = v));
+    const c = cells();
+    // typed entry
+    c[0].focus();
+    type(c[0], '4');
+    expect(latest).toBe('4'); // the true digit reaches the model
+    expect(c[0].value).toBe('4'); // el.value holds the real char (obscuring is visual only)
+    // paste-spread still works under mask
+    paste(c[1], '8291');
+    fixture.detectChanges();
+    expect(latest).toBe('48291');
+    expect(cells().map((x) => x.value)).toEqual(['4', '8', '2', '9', '1', '']);
+  });
+
+  // --- readonly (#309) ---
+  it('readonly sets the native readonly attribute but leaves the cells enabled (focusable, in a11y tree)', () => {
+    fixture.componentRef.setInput('readonly', true);
+    fixture.detectChanges();
+    const c = cells();
+    expect(c.every((x) => x.readOnly)).toBe(true); // announced "read only"
+    expect(c.every((x) => !x.disabled)).toBe(true); // NOT disabled — stays focusable/perceivable
+    expect(c.filter((x) => x.getAttribute('tabindex') === '0').length).toBe(1); // still one tab stop
+  });
+
+  it('readonly makes entry, Backspace, Delete, and paste inert (no model mutation)', () => {
+    component.writeValue('12');
+    fixture.componentRef.setInput('readonly', true);
+    fixture.detectChanges();
+    const onChange = vi.fn();
+    component.registerOnChange(onChange);
+    const c = cells();
+    c[2].focus();
+    type(c[2], '9'); // typed/autofilled entry
+    key(c[0], 'Backspace'); // delete-back on a filled cell
+    key(c[1], 'Delete'); // delete-in-place on a filled cell
+    paste(c[2], '5555'); // paste-spread
+    fixture.detectChanges();
+    expect(onChange).not.toHaveBeenCalled(); // nothing emitted
+    expect(cells().map((x) => x.value)).toEqual(['1', '2', '', '', '', '']); // model untouched
+  });
+
+  it('readonly still allows focus navigation across cells (arrows/Home/End)', () => {
+    fixture.componentRef.setInput('readonly', true);
+    fixture.detectChanges();
+    const c = cells();
+    c[2].focus();
+    key(c[2], 'ArrowLeft');
+    expect(document.activeElement).toBe(c[1]);
+    key(c[1], 'ArrowRight');
+    expect(document.activeElement).toBe(c[2]);
+    key(c[2], 'Home');
+    expect(document.activeElement).toBe(c[0]);
+    key(c[0], 'End');
+    expect(document.activeElement).toBe(c[5]);
+  });
+
+  it('readonly still accepts a programmatic value (writeValue populates the display)', () => {
+    fixture.componentRef.setInput('readonly', true);
+    fixture.detectChanges();
+    component.writeValue('4821');
+    fixture.detectChanges();
+    expect(
+      cells()
+        .slice(0, 4)
+        .map((c) => c.value),
+    ).toEqual(['4', '8', '2', '1']);
+  });
+
+  it('readonly re-enables editing when toggled back off (the guard is reactive, not a latch)', () => {
+    fixture.componentRef.setInput('readonly', true);
+    fixture.detectChanges();
+    let latest: string | undefined;
+    component.registerOnChange((v) => (latest = v));
+    cells()[0].focus();
+    type(cells()[0], '7');
+    expect(latest).toBeUndefined(); // inert while readonly
+
+    fixture.componentRef.setInput('readonly', false);
+    fixture.detectChanges();
+    type(cells()[0], '7');
+    expect(latest).toBe('7'); // editing works again — the guard reads readonly() live
+  });
+
+  it('readonly suppresses the SMS-autofill hint and aria-required (no dead affordances)', () => {
+    fixture.componentRef.setInput('required', true);
+    fixture.componentRef.setInput('readonly', true);
+    fixture.detectChanges();
+    const c = cells();
+    // cell 0 no longer advertises one-time-code autofill (would revert silently), and a locked field
+    // is not announced "required".
+    expect(c.every((x) => x.getAttribute('autocomplete') === 'off')).toBe(true);
+    expect(c.every((x) => x.getAttribute('aria-required') === null)).toBe(true);
+  });
+
+  it('mask + readonly compose: cells are obscured, read-only, and inert', () => {
+    component.writeValue('1234');
+    fixture.componentRef.setInput('mask', true);
+    fixture.componentRef.setInput('readonly', true);
+    fixture.detectChanges();
+    const onChange = vi.fn();
+    component.registerOnChange(onChange);
+    const c = cells();
+    expect(c.every((x) => x.type === 'password')).toBe(true); // obscured
+    expect(c.every((x) => x.readOnly)).toBe(true); // read-only
+    key(c[0], 'Backspace');
+    paste(c[0], '9999');
+    fixture.detectChanges();
+    expect(onChange).not.toHaveBeenCalled(); // inert
+    expect(
+      cells()
+        .slice(0, 4)
+        .map((x) => x.value),
+    ).toEqual(['1', '2', '3', '4']); // the real value, untouched
+  });
 });
 
 /** A string `length="4"` attribute coerces to a number (numberAttribute transform). */

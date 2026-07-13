@@ -66,9 +66,10 @@ import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
  * <cae-input-otp [length]="6" ariaLabel="One-time code" [formControl]="code" />
  * ```
  *
- * Deferred parity extras (own follow-ups): a `mask` mode (dot-obscured cells for sensitive codes) and
- * `readonly`. Programmatic {@link writeValue} is faithful — it displays exactly the string set
- * (truncated to {@link length}), it does not re-filter to `integerOnly`.
+ * {@link mask} obscures the cells (dot-rendered `type="password"`) for a sensitive code, and
+ * {@link readonly} renders them display-only yet still focusable (unlike {@link disabled}).
+ * Programmatic {@link writeValue} is faithful — it displays exactly the string set (truncated to
+ * {@link length}), it does not re-filter to `integerOnly`.
  */
 @Component({
   selector: 'cae-input-otp',
@@ -87,16 +88,17 @@ import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
       <input
         #cell
         class="cae-input-otp__cell"
-        type="text"
+        [type]="mask() ? 'password' : 'text'"
         [attr.maxlength]="i === 0 ? null : 1"
         [attr.inputmode]="integerOnly() ? 'numeric' : 'text'"
-        [attr.autocomplete]="i === 0 ? 'one-time-code' : 'off'"
+        [attr.autocomplete]="i === 0 && !readonly() ? 'one-time-code' : 'off'"
         [attr.aria-label]="cellAriaLabel()(i, length())"
         [attr.aria-describedby]="ariaDescribedby() || null"
-        [attr.aria-required]="required() ? 'true' : null"
+        [attr.aria-required]="required() && !readonly() ? 'true' : null"
         [attr.tabindex]="i === activeTabStop() ? 0 : -1"
         [value]="cellChar(i)"
         [disabled]="isDisabled()"
+        [attr.readonly]="readonly() ? '' : null"
         (focus)="onFocus(i, cell)"
         (input)="onInput(i, cell)"
         (keydown)="onKeydown(i, $event)"
@@ -136,6 +138,12 @@ import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
       opacity: 0.5;
       cursor: not-allowed;
     }
+    /* Suppress Edge's native reveal/clear affordances — the reveal eye would defeat [mask] one cell at
+       a time and both clutter the compact ~48px cell. */
+    .cae-input-otp__cell::-ms-reveal,
+    .cae-input-otp__cell::-ms-clear {
+      display: none;
+    }
   `,
 })
 export class CaeInputOtp implements ControlValueAccessor, OnInit {
@@ -156,6 +164,24 @@ export class CaeInputOtp implements ControlValueAccessor, OnInit {
   readonly integerOnly = input(true, { transform: booleanAttribute });
   /** Template-driven disable; merged with any reactive-forms `setDisabledState`. */
   readonly disabled = input(false, { transform: booleanAttribute });
+  /**
+   * Obscure the entered characters for a sensitive code (`p-inputOtp [mask]`). Renders each cell as
+   * `type="password"` so the browser dots out the glyph natively and a screen reader announces a
+   * bullet, never the digit. Obscuring is display-only, so paste-spread and the model value round-trip
+   * unchanged (`onInput`/`onPaste` read the real `el.value`); the `inputmode="numeric"` /
+   * `autocomplete="one-time-code"` attributes are still emitted, though some mobile browsers may weight
+   * their keyboard/SMS-autofill heuristics differently on a password field — the inherent trade-off of
+   * masking via `type=password`. Default off.
+   */
+  readonly mask = input(false, { transform: booleanAttribute });
+  /**
+   * Render the cells display-only (`p-inputOtp [readonly]`): non-editable, but — unlike
+   * {@link disabled} — still focusable, perceivable, and in the a11y tree (announced "read only" via
+   * the native `readonly` attribute). Focus navigation (arrows/Home/End) and text selection still work
+   * so the code can be read and copied; entry, delete, and paste are inert. Populate it via the form
+   * model ({@link writeValue}). Default off.
+   */
+  readonly readonly = input(false, { transform: booleanAttribute });
   /**
    * Marks the group required — drives `aria-required` on each cell. This **annotates only**; it
    * registers no validator, so enforce a complete code with the consumer's `Validators` (#47 family).
@@ -257,6 +283,10 @@ export class CaeInputOtp implements ControlValueAccessor, OnInit {
    * one-time-code **autofill** fires `input`, not `paste` — is spread across the cells from here.
    */
   protected onInput(index: number, el: HTMLInputElement): void {
+    if (this.readonly()) {
+      el.value = this.cellChar(index); // display-only: revert any stray input (autofill etc.)
+      return;
+    }
     const raw = el.value;
     if (raw.length > 1) {
       this.spreadFrom(index, raw);
@@ -281,6 +311,7 @@ export class CaeInputOtp implements ControlValueAccessor, OnInit {
     switch (event.key) {
       case 'Backspace':
         event.preventDefault();
+        if (this.readonly()) break; // display-only: entry/delete inert (focus nav below still works)
         if (this.cellChar(index)) {
           this.setCell(index, '');
           this.commit();
@@ -292,6 +323,7 @@ export class CaeInputOtp implements ControlValueAccessor, OnInit {
         break;
       case 'Delete':
         event.preventDefault();
+        if (this.readonly()) break; // display-only: entry/delete inert
         if (this.cellChar(index)) {
           this.setCell(index, '');
           this.commit();
@@ -320,6 +352,7 @@ export class CaeInputOtp implements ControlValueAccessor, OnInit {
    * multi-fill path; `preventDefault` so the raw text never lands in a single cell). */
   protected onPaste(index: number, event: ClipboardEvent): void {
     event.preventDefault();
+    if (this.readonly()) return; // display-only: paste inert
     this.spreadFrom(index, event.clipboardData?.getData('text') ?? '');
   }
 
