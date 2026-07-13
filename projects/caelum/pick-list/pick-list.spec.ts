@@ -1134,4 +1134,71 @@ describe('CaePickList', () => {
       ]);
     });
   });
+
+  describe('focus restore on external model change (#350)', () => {
+    async function settle(): Promise<void> {
+      fixture.detectChanges();
+      await fixture.whenStable();
+    }
+
+    it('restores focus in the SOURCE pane when an external change removes its focused row', async () => {
+      render(); // source: Alpha, Bravo, Charlie
+      const rows = host.sourceItems();
+      optionsIn(src())[1].focus(); // focus Bravo → source pane holds focus
+      await settle();
+      expect(document.activeElement).toBe(optionsIn(src())[1]);
+      host.sourceItems.set([rows[0], rows[2]]); // parent drops Bravo (the focused row)
+      await settle();
+      expect(document.activeElement).not.toBe(document.body);
+      expect(src().contains(document.activeElement)).toBe(true);
+      expect(document.activeElement!.textContent).toContain('Charlie'); // clamped tab stop (index 1)
+      expect(focusedTextIn(src())).toContain('Charlie');
+    });
+
+    it('restores focus in the TARGET pane independently when its focused row is removed', async () => {
+      render({ target: ROWS() });
+      const trows = host.targetItems();
+      optionsIn(tgt())[1].focus(); // focus Bravo in the target pane
+      await settle();
+      expect(document.activeElement).toBe(optionsIn(tgt())[1]);
+      host.targetItems.set([trows[0], trows[2]]);
+      await settle();
+      expect(document.activeElement).not.toBe(document.body);
+      expect(tgt().contains(document.activeElement)).toBe(true);
+      expect(document.activeElement!.textContent).toContain('Charlie');
+    });
+
+    it('a change in one pane never steals focus held in the other (per-pane isolation, WCAG 3.2.5)', async () => {
+      render({ target: ROWS() });
+      const trows = host.targetItems();
+      const sourceRow = optionsIn(src())[0];
+      sourceRow.focus(); // focus lives in the SOURCE pane
+      await settle();
+      host.targetItems.set([trows[0], trows[2]]); // an external change to the TARGET pane
+      await settle();
+      expect(document.activeElement).toBe(sourceRow); // source focus is untouched
+    });
+
+    it('does not grab focus on a background refresh when the pane never held focus (WCAG 3.2.5)', async () => {
+      render();
+      const rows = host.sourceItems();
+      (document.activeElement as HTMLElement | null)?.blur();
+      expect(document.activeElement).toBe(document.body);
+      host.sourceItems.set([rows[0], rows[2]]);
+      await settle();
+      expect(document.activeElement).toBe(document.body); // focus is NOT pulled into the list
+    });
+
+    it('does not yank focus back after the user parks focus on <body> and the focused row survives (WCAG 3.2.5)', async () => {
+      render();
+      const rows = host.sourceItems();
+      optionsIn(src())[1].focus(); // source pane holds focus
+      await settle();
+      optionsIn(src())[1].blur(); // user parks focus on <body>; the row is NOT removed
+      expect(document.activeElement).toBe(document.body);
+      host.sourceItems.set([...rows, { id: 'd', name: 'Delta' }]); // background append; focused row survives
+      await settle();
+      expect(document.activeElement).toBe(document.body);
+    });
+  });
 });

@@ -1094,4 +1094,108 @@ describe('CaeOrderList', () => {
     r.type('l'); // matches again → the cue is dropped
     expect(r.input.getAttribute('aria-describedby')).toBeNull();
   });
+
+  describe('focus restore on external [value] change (#350)', () => {
+    /** Push a fresh array in as a parent data-refresh would, then flush CD + the afterRenderEffect. */
+    async function externalSet(items: readonly Row[]): Promise<void> {
+      host.items.set(items);
+      fixture.detectChanges();
+      await fixture.whenStable();
+    }
+
+    it('restores focus to the tab-stop row when an external change removes the focused row', async () => {
+      render(); // Alpha, Bravo, Charlie
+      const rows = host.items();
+      options()[1].focus(); // focus Bravo (index 1) → the list now holds focus
+      fixture.detectChanges();
+      await fixture.whenStable();
+      expect(document.activeElement).toBe(options()[1]);
+      // The parent drops Bravo (the focused row): @for destroys its <li> and focus falls to <body>.
+      await externalSet([rows[0], rows[2]]); // Alpha, Charlie
+      // Focus is restored onto the clamped tab stop (raw index 1 → now Charlie), never stranded on <body>.
+      expect(document.activeElement).not.toBe(document.body);
+      expect(list.contains(document.activeElement)).toBe(true);
+      expect(document.activeElement!.textContent).toContain('Charlie');
+      expect(focusedText()).toContain('Charlie'); // the roving tab stop agrees
+    });
+
+    it('does not grab focus on a background refresh when the list never held focus (no load-time steal, WCAG 3.2.5)', async () => {
+      render();
+      const rows = host.items();
+      (document.activeElement as HTMLElement | null)?.blur();
+      expect(document.activeElement).toBe(document.body);
+      await externalSet([rows[0], rows[2]]); // a background data refresh, focus never in the list
+      expect(document.activeElement).toBe(document.body); // focus is NOT pulled into the list
+    });
+
+    it('does not yank focus back after the user parks focus on <body> and the focused row survives (WCAG 3.2.5)', async () => {
+      render();
+      const rows = host.items();
+      options()[1].focus(); // list holds focus
+      fixture.detectChanges();
+      options()[1].blur(); // user clicks blank space → focus falls to <body>, the row is NOT removed
+      expect(document.activeElement).toBe(document.body);
+      // A background refresh that keeps the focused row (an append): its <li> is reused and stays connected,
+      // so this must be told apart from a removal — focus must NOT be pulled back into the list.
+      await externalSet([...rows, { id: 'd', name: 'Delta' }]);
+      expect(document.activeElement).toBe(document.body);
+    });
+
+    it('restores focus over the FILTERED view when a filtered, focused row is externally removed', async () => {
+      const r = renderFilter(); // Alpha, Bravo, Charlie via the filter host
+      r.type('l'); // filter to names containing "l" → Alpha, Charlie (Bravo drops out)
+      r.opts()[0].focus(); // focus Alpha (index 0 of the filtered view)
+      r.f.detectChanges();
+      await r.f.whenStable();
+      expect(document.activeElement).toBe(r.opts()[0]);
+      // Parent drops Alpha (the focused, filtered row); the filter query stays "l".
+      r.fh.items.set([
+        { id: 'b', name: 'Bravo' },
+        { id: 'c', name: 'Charlie' },
+      ]);
+      r.f.detectChanges();
+      await r.f.whenStable();
+      // Focus lands on the clamped tab stop within the still-filtered view (Charlie), never on <body>.
+      expect(document.activeElement).not.toBe(document.body);
+      expect(r.lb.contains(document.activeElement)).toBe(true);
+      expect(document.activeElement!.textContent).toContain('Charlie');
+    });
+
+    it('does not steal focus from a real element outside the list (anti-steal, WCAG 3.2.5)', async () => {
+      render();
+      const rows = host.items();
+      options()[1].focus();
+      fixture.detectChanges();
+      const outside = document.createElement('button');
+      document.body.appendChild(outside);
+      outside.focus(); // user moved to a real control; focus is live and elsewhere
+      expect(document.activeElement).toBe(outside);
+      await externalSet([rows[0], rows[2]]);
+      expect(document.activeElement).toBe(outside); // never yanked back into the list
+      outside.remove();
+    });
+
+    it('does not throw or focus anything when the external change empties the list', async () => {
+      render();
+      options()[1].focus();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      await externalSet([]); // list becomes empty — nothing to restore to
+      expect(options().length).toBe(0);
+      expect(document.activeElement).toBe(document.body);
+    });
+
+    it('leaves focus on a surviving focused row across an external reorder (no double-move)', async () => {
+      render(); // Alpha, Bravo, Charlie
+      const rows = host.items();
+      options()[1].focus(); // Bravo
+      fixture.detectChanges();
+      await fixture.whenStable();
+      // Immutable refresh that REORDERS but keeps Bravo: the follow effect tracks it by key and the reused
+      // <li> keeps DOM focus — activeElement is a live element, so the restore must NOT move it.
+      await externalSet([rows[2], rows[1], rows[0]]); // Charlie, Bravo, Alpha
+      expect(document.activeElement!.textContent).toContain('Bravo');
+      expect(list.contains(document.activeElement)).toBe(true);
+    });
+  });
 });

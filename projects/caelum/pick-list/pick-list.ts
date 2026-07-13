@@ -1,4 +1,5 @@
 import {
+  afterRenderEffect,
   ChangeDetectionStrategy,
   Component,
   computed,
@@ -12,6 +13,7 @@ import {
   output,
   signal,
   TemplateRef,
+  untracked,
   viewChildren,
   WritableSignal,
 } from '@angular/core';
@@ -291,6 +293,8 @@ function clampActive(raw: number, n: number): number {
             "
             [attr.aria-labelledby]="sourceLabelledby() || null"
             (cdkDropListDropped)="onDrop($event, 'source')"
+            (focusin)="onPaneFocusIn('source', $event)"
+            (focusout)="onPaneFocusOut('source', $event)"
           >
             @for (item of sourceFiltered(); track item; let i = $index) {
               <li
@@ -406,6 +410,8 @@ function clampActive(raw: number, n: number): number {
             "
             [attr.aria-labelledby]="targetLabelledby() || null"
             (cdkDropListDropped)="onDrop($event, 'target')"
+            (focusin)="onPaneFocusIn('target', $event)"
+            (focusout)="onPaneFocusOut('target', $event)"
           >
             @for (item of targetFiltered(); track item; let i = $index) {
               <li
@@ -839,6 +845,65 @@ export class CaePickList<T = unknown> {
     // converges — no effect loop. Mirrors cae-order-list's prune.
     effect(() => this.prune('source'));
     effect(() => this.prune('target'));
+    // #350: restore each pane's roving focus when an external model change destroys its focused row (the
+    // `@for` removes the focused `<li>` → `document.activeElement` falls to `<body>`, WCAG 2.4.3; the
+    // reclamp effect moves the tab stop but never re-focuses the DOM). One effect per pane so each keys off
+    // its own model + its own held-focus flag; the guards in restorePaneFocusIfLost() make it steal-safe.
+    afterRenderEffect(() => {
+      this.source();
+      untracked(() => this.restorePaneFocusIfLost('source'));
+    });
+    afterRenderEffect(() => {
+      this.target();
+      untracked(() => this.restorePaneFocusIfLost('target'));
+    });
+  }
+
+  /**
+   * The option that currently (or most recently) held DOM focus in each pane's listbox, or `null` when
+   * focus is outside it. Captured on the listbox `focusin` and kept through a focus loss to `<body>`, so
+   * {@link restorePaneFocusIfLost} can tell a **removed** focused row (its node becomes disconnected) from a
+   * user who merely **parked** focus on `<body>` (the node stays connected — and must NOT be yanked back,
+   * WCAG 3.2.5). Cleared when focus moves to a real element outside that listbox (the other pane, a transfer
+   * button, Tab away), so leaving a pane drops its pending restore.
+   */
+  protected readonly focusedRow: Record<CaePickListSide, HTMLElement | null> = {
+    source: null,
+    target: null,
+  };
+
+  /** Track the option that took focus in `side`, so a later removal can be told from a park-on-`<body>`. */
+  protected onPaneFocusIn(side: CaePickListSide, event: FocusEvent): void {
+    this.focusedRow[side] = event.target as HTMLElement;
+  }
+
+  /** Drop a pane's pending restore when focus genuinely leaves its listbox for another element (not `<body>`). */
+  protected onPaneFocusOut(side: CaePickListSide, event: FocusEvent): void {
+    const next = event.relatedTarget as Node | null;
+    const list = event.currentTarget as HTMLElement;
+    if (next && !list.contains(next)) this.focusedRow[side] = null;
+  }
+
+  /**
+   * Re-focus a pane's tab-stop row after an external model change, but ONLY when the row that held focus was
+   * genuinely REMOVED — {@link focusedRow} is now disconnected. A user who parked focus on `<body>` (row
+   * still connected) or a surviving/reordered row (its reused node still connected) is left alone;
+   * re-focusing them would steal focus (WCAG 3.2.5). Also bail when focus has since landed on a live real
+   * element, or the pane is empty. `activeElement` may be `<body>`/`<html>` (real browsers null focus there)
+   * or a detached node (jsdom keeps focus on a removed node) — all count as "focus lost".
+   */
+  private restorePaneFocusIfLost(side: CaePickListSide): void {
+    if (this.activeOf(side) < 0) return;
+    const row = this.focusedRow[side];
+    if (!row || row.isConnected) return; // no focused row, or it survived (park-on-body / reorder) — don't steal
+    const ae = document.activeElement;
+    const lost = !ae || ae === document.body || ae === document.documentElement || !ae.isConnected;
+    if (!lost) return; // focus already moved to a live real element — don't steal
+    const els = side === 'source' ? this.sourceOptionEls() : this.targetOptionEls();
+    const tab = side === 'source' ? this.sourceTabStop() : this.targetTabStop();
+    const target = els[tab]?.nativeElement ?? null;
+    target?.focus();
+    this.focusedRow[side] = target;
   }
 
   /** Drop from `side`'s selection any items no longer present in that list. */
