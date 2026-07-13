@@ -3,11 +3,25 @@
   <p class="forge-image-compare-card__lead">
     Drag the divider to reveal the <code>Before</code> plate over the <code>After</code> plate — or
     focus it and resize with the arrow keys (<code>Home</code> / <code>End</code> snap to the
-    edges). The reveal position is two-way bound, so the readout tracks the divider.
+    edges). The reveal position is two-way bound, so the readout tracks the divider. Flip the
+    <code>Layout</code> toggle to switch between a left↔right and a top↔bottom reveal.
   </p>
+
+  <div class="forge-image-compare-card__controls">
+    <span id="image-compare-layout-label" class="forge-image-compare-card__control-label"
+      >Layout</span
+    >
+    <cae-select-button
+      ariaLabelledby="image-compare-layout-label"
+      [options]="layouts"
+      [ngModel]="layout()"
+      (ngModelChange)="layout.set($event)"
+    />
+  </div>
 
   <cae-image-compare
     class="forge-image-compare"
+    [layout]="layout()"
     [beforeSrc]="beforeSrc"
     beforeAlt="Before — a muted grey plate"
     [afterSrc]="afterSrc"
