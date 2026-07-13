@@ -12,7 +12,6 @@ import {
   OnInit,
   viewChild,
 } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
 import { Directionality } from '@angular/cdk/bidi';
 
 /** PageUp/PageDown coarse step, in percentage points (arrow keys use the finer `step` input). */
@@ -169,12 +168,16 @@ const clamp = (v: number, min: number, max: number): number =>
   `,
 })
 export class CaeImageCompare implements OnInit {
-  /** Resolves the drag/keyboard axis for RTL (Book 04 §3.5). Root-provided; defaults to 'ltr'. */
+  /**
+   * Resolves the drag/keyboard axis for RTL (Book 04 §3.5). Root-provided; defaults to 'ltr'.
+   * Reads the signal-backed `Directionality.value` directly (reactive on both the root service and a
+   * `Dir` ancestor) rather than `toSignal(change, {initialValue})`: the change-based idiom snapshots
+   * 'ltr' at construction and misses a *born-rtl* `[dir]` binding (the setter emits `change` only after
+   * `ngAfterContentInit`), which — because the reveal axis is measured off `isRtl()` — mis-measures on
+   * first paint, not just mis-clips the layer. Mirrors cae-pick-list (#364).
+   */
   private readonly directionality = inject(Directionality);
-  private readonly direction = toSignal(this.directionality.change, {
-    initialValue: this.directionality.value,
-  });
-  protected readonly isRtl = computed(() => this.direction() === 'rtl');
+  protected readonly isRtl = computed(() => this.directionality.value === 'rtl');
 
   /** The revealed image (top layer, clipped from the inline-start edge). */
   readonly beforeSrc = input.required<string>();
