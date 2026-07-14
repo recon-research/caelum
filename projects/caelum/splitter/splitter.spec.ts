@@ -25,6 +25,7 @@ interface PanelSpec {
     <cae-splitter
       [layout]="layout()"
       [step]="step()"
+      [gutterSize]="gutterSize()"
       [ariaLabel]="ariaLabel()"
       [collapsible]="collapsible()"
       [stateKey]="stateKey()"
@@ -42,6 +43,7 @@ interface PanelSpec {
 class SplitterHost {
   readonly layout = signal<'horizontal' | 'vertical'>('horizontal');
   readonly step = signal(10);
+  readonly gutterSize = signal<number | undefined>(undefined);
   readonly ariaLabel = signal('Resize panels');
   readonly collapsible = signal(false);
   readonly stateKey = signal('');
@@ -65,6 +67,7 @@ describe('CaeSplitter', () => {
     opts: {
       layout?: 'horizontal' | 'vertical';
       step?: number;
+      gutterSize?: number;
       ariaLabel?: string;
       collapsible?: boolean;
       panels?: PanelSpec[];
@@ -84,6 +87,7 @@ describe('CaeSplitter', () => {
     host = fixture.componentInstance;
     if (opts.layout) host.layout.set(opts.layout);
     if (opts.step != null) host.step.set(opts.step);
+    if (opts.gutterSize != null) host.gutterSize.set(opts.gutterSize);
     if (opts.ariaLabel != null) host.ariaLabel.set(opts.ariaLabel);
     if (opts.collapsible != null) host.collapsible.set(opts.collapsible);
     // stateKey/stateStorage must be set BEFORE the first detectChanges so the one-shot restore effect
@@ -171,6 +175,13 @@ describe('CaeSplitter', () => {
   }
   function pointerUp(i: number): void {
     dividers()[i].dispatchEvent(new MouseEvent('pointerup', { bubbles: true }));
+    fixture.detectChanges();
+  }
+  const splitterEl = (): HTMLElement => el.querySelector<HTMLElement>('cae-splitter')!;
+  const gutterSizeVar = (): string =>
+    splitterEl().style.getPropertyValue('--cae-splitter-gutter-size').trim();
+  function doubleClick(i: number): void {
+    dividers()[i].dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     fixture.detectChanges();
   }
 
@@ -1051,6 +1062,68 @@ describe('CaeSplitter', () => {
     fixture.detectChanges();
     await fixture.whenStable();
     expect(basis(0)).toBe('0%'); // the stored 50/50 must NOT clobber the live collapse
+  });
+
+  // --- Parity extras: [gutterSize] + double-click reset (#325) ---
+
+  it('[gutterSize] drives the --cae-splitter-gutter-size custom property; default leaves it unset', async () => {
+    await render({ gutterSize: 24 });
+    expect(gutterSizeVar()).toBe('24px');
+
+    // Clearing the input removes the property → the gutter falls back to the --cae-space-2 token.
+    host.gutterSize.set(undefined);
+    fixture.detectChanges();
+    expect(gutterSizeVar()).toBe('');
+  });
+
+  it('a non-positive [gutterSize] is ignored (property unset) and dev-warns', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await render({ gutterSize: 0 });
+    expect(gutterSizeVar()).toBe(''); // no px var → token thickness holds; the divider can't vanish
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('[gutterSize]'));
+  });
+
+  it('double-click resets a divider’s pair to the seeded RATIO within its current span, leaving others untouched', async () => {
+    await render({
+      panels: [
+        { size: 30, label: 'A' },
+        { size: 30, label: 'B' },
+        { size: 40, label: 'C' },
+      ],
+    });
+    // Move the ADJACENT divider first, so the reset pair's combined span CHANGES — this is the teeth for
+    // "seeded ratio within the CURRENT span" vs a naive reset-to-absolute-seed (which would land A at 30).
+    // ArrowRight on divider 1 grows B 30 → 40 (C 40 → 30); the (A,B) pair span is now 70, and C sits at 30.
+    key(1, 'ArrowRight');
+    expect(valueNow(1)).toBe('40');
+    expect(basis(2)).toBe('30%');
+
+    // Double-click divider 0: restore the 30:30 seeded ratio across the 70 span → A = 70×30/60 = 35, B = 35;
+    // pane C is untouched at 30. A reset to the ABSOLUTE seed would give A=30 — the '35' is what has teeth.
+    doubleClick(0);
+    expect(valueNow(0)).toBe('35');
+    expect(valueNow(1)).toBe('35');
+    expect(basis(2)).toBe('30%');
+  });
+
+  it('double-click emits resizeEnd when it changes the layout, and is a silent no-op at the seeded split', async () => {
+    await render({
+      panels: [
+        { size: 40, label: 'A' },
+        { size: 60, label: 'B' },
+      ],
+    });
+    key(0, 'ArrowLeft'); // A 40 → 30
+    host.lastResize = null;
+
+    doubleClick(0); // resets A:B to the 40:60 seed → a real change → emits
+    expect(valueNow(0)).toBe('40');
+    expect(host.lastResize).not.toBeNull();
+
+    // Already at the seeded split now → a second double-click commits nothing and emits nothing.
+    host.lastResize = null;
+    doubleClick(0);
+    expect(host.lastResize).toBeNull();
   });
 });
 

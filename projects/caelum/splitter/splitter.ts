@@ -92,9 +92,10 @@ export class CaeSplitterPanel {
  *
  * **Collapse / expand** (WAI-ARIA APG Window Splitter *optional* Enter behaviour, #325): set `[collapsible]` so
  * that **Enter** on a divider collapses its leading (primary) pane to its `minSize` (a true 0 for the default),
- * and Enter again restores it to its pre-collapse size. Remaining deferred parity extras (a pointer collapse
- * affordance + programmatic `[collapsed]` model, px min/max, double-click reset, `gutterSize`) are tracked in
- * the follow-ups filed on landing.
+ * and Enter again restores it to its pre-collapse size. **Double-click** a divider to reset its pair to the
+ * seeded split; **`[gutterSize]`** sets the divider thickness in px; coarse pointers get an invisible touch
+ * hit-slop (#325). Remaining deferred parity extras: a pointer collapse affordance + programmatic
+ * `[collapsed]` model → #399; **px** min/max sizes → #418.
  */
 @Component({
   selector: 'cae-splitter',
@@ -104,6 +105,7 @@ export class CaeSplitterPanel {
     class: 'cae-splitter',
     '[class.cae-splitter--horizontal]': "layout() === 'horizontal'",
     '[class.cae-splitter--vertical]': "layout() === 'vertical'",
+    '[style.--cae-splitter-gutter-size]': 'gutterSizeVar()',
   },
   template: `
     <div #container class="cae-splitter__container">
@@ -127,6 +129,7 @@ export class CaeSplitterPanel {
             (pointermove)="onPointerMove($event, i)"
             (pointerup)="onPointerUp()"
             (pointercancel)="onPointerUp()"
+            (dblclick)="onDoubleClick(i)"
           >
             <span class="cae-splitter__grip" aria-hidden="true"></span>
           </div>
@@ -160,6 +163,7 @@ export class CaeSplitterPanel {
       overflow: auto;
     }
     .cae-splitter__gutter {
+      position: relative;
       flex: 0 0 auto;
       display: flex;
       align-items: center;
@@ -169,13 +173,35 @@ export class CaeSplitterPanel {
       touch-action: none;
       user-select: none;
     }
+    /* Divider thickness: the [gutterSize] px override (via the host custom property), else the token. */
     :host(.cae-splitter--horizontal) .cae-splitter__gutter {
-      inline-size: var(--cae-space-2);
+      inline-size: var(--cae-splitter-gutter-size, var(--cae-space-2));
       cursor: col-resize;
     }
     :host(.cae-splitter--vertical) .cae-splitter__gutter {
-      block-size: var(--cae-space-2);
+      block-size: var(--cae-splitter-gutter-size, var(--cae-space-2));
       cursor: row-resize;
+    }
+    /* Touch hit-slop (#325): coarse pointers get a larger invisible grab area along the divider's
+       cross-axis, without changing the visible gutter thickness. The ::before is part of the gutter, so
+       a press on the slop targets the gutter's own pointer handlers; logical insets keep it RTL-safe.
+       The slop is invisible, so on a coarse pointer it claims taps on panel content within --cae-space-2
+       of a divider; over a pane narrower than 2×--cae-space-2 two dividers' slops overlap and the later
+       one wins the tap (both are resize handles, and such a pane is degenerate). Mouse users are spared —
+       the whole rule is gated on pointer: coarse. */
+    @media (pointer: coarse) {
+      .cae-splitter__gutter::before {
+        content: '';
+        position: absolute;
+      }
+      :host(.cae-splitter--horizontal) .cae-splitter__gutter::before {
+        inset-block: 0;
+        inset-inline: calc(-1 * var(--cae-space-2));
+      }
+      :host(.cae-splitter--vertical) .cae-splitter__gutter::before {
+        inset-inline: 0;
+        inset-block: calc(-1 * var(--cae-space-2));
+      }
     }
     /* A token-styled grip: a short bar along the divider, drawn from a token colour — no icon font. */
     .cae-splitter__grip {
@@ -221,6 +247,14 @@ export class CaeSplitter {
   readonly layout = input<'horizontal' | 'vertical'>('horizontal');
   /** Arrow-key nudge in percentage points (Home/End snap to min/max; PageUp/Down step by 10). */
   readonly step = input(10, { transform: numberAttribute });
+  /**
+   * Divider thickness in px (`p-splitter` `gutterSize` parity, #325). Undefined (the default) uses the
+   * token `--cae-space-2`. A non-positive value is ignored (dev-warned) and falls back to the token, so
+   * the divider can never vanish. Drives the `--cae-splitter-gutter-size` custom property on the host.
+   */
+  readonly gutterSize = input<number | undefined, unknown>(undefined, {
+    transform: optionalNumber,
+  });
   /** Accessible name applied to every divider separator (they're distinguished by `aria-valuenow`). */
   readonly ariaLabel = input('Resize panels');
   /**
@@ -320,6 +354,13 @@ export class CaeSplitter {
     this.layout() === 'horizontal' ? 'vertical' : 'horizontal',
   );
 
+  /** `--cae-splitter-gutter-size` value: `<n>px` for a positive `gutterSize`, else `null` (the var is
+   *  removed and the gutter falls back to the `--cae-space-2` token). A non-positive value never applies. */
+  protected readonly gutterSizeVar = computed<string | null>(() => {
+    const g = this.gutterSize();
+    return g != null && g > 0 ? `${g}px` : null;
+  });
+
   constructor() {
     // Dev-only config guards: a splitter needs ≥2 panels to have a divider, and the panel minimums must be
     // satisfiable. Reactive to the projected set. The warn STRINGS ship in the fesm because isDevMode() is a
@@ -364,6 +405,14 @@ export class CaeSplitter {
           console.warn(
             `[cae-splitter] [step] should be a positive number; got ${this.step()}. ` +
               'The arrow keys will not resize the divider correctly.',
+          );
+        }
+        // A non-positive [gutterSize] would collapse the divider to nothing; ignore it (token fallback).
+        const g = this.gutterSize();
+        if (g != null && !(g > 0)) {
+          console.warn(
+            `[cae-splitter] [gutterSize] should be a positive number of px; got ${g}. ` +
+              'Falling back to the default divider thickness.',
           );
         }
       });
@@ -663,6 +712,35 @@ export class CaeSplitter {
       .slice(0, i)
       .reduce((sum, s) => sum + s, 0);
     if (this.setLeading(i, posPct - preceding)) this.dragChanged = true;
+  }
+
+  /**
+   * Double-click a divider to reset ITS pair (panes `i`/`i+1`) to the seeded split — the boundary returns to
+   * its declared `[size]` ratio within the pair's *current* combined span, so every other pane is untouched
+   * (`p-splitter` parity nicety, #325). Reuses {@link setLeading}: the reset is clamped to both `minSize`s,
+   * clears the pair's collapse restore point, and persists + emits `resizeEnd` exactly like any resize — and a
+   * no-op (already at the seeded ratio, or an infeasible pair) commits and emits nothing.
+   *
+   * Note: a real-browser double-click is preceded by two pointerdown/up cycles, each of which may nudge the
+   * divider (and emit its own `resizeEnd`) before this reset fires last. The final state is correct — the pair
+   * span is conserved through the nudges, so the reset lands on the same seeded ratio — but a consumer that
+   * persists or reacts on *every* `resizeEnd` sees up to three emits for one reset gesture.
+   */
+  protected onDoubleClick(i: number): void {
+    const seed = this.seed();
+    const seedA = seed[i];
+    const seedB = seed[i + 1];
+    if (seedA == null || seedB == null) return;
+    const seedTotal = seedA + seedB;
+    if (!(seedTotal > 0)) return;
+    const sizes = this.sizes();
+    const currentTotal = (sizes[i] ?? 0) + (sizes[i + 1] ?? 0);
+    // Restore the seeded RATIO across the pair's CURRENT span (not the absolute seeded sizes): setLeading
+    // conserves the pair total, so resetting one divider never shifts the others.
+    if (this.setLeading(i, currentTotal * (seedA / seedTotal))) {
+      this.persistState();
+      this.resizeEnd.emit(this.sizes());
+    }
   }
 
   // --- State persistence (`p-splitter` stateKey/stateStorage parity, #325) ---
