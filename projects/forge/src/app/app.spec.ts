@@ -34,10 +34,11 @@ describe('App', () => {
     }).compileComponents();
   });
 
-  // The theme toggle re-binds the token layer on the document root, so reset it
-  // between tests to keep the shared document clean.
+  // The theme + density toggles re-bind the token layer on the document root, so
+  // reset both between tests to keep the shared document clean.
   afterEach(() => {
     document.documentElement.removeAttribute('data-theme');
+    document.documentElement.removeAttribute('data-density');
   });
 
   it('should create the app', () => {
@@ -1305,5 +1306,25 @@ describe('App', () => {
     toggle.click();
     await fixture.whenStable();
     expect(root.hasAttribute('data-theme')).toBe(false);
+  });
+
+  it('toggles comfortable ↔ compact density and re-binds [data-density] on the root (#411)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const root = document.documentElement;
+    const toggle = (fixture.nativeElement as HTMLElement).querySelector(
+      '.forge-bar cae-button button[aria-label="Toggle density"]',
+    ) as HTMLButtonElement;
+
+    // `comfortable` — the default arm carries no attribute (like theme `auto`).
+    expect(root.hasAttribute('data-density')).toBe(false);
+
+    toggle.click();
+    await fixture.whenStable();
+    expect(root.getAttribute('data-density')).toBe('compact');
+
+    toggle.click();
+    await fixture.whenStable();
+    expect(root.hasAttribute('data-density')).toBe(false);
   });
 });

@@ -95,6 +95,9 @@ import { PasswordDemo } from './password-demo';
 import { InputMaskDemo } from './input-mask-demo';
 
 type ThemeMode = 'auto' | 'light' | 'dark';
+/** Layout density (#411). `comfortable` = the default arm; `compact` tightens both
+ *  Material controls and built cae-* components via `[data-density]` (Book 04 §3.4). */
+type Density = 'comfortable' | 'compact';
 
 /** The sections of the cae-tab-menu demo — a typed union bound as the tab-menu's value type. */
 type WorkspaceSection = 'overview' | 'activity' | 'settings' | 'archived';
@@ -956,6 +959,20 @@ export class App {
       root.removeAttribute('data-theme');
     } else {
       root.setAttribute('data-theme', next);
+    }
+  }
+
+  /** `comfortable` = default arm (no attribute); `compact` re-binds the density arm
+   *  of the token layer (Book 04 §3.4, R4) — Material + cae-* tighten together. */
+  protected readonly density = signal<Density>('comfortable');
+  protected toggleDensity(): void {
+    const next: Density = this.density() === 'comfortable' ? 'compact' : 'comfortable';
+    this.density.set(next);
+    const root = this.document.documentElement;
+    if (next === 'compact') {
+      root.setAttribute('data-density', 'compact');
+    } else {
+      root.removeAttribute('data-density');
     }
   }
 }
