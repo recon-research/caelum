@@ -3,6 +3,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
   input,
   isDevMode,
   OnInit,
@@ -75,6 +76,12 @@ function estimateStrength(password: string): number {
  * (Book 07 §3.2) and surfaces through the inherited error bridge — a green meter never substitutes for
  * validation.
  *
+ * **Caps-Lock hint (#312).** A common password-field a11y nicety: a `getModifierState('CapsLock')` read on
+ * the field's key events drives a token-styled, politely-announced (`role="status"`) warning so a user
+ * doesn't silently enter an upper-cased secret. It reads only the modifier bit (never the value), resets
+ * on blur (the state is unknowable without a key event, so a pinned-on warning would go stale), and is
+ * opt-out via `[capsLockIndicator]` with i18n text via `[capsLockLabel]`.
+ *
  * Zoneless-compatible: `OnPush` + signal state, no zone-coupled APIs (provisional on #9; Book 01 §3.2).
  */
 @Component({
@@ -98,9 +105,11 @@ function estimateStrength(password: string): number {
         [errorStateMatcher]="errorStateMatcher"
         [attr.aria-label]="ariaLabel() || null"
         (input)="onInput(inputEl.value)"
+        (keydown)="onCapsLock($event)"
+        (keyup)="onCapsLock($event)"
         (compositionstart)="onCompositionStart()"
         (compositionend)="onCompositionEnd(inputEl.value)"
-        (blur)="onTouched()"
+        (blur)="onBlur()"
       />
       @if (toggleMask()) {
         <button
@@ -136,6 +145,31 @@ function estimateStrength(password: string): number {
         <mat-error>{{ message }}</mat-error>
       }
     </mat-form-field>
+
+    @if (capsLockIndicator()) {
+      <!-- Always present (a registered polite live region) so caps-on inserts text into an existing
+           region and announces reliably; the visual warning + its footprint appear only while on. It
+           carries the state as TEXT (never colour-only, WCAG 1.4.1) and reads only the modifier bit,
+           never the secret. -->
+      <div
+        class="cae-password__capslock"
+        role="status"
+        [class.cae-password__capslock--on]="capsLockOn()"
+      >
+        @if (capsLockOn()) {
+          <svg
+            class="cae-password__capslock-glyph"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <path d="M12 4 L19 11 L15 11 L15 15 L9 15 L9 11 L5 11 Z" />
+            <path d="M9 18 H15" />
+          </svg>
+          {{ capsLockLabel() }}
+        }
+      </div>
+    }
 
     @if (showStrength()) {
       <div class="cae-password__meter">
@@ -196,6 +230,31 @@ function estimateStrength(password: string): number {
       stroke-linejoin: round;
     }
 
+    /* Caps-Lock warning. The base rule leaves no footprint while off (an empty block collapses to 0
+       height); the --on modifier adds the row layout only when the warning shows. The TEXT uses the
+       readable secondary-text token — --cae-color-warn (amber-40) fails WCAG 1.4.3's 4.5:1 as text on
+       the light surface (the token-layer fix is #425) — while the amber warning CUE lives on the
+       aria-hidden glyph, which owes only the 3:1 graphical bound (WCAG 1.4.11). */
+    .cae-password__capslock {
+      color: var(--cae-color-on-surface-variant);
+      font-size: 0.875em;
+    }
+    .cae-password__capslock--on {
+      display: flex;
+      align-items: center;
+      gap: var(--cae-space-1);
+      margin-block-start: var(--cae-space-1);
+    }
+    .cae-password__capslock-glyph {
+      inline-size: 1em;
+      block-size: 1em;
+      fill: none;
+      stroke: var(--cae-color-warn);
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
     .cae-password__meter {
       display: flex;
       flex-direction: column;
@@ -247,6 +306,10 @@ export class CaePassword extends CaeFormFieldControlBase<string> implements OnIn
   readonly autocomplete = input('current-password');
   /** The four strength labels (weakest→strongest) for scores 1–4; override for i18n (score 0 shows none). */
   readonly strengthLabels = input<CaePasswordStrengthLabels>(['Weak', 'Fair', 'Good', 'Strong']);
+  /** Whether the Caps-Lock warning is shown while the field is focused. Default `true`. */
+  readonly capsLockIndicator = input(true, { transform: booleanAttribute });
+  /** The Caps-Lock warning text; override for i18n. Announced politely + shown as the token-styled hint. */
+  readonly capsLockLabel = input('Caps Lock is on');
 
   /** Whether the password is currently revealed (`type=text`). Toggled by the suffix button. */
   protected readonly visible = signal(false);
@@ -272,6 +335,37 @@ export class CaePassword extends CaeFormFieldControlBase<string> implements OnIn
   });
   /** The four meter segments (1..4), lit up to the current score. */
   protected readonly segments = [1, 2, 3, 4] as const;
+
+  /** Whether Caps Lock is currently on, per the last key event while focused; drives the warning. */
+  protected readonly capsLockOn = signal(false);
+  /**
+   * Update the Caps-Lock state from a key event's modifier bit (the only way to read it — there is no
+   * ambient query). Wired to both keydown AND keyup so pressing the Caps-Lock key itself, which reports
+   * the pre-toggle state on keydown in some browsers, is still caught on keyup. Reads ONLY the modifier
+   * bit — never the typed value.
+   */
+  protected onCapsLock(event: KeyboardEvent): void {
+    if (!this.capsLockIndicator()) return;
+    this.capsLockOn.set(event.getModifierState?.('CapsLock') ?? false);
+  }
+  /**
+   * Blur marks the control touched (the base contract) and clears the Caps-Lock warning: the state is
+   * unknowable without a key event, so a warning left pinned on after focus leaves would be stale.
+   */
+  protected onBlur(): void {
+    this.onTouched();
+    this.capsLockOn.set(false);
+  }
+
+  constructor() {
+    super();
+    // If the feature is switched off at runtime, drop any lingering "on" state so re-enabling it can't
+    // resurface a stale warning without a fresh key event (the guard stops it being set while off; this
+    // clears a value set before it was turned off).
+    effect(() => {
+      if (!this.capsLockIndicator()) this.capsLockOn.set(false);
+    });
+  }
 
   /** True between `compositionstart`/`end` so onChange isn't spammed mid-IME (mirrors `cae-input`). */
   private composing = false;
