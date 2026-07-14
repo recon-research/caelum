@@ -116,6 +116,19 @@ describe('CaeImageCompare', () => {
     );
     fixture.detectChanges();
   }
+  /** Press on the TRACK BODY (not the divider) — the click-to-jump entry point (#318). */
+  function trackPointerDown(clientX: number): void {
+    track().dispatchEvent(
+      new MouseEvent('pointerdown', {
+        clientX,
+        button: 0,
+        bubbles: true,
+        cancelable: true,
+        buttons: 1,
+      }),
+    );
+    fixture.detectChanges();
+  }
 
   // --- Structure & default state ---
 
@@ -281,6 +294,26 @@ describe('CaeImageCompare', () => {
     expect(valueNow()).toBe('25');
   });
 
+  // --- Click-the-track to jump (#318): the pointer surface is the whole track, not just the divider ---
+
+  it('jumps the divider to a press anywhere on the track body, then drags from there', async () => {
+    await render();
+    mockRect(0, 200);
+    trackPointerDown(150); // press at 150/200 of the track (NOT on the divider) → jump to 75%
+    expect(valueNow()).toBe('75');
+    pointerMove(50); // the press also began a drag: a subsequent move tracks
+    expect(valueNow()).toBe('25');
+  });
+
+  it('focuses the divider on a track press so the keyboard path works after an off-divider click', async () => {
+    await render();
+    mockRect(0, 200);
+    trackPointerDown(150);
+    // The press landed on the track, but focus must move to the SEPARATOR (not the pressed track) so the
+    // divider is immediately keyboard-operable — the a11y reason we focus the divider explicitly.
+    expect(document.activeElement).toBe(divider());
+  });
+
   // --- Vertical layout (#318) ---
 
   it('is a horizontal separator positioned by inset-block-start in vertical layout', async () => {
@@ -361,6 +394,21 @@ describe('CaeImageCompare', () => {
     mockRect(0, 200); // top:0, height:100
     pointerDownAt(0, 75); // 75 / 100 → 75%, regardless of direction (RTL flips the inline axis only)
     expect(valueNow()).toBe('75');
+  });
+
+  // --- i18n aria-valuetext formatter (#318) ---
+
+  it('formats aria-valuetext through [valueTextFormatter] and re-runs as the value changes', async () => {
+    await render({ valueTextFormatter: (pct: number) => `${pct}% revealed` });
+    expect(divider().getAttribute('aria-valuetext')).toBe('50% revealed');
+    key('ArrowRight'); // the formatted text tracks the value (a one-shot format would fail this)
+    expect(divider().getAttribute('aria-valuetext')).toBe('51% revealed');
+  });
+
+  it('falls back to "N%" when the formatter returns an empty string (never a blank aria-valuetext)', async () => {
+    await render({ valueTextFormatter: () => '' });
+    // Without the empty-string guard this would render aria-valuetext="" — ambiguous to some SRs.
+    expect(divider().getAttribute('aria-valuetext')).toBe('50%');
   });
 
   // --- Accessible-name dev-warn ---
