@@ -41,3 +41,23 @@ html {
     )
   );
 }
+
+// ── Density parity arm (R4, Book 04 §3.4) ───────────────────────────────────
+// The runtime companion to the `[data-density]` `--cae-space-*` re-declaration in
+// `_tokens.scss`: that tightens built `cae-*` components; this tightens MATERIAL's
+// controls under the SAME selector, so one global attribute moves both toward
+// PrimeNG-equivalent compactness. `mat.theme()` with only a `density` key re-emits
+// just Material's density-dependent component tokens (color/typography untouched),
+// scoped to the selector it's included in. Material clamps density to each
+// component's own minimum metrics, so the a11y target-size floor holds here too.
+// Absence of the attribute = the comfortable `density: 0` baseline above. A
+// compile-time baked baseline (a `caelum.theme($density)` mixin) is a follow-on if
+// a consumer needs one — setting `data-density="compact"` on the root is simpler.
+// Provisional on #412 (density-API shape).
+:root[data-density='compact'] {
+  @include mat.theme(
+    (
+      density: -2,
+    )
+  );
+}

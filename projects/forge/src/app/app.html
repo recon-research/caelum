@@ -78,6 +78,19 @@
       >
         Theme: {{ themeMode() }} → {{ nextLabel() }}
       </cae-button>
+
+      <!-- Density toggle (#411, provisional on #412): re-binds the DENSITY arm of the
+           token layer via [data-density] on the root — Material controls and built
+           cae-* components tighten in lockstep (Book 04 §3.4, R4), exactly like the
+           Theme button above re-binds colour (§3.3). One knob, whole console. -->
+      <cae-button
+        variant="outlined"
+        ariaLabel="Toggle density"
+        tooltip="Toggle layout density: comfortable ↔ compact"
+        (click)="toggleDensity()"
+      >
+        Density: {{ density() }}
+      </cae-button>
     </div>
   </cae-toolbar>
 </header>

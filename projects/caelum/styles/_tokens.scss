@@ -57,13 +57,22 @@
   --cae-color-success: light-dark(var(--cae-green-40), var(--cae-green-80));
   --cae-color-warn: light-dark(var(--cae-amber-40), var(--cae-amber-80));
 
-  // Space — an 8pt-derived step scale.
+  // Space — an 8pt-derived step scale. This is the density lever (Book 04 §3.4,
+  // R4): the compact arm below re-declares it tighter, so built components that
+  // pad with `--cae-space-*` shrink in lockstep — no per-component edit (§3.3).
   --cae-space-1: 4px;
   --cae-space-2: 8px;
   --cae-space-3: 12px;
   --cae-space-4: 16px;
   --cae-space-5: 24px;
   --cae-space-6: 32px;
+
+  // Interactive target floor — density-INVARIANT (Book 04 §3.4; WCAG 2.5.8
+  // Target Size (Minimum) = 24x24 CSS px). Compaction tightens `--cae-space-*`
+  // but an interactive control floors its hit target to this in EVERY arm, so
+  // "compact" never drops a target below the a11y bound. Built controls apply it
+  // as `min-block-size`/`min-inline-size`; it does not shrink under compact.
+  --cae-target-min: 24px;
 
   // Shape.
   --cae-radius-sm: 4px;
@@ -109,4 +118,22 @@
 
 :root[data-theme='dark'] {
   color-scheme: dark;
+}
+
+// ── Density — the parity lever (R4, Book 04 §3.4) ───────────────────────────
+// PrimeNG runs tighter than Material's comfortable default; closing that gap is
+// mostly a token job. Like `[data-theme]` re-declares color, `[data-density]`
+// re-declares the SPACE scale — one global knob, runtime-switchable, components
+// unaware (§3.3). Material's matching density arm is emitted under this same
+// selector by `_theme.scss` so both move together. Absence = the comfortable
+// default (`:root` above); this arm tightens the larger steps most while the
+// interactive floor (`--cae-target-min`) stays fixed, so hit targets hold the
+// WCAG 2.5.8 24px minimum. Provisional on #412 (density-API shape).
+:root[data-density='compact'] {
+  --cae-space-1: 4px; // floor step — unchanged (already minimal)
+  --cae-space-2: 6px; // 8  -> 6
+  --cae-space-3: 8px; // 12 -> 8
+  --cae-space-4: 12px; // 16 -> 12
+  --cae-space-5: 16px; // 24 -> 16
+  --cae-space-6: 24px; // 32 -> 24
 }
