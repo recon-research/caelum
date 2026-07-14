@@ -128,6 +128,66 @@ describe('CaePassword', () => {
     expect(touched).toBe(true);
   });
 
+  // --- Caps-Lock indicator (#312) ---
+
+  const capsRegion = (): HTMLElement | null =>
+    fixture.nativeElement.querySelector('.cae-password__capslock');
+  const capsWarningOn = (): HTMLElement | null =>
+    fixture.nativeElement.querySelector('.cae-password__capslock--on');
+  const capsKey = (type: 'keydown' | 'keyup', capsLock: boolean): void => {
+    input().dispatchEvent(
+      new KeyboardEvent(type, { key: 'a', bubbles: true, modifierCapsLock: capsLock }),
+    );
+    fixture.detectChanges();
+  };
+
+  it('shows a politely-announced Caps-Lock warning when on, and clears it when off', () => {
+    // The live region is always present (registered) so an SR reliably announces the on-transition;
+    // while off it carries no text and no visual footprint.
+    expect(capsRegion()?.getAttribute('role')).toBe('status');
+    expect(capsWarningOn()).toBeNull();
+
+    capsKey('keydown', true);
+    expect(capsWarningOn()).not.toBeNull();
+    expect(capsRegion()!.textContent?.trim()).toBe('Caps Lock is on');
+
+    capsKey('keyup', false); // the keyup binding catches the Caps-Lock key's own release toggle
+    expect(capsWarningOn()).toBeNull();
+    expect(capsRegion()!.textContent?.trim()).toBe('');
+  });
+
+  it('clears the Caps-Lock warning on blur (the state is unknowable once unfocused)', () => {
+    capsKey('keydown', true);
+    expect(capsWarningOn()).not.toBeNull();
+    input().dispatchEvent(new Event('blur', { bubbles: true }));
+    fixture.detectChanges();
+    expect(capsWarningOn()).toBeNull();
+  });
+
+  it('suppresses the indicator entirely when [capsLockIndicator]=false', () => {
+    fixture.componentRef.setInput('capsLockIndicator', false);
+    fixture.detectChanges();
+    capsKey('keydown', true);
+    expect(capsRegion()).toBeNull(); // no live region at all — the feature is off
+  });
+
+  it('does not resurface a stale warning after the feature is toggled off then back on', () => {
+    capsKey('keydown', true); // caps on → warning shown
+    expect(capsWarningOn()).not.toBeNull();
+    fixture.componentRef.setInput('capsLockIndicator', false); // disable: the effect resets capsLockOn
+    fixture.detectChanges();
+    fixture.componentRef.setInput('capsLockIndicator', true); // re-enable with NO fresh key event
+    fixture.detectChanges();
+    expect(capsWarningOn()).toBeNull(); // without the reset effect, the stale 'on' would reappear
+  });
+
+  it('honours a custom [capsLockLabel] for i18n', () => {
+    fixture.componentRef.setInput('capsLockLabel', 'Feststelltaste aktiv');
+    fixture.detectChanges();
+    capsKey('keydown', true);
+    expect(capsRegion()!.textContent?.trim()).toBe('Feststelltaste aktiv');
+  });
+
   // --- Strength meter (advisory) ---
 
   it('shows no bar when the field is empty', () => {
