@@ -48,8 +48,10 @@ def main():
     command = str(payload.get("tool_input", {}).get("command", ""))
     # search, not match-at-start: agent commits routinely arrive inside
     # compound commands ("cd repo && git add -A && git commit -F -"), which
-    # a start-anchored match silently waves through.
-    if not re.search(r"(?:^|[;&|])\s*git\s+commit\b", command):
+    # a start-anchored match silently waves through. \n sits in the separator
+    # class because multi-line Bash-tool commands are routine too — without it
+    # "git add -A\ngit commit -m x" walks past the gate (kill-web#12 → #207).
+    if not re.search(r"(?:^|[\n;&|])\s*git\s+commit\b", command):
         return 0
     chdir_repo_root()
     try:

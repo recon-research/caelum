@@ -12,6 +12,13 @@ means "raise the budget" -- it means journaling crept in: move the narrative
 to the tracker / git history and rewrite state lines in place
 (docs/ROADMAP.md header carries the write rule).
 
+The width budget (#232) is the count budget's horizontal twin: a line-count
+cap REWARDS cramming -- each checkpoint appends to the same physical line and
+the counter never moves (a downstream's milestone line hit 31,955 chars,
+green on every count budget). So Status state lines and ROADMAP lines also
+carry a per-line char cap; markdown table rows are exempt, and fenced code
+arrives pre-blanked.
+
 v2 (#74) adds three placeholder-aware state checks. The discriminator: a
 Status block whose state lines ALL carry <placeholders> is the fresh template
 (everything tolerated); ZERO placeholders is onboarded (the invariants bind);
@@ -32,13 +39,9 @@ from pathlib import Path
 STATUS_MAX_LINES = 15     # CLAUDE.md ## Status: non-blank, non-blockquote lines
 MILESTONE_MAX_LINES = 30  # docs/ROADMAP.md: non-blank lines per milestone section
 ROADMAP_MAX_LINES = 400   # docs/ROADMAP.md: total physical lines
-LINE_MAX_CHARS = 700      # any single budgeted line (#402): the line-COUNT budgets above
-                          # only measure height, so journaling drifted *horizontally* --
-                          # per-PR narrative crammed onto one 30k-char physical line passes
-                          # every count budget (and cramming is what dodging the count
-                          # budget rewards). This caps width so narrative can't hide sideways.
-                          # Table rows (leading `|`) are exempt. A trip means the same thing:
-                          # move the narrative to the tracker/git and rewrite the line lean.
+LINE_MAX_CHARS = 700      # per physical line, Status state lines + ROADMAP; markdown
+                          # table rows (|-leading) exempt -- the count budgets' blind
+                          # spot is horizontal cramming (#232, hit live downstream)
 
 # A <fill-me> template field. The shipped docs spell it as HTML entities
 # (&lt;...&gt;) so the placeholders survive GitHub's markdown rendering;
@@ -64,6 +67,13 @@ def strip_code_fences(lines):
     return out
 
 
+def wide_lines(lines):
+    """1-based (index, width) of over-budget lines. Table rows are exempt
+    (legitimately wide); fence interiors arrive blanked from strip_code_fences."""
+    return [(i + 1, len(l)) for i, l in enumerate(lines)
+            if len(l) > LINE_MAX_CHARS and not l.lstrip().startswith("|")]
+
+
 def section_bounds(lines, start, level):
     """Lines belonging to the heading at `start` (exclusive), ending before the
     next heading of the same or higher level."""
@@ -85,7 +95,9 @@ def check_status(root, problems):
         if re.match(r"^##\s+Status\b", line):
             body = section_bounds(lines, i, 2)
             state = [l for l in body if l.strip() and not l.lstrip().startswith(">")]
-            print(f"CLAUDE.md Status block: {len(state)}/{STATUS_MAX_LINES} state lines")
+            widest = max((len(l) for l in state), default=0)
+            print(f"CLAUDE.md Status block: {len(state)}/{STATUS_MAX_LINES} state lines "
+                  f"| widest {widest}/{LINE_MAX_CHARS} chars")
             if len(state) > STATUS_MAX_LINES:
                 problems.append(
                     f"CLAUDE.md ## Status has {len(state)} state lines (budget {STATUS_MAX_LINES}). "
@@ -95,21 +107,14 @@ def check_status(root, problems):
             wide = wide_lines(state)
             if wide:
                 problems.append(
-                    f"CLAUDE.md ## Status has {len(wide)} state line(s) over {LINE_MAX_CHARS} chars "
-                    f"(longest {max(wide)}). Journaling crept in HORIZONTALLY -- a single line "
-                    "accreting per-PR narrative dodges the line-count budget. Move it to the "
-                    "tracker/git history; rewrite the line lean (a pointer, not a changelog)."
+                    f"CLAUDE.md ## Status has {len(wide)} state line(s) over {LINE_MAX_CHARS} "
+                    f"chars (widest {max(w for _, w in wide)}). Journaling crept in "
+                    "horizontally -- the width budget is the count budget's twin (#232): "
+                    "move narrative to the tracker; rewrite the line lean."
                 )
             return state
     print("(note: CLAUDE.md has no '## Status' heading -- status budget not checked)")
     return None
-
-
-def wide_lines(lines):
-    """Physical lines exceeding the width budget (markdown table rows exempt --
-    a legit `| ... |` row can be wide; prose journaling has no pipes)."""
-    return [len(l) for l in lines
-            if not l.lstrip().startswith("|") and len(l.rstrip()) > LINE_MAX_CHARS]
 
 
 def placeholder_flags(state_lines):
@@ -199,6 +204,17 @@ def check_roadmap(root, problems):
             "belongs in the tracker and git history."
         )
     lines = strip_code_fences(raw)
+    wide = wide_lines(lines)
+    print(f"docs/ROADMAP.md widest line: "
+          f"{max((len(l) for l in lines), default=0)}/{LINE_MAX_CHARS} chars")
+    if wide:
+        problems.append(
+            f"docs/ROADMAP.md has {len(wide)} line(s) over {LINE_MAX_CHARS} chars "
+            f"(first: line {wide[0][0]}, {wide[0][1]} chars). A status line is "
+            "rewritten in place, never appended to -- the width budget is the count "
+            "budget's horizontal twin (#232): move narrative to the tracker and "
+            "write the line lean."
+        )
     for i, line in enumerate(lines):
         # Milestone ids: digit-or-dash after `M` (M0, M1.5, M-H) — the class
         # still rejects prose headings like "## Milestones" (letter there).
@@ -216,13 +232,6 @@ def check_roadmap(root, problems):
                 "cache -- goal / slices / exit criterion / leverage / status -- "
                 "not a session journal. Move narrative to the issue tracker; "
                 "rewrite the Status line in place instead of appending."
-            )
-        wide = wide_lines(body)
-        if wide:
-            problems.append(
-                f"docs/ROADMAP.md milestone {name} has {len(wide)} line(s) over {LINE_MAX_CHARS} "
-                f"chars (longest {max(wide)}). A milestone line is a state cache, not a session "
-                "journal -- the per-PR narrative belongs in the tracker; rewrite the line lean."
             )
 
 

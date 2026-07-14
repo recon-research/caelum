@@ -33,7 +33,7 @@ Reports and notes **ground `D-NN` decisions** exactly like book sections do — 
 | [`notes/`](notes/00_TEMPLATE.md) | Survey notes — one per topic. Template: [`notes/00_TEMPLATE.md`](notes/00_TEMPLATE.md). |
 | [`experiments/`](experiments/00_TEMPLATE.md) | `EXP-NN_<slug>/` dirs: `EXPERIMENT.md` + `results/` (data + plots + plot scripts). Template: [`experiments/00_TEMPLATE.md`](experiments/00_TEMPLATE.md). |
 | [`reports/`](reports/00_TEMPLATE.md) | `RR-NN_<slug>.md` paper artifacts, markdown-first (export to docx/pdf is a rendering step, never the source of truth). Template: [`reports/00_TEMPLATE.md`](reports/00_TEMPLATE.md). |
-| `banked/` | Frozen generation data captured from a scarce generator (e.g. a frontier-model access window), provenance-stamped as raw material for a later deliberate re-derivation slice. **No citation authority** — not notes, not experiments; each collection's `README.md` carries its provenance and trust model, and is routed in the MANIFEST like everything else. |
+| `banked/` | Frozen generation data captured from a scarce generator (e.g. a frontier-model access window), provenance-stamped as raw material for a later deliberate re-derivation slice. **No citation authority** — not notes, not experiments; each collection's `README.md` carries its provenance and trust model, and is routed in the MANIFEST like everything else. *Pyxis-optional:* downstreams without generation-banking simply omit the directory — the audit no-ops on absence (tool header, #197). |
 | [`tools/_audit_research.py`](tools/_audit_research.py) | The mechanical gate (below). Exits non-zero; CI runs it. |
 
 ## The audit

@@ -18,7 +18,7 @@
 #
 # Wiring (docs/AUTOMATION.md §1 — settings.json changes are owner-applied):
 #   "PermissionDenied": [ { "hooks": [ { "type": "command",
-#     "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/log_permission_denials.py\"" } ] } ]
+#     "command": "python3 \"${CLAUDE_PROJECT_DIR}/.claude/hooks/log_permission_denials.py\"" } ] } ]
 #
 # Contract, like every hook here: FAIL OPEN — exit 0 always, print nothing;
 # telemetry must never wedge the loop.
