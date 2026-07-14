@@ -933,7 +933,98 @@ describe('CaeSplitter', () => {
     });
     key(0, 'Enter'); // collapse
     expect(host.lastResize).toEqual([0, 100]);
-    expect(JSON.parse(sessionStorage.getItem('collapse-persist')!)).toEqual([0, 100]);
+    // A collapse widens the persisted payload to { sizes, collapsed } so the pre-collapse size (30) survives a
+    // reload (#399); a nothing-collapsed layout still persists as a bare array (asserted elsewhere).
+    expect(JSON.parse(sessionStorage.getItem('collapse-persist')!)).toEqual({
+      sizes: [0, 100],
+      collapsed: [[0, 30]],
+    });
+  });
+
+  it('persists the collapse restore point so Enter restores the pre-collapse size after a reload (#399)', async () => {
+    const panels = [
+      { size: 30, label: 'A' },
+      { size: 70, label: 'B' },
+    ];
+    await render({ collapsible: true, stateKey: 'collapse-reload', panels });
+    key(0, 'Enter'); // collapse A: 30% → 0%, remembering 30
+    expect(basis(0)).toBe('0%');
+
+    // Simulate a reload: tear this instance down, mount a fresh one against the same persisted key.
+    fixture.destroy();
+    fixture.nativeElement.remove();
+    await render({ collapsible: true, stateKey: 'collapse-reload', panels });
+
+    expect(basis(0)).toBe('0%'); // the collapsed layout restored…
+    key(0, 'Enter'); // …and Enter restores the pre-collapse size straight away (was inert until a resize pre-#399)
+    expect(basis(0)).toBe('30%');
+  });
+
+  it('drops a tampered collapse restore point but still restores the sizes (#399 trust boundary)', async () => {
+    // A hand-edited entry: valid sizes, but a collapse point with a non-finite size (pane A is NOT collapsed).
+    sessionStorage.setItem(
+      'collapse-tamper',
+      JSON.stringify({ sizes: [20, 80], collapsed: [[0, 'oops']] }),
+    );
+    await render({
+      collapsible: true,
+      stateKey: 'collapse-tamper',
+      panels: [
+        { size: 30, label: 'A' },
+        { size: 70, label: 'B' },
+      ],
+    });
+    expect(basis(0)).toBe('20%'); // the sizes restored — the bad collapse field didn't reject the whole entry
+
+    // The bogus point was dropped, so the pane counts as NOT collapsed: the first Enter COLLAPSES it and a
+    // second restores the freshly-remembered 20% — it never jumps to (or is stranded by) the tampered value.
+    key(0, 'Enter');
+    expect(basis(0)).toBe('0%');
+    key(0, 'Enter');
+    expect(basis(0)).toBe('20%');
+  });
+
+  it('drops a well-formed restore point that would not grow the pane (tamper consistency, #399)', async () => {
+    // Sizes say pane A is at 50% (NOT collapsed), but a hand-edited restore point claims it should return to 30
+    // — a shrink, which no real collapse produces. The restore effect drops it, so Enter collapses rather than
+    // "restoring" to the smaller tampered value.
+    sessionStorage.setItem(
+      'collapse-shrink',
+      JSON.stringify({ sizes: [50, 50], collapsed: [[0, 30]] }),
+    );
+    await render({
+      collapsible: true,
+      stateKey: 'collapse-shrink',
+      panels: [
+        { size: 30, label: 'A' },
+        { size: 70, label: 'B' },
+      ],
+    });
+    expect(basis(0)).toBe('50%');
+    key(0, 'Enter'); // no restore point → a fresh collapse to min (0%), NOT a jump to the tampered 30%
+    expect(basis(0)).toBe('0%');
+  });
+
+  it('restores a persisted-collapsed layout when [stateKey] binds late, re-enabling Enter (#399)', async () => {
+    sessionStorage.setItem(
+      'late-collapse-restore',
+      JSON.stringify({ sizes: [0, 100], collapsed: [[0, 30]] }),
+    );
+    // Mount with a blank key (the binding hasn't resolved yet), then set it — the restore effect re-runs.
+    await render({
+      collapsible: true,
+      panels: [
+        { size: 30, label: 'A' },
+        { size: 70, label: 'B' },
+      ],
+    });
+    expect(basis(0)).toBe('30%'); // seed — nothing restored while the key is blank
+    host.stateKey.set('late-collapse-restore');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(basis(0)).toBe('0%'); // the collapsed layout restored…
+    key(0, 'Enter'); // …and the restored memory (not wiped by the panels-clear effect) makes Enter un-collapse
+    expect(basis(0)).toBe('30%');
   });
 
   it('clears the restore point when the divider is manually resized (dragging a collapsed pane open un-collapses it)', async () => {

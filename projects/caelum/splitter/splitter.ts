@@ -265,14 +265,12 @@ export class CaeSplitter {
    * `minSize` and never goes below it, so `aria-valuenow` stays ≥ `aria-valuemin` (the ARIA-coherence
    * invariant). A manual resize (drag or arrow keys) of a collapsed divider clears its restore point — moving
    * the pane un-collapses it. Keyboard-only for now: a pointer collapse affordance and a programmatic two-way
-   * `[collapsed]` model are tracked as follow-ups (#325). Only the leading pane of each divider is collapsible;
+   * `[collapsed]` model are tracked as follow-ups (#399). Only the leading pane of each divider is collapsible;
    * the trailing-most pane has no divider after it, so it cannot be collapsed this way.
    *
-   * **`[collapsible]` + `[stateKey]` interaction:** the collapse *restore point* is session-transient (not
-   * persisted). If you reload while a pane is persisted-collapsed, Enter can't restore its pre-collapse size —
-   * that size wasn't saved — so it stays inert until you resize the pane once (drag/arrow) to establish a new
-   * baseline, then Enter toggles again. The deferred `[collapsed]` model is the proper home for persisted
-   * collapse state.
+   * **`[collapsible]` + `[stateKey]` interaction (#399):** the collapse *restore point* is persisted alongside
+   * the sizes, so reloading a persisted-collapsed layout keeps Enter working — one press restores the pane to
+   * the size it held before it was collapsed, with no warm-up resize needed.
    */
   readonly collapsible = input(false, { transform: booleanAttribute });
   /** Emits the live sizes array (summing 100) at the end of a pointer drag and after each keyboard resize. */
@@ -281,7 +279,8 @@ export class CaeSplitter {
   /**
    * Persist the live sizes across reloads under this key (`p-splitter` `stateKey` parity). Blank (the default)
    * disables persistence — the splitter stays byte-for-byte its stateless self. When set, the sizes are written
-   * to {@link stateStorage} after every committed resize and restored once the panels resolve. A stored entry
+   * to {@link stateStorage} after every committed resize and restored once the panels resolve; if a pane is
+   * collapsed, its restore point rides along (#399) so Enter can un-collapse it after a reload. A stored entry
    * whose length no longer matches the panel set (a structural change) or that is corrupt/non-numeric is
    * ignored, falling back to the declared `[size]` seed; a restored layout is re-run through the same
    * normalize + `minSize`-enforcement pipeline as the seed, so it can't announce an out-of-range value even if
@@ -314,8 +313,9 @@ export class CaeSplitter {
    * that divider clears it (in {@link setLeading}), so dragging a collapsed pane open un-collapses it. Not a
    * signal — it's read/written only inside synchronous keydown handling, never in the template (the visible
    * collapse flows through `override`/`sizes`). Promote it to a signal if a future template binding or computed
-   * ever needs to *read* collapse state (a deferred `aria-expanded` / `[collapsed]` model). Session-transient
-   * (not persisted) and cleared when the panel set changes structurally (the indices would go stale).
+   * ever needs to *read* collapse state (a deferred `aria-expanded` / `[collapsed]` model). Persisted alongside
+   * the sizes under `[stateKey]` (#399) so Enter-restore survives a reload, and cleared when the panel set
+   * changes structurally (the indices would go stale).
    */
   private readonly collapseMemory = new Map<number, number>();
 
@@ -418,32 +418,47 @@ export class CaeSplitter {
       });
     }
 
-    // Restore a persisted layout ONCE. The latch closes only when a restore is actually APPLIED (or on the
-    // first user resize, in `setLeading`) — NOT merely on the first non-empty panels tick. Latching eagerly
-    // would drop a legitimate restore whose entry isn't readable yet on that first tick: a panel set that
-    // grows across two ticks (an `@if`/async pane — the saved length wouldn't match the partial set) or a
-    // `[stateKey]` bound to a signal still blank at content-init. Leaving the latch open lets the effect retry
-    // as `panels()`/`stateKey()` settle; the `setLeading` latch guarantees a late-arriving entry can never
-    // clobber an interaction that already happened. `restoreState` sum-normalizes the entry; the `sizes`
-    // computed then min-enforces it reactively (so a value saved before a `[minSize]` change — or read back
-    // before the panels' `[minSize]` inputs have propagated — can't announce out of range).
+    // A structural change to the panel set (a pane added/removed) shifts every divider index, so the
+    // index-keyed collapse restore points go stale — discard them. `contentChildren` only re-emits when the
+    // projected set actually changes, so this fires on structural changes (and the initial resolve, a no-op on
+    // the empty map), not on a collapse/resize (which mutates `override`/`sizes`, not `panels`). Depends ONLY
+    // on `panels()` — never `stateKey()` — so a late `[stateKey]` binding can't wipe live collapse memory.
+    //
+    // **Ordering contract (#399):** this effect is registered BEFORE the restore effect below, and Angular
+    // runs effects in creation order. On the panels-resolve tick both fire — clear then restore — so this
+    // clears the (empty) map first and the restore *repopulates* it from storage; a restored collapse point
+    // survives the same tick that cleared the stale one. Reversing the two would let this clear wipe the
+    // restore. On a later structural change, restore is latched off, so this clear stands (stale indices gone).
+    effect(() => {
+      this.panels();
+      this.collapseMemory.clear();
+    });
+
+    // Restore a persisted layout ONCE — its sizes AND (since #399) its collapse restore points, so Enter can
+    // restore a persisted-collapsed pane's pre-collapse size straight after a reload. The latch closes only
+    // when a restore is actually APPLIED (or on the first user resize, in `setLeading`) — NOT merely on the
+    // first non-empty panels tick. Latching eagerly would drop a legitimate restore whose entry isn't readable
+    // yet on that first tick: a panel set that grows across two ticks (an `@if`/async pane — the saved length
+    // wouldn't match the partial set) or a `[stateKey]` bound to a signal still blank at content-init. Leaving
+    // the latch open lets the effect retry as `panels()`/`stateKey()` settle; the `setLeading` latch guarantees
+    // a late-arriving entry can never clobber an interaction that already happened. `restoreState` sum-
+    // normalizes the sizes; the `sizes` computed then min-enforces them reactively (so a value saved before a
+    // `[minSize]` change — or read back before the panels' `[minSize]` inputs propagated — can't announce out
+    // of range). The collapse points ride the same panel set, so they're valid whenever the sizes are.
     effect(() => {
       const panels = this.panels();
       if (this.stateRestored || panels.length === 0) return;
       const restored = this.restoreState(panels);
       if (restored) {
         this.stateRestored = true;
-        this.override.set(restored);
+        this.override.set(restored.sizes);
+        // Honor a persisted restore point only when it would actually grow pane `i` back — i.e. the pane is
+        // persisted at (or below) the size it would restore FROM. This drops a tampered-but-well-formed pair
+        // (a hand-edited restore ≤ the current size) so it can't seed a spurious "restore" on the first Enter.
+        for (const [i, size] of restored.collapsed) {
+          if (size > restored.sizes[i]) this.collapseMemory.set(i, size);
+        }
       }
-    });
-
-    // A structural change to the panel set (a pane added/removed) shifts every divider index, so the
-    // index-keyed collapse restore points go stale — discard them. `contentChildren` only re-emits when the
-    // projected set actually changes, so this fires on structural changes (and the initial resolve, a no-op on
-    // the empty map), not on a collapse/resize (which mutates `override`/`sizes`, not `panels`).
-    effect(() => {
-      this.panels();
-      this.collapseMemory.clear();
     });
   }
 
@@ -759,15 +774,25 @@ export class CaeSplitter {
     }
   }
 
-  /** Write the live sizes under `[stateKey]`. Best-effort: a blank key, unusable storage, or a `setItem`
-   *  failure (quota exceeded / disabled) is swallowed — persistence must never break a resize. */
+  /**
+   * Write the live sizes under `[stateKey]`, plus the collapse restore points when a pane is collapsed (#399),
+   * so Enter can restore the pre-collapse size after a reload. The payload is a **bare `number[]`** for the
+   * common (nothing-collapsed) case — byte-for-byte the #325 format, so a pre-#399 entry still restores and the
+   * common format is unchanged — and only widens to `{ sizes, collapsed }` when there's a restore point to carry
+   * (a shape a pre-#399 build can't read, so a *downgrade* over a collapsed layout falls back to the seed).
+   * Best-effort: a blank key, unusable storage, or a `setItem` failure (quota / disabled) is swallowed —
+   * persistence must never break a resize.
+   */
   private persistState(): void {
     const key = this.stateKey().trim();
     if (!key) return;
     const store = this.storage();
     if (!store) return;
     try {
-      store.setItem(key, JSON.stringify(this.sizes()));
+      const sizes = this.sizes();
+      const payload =
+        this.collapseMemory.size > 0 ? { sizes, collapsed: [...this.collapseMemory] } : sizes;
+      store.setItem(key, JSON.stringify(payload));
     } catch {
       // quota / disabled — best-effort only
     }
@@ -779,7 +804,9 @@ export class CaeSplitter {
    * invalidates it); a missing/corrupt/mismatched entry returns `null` so the caller keeps the declared seed.
    * The returned array is applied raw — the `sizes` computed enforces each panel's `minSize` reactively.
    */
-  private restoreState(panels: readonly CaeSplitterPanel[]): number[] | null {
+  private restoreState(
+    panels: readonly CaeSplitterPanel[],
+  ): { sizes: number[]; collapsed: Array<[number, number]> } | null {
     const key = this.stateKey().trim();
     if (!key) return null;
     const store = this.storage();
@@ -797,8 +824,15 @@ export class CaeSplitter {
     } catch {
       return null; // corrupt entry — ignore, don't throw
     }
-    if (!Array.isArray(parsed) || parsed.length !== panels.length) return null;
-    const nums = parsed.map((v) => (typeof v === 'number' && Number.isFinite(v) ? v : NaN));
+    // Two persisted shapes (#399): a bare `number[]` (the #325 / nothing-collapsed format) or
+    // `{ sizes, collapsed }` written when a pane was collapsed. Read the sizes from whichever shape it is.
+    const obj =
+      parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : null;
+    const rawSizes: unknown = Array.isArray(parsed) ? parsed : obj?.['sizes'];
+    if (!Array.isArray(rawSizes) || rawSizes.length !== panels.length) return null;
+    const nums = rawSizes.map((v) => (typeof v === 'number' && Number.isFinite(v) ? v : NaN));
     if (nums.some(Number.isNaN)) return null;
     // Web Storage is a trust boundary — another origin script, an extension, or a hand-edit can leave a
     // right-length numeric array that no longer sums to 100 (or holds negatives). Re-normalize to 100 so a
@@ -806,6 +840,32 @@ export class CaeSplitter {
     // entry that sums to exactly 100 is byte-exact (verified for the integer round-trip case); a fractional
     // saved layout (e.g. thirds summing to 99.999…) is rescaled with sub-pixel dust that `aria-valuenow`'s
     // rounding hides — visually and semantically a no-op.
-    return this.normalize(nums);
+    return {
+      sizes: this.normalize(nums),
+      collapsed: this.parseCollapsed(obj?.['collapsed'], panels.length),
+    };
+  }
+
+  /**
+   * Validate persisted collapse restore points at the storage trust boundary (#399). Keeps only well-formed
+   * `[dividerIndex, size]` pairs — an integer index of a real divider (`0 … n−2`) and a finite size — dropping
+   * anything malformed (a non-array, a wrong-shaped entry, an out-of-range index, a non-finite size), so a
+   * hand-edited or corrupt entry can't seed a malformed or out-of-range restore. (The restore effect additionally
+   * drops a point that wouldn't grow its pane; the size is a *future* Enter target, re-clamped by `setLeading`
+   * when consumed, so it can't announce out of range even if a `[minSize]` changed since it was saved.) The kept
+   * output is capped at the divider count — there can never be more collapsed dividers than dividers.
+   */
+  private parseCollapsed(raw: unknown, panelCount: number): Array<[number, number]> {
+    if (!Array.isArray(raw)) return [];
+    const out: Array<[number, number]> = [];
+    for (const entry of raw) {
+      if (out.length >= panelCount - 1) break; // no more unique valid dividers can exist — bound the output
+      if (!Array.isArray(entry) || entry.length !== 2) continue;
+      const [i, size] = entry as [unknown, unknown];
+      if (typeof i !== 'number' || !Number.isInteger(i) || i < 0 || i >= panelCount - 1) continue;
+      if (typeof size !== 'number' || !Number.isFinite(size)) continue;
+      out.push([i, size]);
+    }
+    return out;
   }
 }
