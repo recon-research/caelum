@@ -18,7 +18,7 @@ Uses the build / test / lint commands from `PROJECT_CONVENTIONS.md` — never ha
 
 3. **Run tests.**
    - Use the **test command** from `PROJECT_CONVENTIONS.md`, with failure output enabled.
-   - To narrow to one subsystem, use the test command's filter/selection form.
+   - Mid-development iteration or narrowing on a failure: use the **Test (targeted)** knob instead — the full suite is the gate, not the inner loop (`PROJECT_CONVENTIONS.md` › Build & Test, #233).
    - Report failures with test name, expected vs actual.
 
 4. **Run perf benchmarks if changed.** If files in a subsystem with benchmarks changed, run that subsystem's benchmarks (per the benchmark command / location in `PROJECT_CONVENTIONS.md`) and flag regressions beyond the project's threshold against the recorded baseline.

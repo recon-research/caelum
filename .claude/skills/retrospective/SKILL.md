@@ -33,7 +33,7 @@ Read paths / conventions from `PROJECT_CONVENTIONS.md`; the metric thresholds fr
    3. **A review lens** — a standing lens in `adversarial_review` (e.g. the over-engineering lens) when the defect needs judgment, not a regex.
    4. **A policy / settings tweak** — a `PROJECT_CONVENTIONS.md` rule or a `settings.json` deny (owner-authorized) when nothing else fits.
    File the guard as a ticket (`debt`/`followup`) or implement it now if cheap. **"Fixed, no guard" is the failure mode this skill exists to prevent** — a systemic escape that leaves no guard is not done.
-   **Skill-layer defects get a skill-layer guard:** for a `skill-defect:` cluster, a routing miss, or a never-invoked ⚠, the guard is a SKILL.md `description`/procedure diff (or pruning the skill), shipped as a normal PR that states its before/after per the authoring rule (`.claude/skills/README.md`) — worked example: the #45 prepare_compaction flip, exactly this class of guard.
+   **Skill-layer defects get a skill-layer guard:** for a `skill-defect:` cluster, a routing miss, or a never-invoked ⚠, the guard is a SKILL.md `description`/procedure diff (or pruning the skill), shipped as a normal PR that states its before/after per the authoring rule (`.claude/skills/README.md`) — worked example: the #45 prepare_compaction flip, exactly this class of guard. When the diff adds a *rule*, write it as a forced artifact at its decision point, not mid-list prose (`README.md` › Authoring conventions).
 
 5. **Record one-offs** — a terse "saw X once, cause Y, no guard warranted" so the next retro can spot if a "one-off" is actually recurring. One line; don't ceremony it.
 

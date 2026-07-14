@@ -1,6 +1,12 @@
 # Audit for the research/ frontier layer. Run from research/: python3 tools/_audit_research.py
 # Flags: --strict-staleness (stale notes fail instead of warn) · --live (HEAD-check cited URLs; local use, not CI)
 # Exits non-zero on errors, so CI can gate on it. See README.md for the discipline this enforces.
+#
+# The 'banked' collection kind (frozen generation data, README.md layout table) is a
+# PYXIS-OPTIONAL content feature: a downstream without a banked/ dir or MANIFEST key
+# loses nothing — every banked touchpoint below no-ops on absence by construction
+# (M.get(kind, []) default, empty globs). Keep or delete the three banked lines when
+# porting; either is a fine adaptation, not drift (#197, moonlight's recorded deviation).
 import json, re, glob, os, sys, datetime
 os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # cwd-independent: data lives beside tools/
 

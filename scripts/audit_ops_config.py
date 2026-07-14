@@ -9,7 +9,10 @@ is the enforcement:
 
   1. sh <-> ps1 exact mirror: the stage names defined by preflight.sh
      (`stage` / `skip_stage`) and preflight.ps1 (`Invoke-Stage` / `Skip-Stage`)
-     must be string-identical sets.
+     must be string-identical sets. Gated on the declared shell posture
+     (PREFLIGHT_SHELLS below, D-218): a single-shell project skips the mirror,
+     drops the absent shell's file requirement and its check-4 site -- and
+     FAILS on an undeclared script still on disk (unaudited machinery).
   2. preflight <-> ci.yml mapping: the canonical stage-name -> step-name map
      is PREFLIGHT_TO_CI below -- single-homed HERE. A stage missing from the
      map, a map entry with no preflight stage, a mapped step absent from
@@ -24,6 +27,11 @@ is the enforcement:
      enforcement sites (TODO_EXEMPTION_SITES below -- a porting surface)
      must be identical sets -- the hook drifted when the other sites gained
      exemptions and blocked a legitimate commit downstream (#104).
+  5. if-mirror (#213): the heavy-gate job's `if:` must be exactly
+     `always() && (<changes.if>)`, compared as normalized strings. The pair
+     was comment-enforced only; drift fails UNSAFE and silently -- widen
+     changes.if without widening heavy-gate.if and the zero-coverage hole
+     #206 closed reopens in the new condition slice with no red anywhere.
 
 Mirrored three ways itself: ci.yml > static gates > "Ops-config audit" ==
 preflight.{sh,ps1} "ops-config audit" stage (the map below includes it).
@@ -49,6 +57,7 @@ PREFLIGHT_TO_CI = {
     "doc budgets": "Doc budgets (anti-drift)",
     "ops-config audit": "Ops-config audit (preflight/CI mirror, settings sanity)",
     "repo-docs links": "Repo-docs link audit (root/docs/.claude/_intake)",
+    "staleness audit (warn-only)": "Staleness audit (content drift, warn-only)",
     "todo hygiene (vs origin/main)": "No naked TODO/FIXME in added lines",
 }
 
@@ -57,9 +66,23 @@ PREFLIGHT_TO_CI = {
 CI_ONLY_STEPS = {
     "Install",                 # `npm ci` per-job; preflight runs in the already-set-up dev env
     "Skills are directories",  # cheap CI structural check; locally covered by the library audits' skills catalog
-    "Require heavy jobs to have passed or been skipped",  # the heavy-matrix gate job; CI-only by nature
+    "Aggregate heavy results", # heavy-gate aggregation (#206) reads CI job results; nothing to mirror locally
     "PR references a ticket",  # ticket-first gate (#75) is PR-only by nature; preflight runs pre-PR
 }
+
+# The preflight shells this project actually ships (D-218, from harvest #208).
+# A PROJECT-MIRRORED constant on the hook-EXEMPT pattern (#135): configure_project
+# sets it from the stack, update_from_template preserves YOUR value through syncs,
+# and harvest lens 1 filters it as an expected delta. A single-shell project
+# declares its real set -- ("sh",) or ("ps1",) -- and DELETES the dead mirror
+# script; the missing-file gate, check 1's mirror, and check 4's site list all
+# condition on this. An undeclared script still on disk is a failure: unaudited
+# machinery -- declare it or delete it.
+PREFLIGHT_SHELLS = ("sh", "ps1")
+
+# Shell key -> the preflight script that declares it (repo-relative); doubles
+# as the check-4 site dropped when that shell is undeclared.
+SHELL_SITES = {"sh": Path("scripts/preflight.sh"), "ps1": Path("scripts/preflight.ps1")}
 
 # The TODO-hygiene enforcement sites whose quoted ':!' exemption pathspecs
 # must stay string-identical sets (check 4, #104). PORTING SURFACE (#123),
@@ -75,6 +98,13 @@ TODO_EXEMPTION_SITES = (
     Path(".github/workflows/ci.yml"),
     Path(".claude/hooks/block_naked_todos.py"),
 )
+
+# The mirrored job-`if:` pair (check 5, #213): heavy-gate must fire exactly
+# when the heavy matrix can. PORTING SURFACE, same terms as the tuple above:
+# a downstream that restructured ci.yml (dropped the aggregate, renamed the
+# classifier) adapts or drops this check -- both jobs absent is a skip, not
+# a failure; HALF the pair present is always a failure.
+IF_MIRROR_JOBS = ("changes", "heavy-gate")
 
 # The two deny tripwires the shipped settings must keep, in both shell tools
 # (prefix match -- the shipped rules carry a :* suffix).
@@ -160,26 +190,98 @@ def check_todo_exemptions(root, problems):
     # Every quoted ':!...' token in these files belongs to the TODO-hygiene
     # exemption list (verified at #104); an unrelated ':!' pathspec landing in
     # one of them later fails loudly here -- adjust this parser then, not the rule.
+    undeclared = {p for shell, p in SHELL_SITES.items() if shell not in PREFLIGHT_SHELLS}
+    sites = [s for s in TODO_EXEMPTION_SITES if s not in undeclared]
     specs = {}
-    for site in TODO_EXEMPTION_SITES:
+    for site in sites:
         path = root / site
         if not path.is_file():
             problems.append(f"ops-config file missing: {path}")
             return
         specs[str(site)] = set(re.findall(r"""['"](:![^'"\n]+)['"]""", read(path)))
     union = set().union(*specs.values())
-    print(
-        f"TODO-exemption pathspecs: {len(union)} distinct across "
-        f"{len(TODO_EXEMPTION_SITES)} sites"
-    )
+    dropped = sorted(str(p) for p in undeclared if p in TODO_EXEMPTION_SITES)
+    note = f" (shell undeclared, site dropped: {', '.join(dropped)})" if dropped else ""
+    print(f"TODO-exemption pathspecs: {len(union)} distinct across {len(sites)} sites{note}")
     for name, found in sorted(specs.items()):
         for spec in sorted(union - found):
             problems.append(
                 f"TODO-hygiene exemption \"{spec}\" is missing from {name} -- the "
-                f"{len(TODO_EXEMPTION_SITES)} enforcement sites must carry an identical "
+                f"{len(sites)} enforcement sites must carry an identical "
                 "pathspec list; a drifted site blocks (or waves through) what the "
                 "others don't (#104)."
             )
+
+
+def parse_job_if(ci_text, job):
+    # The JOB-level `if:` only: the job key sits at 2-space indent, its `if:`
+    # at 4 -- step-level `if:` lines sit deeper and never match the anchor.
+    # Handles both the folded (`if: >-` + continuation lines) and single-line
+    # spellings, so a downstream reformat doesn't zero the parse.
+    m = re.search(rf"^  {re.escape(job)}:\n((?:^(?: {{4,}}\S.*|\s*)\n)*)", ci_text, re.M)
+    if not m:
+        return None
+    body = m.group(1)
+    folded = re.search(r"^    if:\s*>-?\s*\n((?:^ {6,}\S.*\n)+)", body, re.M)
+    if folded:
+        return " ".join(folded.group(1).split())
+    single = re.search(r"^    if:\s*(\S.*?)\s*$", body, re.M)
+    return " ".join(single.group(1).split()) if single else None
+
+
+def strip_always_wrapper(expr):
+    # `always() && (X)` -> `X`. Unwrap the parens only when the leading one is
+    # the pair the trailing one closes (depth never returns to 0 mid-string) --
+    # `(A) || (B)` must not lose its structure.
+    inner = re.sub(r"^always\(\)\s*&&\s*", "", expr)
+    if inner.startswith("(") and inner.endswith(")"):
+        depth = 0
+        for i, ch in enumerate(inner):
+            depth += ch == "("
+            depth -= ch == ")"
+            if depth == 0 and i < len(inner) - 1:
+                return inner
+        return inner[1:-1].strip()
+    return inner
+
+
+def check_if_mirror(ci_path, problems):
+    text = read(ci_path)
+    changes_job, gate_job = IF_MIRROR_JOBS
+    changes_if = parse_job_if(text, changes_job)
+    gate_if = parse_job_if(text, gate_job)
+    if changes_if is None and gate_if is None:
+        print(f"if-mirror: neither '{changes_job}' nor '{gate_job}' defines a job "
+              "if -- pattern absent, check skipped (porting surface, see IF_MIRROR_JOBS)")
+        return
+    if changes_if is None or gate_if is None:
+        missing = changes_job if changes_if is None else gate_job
+        problems.append(
+            f"if-mirror: job '{missing}' has no parseable job-level `if:` while its "
+            f"partner does -- the pair must gate together or the aggregate fires (or "
+            f"skips) in conditions the heavy matrix doesn't share (#213)."
+        )
+        return
+    gate_core = strip_always_wrapper(gate_if)
+    ok = True
+    if not gate_if.startswith("always()"):
+        ok = False
+        problems.append(
+            f"if-mirror: '{gate_job}' if must start with `always() &&` -- without it "
+            "a FAILED heavy job skips the aggregate instead of failing it, and the "
+            "gate can never go red (#206)."
+        )
+    if gate_core != changes_if:
+        ok = False
+        problems.append(
+            f"if-mirror: '{gate_job}' if is not `always() && (<{changes_job}.if>)` -- "
+            f"the two condition sets have drifted. A condition present in "
+            f"'{changes_job}' but not the gate reopens the #206 zero-coverage hole in "
+            f"that slice, silently. Normalized: {changes_job}={changes_if!r} vs "
+            f"{gate_job}-core={gate_core!r} (#213)."
+        )
+    if ok:
+        print(f"if-mirror: '{gate_job}'.if == always() && (<'{changes_job}'.if>) -- OK")
 
 
 def check_settings(path, root, problems):
@@ -239,22 +341,44 @@ def main():
     root = Path(args.root)
 
     problems = []
-    sh_path = root / "scripts" / "preflight.sh"
-    ps1_path = root / "scripts" / "preflight.ps1"
     ci_path = root / ".github" / "workflows" / "ci.yml"
     settings_path = root / ".claude" / "settings.json"
+    shell_paths = {shell: root / site for shell, site in SHELL_SITES.items()}
 
-    missing = [p for p in (sh_path, ps1_path, ci_path, settings_path) if not p.is_file()]
-    if missing:
-        for p in missing:
-            problems.append(f"ops-config file missing: {p}")
+    unknown = [s for s in PREFLIGHT_SHELLS if s not in SHELL_SITES]
+    if unknown or not PREFLIGHT_SHELLS:
+        problems.append(
+            f"PREFLIGHT_SHELLS is {PREFLIGHT_SHELLS!r} -- it must be a non-empty "
+            f"subset of {tuple(SHELL_SITES)}; a typo'd posture would silently skip "
+            "the mirror checks it gates (D-218)."
+        )
     else:
-        sh_stages = parse_sh_stages(sh_path)
-        ps1_stages = parse_ps1_stages(ps1_path)
-        check_mirror(sh_stages, ps1_stages, problems)
-        check_ci_map(set(sh_stages) | set(ps1_stages), parse_ci_steps(ci_path), problems)
-        check_todo_exemptions(root, problems)
-        check_settings(settings_path, root, problems)
+        for shell, path in sorted(shell_paths.items()):
+            if shell not in PREFLIGHT_SHELLS and path.is_file():
+                problems.append(
+                    f"{path} exists but '{shell}' is not in PREFLIGHT_SHELLS -- an "
+                    "undeclared preflight script is unaudited machinery: declare the "
+                    "shell or delete the dead mirror (D-218)."
+                )
+        required = [shell_paths[s] for s in PREFLIGHT_SHELLS] + [ci_path, settings_path]
+        missing = [p for p in required if not p.is_file()]
+        if missing:
+            for p in missing:
+                problems.append(f"ops-config file missing: {p}")
+        else:
+            stages = {
+                s: (parse_sh_stages if s == "sh" else parse_ps1_stages)(shell_paths[s])
+                for s in PREFLIGHT_SHELLS
+            }
+            if len(stages) == 2:
+                check_mirror(stages["sh"], stages["ps1"], problems)
+            else:
+                print(f"single-shell posture {PREFLIGHT_SHELLS!r}: sh <-> ps1 mirror "
+                      "check skipped (PREFLIGHT_SHELLS, D-218)")
+            check_ci_map(set().union(*stages.values()), parse_ci_steps(ci_path), problems)
+            check_todo_exemptions(root, problems)
+            check_if_mirror(ci_path, problems)
+            check_settings(settings_path, root, problems)
 
     if problems:
         print()

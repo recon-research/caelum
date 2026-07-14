@@ -205,6 +205,17 @@ jobs:
         env: { PYTHONIOENCODING: utf-8, PYTHONUTF8: "1" }
         run: python3 scripts/audit_repo_links.py
 
+      # Content-drift staleness (#222): claim-heavy docs (research notes +
+      # ARCHITECTURE) whose referenced files changed after the doc's last commit
+      # — the drift the link audits (existence) and note aging (time) can't see.
+      # WARN-ONLY: always exits 0; promotion to a failing gate is a retrospective
+      # call. Real dates need history — this job's checkout is fetch-depth: 0;
+      # on a shallow clone the script SKIPs loudly instead of guessing.
+      # Mirrored by the `staleness audit (warn-only)` stage in scripts/preflight.{sh,ps1}.
+      - name: Staleness audit (content drift, warn-only)
+        env: { PYTHONIOENCODING: utf-8, PYTHONUTF8: "1" }
+        run: python3 scripts/audit_staleness.py
+
       # Skills load ONLY as .claude/skills/<name>/SKILL.md directories — a flat
       # .md file in skills/ silently fails to load (the layer becomes inert docs).
       - name: Skills are directories
@@ -372,27 +383,44 @@ jobs:
   # where `changes` -> code=false) posts ONE check-run under the UNEXPANDED name
   # `build & test (${{ matrix.os }})`, NOT the per-leg `build & test (ubuntu-latest)` /
   # `(windows-latest)`. So requiring the per-leg names deadlocks every doc-only PR at
-  # "Expected" (verified live on PR #34). This job runs ALWAYS (`if: always()`), so it
-  # posts a real pass/fail on every PR — require `heavy matrix gate` (+ `static gates`),
-  # NOT the matrix legs or `format & lint` directly. It PASSES when build-test AND lint
-  # each SUCCEEDED or were SKIPPED (the legitimate doc-only case) and FAILS if either
-  # failed/cancelled — so a red windows leg or a lint failure still blocks merge. (#32)
+  # "Expected" (verified live on PR #34). Require `heavy matrix gate` (+ `static gates`),
+  # NOT the matrix legs or `format & lint` directly.
+  #
+  # ── #206 (adopted from the pyxis template, replacing the pass-or-skip form): the
+  # earlier `if: always()` + "build-test/lint are success-or-skipped" gate had a hole —
+  # the SAME job-level skip that legitimately fires for a doc-only/posture skip ALSO
+  # fires when the `changes` classifier job itself DIES (checkout/runner infra; its
+  # script is fail-safe, the job is not). Every dependent then skips and the PR reads
+  # green with zero heavy coverage. The fix: run whenever the heavy matrix CAN be in
+  # play (the same disjunction as `changes.if` — the pair is audit-enforced, not
+  # comment-enforced: audit_ops_config.py check 5 fails on drift, #213) and fail iff
+  # `classify changes` ERRORED or a needed heavy job FAILED. Posture/gating/doc-only
+  # skips still pass, so light/manual keep their all-skipped runs. Display name kept
+  # `heavy matrix gate` so the required-check mapping stays stable across this change.
   heavy-gate:
     name: heavy matrix gate
-    needs: [build-test, lint]
-    if: always()
+    needs: [changes, build-test, lint]
+    if: >-
+      always() &&
+      (github.event_name == 'workflow_dispatch' ||
+       startsWith(github.ref, 'refs/tags/') ||
+       vars.CI_POSTURE == 'full' ||
+       (github.event_name == 'pull_request' &&
+        contains(github.event.pull_request.labels.*.name, 'full-ci')))
     runs-on: ubuntu-latest
     steps:
-      - name: Require heavy jobs to have passed or been skipped
+      - name: Aggregate heavy results
         env:
-          BT: ${{ needs.build-test.result }}
-          LT: ${{ needs.lint.result }}
+          CHANGES: ${{ needs.changes.result }}
+          BUILD: ${{ needs['build-test'].result }}
+          LINT: ${{ needs.lint.result }}
         run: |
-          echo "build-test=$BT  lint=$LT"
-          for r in "$BT" "$LT"; do
-            case "$r" in
-              success|skipped) ;;
-              *) echo "::error::heavy job result '$r' — expected success or skipped"; exit 1 ;;
-            esac
-          done
-          echo "heavy matrix gate OK"
+          echo "classify changes: $CHANGES | build & test: $BUILD | format & lint: $LINT"
+          fail=0
+          if [ "$CHANGES" = "failure" ]; then
+            echo "::error::classify changes ERRORED — heavy jobs were skipped for the WRONG reason (infra failure, not doc-only/posture). Zero heavy coverage: re-run the workflow; do not merge on this green (#206)."
+            fail=1
+          fi
+          if [ "$BUILD" = "failure" ]; then echo "::error::build & test failed"; fail=1; fi
+          if [ "$LINT" = "failure" ]; then echo "::error::format & lint failed"; fail=1; fi
+          exit $fail

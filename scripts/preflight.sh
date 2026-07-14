@@ -10,7 +10,9 @@
 # The CI posture (PROJECT_CONVENTIONS.md > Operating posture) paces when CI
 # re-runs these gates; preflight always runs ALL of them, in every posture —
 # in light/manual postures this script IS the heavy-gate evidence.
-# (Windows-native equivalent: scripts/preflight.ps1.)
+# (Windows-native equivalent: scripts/preflight.ps1. Single-shell project?
+# Declare it in scripts/audit_ops_config.py PREFLIGHT_SHELLS and delete the
+# dead mirror — the audit skips the parity checks for absent shells; D-218.)
 #
 # All stages are real (configured by #6). The format/lint/build/test stages need
 # the Node toolchain — when npx isn't on PATH they SKIP (loudly, counted in the
@@ -115,6 +117,11 @@ stage "provenance (deps license + US-origin, D-11)" python3 scripts/check_proven
 stage "doc budgets" python3 scripts/audit_docs.py
 stage "ops-config audit" python3 scripts/audit_ops_config.py
 stage "repo-docs links" python3 scripts/audit_repo_links.py
+
+# Content-drift staleness (#222) — claim-heavy docs (research notes + ARCHITECTURE) whose
+# referenced files changed after the doc's last commit. WARN-ONLY: the script always
+# exits 0; warnings are re-verify prompts. Mirrors ci.yml's "Staleness audit" step.
+stage "staleness audit (warn-only)" python3 scripts/audit_staleness.py
 
 todo_hygiene() {
     # Mirrors ci.yml's hygiene step (same pathspecs, same regex — change both together).
