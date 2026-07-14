@@ -49,7 +49,7 @@ Each milestone has a **goal**, **slices**, a verifiable **exit criterion**, a **
 
 ### M4 — Parity hardening & adoption
 - **Goal:** Make "looks done" = "is done", and make the library adoptable.
-- **Slices:** ☑ **density parity (R4)** — *pulled forward*, shipped #411 (PR #415; runtime `[data-density]` compact arm, Material `density:-2` + `--cae-space-*` re-scale under one selector, target-size floor held; API shape provisional on #412) · ☐ theming polish (visual polish across density × scheme) · ☐ full a11y audit (axe + manual keyboard, every built component) · ☐ visual-regression suite (light+dark, incl. density arms — #240) · ☐ capability ledger green · ☐ adoption / `p-*`→`cae-*` migration guide + usage-mapping doc
+- **Slices:** ☑ **density parity (R4)** — *pulled forward*, shipped #411 (PR #415; runtime `[data-density]` compact arm, Material `density:-2` + `--cae-space-*` re-scale under one selector, target-size floor held; API shape = D-19, ratified #412) · ☐ theming polish (visual polish across density × scheme) · ☐ full a11y audit (axe + manual keyboard, every built component) · ☐ visual-regression suite (light+dark, incl. density arms — #240) · ☐ capability ledger green · ☐ adoption / `p-*`→`cae-*` migration guide + usage-mapping doc
 - **Exit criterion:** the parity checklist is green; the capability ledger shows every shipped component at `adversarial-passed`; the adoption guide is published.
 - **Leverage:** mixed — automation/audit high; final parity judgment ~1×.
 - **Status:** ☐ not started.
