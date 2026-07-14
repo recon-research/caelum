@@ -2,7 +2,7 @@ import { Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import { By } from '@angular/platform-browser';
-import { CaeInputMask } from './input-mask';
+import { CaeInputMask, caeMaskComplete } from './input-mask';
 
 const PHONE = '(999) 999-9999';
 
@@ -357,5 +357,50 @@ describe('CaeInputMask — forms integration', () => {
     expect(host.phone.value).toBe('212');
     expect(host.phone.hasError('minlength')).toBe(true);
     expect(fixture.nativeElement.textContent).toContain('Enter all 10 digits');
+  });
+});
+
+// The *offered* structural-completeness validator (Book 07 §3.2) — a pure `ValidatorFn`, so it needs
+// no fixture. Complements the consumer-side `Validators.minLength(N)` shown above by deriving the
+// editable-slot count from the template itself.
+describe('caeMaskComplete (offered structural validator, #315)', () => {
+  const validate = (mask: string, value: unknown) => caeMaskComplete(mask)(new FormControl(value));
+
+  it('treats empty as valid so it composes with required (empty-skips)', () => {
+    expect(validate(PHONE, '')).toBeNull();
+    expect(validate(PHONE, null)).toBeNull();
+    // Registered alongside `required`: an empty value fires `required`, never `maskIncomplete`.
+    const control = new FormControl('', [Validators.required, caeMaskComplete(PHONE)]);
+    expect(control.hasError('required')).toBe(true);
+    expect(control.hasError('maskIncomplete')).toBe(false);
+  });
+
+  it('passes a fully-filled value', () => {
+    expect(validate(PHONE, '2125550142')).toBeNull();
+  });
+
+  it('fails a partial value with a minlength-shaped { requiredLength, actualLength }', () => {
+    expect(validate(PHONE, '212')).toEqual({
+      maskIncomplete: { requiredLength: 10, actualLength: 3 },
+    });
+  });
+
+  it('counts a masked/keepLiteral view value identically to the unmasked model', () => {
+    // Same 8 data characters whether the control holds the raw model or the decorated view.
+    expect(validate(PHONE, '21255501')).toEqual({
+      maskIncomplete: { requiredLength: 10, actualLength: 8 },
+    });
+    expect(validate(PHONE, '(212) 555-01')).toEqual({
+      maskIncomplete: { requiredLength: 10, actualLength: 8 },
+    });
+    expect(validate(PHONE, '(212) 555-0142')).toBeNull(); // a complete view is valid
+  });
+
+  it('derives requiredLength from the template tokens, excluding literals', () => {
+    // `aa-9999` = 6 editable slots (2 letters + 4 digits); the `-` literal is not counted.
+    expect(validate('aa-9999', 'ab99')).toEqual({
+      maskIncomplete: { requiredLength: 6, actualLength: 4 },
+    });
+    expect(validate('99/99/9999', '12312025')).toBeNull(); // 8 digits fill the 8 token slots
   });
 });
