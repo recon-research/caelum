@@ -15,6 +15,7 @@
     "size:lib": "node scripts/check-lib-size.mjs",
     "check:grid-tree-shake": "node scripts/check-grid-tree-shake.mjs",
     "build:lib": "ng build caelum && npm run attest && npm run size:lib && npm run check:exports && npm run check:grid-tree-shake",
+    "build:lib:fast": "ng build caelum",
     "check:exports": "node scripts/check-lib-exports.mjs"
   },
   "private": true,

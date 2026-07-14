@@ -32,6 +32,13 @@ from pathlib import Path
 STATUS_MAX_LINES = 15     # CLAUDE.md ## Status: non-blank, non-blockquote lines
 MILESTONE_MAX_LINES = 30  # docs/ROADMAP.md: non-blank lines per milestone section
 ROADMAP_MAX_LINES = 400   # docs/ROADMAP.md: total physical lines
+LINE_MAX_CHARS = 700      # any single budgeted line (#402): the line-COUNT budgets above
+                          # only measure height, so journaling drifted *horizontally* --
+                          # per-PR narrative crammed onto one 30k-char physical line passes
+                          # every count budget (and cramming is what dodging the count
+                          # budget rewards). This caps width so narrative can't hide sideways.
+                          # Table rows (leading `|`) are exempt. A trip means the same thing:
+                          # move the narrative to the tracker/git and rewrite the line lean.
 
 # A <fill-me> template field. The shipped docs spell it as HTML entities
 # (&lt;...&gt;) so the placeholders survive GitHub's markdown rendering;
@@ -85,9 +92,24 @@ def check_status(root, problems):
                     "It is the 10-line summary -- detail lives in docs/ROADMAP.md and the "
                     "tracker, never here. Move narrative out; rewrite lines in place."
                 )
+            wide = wide_lines(state)
+            if wide:
+                problems.append(
+                    f"CLAUDE.md ## Status has {len(wide)} state line(s) over {LINE_MAX_CHARS} chars "
+                    f"(longest {max(wide)}). Journaling crept in HORIZONTALLY -- a single line "
+                    "accreting per-PR narrative dodges the line-count budget. Move it to the "
+                    "tracker/git history; rewrite the line lean (a pointer, not a changelog)."
+                )
             return state
     print("(note: CLAUDE.md has no '## Status' heading -- status budget not checked)")
     return None
+
+
+def wide_lines(lines):
+    """Physical lines exceeding the width budget (markdown table rows exempt --
+    a legit `| ... |` row can be wide; prose journaling has no pipes)."""
+    return [len(l) for l in lines
+            if not l.lstrip().startswith("|") and len(l.rstrip()) > LINE_MAX_CHARS]
 
 
 def placeholder_flags(state_lines):
@@ -194,6 +216,13 @@ def check_roadmap(root, problems):
                 "cache -- goal / slices / exit criterion / leverage / status -- "
                 "not a session journal. Move narrative to the issue tracker; "
                 "rewrite the Status line in place instead of appending."
+            )
+        wide = wide_lines(body)
+        if wide:
+            problems.append(
+                f"docs/ROADMAP.md milestone {name} has {len(wide)} line(s) over {LINE_MAX_CHARS} "
+                f"chars (longest {max(wide)}). A milestone line is a state cache, not a session "
+                "journal -- the per-PR narrative belongs in the tracker; rewrite the line lean."
             )
 
 
