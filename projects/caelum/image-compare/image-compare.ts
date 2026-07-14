@@ -49,12 +49,12 @@ const clamp = (v: number, min: number, max: number): number =>
  *
  * **Two `src`/`alt` inputs, not content projection** — rendering the `<img>`s here (vs projecting the
  * consumer's) keeps them fully stylable to overlap exactly and lets the component own the `alt` text; the
- * arbitrary-content variant is a parity extra (deferred). The images should share an aspect ratio.
+ * arbitrary-content variant is a parity extra (deferred to #422). The images should share an aspect ratio.
  *
  * Ships as its own entry point `caelum/image-compare` (the ticket's flagged fork — a distinct substrate
  * from the `caelum/image` dialog-lightbox, so it is not folded in). Token-only styling (Book 04 §3.6).
- * Vertical orientation shipped via `[layout]` (#318); the remaining deferred parity extras
- * (click-the-track-to-jump, a content-projection variant, an i18n `aria-valuetext` formatter) stay in #318.
+ * Vertical orientation (`[layout]`), click-the-track-to-jump (the pointer surface is the whole track), and
+ * an optional i18n `aria-valuetext` formatter all shipped (#318); the content-projection variant is #422.
  */
 @Component({
   selector: 'cae-image-compare',
@@ -64,7 +64,14 @@ const clamp = (v: number, min: number, max: number): number =>
     '[class.cae-image-compare--vertical]': "layout() === 'vertical'",
   },
   template: `
-    <div #track class="cae-image-compare__track">
+    <div
+      #track
+      class="cae-image-compare__track"
+      (pointerdown)="onPointerDown($event)"
+      (pointermove)="onPointerMove($event)"
+      (pointerup)="onPointerUp()"
+      (pointercancel)="onPointerUp()"
+    >
       <!-- Base ("after"): in flow, defines the box; fully visible underneath. -->
       <img class="cae-image-compare__img" [src]="afterSrc()" [alt]="afterAlt()" draggable="false" />
       <!-- Revealed ("before"): absolute overlay, clipped to show pct% from the start edge (inline-start
@@ -76,8 +83,11 @@ const clamp = (v: number, min: number, max: number): number =>
         [style.clip-path]="clipPath()"
         draggable="false"
       />
-      <!-- The divider: an APG window-splitter separator — focusable and keyboard-resizable. -->
+      <!-- The divider: an APG window-splitter separator — focusable and keyboard-resizable. The pointer
+           drag lives on the #track (above) so a press ANYWHERE on the track jumps the divider there and
+           drags from it (slider-track-click UX, #318); the divider only carries the keyboard path. -->
       <div
+        #divider
         class="cae-image-compare__divider"
         role="separator"
         tabindex="0"
@@ -90,10 +100,6 @@ const clamp = (v: number, min: number, max: number): number =>
         [style.inset-inline-start.%]="layout() === 'vertical' ? null : pct()"
         [style.inset-block-start.%]="layout() === 'vertical' ? pct() : null"
         (keydown)="onKeydown($event)"
-        (pointerdown)="onPointerDown($event)"
-        (pointermove)="onPointerMove($event)"
-        (pointerup)="onPointerUp()"
-        (pointercancel)="onPointerUp()"
       >
         <span class="cae-image-compare__handle" aria-hidden="true"></span>
       </div>
@@ -109,6 +115,11 @@ const clamp = (v: number, min: number, max: number): number =>
       overflow: hidden;
       inline-size: 100%;
       line-height: 0;
+      /* The track is the whole drag/jump surface (press anywhere to jump + drag): the resize cursor cues
+         that affordance, and touch-action:none stops a touch-drag from scrolling the page. Both reach the
+         divider/handle/images inside — cursor inherits, touch-action intersects down the subtree. */
+      cursor: ew-resize;
+      touch-action: none;
     }
     .cae-image-compare__img {
       display: block;
@@ -132,9 +143,6 @@ const clamp = (v: number, min: number, max: number): number =>
       display: flex;
       align-items: center;
       justify-content: center;
-      cursor: ew-resize;
-      /* Touch-drag the divider resizes; it must not scroll the page. */
-      touch-action: none;
     }
     .cae-image-compare__handle {
       display: inline-flex;
@@ -173,13 +181,16 @@ const clamp = (v: number, min: number, max: number): number =>
       box-shadow: 0 0 0 4px var(--cae-surface-raised);
     }
     /* --- Vertical layout: a full-width horizontal divider revealing top↔bottom. --- */
+    /* The reveal axis is now block, so the whole surface cues ns-resize (inherits to the divider). */
+    :host(.cae-image-compare--vertical) .cae-image-compare__track {
+      cursor: ns-resize;
+    }
     :host(.cae-image-compare--vertical) .cae-image-compare__divider {
       inset-block: auto;
       inset-inline: 0;
       inline-size: auto;
       block-size: 2px;
       transform: translateY(-50%);
-      cursor: ns-resize;
     }
     /* Re-point the horizontal chevrons to up/down: the reveal axis is now block, so the triangles point
        along it. border-block:0 clears the horizontal-mode transparent caps; border-inline becomes the new
@@ -225,6 +236,13 @@ export class CaeImageCompare implements OnInit {
   readonly value = model<number>(50);
   /** Arrow-key nudge in percentage points (Home/End snap to 0/100; PageUp/Down step by 10). */
   readonly step = input(1, { transform: numberAttribute });
+  /**
+   * Optional formatter for the divider's `aria-valuetext` — localize or enrich the announced string
+   * (e.g. `(pct) => \`${pct}% revealed\``, or a `$localize` template). Receives the rounded integer
+   * percentage; defaults to a locale-neutral `"N%"` when unset (or if it returns an empty string).
+   * (#318; family-wide i18n tracked separately.)
+   */
+  readonly valueTextFormatter = input<(pct: number) => string>();
   /** Accessible name for the divider separator — required for a focusable separator; dev-warns if absent. */
   readonly ariaLabel = input<string>();
   /**
@@ -238,7 +256,9 @@ export class CaeImageCompare implements OnInit {
   readonly layout = input<'horizontal' | 'vertical'>('horizontal');
 
   private readonly track = viewChild.required<ElementRef<HTMLElement>>('track');
-  /** True only while THIS divider's pointer drag is active (set on primary-button pointerdown). */
+  /** The separator element — focused on a track press so the keyboard path works right after a click/drag. */
+  private readonly divider = viewChild.required<ElementRef<HTMLElement>>('divider');
+  /** True only while THIS component's pointer drag is active (set on primary-button pointerdown). */
   private dragging = false;
 
   constructor() {
@@ -256,8 +276,16 @@ export class CaeImageCompare implements OnInit {
   protected readonly pct = computed(() => clamp(this.value(), 0, 100));
   /** Integer for `aria-valuenow` (fractional steps still store precisely in `value`). */
   protected readonly rounded = computed(() => Math.round(this.pct()));
-  /** `aria-valuetext` — the percentage only (locale-neutral; the `ariaLabel` names what is being revealed). */
-  protected readonly valueText = computed(() => `${this.rounded()}%`);
+  /**
+   * `aria-valuetext` — a `[valueTextFormatter]` output when supplied (i18n / enriched, #318), else the
+   * locale-neutral `"N%"` (the `ariaLabel` names *what* is being revealed). A formatter that returns an
+   * empty string also falls back to `"N%"`, so `aria-valuetext` is never present-but-empty (some SRs
+   * announce an empty `aria-valuetext` as no value at all).
+   */
+  protected readonly valueText = computed(() => {
+    const pct = this.rounded();
+    return this.valueTextFormatter()?.(pct) || `${pct}%`;
+  });
 
   /**
    * The separator's `aria-orientation` — the INVERSE of the reveal axis (APG window-splitter convention,
@@ -353,15 +381,17 @@ export class CaeImageCompare implements OnInit {
   protected onPointerDown(event: PointerEvent): void {
     if (event.button !== 0) return; // primary button only (a right/middle click must not move the divider)
     this.dragging = true;
-    const target = event.currentTarget as HTMLElement | null;
-    // Capture so the drag continues while the pointer strays off the thin divider. Guarded: jsdom (and a
-    // synthetic event dispatched in a test) may lack pointerId / setPointerCapture.
+    // Capture on the track (the surface the handlers live on) so the drag continues while the pointer
+    // strays off it. Guarded: jsdom (and a synthetic event dispatched in a test) may lack pointerId /
+    // setPointerCapture.
+    const track = event.currentTarget as HTMLElement | null;
     if (event.pointerId != null) {
-      target?.setPointerCapture?.(event.pointerId);
+      track?.setPointerCapture?.(event.pointerId);
     }
-    // Focus the divider so the keyboard resize path works immediately after a mouse drag. `pointerdown`'s
-    // preventDefault (below) doesn't block focus, but this makes it deterministic across browsers.
-    target?.focus?.();
+    // Focus the DIVIDER (not the pressed track) so the keyboard resize path works immediately after a
+    // click/drag anywhere on the track. `pointerdown`'s preventDefault (below) doesn't block focus, but
+    // this makes it deterministic across browsers — and necessary now the press can land off the divider.
+    this.divider().nativeElement.focus();
     event.preventDefault();
     this.moveFromPointer(event);
   }
