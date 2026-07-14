@@ -12,6 +12,7 @@ import {
 } from '@angular/core';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInput, MatInputModule } from '@angular/material/input';
+import { AbstractControl, ValidationErrors, ValidatorFn } from '@angular/forms';
 import { CaeFormFieldControlBase } from 'caelum/form-field';
 
 /**
@@ -79,6 +80,47 @@ function conform(input: string, slots: MaskSlot[]): { view: string; unmasked: st
 }
 
 /**
+ * An **offered** completeness validator for a masked control — a reusable `ValidatorFn` the consumer
+ * composes onto the `FormControl`, *never auto-applied*, exactly like the offered `caeIban()` /
+ * `caeStrongPassword()` of Book 07 §3.2 (bullet 1). Reports `maskIncomplete` when the value fills
+ * **fewer** than the template's editable slots. Completeness only — `required`, ranges, and "must be
+ * after today" stay the form's own `ValidatorFn`s (§3.2 keeps business rules with the form).
+ *
+ * Why the mask ships one when `cae-input-otp`/`cae-password` deliberately don't: for those a
+ * consumer-known `Validators.minLength(N)` already expresses completeness. For a mask it does *not* —
+ * under `[keepLiteral]` the model is the decorated view, so a naive `minLength(10)` over-counts the
+ * literals (`"(212) 555-01"` is 12 characters but only 8 data chars). This validator canonicalises
+ * the value through the same {@link conform} the component uses, so an unmasked model (`"212555"`), a
+ * `keepLiteral` view (`"(212) 555"`), or any partial all count their real filled slots identically —
+ * and the threshold stays derived from the template rather than a hand-counted literal.
+ *
+ * Opt in by passing the **same** mask string as the `[mask]` input:
+ *
+ * ```ts
+ * new FormControl('', caeMaskComplete('(999) 999-9999'))
+ * ```
+ *
+ * Empty (null / undefined / `''`) returns `null` — emptiness is `Validators.required`'s job, so the
+ * two compose cleanly (as Angular's own `minLength`/`pattern` also skip the empty value). The error
+ * carries `{ requiredLength, actualLength }`, mirroring Angular's built-in `minlength` shape so a
+ * minlength-style message function works unchanged.
+ *
+ * @param mask the mask template — pass the same value as the component's `[mask]` input.
+ */
+export function caeMaskComplete(mask: string): ValidatorFn {
+  const slots = parseMask(mask);
+  const requiredLength = slots.reduce((n, s) => (s.literal ? n : n + 1), 0);
+  return (control: AbstractControl): ValidationErrors | null => {
+    const value: unknown = control.value;
+    if (value == null || value === '') return null; // empty-skips: `required` owns emptiness
+    const actualLength = conform(String(value), slots).unmasked.length;
+    return actualLength < requiredLength
+      ? { maskIncomplete: { requiredLength, actualLength } }
+      : null;
+  };
+}
+
+/**
  * Where the caret belongs after a reformat: just past the `n`-th filled token in `view`, then
  * skipped forward over any following literals so it rests *before the next editable slot* (Book
  * 08 §3.2's "caret lands after the next editable slot"). `n` is the count of data characters that
@@ -137,8 +179,8 @@ function caretForDataIndex(view: string, slots: MaskSlot[], n: number): number {
  *
  * Validation stays the form's: `required`/`pattern`/business rules are the consumer's `ValidatorFn`s
  * surfaced through the inherited `#29/#47` error bridge; this control owns only the mask↔model
- * fidelity. A structural "mask incomplete" validator is an offered follow-up, not auto-applied
- * (Book 07 §3.2, #315).
+ * fidelity. A completeness check is offered, never auto-applied — {@link caeMaskComplete}, an opt-in
+ * `ValidatorFn` the consumer composes onto the control (Book 07 §3.2 bullet 1, #315).
  *
  * a11y: the mask template is a *visual* affordance — pass a `hint` describing the expected format
  * (e.g. `hint="US format — 10 digits"`), which `mat-form-field` links via `aria-describedby` so a
