@@ -697,3 +697,80 @@ describe('CaeCarousel RTL (#276)', () => {
     expect(carousel.page()).toBe(1);
   });
 });
+
+// ---- Vertical orientation (#276) ----
+
+// Fixed orientation="vertical", wrapped in a REAL CDK Dir so the block-axis-is-direction-independent claim
+// can be exercised born-rtl (a seeded FakeDirectionality would pass under both idioms — no teeth, per #364).
+@Component({
+  selector: 'cae-carousel-vertical-host',
+  imports: [CaeCarousel, CaeCarouselItem, Dir],
+  template: `
+    <div [dir]="direction()">
+      <cae-carousel
+        [value]="items()"
+        [orientation]="'vertical'"
+        [verticalViewportHeight]="height()"
+        ariaLabel="Vertical carousel"
+      >
+        <ng-template caeCarouselItem let-item>{{ item }}</ng-template>
+      </cae-carousel>
+    </div>
+  `,
+})
+class CarouselVerticalHost {
+  readonly direction = signal<Direction>('ltr');
+  readonly items = signal<string[]>(['a', 'b', 'c', 'd', 'e', 'f']); // 6 items, numVisible 1 → 6 pages
+  readonly height = signal('20rem');
+}
+
+describe('CaeCarousel vertical (#276)', () => {
+  let fixture: ComponentFixture<CarouselVerticalHost>;
+
+  async function mount(direction: Direction): Promise<CaeCarousel<string>> {
+    await TestBed.configureTestingModule({ imports: [CarouselVerticalHost] }).compileComponents();
+    fixture = TestBed.createComponent(CarouselVerticalHost);
+    fixture.componentInstance.direction.set(direction); // set before first CD → born-rtl for the RTL case
+    document.body.appendChild(fixture.nativeElement);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    return fixture.debugElement.query(By.directive(CaeCarousel)).componentInstance;
+  }
+
+  const carouselEl = (): HTMLElement =>
+    fixture.nativeElement.querySelector('.cae-carousel') as HTMLElement;
+  const viewportVar = (): string =>
+    (
+      fixture.nativeElement.querySelector('.cae-carousel__viewport') as HTMLElement
+    ).style.getPropertyValue('--cae-carousel-viewport-block-size');
+  const transform = (): string =>
+    (fixture.nativeElement.querySelector('.cae-carousel__track') as HTMLElement).style.transform;
+
+  afterEach(() => fixture?.nativeElement.remove());
+
+  it('stacks the window on the block axis (translateY) and sizes the viewport from verticalViewportHeight', async () => {
+    const carousel = await mount('ltr');
+    expect(carouselEl().classList.contains('cae-carousel--vertical')).toBe(true);
+    // The bound height flows to the CSS custom property the vertical viewport reads its block-size from.
+    expect(viewportVar()).toBe('20rem');
+
+    carousel.goTo(1); // windowStart 1, itemBasis 100% → offset 100%, on the block axis
+    fixture.detectChanges();
+    expect(transform()).toBe('translateY(-100%)'); // Y, not X — the vertical branch
+
+    // A custom height flows through too (guards against a hardcoded viewport size).
+    fixture.componentInstance.height.set('400px');
+    fixture.detectChanges();
+    expect(viewportVar()).toBe('400px');
+  });
+
+  it('keeps the vertical transform on the block axis under a born-rtl [dir] (no inline mirror)', async () => {
+    const carousel = await mount('rtl'); // the block axis is direction-independent
+    expect(carouselEl().classList.contains('cae-carousel--rtl')).toBe(true);
+    carousel.goTo(1);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    // Still translateY(-100%): NOT translateX, and NOT the positive RTL flip a horizontal carousel would use.
+    expect(transform()).toBe('translateY(-100%)');
+  });
+});

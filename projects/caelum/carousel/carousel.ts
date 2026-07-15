@@ -75,11 +75,20 @@ export interface CaeCarouselResponsiveOption {
  * narrowest match wins, and the window **re-resolves live** as the viewport crosses a breakpoint (browser
  * only — SSR / no `matchMedia` keeps the base window). #276.
  *
+ * **Orientation.** {@link orientation} `'vertical'` stacks the sliding window on the block axis (translateY)
+ * inside a definite-height viewport ({@link verticalViewportHeight}, `p-carousel`'s `verticalViewPortHeight`);
+ * the indicator group's roving keys already cover both axes (Up/Down navigate, and Left/Right too), and
+ * because the block axis is direction-independent a vertical carousel is unaffected by RTL. Horizontal
+ * (default) is unchanged. #276.
+ *
  * **v1 scope** (#273): fixed horizontal window, circular, autoplay (+pause/stop/reduced-motion), prev/next,
- * indicators, keyboard, full ARIA, content projection. Follow-ups (#276): vertical orientation,
- * touch/CDK-drag swipe-to-advance (buttons + arrows already give the full keyboard path, §3.5 gate 1, so
- * swipe is an enhancement, not a parity gap), and focus restoration when a focused slide is removed from
- * the window (see the focus note below).
+ * indicators, keyboard, full ARIA, content projection. Follow-ups (#276): touch/CDK-drag swipe-to-advance
+ * (buttons + arrows already give the full keyboard path, §3.5 gate 1, so swipe is an enhancement, not a
+ * parity gap), a seamless circular loop (clone edge items for an uninterrupted wrap — the index-wrap
+ * {@link circular} is complete, but the transform jumps at the boundary), and focus restoration when a
+ * focused slide is removed from the window (see the focus note below). Vertical mode ships with a horizontal
+ * control bar (up/down chevrons); stacking the nav buttons prev-above/next-below for full `p-carousel`
+ * layout parity is #445.
  *
  * **Focus note (M4, #276).** Autoplay pauses on focus, and indicator/button paging moves focus off the
  * slide first, so those paths are safe. But a window shift that leaves a focused slide behind — a consumer
@@ -97,6 +106,7 @@ export interface CaeCarouselResponsiveOption {
   host: {
     class: 'cae-carousel',
     '[class.cae-carousel--rtl]': 'isRtl()',
+    '[class.cae-carousel--vertical]': 'isVertical()',
     role: 'group',
     // roledescription only when NAMED — an unnamed aria-roledescription="carousel" is announced as a
     // nameless "carousel" (worse than none); the dev-warn nudges the consumer to set [ariaLabel].
@@ -108,7 +118,7 @@ export interface CaeCarouselResponsiveOption {
     '(focusout)': '_focused.set(false)',
   },
   template: `
-    <div class="cae-carousel__viewport">
+    <div class="cae-carousel__viewport" [style.--cae-carousel-viewport-block-size]="vpBlockSize()">
       <!-- The track holds EVERY item; only the current window is non-inert. aria-live is polite when idle
            (a page change announces the revealed slides) and off while autoplaying (no rotation spam). -->
       <div
@@ -283,6 +293,30 @@ export interface CaeCarouselResponsiveOption {
     .cae-carousel--rtl .cae-carousel__chevron--next {
       transform: rotate(135deg);
     }
+    /* Vertical orientation (#276): stack the track on the block axis and give the viewport a definite height
+       (from --cae-carousel-viewport-block-size, set by [verticalViewportHeight]) so the slides' flex-basis%
+       resolves against a real height and the overflow clips; block-size:100% on the track lets that percentage
+       basis resolve. The block axis is direction-independent, so the transform drops the RTL mirror (see
+       trackTransform) and these chevron rules follow the RTL ones above so vertical wins when both apply. The
+       layout itself (flex-basis resolution, chevron glyph direction) is confirmed in the #240 browser pass —
+       jsdom does no layout, so the specs verify the wiring (custom property + transform), not the paint. */
+    .cae-carousel--vertical .cae-carousel__viewport {
+      block-size: var(--cae-carousel-viewport-block-size);
+    }
+    .cae-carousel--vertical .cae-carousel__track {
+      flex-direction: column;
+      block-size: 100%;
+    }
+    .cae-carousel--vertical .cae-carousel__item {
+      min-block-size: 0;
+    }
+    /* Prev points up, next points down (the base chevron is the bottom-right corner; -135°/45° re-aim it). */
+    .cae-carousel--vertical .cae-carousel__chevron--prev {
+      transform: rotate(-135deg);
+    }
+    .cae-carousel--vertical .cae-carousel__chevron--next {
+      transform: rotate(45deg);
+    }
     /* Play triangle / pause bars, drawn from currentColor. */
     .cae-carousel__play-icon {
       display: inline-block;
@@ -351,6 +385,20 @@ export class CaeCarousel<T = unknown> {
   /** Items advanced per step (default 1; clamped to ≥ 1). */
   readonly numScroll = input(1);
   /**
+   * Layout axis (`p-carousel` parity). `'horizontal'` (default) lays the sliding window out inline and
+   * navigates Left/Right; `'vertical'` stacks it on the block axis (translateY), navigates Up/Down, and
+   * gives the viewport a definite height ({@link verticalViewportHeight}). The block axis is
+   * direction-independent, so a vertical carousel does **not** mirror under RTL. #276.
+   */
+  readonly orientation = input<'horizontal' | 'vertical'>('horizontal');
+  /**
+   * The viewport height in {@link orientation} `'vertical'` mode (`p-carousel`'s `verticalViewPortHeight`).
+   * A vertical window needs a definite height for the slides' `flex-basis` to resolve and the overflow to
+   * clip; this input sets the viewport's `block-size` (any CSS length, default `20rem`), and is ignored in
+   * horizontal mode (where the content sizes the box). #276.
+   */
+  readonly verticalViewportHeight = input('20rem');
+  /**
    * Responsive overrides for {@link numVisible} / {@link numScroll} by viewport width — see
    * {@link CaeCarouselResponsiveOption} for the matching rules (`p-carousel` parity). Re-evaluated live as
    * the viewport crosses a breakpoint (browser only — SSR / no `matchMedia` keeps the base window). Bind a
@@ -391,6 +439,8 @@ export class CaeCarousel<T = unknown> {
    */
   private readonly directionality = inject(Directionality);
   protected readonly isRtl = computed(() => this.directionality.value === 'rtl');
+  /** Whether the carousel stacks on the block axis (vertical) rather than inline (horizontal). #276. */
+  protected readonly isVertical = computed(() => this.orientation() === 'vertical');
   /**
    * This carousel's own indicator buttons. A **view query** auto-scopes to THIS component's view — a nested
    * `<cae-carousel>` inside a slide keeps its dots in the child's view, invisible here — so focus-by-index
@@ -489,13 +539,23 @@ export class CaeCarousel<T = unknown> {
   /** Each slide's flex-basis as a percentage of the viewport (100 / numVisible). */
   protected readonly itemBasis = computed(() => 100 / this.visibleCount());
   /**
-   * The track's translate offset (percent), by whole items. In RTL the flex row lays items inline-start
-   * (right) → inline-end, so the window mirrors: the track translates toward the inline-start (positive X)
-   * instead of negative X — read reactively off {@link isRtl}.
+   * The vertical viewport height, surfaced as the `--cae-carousel-viewport-block-size` custom property
+   * consumed by the CSS in vertical mode; `null` in horizontal (the content sizes the box). #276.
    */
-  protected readonly trackTransform = computed(
-    () => `translateX(${this.isRtl() ? '' : '-'}${this.windowStart() * this.itemBasis()}%)`,
+  protected readonly vpBlockSize = computed<string | null>(() =>
+    this.isVertical() ? this.verticalViewportHeight() : null,
   );
+  /**
+   * The track's translate offset (percent), by whole items. Vertical stacks on the block axis, which is
+   * direction-independent, so it always translates up (negative Y) — RTL never applies. Horizontal mirrors
+   * under RTL: the flex row lays items inline-start (right) → inline-end, so the window translates toward the
+   * inline-start (positive X) instead of negative X — read reactively off {@link isRtl}. #276.
+   */
+  protected readonly trackTransform = computed(() => {
+    const offset = this.windowStart() * this.itemBasis();
+    if (this.isVertical()) return `translateY(-${offset}%)`;
+    return `translateX(${this.isRtl() ? '' : '-'}${offset}%)`;
+  });
 
   /** `[0, 1, …, totalPages-1]` — drives the indicator `@for`. */
   protected readonly pages = computed(() => Array.from({ length: this.totalPages() }, (_, i) => i));
