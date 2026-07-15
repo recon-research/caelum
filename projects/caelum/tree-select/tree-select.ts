@@ -5,14 +5,16 @@ import {
   computed,
   effect,
   forwardRef,
+  inject,
   input,
   isDevMode,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
-import { MatTreeModule } from '@angular/material/tree';
-import { A11yModule } from '@angular/cdk/a11y';
+import { MatTree, MatTreeModule } from '@angular/material/tree';
+import { A11yModule, LiveAnnouncer } from '@angular/cdk/a11y';
 import { CdkOverlayOrigin, OverlayModule } from '@angular/cdk/overlay';
 import type { ConnectedPosition } from '@angular/cdk/overlay';
 // Type-only (erased at runtime — no bundle coupling): tree-select reuses the tree node model
@@ -55,7 +57,14 @@ let nextUniqueId = 0;
  * `ariaLabelledby`. Selection feedback is consumer-owned (Caelum's `#47` pattern for non-`mat-form-field`
  * selection controls, as in `cae-listbox`/`cae-radio`/`cae-select-button`): point `ariaDescribedby` at
  * your error/hint text and pair with a form-level live region for submit-time announcement; `required`
- * sets `aria-required`. Real-browser SR/focus verification is deferred to M4 (like #263/#41).
+ * sets `aria-required`. On open, focus starts on the first selected node (APG select-only-combobox, via
+ * `cdkFocusInitial` — the trap's auto-capture lands there instead of the first node), falling back to the
+ * first node when nothing selected is currently rendered (a selected descendant of a collapsed parent is
+ * not in the DOM). In `multiple` mode — where the panel stays open and `aria-selected` flips silently —
+ * each toggle is announced with the running count via `LiveAnnouncer` (#281); the count is genuinely new
+ * information, though on some screen readers it may double-speak the label alongside the just-focused node's
+ * `aria-selected` state (an M4 real-browser tuning item). Real-browser SR/focus verification is deferred to
+ * M4 (like #263/#41).
  *
  * Token-only theming (surface/elevation/border/focus-ring from `--cae-*`; Book 04 §3.6). No foreign
  * library. Zoneless-compatible: `OnPush` + signal state (provisional on #9; Book 01 §3.2).
@@ -123,6 +132,7 @@ let nextUniqueId = 0;
           <mat-tree-node
             *matTreeNodeDef="let node"
             [attr.aria-selected]="ariaSelected(node)"
+            [attr.cdkFocusInitial]="isFocusInitial(node) ? '' : null"
             (activation)="onActivate(node)"
             (click)="onActivate(node, $event)"
           >
@@ -143,6 +153,7 @@ let nextUniqueId = 0;
             *matTreeNodeDef="let node; when: hasChild"
             [isExpandable]="true"
             [attr.aria-selected]="ariaSelected(node)"
+            [attr.cdkFocusInitial]="isFocusInitial(node) ? '' : null"
             (activation)="onActivate(node)"
             (click)="onActivate(node, $event)"
           >
@@ -318,6 +329,13 @@ export class CaeTreeSelect implements ControlValueAccessor {
   protected readonly selectedValues = signal<readonly string[]>([]);
   private readonly formDisabled = signal(false);
   protected readonly isDisabled = computed(() => this.disabled() || this.formDisabled());
+  /**
+   * The key whose node auto-capture focus lands on when the panel opens (APG select-only-combobox): the
+   * first selected key. EXACTLY ONE node is marked `cdkFocusInitial`, and the reveal effect expands that
+   * same key's ancestors — so the marked node is always the revealed (focusable) one, never a hidden
+   * later-selected sibling that `querySelector('[cdkFocusInitial]')` would otherwise pick in DOM order.
+   */
+  protected readonly focusInitialKey = computed<string | undefined>(() => this.selectedValues()[0]);
 
   /** Whether the overlay panel is open. */
   protected readonly isOpen = signal(false);
@@ -328,6 +346,12 @@ export class CaeTreeSelect implements ControlValueAccessor {
 
   /** The trigger origin — read for its width when opening. */
   private readonly origin = viewChild(CdkOverlayOrigin);
+
+  /** Polite announcer for multi-select toggles (the panel stays open, so aria-selected flips silently). */
+  private readonly announcer = inject(LiveAnnouncer);
+
+  /** The rendered panel tree — reached to reveal (expand-to) the selected node when the panel opens. */
+  private readonly treeRef = viewChild(MatTree);
 
   /** Below-start with a flip-to-above fallback so the panel never clips off-viewport. */
   protected readonly positions: ConnectedPosition[] = [
@@ -360,6 +384,43 @@ export class CaeTreeSelect implements ControlValueAccessor {
         );
       }
     });
+    // On open, reveal (expand-to) the first selected node so it is not inside a collapsed, display:none
+    // subtree — then `cdkFocusInitial` lands the trap's auto-capture focus on it (APG select-only-combobox,
+    // a11y F2 #281). Runs once per open: `isOpen`/`treeRef` are the ONLY tracked deps (a fresh tree is created
+    // on each open); the selection and node walk are read untracked, so neither a mid-open multi-select toggle
+    // nor a re-emitted `nodes()` reference re-runs the reveal (which would fight a user's manual collapse).
+    // A no-op when nothing is selected or the key isn't in the tree (auto-capture's first-node focus stands).
+    effect(() => {
+      if (!this.isOpen()) return;
+      const tree = this.treeRef();
+      if (!tree) return;
+      untracked(() => {
+        const firstKey = this.focusInitialKey();
+        if (firstKey == null) return;
+        for (const ancestor of this.ancestorPath(firstKey)) tree.expand(ancestor);
+      });
+    });
+  }
+
+  /**
+   * The ancestor nodes from a root down to (but not including) the node holding `key`, in order — the
+   * path to expand so a selected node is revealed. `[]` if the key isn't found or is itself a root.
+   */
+  private ancestorPath(key: string): CaeTreeNode[] {
+    const path: CaeTreeNode[] = [];
+    const find = (nodes: readonly CaeTreeNode[]): boolean => {
+      for (const node of nodes) {
+        if (node.value === key) return true;
+        if (node.children?.length) {
+          path.push(node);
+          if (find(node.children)) return true;
+          path.pop();
+        }
+      }
+      return false;
+    };
+    find(this.nodes());
+    return path;
   }
 
   // --- Panel rendering (mat-tree data API, mirrors cae-tree) ---
@@ -413,6 +474,14 @@ export class CaeTreeSelect implements ControlValueAccessor {
   /** Whether this node is selected (null-safe: a node without a `value` is never selectable). */
   protected isNodeSelected(node: CaeTreeNode): boolean {
     return node.value != null && this.isSelected(node.value);
+  }
+  /**
+   * Whether this node is the SINGLE auto-capture focus target on open — the first selected key's node
+   * (see {@link focusInitialKey}). Null-safe so an empty selection (`focusInitialKey === undefined`)
+   * never matches a navigational node's absent `value`.
+   */
+  protected isFocusInitial(node: CaeTreeNode): boolean {
+    return node.value != null && node.value === this.focusInitialKey();
   }
   /**
    * `aria-selected` for a node. Dropped (`null`) for a navigational node. In SINGLE mode it is set
@@ -474,11 +543,18 @@ export class CaeTreeSelect implements ControlValueAccessor {
     const key = node.value;
     if (key == null) return; // navigational node — not selectable
     if (this.multiple()) {
-      const next = this.isSelected(key)
+      const wasSelected = this.isSelected(key);
+      const next = wasSelected
         ? this.selectedValues().filter((value) => value !== key)
         : [...this.selectedValues(), key];
       this.selectedValues.set(next);
       this.onChangeFn([...next]);
+      // Multi-select keeps the panel open and flips aria-selected silently; announce the toggle + the
+      // running count so a screen-reader user gets feedback (a11y F6, #281). Single mode needs none — it
+      // closes on pick and the trigger's new value is announced when focus returns to it.
+      this.announcer.announce(
+        `${node.label} ${wasSelected ? 'deselected' : 'selected'}, ${next.length} selected`,
+      );
     } else {
       // Re-picking the already-selected node is a no-op on the value — skip the spurious re-emit.
       if (!(this.selectedValues().length === 1 && this.selectedValues()[0] === key)) {
