@@ -147,13 +147,36 @@ export class CaeScrollPanel {
 
     afterNextRender(() => {
       this.measureOverflow();
-      // Re-measure whenever the container OR its content changes size (native, US-clean). Absent in some
+      // Re-measure whenever the container OR its content changes SIZE (native, US-clean). Absent in some
       // non-DOM/SSR runtimes and in jsdom — guarded; the initial measure above still runs.
-      if (typeof ResizeObserver === 'undefined') return;
-      const ro = new ResizeObserver(() => this.measureOverflow());
-      ro.observe(this.host.nativeElement);
-      ro.observe(this.content().nativeElement);
-      destroyRef.onDestroy(() => ro.disconnect());
+      if (typeof ResizeObserver !== 'undefined') {
+        const ro = new ResizeObserver(() => this.measureOverflow());
+        ro.observe(this.host.nativeElement);
+        ro.observe(this.content().nativeElement);
+        destroyRef.onDestroy(() => ro.disconnect());
+      }
+      // Fallback for a purely-HORIZONTAL, post-mount content change that no ResizeObserver box reports (#329):
+      // the content wrapper is `display:block`, so its content-box width is clamped to the host and a
+      // `white-space:nowrap` child growing wider than the box resizes neither observed box — leaving a
+      // genuinely-scrollable region non-focusable (axe `scrollable-region-focusable`). A MutationObserver on
+      // the content subtree catches the DOM changes that drive such growth: appended/removed nodes and text
+      // (`childList`/`characterData`) plus `style`/`class` width toggles on existing nodes (`attributes`,
+      // filtered to those two so unrelated aria/data/state churn doesn't force needless re-measures). It writes
+      // only to the HOST (tabindex/role — an ancestor, outside this subtree), so the callback can't loop; MO
+      // batches records per microtask, so a burst re-measures once. Safe to skip under SSR (guarded); the
+      // initial measure above still runs. Residual gap: width driven purely by external CSS (a stylesheet swap,
+      // `:hover`, a container query) with no mutation at all — genuinely rare; documented on `measureOverflow`.
+      if (typeof MutationObserver !== 'undefined') {
+        const mo = new MutationObserver(() => this.measureOverflow());
+        mo.observe(this.content().nativeElement, {
+          childList: true,
+          subtree: true,
+          characterData: true,
+          attributes: true,
+          attributeFilter: ['style', 'class'],
+        });
+        destroyRef.onDestroy(() => mo.disconnect());
+      }
     });
   }
 
@@ -163,10 +186,18 @@ export class CaeScrollPanel {
    * flip to "overflowing" (and add a spurious tab stop). Exposed so tests can drive it deterministically
    * (jsdom reports zero for every layout metric).
    *
-   * Known limitation (#329): the `ResizeObserver` can miss a purely *horizontal*, post-mount content change
-   * (a `white-space:nowrap` node that grows wider than the box with no height change and no host resize),
-   * since neither observed box reports it. The initial measure catches statically-wide content and vertical
-   * growth is always caught, so this is a narrow edge — tracked, not closed, per the Build-S scope.
+   * Triggers (#329): the initial `afterNextRender` measure catches statically-wide/tall content; a
+   * `ResizeObserver` (host + content) catches host resize and vertical growth; a `MutationObserver` on the
+   * content subtree catches the DOM changes that drive a purely-*horizontal*, post-mount `white-space:nowrap`
+   * growth the RO boxes can't report — appended/changed nodes and text, plus `style`/`class` width toggles on
+   * existing nodes. Each observer callback re-measures (a layout read), batched per mutation/resize; cheap and
+   * de-duped by the `overflowing` signal. The one residual gap is a width change driven purely by external CSS
+   * (a stylesheet swap, `:hover`, a container query) with no mutation at all — no observer can see it and it's
+   * genuinely rare, so it's documented rather than chased with a poll. Landmark churn from repeated threshold
+   * crossings during an *animated* resize is accepted as-is: the `overflowing` signal de-dups to genuine
+   * crossings, the `tabindex="-1"` retention removes the tab-stop churn while focused, and the residual
+   * `role="region"` re-announcement is rare enough that a hysteresis band's complexity isn't warranted
+   * (weighed and declined per #329).
    */
   protected measureOverflow(): void {
     const el = this.host.nativeElement;
