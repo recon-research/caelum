@@ -1,11 +1,11 @@
 ---
 name: catch_up
-description: Give the owner a read-only big-picture briefing — project health, what just landed, what's in flight, what's next, decisions waiting — synthesized from the Status anchors and the tracker, with zero writes and no work started. Use when the user says "catch me up", "big picture", "status report", "how's it going", "where are we", "what's the state of things" — a check-in, not a session start. Resuming work is onboard's job; this skill never claims, fixes, or resumes.
+description: Give the owner a read-only big-picture briefing — project health, what just landed, what's in flight, what's next, decisions waiting — synthesized from the Status anchors and the tracker, with zero writes and no work started. Use when the user says "catch me up", "big picture", "status report", "how's it going", "where are we", "what's the state of things" — a check-in, not a session start. Resuming work is onboard's job; lead-dev-depth explanation (meeting prep, decision rationale, drill) is deep_brief's; this skill never claims, fixes, or resumes.
 ---
 
 # Catch Up (read-only owner briefing)
 
-The check-in complement to `onboard`: the owner wants to know where things stand, without a session spinning up work. Everything here is READ-ONLY — a reader needs no claim under the concurrent-writer protocol, which makes this safe to run from any machine while builder sessions are live. Repo, labels, and CI posture come from `PROJECT_CONVENTIONS.md`.
+The check-in complement to `onboard`: the owner wants to know where things stand, without a session spinning up work. Everything here is READ-ONLY — a reader needs no claim under the concurrent-writer protocol, which makes this safe to run from any machine while builder sessions are live. Repo, labels, and CI posture come from `PROJECT_CONVENTIONS.md`. The deep, human-audience briefing — explain/defend the project, meeting prep, drill — is [`deep_brief`](../deep_brief/SKILL.md)'s job; this one stays the cheap check-in.
 
 ## Procedure
 

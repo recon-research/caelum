@@ -32,6 +32,7 @@ Set-Location (Split-Path -Parent $PSScriptRoot)
 $script:Failed = $false
 $script:Skipped = 0
 $Watch = [System.Diagnostics.Stopwatch]::new()
+$Total = [System.Diagnostics.Stopwatch]::StartNew()
 
 function Skip-Stage {
     # An unconfigured placeholder: reports SKIP (counted in the summary) instead
@@ -151,6 +152,16 @@ Invoke-Stage 'todo hygiene (vs origin/main)' {
         $global:LASTEXITCODE = 1
     }
 }
+
+# Slice telemetry (fail-open, #255): total gate duration -> the local ledger
+# (.claude/metrics/preflight_times.jsonl); metrics.py trends it as the
+# suite-growth lens. Never blocks: any failure here is swallowed.
+try {
+    $failedFlag = 0; if ($script:Failed) { $failedFlag = 1 }
+    python3 scripts/slice_telemetry.py preflight ([int]$Total.Elapsed.TotalSeconds) $failedFlag $script:Skipped *> $null
+}
+catch {}
+$global:LASTEXITCODE = 0
 
 if ($script:Failed) {
     Write-Host 'PREFLIGHT: FAIL - do not push' -ForegroundColor Red

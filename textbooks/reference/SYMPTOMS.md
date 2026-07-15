@@ -6,6 +6,8 @@ The "something's wrong, where do I start?" table, keyed on how a user actually d
 
 | Symptom (user's words) | Likely cause | Go to |
 |---|---|---|
+| "Tests pass but it's wrong — how did this get past the suite?" | the tests' only oracle is the code's own report of what it did | [ANTI_PATTERNS.md](ANTI_PATTERNS.md) "The Self-Reporting Oracle" |
+<!-- ^ pre-seeded universal row — keep (matches ANTI_PATTERNS › Universal entries, #244) -->
 <!-- EXAMPLE — replace -->
 | "`<EXAMPLE_SYSTEM>` is slow when I `<do X>`" | `<TERM>` recomputed every cycle; no caching | [ANTI_PATTERNS.md](ANTI_PATTERNS.md) "Premature `<TERM>`"; Book NN §X |
 | "The `<output>` is wrong / off by `<amount>`" | `<wrong assumption — e.g. units, ordering, stale state>` | [ANTI_PATTERNS.md](ANTI_PATTERNS.md) "`<name>`"; Book NN §X |

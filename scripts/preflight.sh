@@ -136,6 +136,11 @@ todo_hygiene() {
 }
 stage "todo hygiene (vs origin/main)" todo_hygiene
 
+# Slice telemetry (fail-open, #255): total gate duration -> the local ledger
+# (.claude/metrics/preflight_times.jsonl); metrics.py trends it as the
+# suite-growth lens. Never blocks: any failure here is swallowed.
+python3 scripts/slice_telemetry.py preflight "$SECONDS" "$FAILED" "$SKIPPED" >/dev/null 2>&1 || true
+
 if [ "$FAILED" -ne 0 ]; then
     echo "PREFLIGHT: FAIL — do not push"
     exit 1
