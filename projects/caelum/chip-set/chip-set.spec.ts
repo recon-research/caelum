@@ -235,6 +235,74 @@ describe('CaeChipSet', () => {
     expect(document.activeElement).toBe(extBtn); // not yanked to the empty-focus target
   });
 
+  it('dev-warns when [emptyFocusTarget] is non-focusable and does not receive focus (#206)', async () => {
+    // The DX guard: a target missing tabindex="-1" (or detached) makes .focus() a silent no-op, dropping
+    // the keyboard user to <body> — same as no redirect, but hidden. Here the target is a plain <p> (not
+    // focusable), so after the emptying removal focus does NOT land on it and the dev-warn must fire. This
+    // FAILS if the post-focus warn is removed. jsdom respects tabindex-focusability (the tabindex="-1"
+    // TargetHost above lands focus; this one cannot), so the distinction has teeth.
+    @Component({
+      imports: [CaeChipSet],
+      template: `
+        <cae-chip-set
+          [items]="items()"
+          [emptyFocusTarget]="statusRef()"
+          (removed)="onRemoved($event)"
+        />
+        <p #status>status</p>
+      `,
+    })
+    class NonFocusableTargetHost {
+      items = signal<readonly string[]>(['solo']);
+      readonly statusRef = viewChild<ElementRef<HTMLElement>>('status');
+      onRemoved(e: CaeChipRemoveEvent<string>): void {
+        this.items.update((l) => l.filter((t) => t !== e.item));
+      }
+    }
+    const warnings: string[] = [];
+    const realWarn = console.warn;
+    console.warn = (m?: unknown) => warnings.push(String(m));
+    try {
+      await TestBed.configureTestingModule({
+        imports: [NonFocusableTargetHost],
+      }).compileComponents();
+      const f = TestBed.createComponent(NonFocusableTargetHost);
+      el = f.nativeElement as HTMLElement;
+      document.body.appendChild(el);
+      f.detectChanges();
+      await f.whenStable();
+      const soloRemove = removeBtn(rows(f)[0])!;
+      soloRemove.focus();
+      expect(grid(f).contains(document.activeElement)).toBe(true); // focus held in the set at removal
+      soloRemove.click(); // remove the last chip -> the set empties, afterNextRender fires the failed focus
+      await settle(f);
+      expect(rows(f).length).toBe(0);
+      expect(document.activeElement).not.toBe(f.componentInstance.statusRef()!.nativeElement); // focus did NOT land
+      expect(warnings.some((w) => w.includes('did not receive focus'))).toBe(true);
+    } finally {
+      console.warn = realWarn;
+    }
+  });
+
+  it('does NOT dev-warn when [emptyFocusTarget] receives focus (no false positive) (#206)', async () => {
+    // Locks the guard's condition: with a focusable target (tabindex="-1"), focus lands and the warn must
+    // stay silent. FAILS if the warn is made unconditional.
+    const warnings: string[] = [];
+    const realWarn = console.warn;
+    console.warn = (m?: unknown) => warnings.push(String(m));
+    try {
+      const f = await makeTarget();
+      const soloRemove = removeBtn(rows(f)[0])!;
+      soloRemove.focus();
+      soloRemove.click();
+      await settle(f);
+      expect(document.activeElement).toBe(f.componentInstance.statusRef()!.nativeElement); // focus landed
+      expect(warnings.some((w) => w.includes('did not receive focus'))).toBe(false);
+    } finally {
+      console.warn = realWarn;
+    }
+  });
+
   it('names the set via aria-label', async () => {
     const f = await makeString((h) => (h.ariaLabel = 'Workspace tags'));
     expect(grid(f).getAttribute('aria-label')).toBe('Workspace tags');
