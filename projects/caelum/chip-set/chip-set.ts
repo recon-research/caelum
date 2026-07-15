@@ -26,8 +26,9 @@ export interface CaeChipRemoveEvent<T> {
  * dropped to `<body>` — the bug a plain chip hits even when siblings exist). Removing the **last** chip
  * leaves no in-set target; bind {@link emptyFocusTarget} to place focus on the now-empty set (e.g. a
  * status region) — else the consumer manages it, as the Forge demo did (#202). Maps to a removable chip
- * **list** (`p-chip` rows); a text-entry tag field (`p-chips` over an input), a selectable listbox, and
- * **per-item `removable`/`disabled`** (#201) are deferred follow-ups.
+ * **list** (`p-chip` rows) with **per-item `[chipRemovable]`/`[chipDisabled]`** accessors (#201) for mixed
+ * lists of removable, locked, and disabled chips; a text-entry tag field (`p-chips` over an input) and a
+ * selectable listbox remain deferred follow-ups.
  *
  * **Why `mat-chip-grid`/`mat-chip-row` (not `mat-chip-set`/`mat-chip`).** Material's roving
  * `FocusKeyManager` and focus-redirect both live in the base `MatChipSet`, but the redirect calls
@@ -67,18 +68,24 @@ export interface CaeChipRemoveEvent<T> {
       [attr.aria-labelledby]="ariaLabelledby() || null"
     >
       @for (item of items(); track item; let i = $index) {
-        <mat-chip-row removable (removed)="onRemoved(item, i)">
+        <mat-chip-row
+          [removable]="isRemovable(item)"
+          [disabled]="isDisabled(item)"
+          (removed)="onRemoved(item, i)"
+        >
           {{ label()(item) }}
-          <button matChipRemove type="button" [attr.aria-label]="removeAriaLabelFor(item)">
-            <svg
-              class="cae-chip-set__remove-glyph"
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-              focusable="false"
-            >
-              <path d="M6 6 L18 18 M6 18 L18 6" />
-            </svg>
-          </button>
+          @if (isRemovable(item)) {
+            <button matChipRemove type="button" [attr.aria-label]="removeAriaLabelFor(item)">
+              <svg
+                class="cae-chip-set__remove-glyph"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <path d="M6 6 L18 18 M6 18 L18 6" />
+              </svg>
+            </button>
+          }
         </mat-chip-row>
       }
     </mat-chip-grid>
@@ -120,15 +127,34 @@ export class CaeChipSet<T = string> implements OnInit {
    */
   readonly removeAriaLabel = input<((item: T) => string) | null>(null);
 
+  /**
+   * Per-item predicate for whether a chip is removable — mirrors the {@link label} accessor shape (#201).
+   * Defaults to `() => true` (every chip removable, the v1 behaviour). Return `false` to render a **locked**
+   * chip: no × affordance and no remove request. A {@link chipDisabled} chip is always locked regardless of
+   * this, so a mixed list can hold both removable, non-removable, and disabled chips.
+   */
+  readonly chipRemovable = input<(item: T) => boolean>(() => true);
+
+  /**
+   * Per-item predicate for whether a chip is disabled — mirrors the {@link label} accessor shape (#201).
+   * Defaults to `() => false`. A disabled chip is greyed and `aria-disabled` (Material handles the presentation
+   * and removes it from actioning), and is implicitly **locked** — its × is dropped — so a keyboard user can't
+   * remove a chip that is meant to be inert. Material also drops a disabled chip from the roving tab order, so
+   * it is **not keyboard-reachable**; for a value that must stay readable/focusable but not removable, use a
+   * **locked** chip (`[chipRemovable]` → false) instead of disabling it.
+   */
+  readonly chipDisabled = input<(item: T) => boolean>(() => false);
+
   /** Accessible name for the whole set (the `role=grid`). Use this or {@link ariaLabelledby}, not both. */
   readonly ariaLabel = input('');
   /** Id of a visible element naming the set (preferred over {@link ariaLabel} when a label is on-screen). */
   readonly ariaLabelledby = input('');
 
   /**
-   * Optional focus landing spot for when the **last** chip is removed. While a sibling remains the set
-   * redirects focus to it; the emptied set has no in-set target, so focus would otherwise fall to
-   * `<body>`. Point this at a **focusable** element — a non-interactive one (e.g. a heading or a
+   * Optional focus landing spot for when a removal leaves **no focusable chip** — the set empties, or only
+   * disabled chips remain (Material skips disabled chips, so it can't redirect to one). While an enabled
+   * sibling remains the set redirects focus to it; with no focusable chip left there is no in-set target, so
+   * focus would otherwise fall to `<body>`. Point this at a **focusable** element — a non-interactive one (e.g. a heading or a
    * `role="status"` region) needs `tabindex="-1"` — and the set moves focus there after the emptying
    * render.
    *
@@ -139,8 +165,8 @@ export class CaeChipSet<T = string> implements OnInit {
    * **Sync or async drop:** the move is keyed off the set *actually* emptying, so dropping the removed item
    * later (a confirm dialog, `http.delete().subscribe(...)`) still lands focus; at that moment it re-checks
    * that focus is still stranded (`<body>`) or inside the set, so a focus that legitimately moved during the
-   * async gap is never stolen (#205). Scope: this covers a removal that **alone** empties the set (the last
-   * chip). An emptying that needs a **cascade / multi-item drop** from a `>1` set, or **concurrent** overlapping
+   * async gap is never stolen (#205). Scope: this covers a removal that **alone** leaves no focusable chip (the
+   * last enabled chip). An emptying that needs a **cascade / multi-item drop** from a `>1` set, or **concurrent** overlapping
    * async removals, falls back to the consumer — the single-slot intent can't represent them (#448).
    *
    * If the target is itself a live region being updated (as Forge's count is) its text may be announced a
@@ -177,7 +203,10 @@ export class CaeChipSet<T = string> implements OnInit {
       if (!pending) return;
       if (items.includes(pending.item)) return; // async drop hasn't landed yet — keep waiting
       this.pendingEmptyRemoval = null; // resolved either way — consume the marker
-      if (items.length > 0) return; // a sibling remains → the grid redirected; nothing to do
+      // An ENABLED chip remains → Material's FocusKeyManager redirected focus to it; nothing to do. A
+      // disabled-only remainder is NOT skippable (the grid can't focus it), so fall through and land on
+      // emptyFocusTarget exactly like the fully-empty case (#201).
+      if (items.some((x) => !this.isDisabled(x))) return;
       const active = document.activeElement;
       const ownsFocus =
         active === null || active === document.body || this.host.nativeElement.contains(active);
@@ -212,15 +241,37 @@ export class CaeChipSet<T = string> implements OnInit {
    * yank focus — so neither arms the redirect (WCAG 3.2.x, the #189 anti-steal principle).
    */
   protected onRemoved(item: T, index: number): void {
+    // Defence in depth: a locked/disabled chip renders no × and Material won't fire (removed) on a
+    // non-removable chip, but never emit a removal request for one even if a stray event arrives.
+    if (!this.isRemovable(item)) return;
     const heldFocus = this.host.nativeElement.contains(document.activeElement);
-    const wasLast = this.items().length === 1;
+    // Arm the empty-set redirect when this removal will leave NO focusable chip for Material's
+    // FocusKeyManager to land on — the set fully empties, OR only DISABLED chips remain. Material skips
+    // disabled chips in its roving key manager and MatChipGrid.focus() no-ops on a disabled-only set, so
+    // without this a keyboard remove is dropped to <body> even though a (disabled) "sibling" remains — the
+    // exact strand this component exists to prevent (#201). Captured before emit(), since a synchronous
+    // drop mutates items() during it.
+    const noEnabledChipLeft = !this.items().some((x) => x !== item && !this.isDisabled(x));
     this.removed.emit({ item, index });
-    if (heldFocus && wasLast) this.pendingEmptyRemoval = { item };
+    if (heldFocus && noEnabledChipLeft) this.pendingEmptyRemoval = { item };
   }
 
   /** The remove button's accessible name: the {@link removeAriaLabel} override, else `"Remove <label>"`. */
   protected removeAriaLabelFor(item: T): string {
     return this.removeAriaLabel()?.(item) ?? `Remove ${this.label()(item)}`;
+  }
+
+  /** Whether `item` is disabled ({@link chipDisabled}) — greyed, `aria-disabled`, and implicitly locked. */
+  protected isDisabled(item: T): boolean {
+    return this.chipDisabled()(item);
+  }
+
+  /**
+   * Whether `item` shows a × and can be removed: {@link chipRemovable} AND not {@link chipDisabled} — a
+   * disabled chip is always locked, so the × never renders on an inert chip.
+   */
+  protected isRemovable(item: T): boolean {
+    return this.chipRemovable()(item) && !this.isDisabled(item);
   }
 
   /** Dev-only config validation (zero prod cost), mirroring `cae-data-grid` — before the first render. */
