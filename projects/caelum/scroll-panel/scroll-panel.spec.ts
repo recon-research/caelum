@@ -200,4 +200,73 @@ describe('CaeScrollPanel', () => {
       globalThis.ResizeObserver = original;
     }
   });
+
+  it('observes the content subtree via MutationObserver and disconnects on destroy (#329)', async () => {
+    const observed: { target: Node; options?: MutationObserverInit }[] = [];
+    let disconnects = 0;
+    class FakeMutationObserver {
+      constructor(readonly cb: MutationCallback) {}
+      observe(target: Node, options?: MutationObserverInit): void {
+        observed.push({ target, options });
+      }
+      disconnect(): void {
+        disconnects++;
+      }
+      takeRecords(): MutationRecord[] {
+        return [];
+      }
+    }
+    const original = globalThis.MutationObserver;
+    globalThis.MutationObserver = FakeMutationObserver as unknown as typeof MutationObserver;
+    try {
+      render();
+      await fixture.whenStable(); // flush afterNextRender, where the observer is wired
+      const content = panel.querySelector('.cae-scroll-panel__content');
+      // The MutationObserver watches the CONTENT subtree (not the host) for the DOM changes that drive a
+      // horizontal-only nowrap growth — node/text changes plus style/class width toggles (filtered to those
+      // two attributes so unrelated aria/data churn doesn't re-measure); a burst is batched to one re-measure.
+      expect(observed).toHaveLength(1);
+      expect(observed[0].target).toBe(content);
+      expect(observed[0].options).toEqual({
+        childList: true,
+        subtree: true,
+        characterData: true,
+        attributes: true,
+        attributeFilter: ['style', 'class'],
+      });
+      fixture.destroy();
+      expect(disconnects).toBe(1);
+    } finally {
+      globalThis.MutationObserver = original;
+    }
+  });
+
+  it('catches a post-mount horizontal-only content change the ResizeObserver would miss (#329)', async () => {
+    let mutationCb: MutationCallback | undefined;
+    class FakeMutationObserver {
+      constructor(readonly cb: MutationCallback) {
+        mutationCb = cb;
+      }
+      observe(): void {}
+      disconnect(): void {}
+      takeRecords(): MutationRecord[] {
+        return [];
+      }
+    }
+    const original = globalThis.MutationObserver;
+    globalThis.MutationObserver = FakeMutationObserver as unknown as typeof MutationObserver;
+    try {
+      render();
+      await fixture.whenStable(); // wire the observer
+      expect(panel.getAttribute('tabindex')).toBeNull(); // content fits: no tab stop yet
+      // Simulate a nowrap child that grew wider than the box AFTER mount: neither ResizeObserver box changes,
+      // but the DOM mutation fires the MutationObserver, whose callback re-measures against the live metrics.
+      mockMetrics(panel, { scrollWidth: 400, clientWidth: 100 });
+      mutationCb!([], null as unknown as MutationObserver);
+      fixture.detectChanges();
+      expect(panel.getAttribute('tabindex')).toBe('0'); // now keyboard-focusable — the missed gap is closed
+    } finally {
+      globalThis.MutationObserver = original;
+    }
+  });
 });
