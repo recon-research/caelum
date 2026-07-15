@@ -66,6 +66,13 @@ let nextUniqueId = 0;
  * `aria-selected` state (an M4 real-browser tuning item). Real-browser SR/focus verification is deferred to
  * M4 (like #263/#41).
  *
+ * **Clearing (`[showClear]`, #282).** An optional × button in the trigger resets the selection to empty
+ * (`p-treeSelect` parity — the library's first `showClear`). It renders only while a selection is visible;
+ * because it unmounts on its own click, it moves focus to the trigger first when it held focus (WCAG 2.4.3).
+ * The clear is observed through the form value (`onChange` / `valueChanges` fire the empty value) — this
+ * family is CVA-only, so there is no separate `(clear)` output (a deliberate deviation from `p-treeSelect`'s
+ * `onClear`). A dev-only guard warns when two nodes share a `value` key (colliding selection identity).
+ *
  * Token-only theming (surface/elevation/border/focus-ring from `--cae-*`; Book 04 §3.6). No foreign
  * library. Zoneless-compatible: `OnPush` + signal state (provisional on #9; Book 01 §3.2).
  */
@@ -85,6 +92,7 @@ let nextUniqueId = 0;
       role="combobox"
       aria-haspopup="tree"
       [class.cae-tree-select__trigger--open]="isOpen()"
+      [class.cae-tree-select__trigger--clearable]="canClear()"
       [attr.aria-expanded]="isOpen()"
       [attr.aria-controls]="isOpen() ? panelId : null"
       [attr.aria-label]="ariaLabel() || null"
@@ -104,6 +112,20 @@ let nextUniqueId = 0;
       </span>
       <span class="cae-tree-select__arrow" aria-hidden="true">▾</span>
     </button>
+
+    <!-- Clear (×): a SIBLING of the trigger, not a child — a button nested in the trigger button is
+         invalid HTML. Overlaid on the trigger's trailing edge (before the arrow); shown only while
+         [showClear] is set, something is selected, and the control is enabled. -->
+    @if (canClear()) {
+      <button
+        type="button"
+        class="cae-tree-select__clear"
+        aria-label="Clear selection"
+        (click)="clear($event)"
+      >
+        <span aria-hidden="true">×</span>
+      </button>
+    }
 
     <ng-template
       cdkConnectedOverlay
@@ -190,6 +212,8 @@ let nextUniqueId = 0;
   styles: `
     :host {
       display: block;
+      /* Positioning context for the overlaid clear (×) button. */
+      position: relative;
     }
     .cae-tree-select__trigger {
       box-sizing: border-box;
@@ -200,6 +224,8 @@ let nextUniqueId = 0;
       inline-size: 100%;
       min-block-size: var(--cae-space-6);
       padding: var(--cae-space-2) var(--cae-space-3);
+      /* Reserve trailing room for the absolutely-placed dropdown arrow (and the × when clearable). */
+      padding-inline-end: var(--cae-space-6);
       border: 1px solid var(--cae-color-border);
       border-radius: var(--cae-radius-md);
       background: var(--cae-surface-base);
@@ -221,6 +247,9 @@ let nextUniqueId = 0;
       opacity: 0.5;
     }
     .cae-tree-select__value {
+      /* min-inline-size:0 lets the sole flex child shrink so the ellipsis engages (the arrow is now
+         absolutely positioned, out of flow). */
+      min-inline-size: 0;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -228,9 +257,53 @@ let nextUniqueId = 0;
     .cae-tree-select__value--placeholder {
       color: var(--cae-color-on-surface-variant);
     }
+    /* The dropdown arrow sits at the trailing edge, out of the flex flow, so the × can occupy the slot
+       just inside it without the two competing for the same flex-end position. Decorative → clicks fall
+       through to the trigger button beneath it. */
     .cae-tree-select__arrow {
-      flex: none;
+      position: absolute;
+      inset-inline-end: var(--cae-space-3);
+      inset-block: 0;
+      display: inline-flex;
+      align-items: center;
       color: var(--cae-color-on-surface-variant);
+      pointer-events: none;
+    }
+    /* When the clear button is present, reserve extra trailing room (arrow slot + a floored × slot) so
+       the ellipsized value text does not run under the ×. */
+    .cae-tree-select__trigger--clearable {
+      padding-inline-end: calc(var(--cae-space-6) + var(--cae-target-min));
+    }
+    /* The clear affordance: overlaid on the trigger's trailing edge, just inside of the arrow. The hit
+       target is floored to the density-INVARIANT --cae-target-min (24px) — NOT --cae-space-*, which
+       shrinks under [data-density=compact] — so it holds the WCAG 2.5.8 minimum in every density arm. */
+    .cae-tree-select__clear {
+      position: absolute;
+      inset-block: 0;
+      inset-inline-end: var(--cae-space-6);
+      margin-block: auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-inline-size: var(--cae-target-min);
+      min-block-size: var(--cae-target-min);
+      inline-size: var(--cae-target-min);
+      block-size: var(--cae-target-min);
+      padding: 0;
+      border: 0;
+      border-radius: var(--cae-radius-full);
+      background: none;
+      color: var(--cae-color-on-surface-variant);
+      font-size: 1.1em;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .cae-tree-select__clear:hover {
+      color: var(--cae-color-on-surface);
+    }
+    .cae-tree-select__clear:focus-visible {
+      outline: var(--cae-focus-ring);
+      outline-offset: var(--cae-focus-ring-offset);
     }
 
     .cae-tree-select__panel {
@@ -306,6 +379,13 @@ export class CaeTreeSelect implements ControlValueAccessor {
   readonly selectionMode = input<CaeTreeSelectionMode>('single');
   /** Text shown in the trigger when nothing is selected. */
   readonly placeholder = input('Select…');
+  /**
+   * Show a clear (×) button in the trigger that resets the selection to empty (`p-treeSelect`
+   * `showClear` parity — the library's first `showClear`, establishing the input name for the family).
+   * The button appears only while a selection is *visible* (a resolved label); an unresolved key —
+   * a value written before its node loads — round-trips and becomes clearable once the node arrives.
+   */
+  readonly showClear = input(false, { transform: booleanAttribute });
   /** Marks the control required — drives `aria-required` on the trigger (sibling of cae-listbox). */
   readonly required = input(false, { transform: booleanAttribute });
   /** Template-driven disable; merged with any reactive-forms `setDisabledState`. */
@@ -368,6 +448,30 @@ export class CaeTreeSelect implements ControlValueAccessor {
       if (isDevMode() && !this.ariaLabel() && !this.ariaLabelledby()) {
         console.warn(
           'cae-tree-select: set `ariaLabel` or `ariaLabelledby` — a combobox requires an accessible name.',
+        );
+      }
+    });
+    // Data-integrity guard (dev-only): a node's `value` is its selection KEY, and two nodes sharing one
+    // collapse in selection identity — selecting either highlights both, and the trigger's label map keeps
+    // only the last. Walk the tree and warn on any repeated key so the collision is caught in development.
+    effect(() => {
+      if (!isDevMode()) return;
+      const seen = new Set<string>();
+      const dupes = new Set<string>();
+      const walk = (nodes: readonly CaeTreeNode[]): void => {
+        for (const node of nodes) {
+          if (node.value != null) {
+            if (seen.has(node.value)) dupes.add(node.value);
+            else seen.add(node.value);
+          }
+          if (node.children?.length) walk(node.children);
+        }
+      };
+      walk(this.nodes());
+      if (dupes.size > 0) {
+        console.warn(
+          `cae-tree-select: duplicate node value key(s) [${[...dupes].join(', ')}] — selection keys ` +
+            'must be unique; a repeated key selects every node that shares it and the trigger shows one label.',
         );
       }
     });
@@ -467,6 +571,18 @@ export class CaeTreeSelect implements ControlValueAccessor {
     if (!this.multiple()) return names[0];
     return names.length <= 2 ? names.join(', ') : `${names.length} selected`;
   });
+  /**
+   * Whether the clear (×) button renders: opted in via {@link showClear}, a *visible* selection to
+   * clear ({@link hasSelection}, so the × never sits next to a placeholder), the control enabled
+   * (a disabled control's value must not be mutable), and the panel closed — while it is open the
+   * transparent CDK backdrop overlays the trigger, so a shown × would be un-clickable (the click
+   * would hit the backdrop and close instead). A held value whose key never resolves to a node is not
+   * independently clearable via the × (it isn't a *visible* selection); it clears once its node loads,
+   * or via a programmatic reset to `''` / `[]`.
+   */
+  protected readonly canClear = computed(
+    () => this.showClear() && this.hasSelection() && !this.isDisabled() && !this.isOpen(),
+  );
 
   protected isSelected(value: string): boolean {
     return this.selectedValues().includes(value);
@@ -563,6 +679,25 @@ export class CaeTreeSelect implements ControlValueAccessor {
       }
       this.close(); // single-select commits and dismisses
     }
+  }
+
+  /**
+   * Reset the selection to empty (the `[showClear]` × button). Emits the mode-appropriate empty value
+   * (`''` single / `[]` multiple) and marks the control touched. The × renders only while there's a
+   * selection, so clearing UNMOUNTS it: if it held focus (keyboard activation), move focus to the
+   * always-present trigger FIRST — otherwise removing the focused button drops focus to `<body>`
+   * (WCAG 2.4.3; the [[focus-after-control-unmount]] pattern). Moving focus before the mutation is
+   * deterministic (the trigger never unmounts), so no post-render callback is needed.
+   */
+  protected clear(event: Event): void {
+    event.stopPropagation(); // never bubble to the trigger toggle (defensive — it's a separate element)
+    if (this.isDisabled()) return;
+    if (document.activeElement === event.currentTarget) {
+      (this.origin()?.elementRef.nativeElement as HTMLElement | undefined)?.focus();
+    }
+    this.selectedValues.set([]);
+    this.onChangeFn(this.multiple() ? [] : '');
+    this.onTouched();
   }
 
   // --- ControlValueAccessor ---

@@ -39,6 +39,7 @@ const NODES: readonly CaeTreeNode[] = [
       [selectionMode]="mode()"
       [ariaLabel]="ariaLabel()"
       [required]="required()"
+      [showClear]="showClear()"
     />
   `,
 })
@@ -50,6 +51,7 @@ class Host {
   readonly mode = signal<CaeTreeSelectionMode>('single');
   readonly ariaLabel = signal('Pick a node');
   readonly required = signal(false);
+  readonly showClear = signal(false);
 }
 
 describe('CaeTreeSelect', () => {
@@ -73,7 +75,9 @@ describe('CaeTreeSelect', () => {
   });
 
   // Set inputs (mode especially — its value shape depends on it) BEFORE the first render, then flush.
-  async function init(overrides: Partial<Record<'mode' | 'ariaLabel' | 'required', unknown>> = {}) {
+  async function init(
+    overrides: Partial<Record<'mode' | 'ariaLabel' | 'required' | 'showClear', unknown>> = {},
+  ) {
     for (const [k, v] of Object.entries(overrides))
       (host as never as Record<string, { set(v: unknown): void }>)[k].set(v);
     await flush();
@@ -408,6 +412,132 @@ describe('CaeTreeSelect', () => {
       labelFor('Settings').click();
       await flush();
       expect(announce).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('[showClear] — reset the selection (#282)', () => {
+    const clearBtn = (): HTMLButtonElement | null =>
+      fixture.nativeElement.querySelector('.cae-tree-select__clear');
+
+    it('renders no clear button by default, even with a selection', async () => {
+      host.control.setValue('settings');
+      await init(); // showClear defaults to false
+      expect(clearBtn()).toBeNull();
+    });
+
+    it('renders no clear button when [showClear] is on but nothing is selected', async () => {
+      await init({ showClear: true });
+      expect(clearBtn()).toBeNull();
+    });
+
+    it('renders a named type=button clear affordance when enabled and something is selected', async () => {
+      host.control.setValue('settings');
+      await init({ showClear: true });
+      const btn = clearBtn();
+      expect(btn).not.toBeNull();
+      expect(btn!.getAttribute('aria-label')).toBe('Clear selection');
+      expect(btn!.type).toBe('button'); // never submits an enclosing form
+    });
+
+    it('clears the selection and emits the single-mode empty value ""', async () => {
+      host.control.setValue('settings');
+      await init({ showClear: true });
+      clearBtn()!.click();
+      await flush();
+      expect(host.control.value).toBe(''); // single empty is '', not []
+      expect(trigger().textContent?.trim()).toContain('Select…');
+      expect(clearBtn()).toBeNull(); // the button unmounts once the selection is gone
+    });
+
+    it('clears to an empty array in multiple mode', async () => {
+      await init({ mode: 'multiple', showClear: true });
+      host.control.setValue(['app', 'api']);
+      await flush();
+      expect(clearBtn()).not.toBeNull();
+      clearBtn()!.click();
+      await flush();
+      expect(host.control.value).toEqual([]); // multiple empty is []
+    });
+
+    it('does not open the panel when cleared', async () => {
+      host.control.setValue('settings');
+      await init({ showClear: true });
+      clearBtn()!.click();
+      await flush();
+      expect(panel()).toBeNull();
+      expect(trigger().getAttribute('aria-expanded')).toBe('false');
+    });
+
+    it('moves focus to the trigger when the focused clear button unmounts (WCAG 2.4.3)', async () => {
+      host.control.setValue('settings');
+      await init({ showClear: true });
+      const btn = clearBtn()!;
+      btn.focus(); // a keyboard user tabbed onto the clear button
+      expect(document.activeElement).toBe(btn);
+      btn.click(); // clearing removes the button it lives on
+      await flush();
+      // Without the focus-first move, removing the focused button would drop focus to <body>.
+      expect(document.activeElement).toBe(trigger());
+    });
+
+    it('does not steal focus to the trigger when the clear button did not hold focus (WCAG 3.2.5)', async () => {
+      host.control.setValue('settings');
+      await init({ showClear: true });
+      // A mouse clear that never focused the × (activeElement stays <body>): clearing must not yank
+      // focus to the trigger. This is the teeth for the `activeElement === currentTarget` gate —
+      // remove the gate (always focus the trigger) and this fails.
+      expect(document.activeElement).not.toBe(trigger());
+      clearBtn()!.click();
+      await flush();
+      expect(document.activeElement).not.toBe(trigger());
+    });
+
+    it('marks the control touched on clear', async () => {
+      host.control.setValue('settings');
+      await init({ showClear: true });
+      expect(host.control.touched).toBe(false);
+      clearBtn()!.click();
+      await flush();
+      expect(host.control.touched).toBe(true);
+    });
+
+    it('hides the clear button when the control is disabled', async () => {
+      host.control.setValue('settings');
+      await init({ showClear: true });
+      expect(clearBtn()).not.toBeNull();
+      host.control.disable();
+      await flush();
+      expect(clearBtn()).toBeNull(); // a disabled control's value must not be mutable
+    });
+  });
+
+  describe('duplicate node key dev-warn (#282)', () => {
+    it('warns in dev when two nodes share a value key', async () => {
+      const warn = console.warn;
+      const calls: string[] = [];
+      console.warn = (msg: string) => calls.push(msg);
+      try {
+        host.nodes.set([
+          { value: 'dup', label: 'One' },
+          { value: 'dup', label: 'Two', children: [{ value: 'ok', label: 'Child' }] },
+        ]);
+        await init();
+        expect(calls.some((c) => c.includes('duplicate node value'))).toBe(true);
+      } finally {
+        console.warn = warn;
+      }
+    });
+
+    it('does not warn on a unique key set (navigational nodes without a value are exempt)', async () => {
+      const warn = console.warn;
+      const calls: string[] = [];
+      console.warn = (msg: string) => calls.push(msg);
+      try {
+        await init(); // the default NODES have unique keys + a value-less navigational node
+        expect(calls.some((c) => c.includes('duplicate node value'))).toBe(false);
+      } finally {
+        console.warn = warn;
+      }
     });
   });
 });
