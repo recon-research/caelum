@@ -48,7 +48,8 @@ let nextUniqueId = 0;
  * `cae-galleria` — an image gallery (`reference/COMPARISON.md`: `p-galleria` → `cae-galleria`; Book 11
  * §3.4, the ★ media family). A main image view with prev/next navigators, a **thumbnail strip** that
  * selects the viewed image (WAI-ARIA tabs: `role="tablist"` of `role="tab"` thumbnails driving one
- * `role="tabpanel"` main view, selection-follows-focus with a roving tabindex), a position live-region,
+ * `role="tabpanel"` main view, selection-follows-focus with a roving tabindex), an optional
+ * **indicator-dots** row (`[showIndicators]`, off by default), a position live-region,
  * and a **fullscreen lightbox** opened through {@link CaeDialog} (D-15, Book 09 §3.3) — Material's
  * centered modal supplies the focus-trap, `Escape`/backdrop dismissal, and focus-restore for free.
  *
@@ -136,6 +137,24 @@ let nextUniqueId = 0;
             </button>
           }
         </div>
+
+        @if (showIndicators() && count() > 1) {
+          <div class="cae-galleria__indicators" role="group" [attr.aria-label]="indicatorsLabel()">
+            @for (_ of items(); track $index; let i = $index) {
+              <button
+                #indicatorBtn
+                type="button"
+                class="cae-galleria__indicator"
+                [class.cae-galleria__indicator--active]="i === clampedIndex()"
+                [attr.aria-label]="indicatorLabel(i)"
+                [attr.aria-current]="i === clampedIndex() ? 'true' : null"
+                [tabindex]="i === clampedIndex() ? 0 : -1"
+                (click)="goTo(i)"
+                (keydown)="onIndicatorKeydown($event, i)"
+              ></button>
+            }
+          </div>
+        }
 
         @if (hasThumbnails()) {
           <div class="cae-galleria__thumbs" role="tablist" [attr.aria-label]="thumbnailsLabel()">
@@ -298,6 +317,45 @@ let nextUniqueId = 0;
       object-fit: cover;
       border-radius: var(--cae-radius-sm);
     }
+    /* Indicator dots: a role=group of buttons that navigate to an image. The BUTTON is the hit target,
+       floored to --cae-target-min (24px) so it holds WCAG 2.5.8 in every density arm; the visible dot is a
+       smaller ::before circle centered inside it. Sizing the button off a --cae-space-* token would shrink
+       the target to 16px under [data-density=compact] (see the interactive-hit-target floor convention). */
+    .cae-galleria__indicators {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: var(--cae-space-1);
+      margin-block-start: var(--cae-space-3);
+    }
+    .cae-galleria__indicator {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-inline-size: var(--cae-target-min);
+      min-block-size: var(--cae-target-min);
+      padding: 0;
+      border: 0;
+      border-radius: var(--cae-radius-full);
+      background: none;
+      cursor: pointer;
+    }
+    .cae-galleria__indicator::before {
+      content: '';
+      inline-size: var(--cae-space-2);
+      block-size: var(--cae-space-2);
+      border: 1px solid var(--cae-color-border);
+      border-radius: var(--cae-radius-full);
+      background: transparent;
+    }
+    .cae-galleria__indicator--active::before {
+      background: var(--cae-color-primary);
+      border-color: var(--cae-color-primary);
+    }
+    .cae-galleria__indicator:focus-visible {
+      outline: var(--cae-focus-ring);
+      outline-offset: var(--cae-focus-ring-offset);
+    }
     /* The position live region is for screen readers only — visually hidden, not display:none (which
        would drop it from the a11y tree). */
     .cae-galleria__sr-status {
@@ -329,6 +387,12 @@ export class CaeGalleria {
   readonly showThumbnails = input(true, { transform: booleanAttribute });
   /** Show the prev/next navigators over the main image (default on). Hidden for a single image. */
   readonly showNavigators = input(true, { transform: booleanAttribute });
+  /**
+   * Show a row of indicator dots that navigate to each image (default OFF — p-galleria parity). Opt in for
+   * dots-style navigation — on its own (with `[showThumbnails]="false"`) or alongside the thumbnail strip.
+   * Hidden for a single image.
+   */
+  readonly showIndicators = input(false, { transform: booleanAttribute });
   /** Accessible name for the gallery group — set one (its role/roledescription is dropped without it). */
   readonly ariaLabel = input('');
   readonly prevAriaLabel = input('Previous image');
@@ -337,6 +401,8 @@ export class CaeGalleria {
   readonly closeAriaLabel = input('Close');
   /** Accessible name for the thumbnail tablist. */
   readonly thumbnailsLabel = input('Image thumbnails');
+  /** Accessible name for the indicator-dots group. */
+  readonly indicatorsLabel = input('Choose image to display');
 
   /** Per-instance id root so `panelId`/`tabId` never collide across galleries on one page. */
   private readonly uid = nextUniqueId++;
@@ -348,6 +414,8 @@ export class CaeGalleria {
 
   /** This gallery's thumbnail tab buttons (view query → auto-scoped to this instance). */
   private readonly thumbBtns = viewChildren<ElementRef<HTMLElement>>('thumbBtn');
+  /** This gallery's indicator-dot buttons (view query → auto-scoped to this instance, like {@link thumbBtns}). */
+  private readonly indicatorBtns = viewChildren<ElementRef<HTMLElement>>('indicatorBtn');
 
   /** Optional projected `caeGalleriaItem` template — overrides the typed `<img>` for the main + lightbox. */
   private readonly itemDef = contentChild(CaeGalleriaItemDef);
@@ -484,6 +552,53 @@ export class CaeGalleria {
     el?.focus();
     // scrollIntoView is a no-op stub under jsdom; the optional call guards a missing implementation.
     el?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }
+
+  /**
+   * The `aria-label` for indicator dot `i` — the image's `alt` plus its position, mirroring the thumbnail
+   * tab label ({@link thumbLabel}) so a dots-only gallery (`[showThumbnails]="false"`) still announces
+   * *which* image each dot selects, not a bare ordinal. Falls back to "Image" if `alt` is somehow empty
+   * (that case is already dev-warned).
+   */
+  protected indicatorLabel(i: number): string {
+    return `${this.items()[i]?.alt || 'Image'} (${i + 1} of ${this.count()})`;
+  }
+
+  /**
+   * The indicator group's roving-tabindex keyboard model, mirroring the thumbnail strip: Left/Up → previous,
+   * Right/Down → next, Home/End → first/last — each moving focus to (and selecting) the target dot. Arrow
+   * keys follow logical order (not visual/RTL); the gallery's full RTL story — thumbnails and dots alike —
+   * is the deferred vertical/RTL item on #288.
+   */
+  protected onIndicatorKeydown(event: KeyboardEvent, i: number): void {
+    let target: number;
+    switch (event.key) {
+      case 'ArrowRight':
+      case 'ArrowDown':
+        target = i + 1;
+        break;
+      case 'ArrowLeft':
+      case 'ArrowUp':
+        target = i - 1;
+        break;
+      case 'Home':
+        target = 0;
+        break;
+      case 'End':
+        target = this.count() - 1;
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    const clamped = Math.max(0, Math.min(target, this.count() - 1));
+    this.goTo(clamped);
+    this.focusIndicator(clamped);
+  }
+
+  /** Move focus to indicator dot `i` (the new roving tab stop). Uses the instance-scoped {@link indicatorBtns}. */
+  private focusIndicator(i: number): void {
+    this.indicatorBtns()[i]?.nativeElement.focus();
   }
 
   /**

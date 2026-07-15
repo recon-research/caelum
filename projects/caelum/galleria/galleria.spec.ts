@@ -240,6 +240,96 @@ describe('CaeGalleria', () => {
     fixture.nativeElement.remove();
   });
 
+  describe('indicator dots ([showIndicators], #288)', () => {
+    const dots = (): HTMLButtonElement[] =>
+      Array.from(el.querySelectorAll<HTMLButtonElement>('.cae-galleria__indicator'));
+    const dotGroup = (): HTMLElement | null => el.querySelector('.cae-galleria__indicators');
+
+    it('renders no indicator dots by default (opt-in, p-galleria parity)', async () => {
+      await render();
+      expect(dotGroup()).toBeNull();
+    });
+
+    it('renders a role=group of one dot per image when [showIndicators]', async () => {
+      await render({ showIndicators: true });
+      const group = dotGroup()!;
+      expect(group.getAttribute('role')).toBe('group');
+      expect(group.getAttribute('aria-label')).toBe('Choose image to display');
+      expect(dots()).toHaveLength(3);
+      // Indicators are a plain button group, NOT a second tablist driving the one tabpanel.
+      expect(group.getAttribute('role')).not.toBe('tablist');
+    });
+
+    it('marks only the active dot with aria-current + the roving tab stop (tabindex 0)', async () => {
+      await render({ showIndicators: true, activeIndex: 1 });
+      const d = dots();
+      expect(d[1].getAttribute('aria-current')).toBe('true');
+      expect(d[1].getAttribute('tabindex')).toBe('0');
+      expect(d[1].classList.contains('cae-galleria__indicator--active')).toBe(true);
+      expect(d[0].getAttribute('aria-current')).toBeNull();
+      expect(d[0].getAttribute('tabindex')).toBe('-1');
+      // The dot label surfaces the image's alt (like the thumbnail tab), not a bare ordinal.
+      expect(d[0].getAttribute('aria-label')).toBe('Alpha (1 of 3)');
+    });
+
+    it('clicking a dot navigates to that image', async () => {
+      await render({ showIndicators: true });
+      dots()[2].click();
+      await settle();
+      expect(component.activeIndex()).toBe(2);
+      expect(mainImg()!.getAttribute('alt')).toBe('Charlie');
+      expect(dots()[2].getAttribute('aria-current')).toBe('true');
+    });
+
+    it('roving keyboard: ArrowRight selects + moves focus to the next dot', async () => {
+      await render({ showIndicators: true });
+      dots()[0].focus();
+      dots()[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+      await settle();
+      expect(component.activeIndex()).toBe(1);
+      expect(document.activeElement).toBe(dots()[1]);
+    });
+
+    it('roving keyboard: ArrowLeft steps back one dot with focus, then clamps at the first', async () => {
+      await render({ showIndicators: true, activeIndex: 2 });
+      dots()[2].focus();
+      dots()[2].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+      await settle();
+      expect(component.activeIndex()).toBe(1); // a real single-step decrement, not a boundary no-op
+      expect(document.activeElement).toBe(dots()[1]);
+      dots()[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+      await settle();
+      dots()[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+      await settle();
+      expect(component.activeIndex()).toBe(0); // clamps at the start (no wrap when non-circular)
+    });
+
+    it('roving keyboard: ArrowDown/ArrowUp alias to next/previous (vertical-arrow support)', async () => {
+      await render({ showIndicators: true });
+      dots()[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      await settle();
+      expect(component.activeIndex()).toBe(1); // Down → next
+      dots()[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+      await settle();
+      expect(component.activeIndex()).toBe(0); // Up → previous
+    });
+
+    it('roving keyboard: Home and End jump to the first and last dot', async () => {
+      await render({ showIndicators: true, activeIndex: 1 });
+      dots()[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+      await settle();
+      expect(component.activeIndex()).toBe(2);
+      dots()[2].dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+      await settle();
+      expect(component.activeIndex()).toBe(0);
+    });
+
+    it('hides the dots for a single image', async () => {
+      await render({ showIndicators: true, items: [{ src: 'solo.jpg', alt: 'Solo' }] });
+      expect(dotGroup()).toBeNull();
+    });
+  });
+
   describe('fullscreen (openFullscreen config seam — spied CaeDialog.open, no overlay)', () => {
     it('opens the lightbox centered with the current index and the sync + circular seams', async () => {
       await render({ activeIndex: 1, circular: true });
