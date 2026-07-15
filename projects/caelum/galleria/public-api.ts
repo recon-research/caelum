@@ -7,3 +7,4 @@
  * Everything here is also re-exported from the primary `caelum` barrel (the split is additive).
  */
 export * from './galleria';
+export * from './galleria-item';
