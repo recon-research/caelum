@@ -1,9 +1,10 @@
 <cae-card class="forge-galleria-card">
   <h3 class="forge-galleria-card__title">Image gallery</h3>
   <p class="forge-galleria-card__lead">
-    A main image with a thumbnail strip, indicator dots, and a fullscreen lightbox. Pick a thumbnail
-    or a dot, arrow through either, or open the lightbox — the two-way <code>[(activeIndex)]</code>
-    keeps this readout live, including navigation done inside the fullscreen view.
+    A main image with a thumbnail strip, indicator dots, an overlaid caption, and a fullscreen
+    lightbox. Pick a thumbnail or a dot, arrow through either, or open the lightbox — the two-way
+    <code>[(activeIndex)]</code> keeps this readout live, including navigation done inside the
+    fullscreen view.
   </p>
 
   <cae-galleria
@@ -11,6 +12,7 @@
     [items]="images"
     ariaLabel="Star plates"
     [showIndicators]="true"
+    captionPosition="overlay"
     [(activeIndex)]="index"
   />
 

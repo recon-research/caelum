@@ -23,6 +23,8 @@ export interface CaeGalleriaLightboxData {
   circular: boolean;
   /** The opener's projected `caeGalleriaItem` template (or null) — so fullscreen renders the same content. */
   itemTemplate: TemplateRef<CaeGalleriaTemplateContext> | null;
+  /** Caption placement, mirrored from the inline view so fullscreen matches it. */
+  captionPosition: 'below' | 'overlay';
   onNavigate: (index: number) => void;
   prevAriaLabel: string;
   nextAriaLabel: string;
@@ -79,7 +81,12 @@ export interface CaeGalleriaLightboxData {
           } @else {
             <img class="cae-galleria-lightbox__image" [src]="item.src" [alt]="item.alt" />
             @if (item.caption) {
-              <figcaption class="cae-galleria-lightbox__caption">{{ item.caption }}</figcaption>
+              <figcaption
+                class="cae-galleria-lightbox__caption"
+                [class.cae-galleria-lightbox__caption--overlay]="data.captionPosition === 'overlay'"
+              >
+                {{ item.caption }}
+              </figcaption>
             }
           }
         }
@@ -116,6 +123,8 @@ export interface CaeGalleriaLightboxData {
       min-inline-size: min(80vw, 60rem);
     }
     .cae-galleria-lightbox__figure {
+      /* position:relative anchors an overlay caption to the image box; inert for the below layout. */
+      position: relative;
       margin: 0;
       display: flex;
       flex-direction: column;
@@ -133,6 +142,19 @@ export interface CaeGalleriaLightboxData {
       margin: 0;
       text-align: center;
       color: var(--cae-color-on-surface-variant);
+    }
+    /* Overlay placement, mirrored from the inline view (see cae-galleria __caption--overlay). Two
+       lightbox-only deltas: the fullscreen image is square-cornered (so no bottom radii here), and the
+       band is lifted off the bottom edge so it clears the centered position counter (#405 visual check). */
+    .cae-galleria-lightbox__caption--overlay {
+      position: absolute;
+      inset-inline: 0;
+      inset-block-end: var(--cae-space-6);
+      padding-block: var(--cae-space-1);
+      padding-inline: var(--cae-space-2);
+      background: var(--cae-surface-base);
+      background: color-mix(in srgb, var(--cae-surface-base) 82%, transparent);
+      color: var(--cae-color-on-surface);
     }
     .cae-galleria-lightbox__counter {
       position: absolute;
