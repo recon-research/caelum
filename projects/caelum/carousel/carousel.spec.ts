@@ -3,7 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { vi } from 'vitest';
 
-import { CaeCarousel } from './carousel';
+import { CaeCarousel, CaeCarouselResponsiveOption } from './carousel';
 import { CaeCarouselItem } from './carousel-item';
 
 // A projecting host — a carousel needs an item template, so every functional test drives it through one
@@ -483,5 +483,135 @@ describe('CaeCarousel — async-loaded value with a pre-set page (#290)', () => 
     fixture.detectChanges();
     await fixture.whenStable();
     expect(host.page()).toBe(2); // reconciled down to the last valid page
+  });
+});
+
+// ---- Responsive numVisible/numScroll by viewport (#276) ----
+
+@Component({
+  imports: [CaeCarousel, CaeCarouselItem],
+  template: `
+    <cae-carousel
+      [value]="items()"
+      [numVisible]="numVisible()"
+      [numScroll]="numScroll()"
+      [responsiveOptions]="responsive()"
+      ariaLabel="Responsive carousel"
+    >
+      <ng-template caeCarouselItem let-item>{{ item }}</ng-template>
+    </cae-carousel>
+  `,
+})
+class ResponsiveHost {
+  readonly items = signal<string[]>(['a', 'b', 'c', 'd', 'e', 'f']); // 6 items
+  readonly numVisible = signal(1);
+  readonly numScroll = signal(1);
+  readonly responsive = signal<CaeCarouselResponsiveOption[]>([]);
+}
+
+describe('CaeCarousel responsive (#276)', () => {
+  const q = (bp: string): string => `(max-width: ${bp})`;
+  let realMatchMedia: typeof window.matchMedia;
+  let fixture: ComponentFixture<ResponsiveHost>;
+  let host: ResponsiveHost;
+
+  // A controllable matchMedia fake: `matching` is the set of query strings that currently match, and
+  // `fire()` flips one and notifies its listeners exactly as a real MediaQueryList change does.
+  // `listenerCount()` reports the live `change` listeners registered for a query — so a leak (an onCleanup
+  // that removed the wrong reference, leaving the real listener attached) is caught, not just "removeEventListener
+  // was called at all".
+  function installMatchMedia(matching: Set<string>): {
+    fire: (query: string, matches: boolean) => void;
+    listenerCount: (query: string) => number;
+  } {
+    const registry = new Map<string, Set<() => void>>();
+    const mm = (query: string) => ({
+      media: query,
+      get matches(): boolean {
+        return matching.has(query);
+      },
+      addEventListener: (_type: 'change', cb: () => void): void => {
+        let set = registry.get(query);
+        if (!set) registry.set(query, (set = new Set()));
+        set.add(cb);
+      },
+      removeEventListener: (_type: 'change', cb: () => void): void => {
+        registry.get(query)?.delete(cb);
+      },
+    });
+    (window as unknown as { matchMedia: (query: string) => unknown }).matchMedia = mm;
+    const fire = (query: string, matches: boolean): void => {
+      if (matches) matching.add(query);
+      else matching.delete(query);
+      registry.get(query)?.forEach((cb) => cb());
+    };
+    const listenerCount = (query: string): number => registry.get(query)?.size ?? 0;
+    return { fire, listenerCount };
+  }
+
+  async function mount(responsive: CaeCarouselResponsiveOption[]): Promise<void> {
+    await TestBed.configureTestingModule({ imports: [ResponsiveHost] }).compileComponents();
+    fixture = TestBed.createComponent(ResponsiveHost);
+    host = fixture.componentInstance;
+    host.responsive.set(responsive);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges(); // the responsive effect sets `matches`; a second pass renders the resolved window
+    await fixture.whenStable();
+  }
+
+  const visibleCount = (): number =>
+    Array.from(fixture.nativeElement.querySelectorAll('.cae-carousel__item')).filter(
+      (s) => !(s as HTMLElement).hasAttribute('inert'),
+    ).length;
+  const indicatorCount = (): number =>
+    fixture.nativeElement.querySelectorAll('.cae-carousel__indicator').length; // = totalPages when > 1
+
+  beforeEach(() => {
+    realMatchMedia = window.matchMedia;
+  });
+  afterEach(() => {
+    window.matchMedia = realMatchMedia;
+    fixture?.nativeElement.remove();
+  });
+
+  it('applies a matching breakpoint override (numVisible 3 → 3 slides, 2 pages)', async () => {
+    installMatchMedia(new Set([q('1024px')]));
+    await mount([{ breakpoint: '1024px', numVisible: 3, numScroll: 3 }]);
+    expect(visibleCount()).toBe(3);
+    expect(indicatorCount()).toBe(2); // ceil((6-3)/3)+1
+  });
+
+  it('picks the NARROWEST matching rule when several match', async () => {
+    // A viewport ≤ 560 matches both max-width rules; the 560 rule (numVisible 1) must win over 1024's 3.
+    installMatchMedia(new Set([q('1024px'), q('560px')]));
+    await mount([
+      { breakpoint: '1024px', numVisible: 3, numScroll: 3 },
+      { breakpoint: '560px', numVisible: 1, numScroll: 1 },
+    ]);
+    expect(visibleCount()).toBe(1);
+    expect(indicatorCount()).toBe(6);
+  });
+
+  it('falls back to the base window when no rule matches', async () => {
+    installMatchMedia(new Set()); // a wide viewport: nothing matches
+    await mount([{ breakpoint: '1024px', numVisible: 3, numScroll: 3 }]);
+    expect(visibleCount()).toBe(1); // base numVisible
+    expect(indicatorCount()).toBe(6);
+  });
+
+  it('re-resolves live when the viewport crosses a breakpoint, and removes listeners on destroy', async () => {
+    const { fire, listenerCount } = installMatchMedia(new Set([q('1024px')]));
+    await mount([{ breakpoint: '1024px', numVisible: 3, numScroll: 3 }]);
+    expect(visibleCount()).toBe(3); // starts matched
+    expect(listenerCount(q('1024px'))).toBe(1); // one live change listener while mounted
+
+    fire(q('1024px'), false); // viewport grows past 1024 → the rule stops matching
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(visibleCount()).toBe(1); // re-resolved to the base window live, no re-mount
+
+    fixture.destroy();
+    expect(listenerCount(q('1024px'))).toBe(0); // onCleanup removed the ACTUAL listener (no leak)
   });
 });

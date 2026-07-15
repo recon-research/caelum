@@ -17,6 +17,23 @@ import {
 import { CaeCarouselItem, CaeCarouselItemContext } from './carousel-item';
 
 /**
+ * One responsive breakpoint rule for {@link CaeCarousel.responsiveOptions} (`p-carousel` parity). At
+ * viewports **at or below** `breakpoint` (a CSS `max-width` length, e.g. `'1024px'`) the carousel shows
+ * `numVisible` items and advances `numScroll` at a time. When several rules match, the **narrowest** wins —
+ * ranked by the breakpoint's numeric value, so keep every rule in the **same unit** (mixing `px` and
+ * `rem`/`em` can mis-rank them). When none match, the base {@link CaeCarousel.numVisible} /
+ * {@link CaeCarousel.numScroll} apply.
+ */
+export interface CaeCarouselResponsiveOption {
+  /** The `max-width` breakpoint this rule applies at or below (a CSS length in a single unit, e.g. `'1024px'`). */
+  breakpoint: string;
+  /** Items visible in the window at this breakpoint. */
+  numVisible: number;
+  /** Items advanced per step at this breakpoint. */
+  numScroll: number;
+}
+
+/**
  * `cae-carousel` — a content-agnostic rotating carousel (`reference/COMPARISON.md`: `p-carousel` →
  * `cae-carousel`). The first member of the ★ media family (Book 11 §3.4). Built from scratch on a signal
  * index model (Book 11 §4 — *"the active slide is a signal"*) rather than a foreign carousel library
@@ -51,16 +68,22 @@ import { CaeCarouselItem, CaeCarouselItemContext } from './carousel-item';
  * **Slide content.** Project a single `<ng-template caeCarouselItem let-item let-i="index">` to render each
  * slide; see {@link CaeCarouselItem}. Without one, slides fall back to the item's string form (dev-warned).
  *
+ * **Responsive window.** {@link responsiveOptions} overrides {@link numVisible} / {@link numScroll} by
+ * viewport width (`p-carousel` parity): each rule applies at or below its `max-width` breakpoint, the
+ * narrowest match wins, and the window **re-resolves live** as the viewport crosses a breakpoint (browser
+ * only — SSR / no `matchMedia` keeps the base window). #276.
+ *
  * **v1 scope** (#273): fixed horizontal window, circular, autoplay (+pause/stop/reduced-motion), prev/next,
- * indicators, keyboard, full ARIA, content projection. Follow-ups (#276): responsive `responsiveOptions`,
- * vertical orientation, touch/CDK-drag swipe-to-advance (buttons + arrows already give the full keyboard
- * path, §3.5 gate 1, so swipe is an enhancement, not a parity gap), and focus restoration when a focused
- * slide is removed from the window (see the focus note below).
+ * indicators, keyboard, full ARIA, content projection. Follow-ups (#276): vertical orientation,
+ * touch/CDK-drag swipe-to-advance (buttons + arrows already give the full keyboard path, §3.5 gate 1, so
+ * swipe is an enhancement, not a parity gap), and focus restoration when a focused slide is removed from
+ * the window (see the focus note below).
  *
  * **Focus note (M4, #276).** Autoplay pauses on focus, and indicator/button paging moves focus off the
- * slide first, so those paths are safe. But a **programmatic** window shift — a consumer writing `[(page)]`,
- * or a `numVisible`/`value` change — while keyboard focus is *inside* a slide's content makes that slide
- * `inert` and drops DOM focus to `<body>`; restoring it is a real-browser follow-up (the same hazard
+ * slide first, so those paths are safe. But a window shift that leaves a focused slide behind — a consumer
+ * writing `[(page)]` or changing `numVisible`/`value`, **or an end-user resize crossing a
+ * {@link responsiveOptions} breakpoint** — while keyboard focus is *inside* a slide's content makes that
+ * slide `inert` and drops DOM focus to `<body>`; restoring it is a real-browser follow-up (the same hazard
  * cae-tree-table documents at #263).
  *
  * @typeParam T - the item shape (one element of {@link value}).
@@ -314,6 +337,14 @@ export class CaeCarousel<T = unknown> {
   readonly numVisible = input(1);
   /** Items advanced per step (default 1; clamped to ≥ 1). */
   readonly numScroll = input(1);
+  /**
+   * Responsive overrides for {@link numVisible} / {@link numScroll} by viewport width — see
+   * {@link CaeCarouselResponsiveOption} for the matching rules (`p-carousel` parity). Re-evaluated live as
+   * the viewport crosses a breakpoint (browser only — SSR / no `matchMedia` keeps the base window). Bind a
+   * **stable reference** (a component field), not an inline array literal, so the breakpoint listeners
+   * aren't rebuilt on every change-detection. #276.
+   */
+  readonly responsiveOptions = input<readonly CaeCarouselResponsiveOption[]>([]);
   /** Whether prev/next wrap past the ends (and autoplay loops). Default false. */
   readonly circular = input(false);
   /** Autoplay timer in ms; `0` (default) disables autoplay. See the class doc for the WCAG 2.2.2 behaviour. */
@@ -371,14 +402,47 @@ export class CaeCarousel<T = unknown> {
       !this.interacting(),
   );
 
-  /** {@link numVisible} floored to a positive integer. */
-  private readonly visibleCount = computed(() => Math.max(1, Math.floor(this.numVisible())));
   /**
-   * {@link numScroll} floored to a positive integer, and never MORE than numVisible: a scroll step larger
-   * than the window would skip over interior slides, leaving them permanently unreachable by keyboard/AT.
+   * Live per-breakpoint match state, keyed by each {@link responsiveOptions} entry's `breakpoint` string,
+   * maintained by the responsive effect in the constructor. Empty during SSR and when there are no
+   * responsive options, so the base window applies. Read only by {@link activeOption}.
+   */
+  private readonly matches = signal<ReadonlyMap<string, boolean>>(new Map());
+  /**
+   * The {@link responsiveOptions} rule in effect for the current viewport, or `null` when none matches (→
+   * the base {@link numVisible} / {@link numScroll}). Among the currently-matching rules the **narrowest**
+   * breakpoint wins; a rule whose breakpoint doesn't parse as a length never wins. Purely derived from
+   * {@link responsiveOptions} + {@link matches}.
+   */
+  private readonly activeOption = computed<CaeCarouselResponsiveOption | null>(() => {
+    const matches = this.matches();
+    let best: CaeCarouselResponsiveOption | null = null;
+    let bestWidth = Infinity;
+    for (const o of this.responsiveOptions()) {
+      if (!matches.get(o.breakpoint)) continue;
+      const width = parseFloat(o.breakpoint);
+      if (Number.isFinite(width) && width < bestWidth) {
+        bestWidth = width;
+        best = o;
+      }
+    }
+    return best;
+  });
+
+  /** {@link numVisible} — the {@link activeOption} override or the base input — floored to a positive integer. */
+  private readonly visibleCount = computed(() =>
+    Math.max(1, Math.floor(this.activeOption()?.numVisible ?? this.numVisible())),
+  );
+  /**
+   * {@link numScroll} — the {@link activeOption} override or the base input — floored to a positive integer,
+   * and never MORE than numVisible: a scroll step larger than the window would skip over interior slides,
+   * leaving them permanently unreachable by keyboard/AT.
    */
   private readonly scrollCount = computed(() =>
-    Math.min(Math.max(1, Math.floor(this.numScroll())), this.visibleCount()),
+    Math.min(
+      Math.max(1, Math.floor(this.activeOption()?.numScroll ?? this.numScroll())),
+      this.visibleCount(),
+    ),
   );
 
   /** Total page count: `ceil((n - numVisible) / numScroll) + 1`, or 1 when everything fits in one window. */
@@ -433,6 +497,30 @@ export class CaeCarousel<T = unknown> {
       if (!this.playing()) return;
       const id = setInterval(() => this.autoAdvance(), this.autoplayInterval());
       onCleanup(() => clearInterval(id));
+    });
+
+    // Responsive window: keep a live match-map for each [responsiveOptions] breakpoint. Re-runs — rebuilding
+    // the matchMedia listeners — whenever the options change; browser-only (SSR / no matchMedia leaves the
+    // map empty, so the base numVisible/numScroll apply, matching computeReducedMotion's guard). Listeners
+    // are torn down on every re-run and on destroy via onCleanup, mirroring the autoplay interval's cleanup.
+    // The `change` handler writes a signal from outside a CD tick, which the zoneless scheduler picks up. #276.
+    effect((onCleanup) => {
+      const opts = this.responsiveOptions();
+      if (!this.isBrowser || typeof window.matchMedia !== 'function' || opts.length === 0) {
+        this.matches.set(new Map());
+        return;
+      }
+      const queries = opts.map((o) => window.matchMedia(`(max-width: ${o.breakpoint})`));
+      const sync = () => {
+        const next = new Map<string, boolean>();
+        opts.forEach((o, i) => next.set(o.breakpoint, queries[i].matches));
+        this.matches.set(next);
+      };
+      sync();
+      for (const q of queries) q.addEventListener('change', sync);
+      onCleanup(() => {
+        for (const q of queries) q.removeEventListener('change', sync);
+      });
     });
 
     // Keep the two-way page model in range when value/numVisible/numScroll shrink the page count (or a
