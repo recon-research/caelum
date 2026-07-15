@@ -360,10 +360,13 @@ export class CaeImageCompare implements OnInit {
         next = this.pct() + (vertical ? s : -s);
         break;
       case 'PageUp':
-        next = this.pct() + (vertical ? -PAGE_STEP : PAGE_STEP);
+        // Coarse primary-axis arrow (ArrowRight horizontal, ArrowUp vertical) — same sign as that fine
+        // key so the two never disagree: horizontal inverts under RTL (physical-right is the low-reveal
+        // start edge), vertical is direction-independent.
+        next = this.pct() + (vertical ? -PAGE_STEP : rtl ? -PAGE_STEP : PAGE_STEP);
         break;
       case 'PageDown':
-        next = this.pct() + (vertical ? PAGE_STEP : -PAGE_STEP);
+        next = this.pct() + (vertical ? PAGE_STEP : rtl ? PAGE_STEP : -PAGE_STEP);
         break;
       case 'Home':
         next = 0;
