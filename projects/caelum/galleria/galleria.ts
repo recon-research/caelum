@@ -107,7 +107,12 @@ let nextUniqueId = 0;
                 } @else {
                   <img class="cae-galleria__image" [src]="item.src" [alt]="item.alt" />
                   @if (item.caption) {
-                    <figcaption class="cae-galleria__caption">{{ item.caption }}</figcaption>
+                    <figcaption
+                      class="cae-galleria__caption"
+                      [class.cae-galleria__caption--overlay]="captionPosition() === 'overlay'"
+                    >
+                      {{ item.caption }}
+                    </figcaption>
                   }
                 }
               }
@@ -212,6 +217,8 @@ let nextUniqueId = 0;
       justify-content: center;
     }
     .cae-galleria__figure {
+      /* position:relative anchors an overlay caption to the image box; inert for the below layout. */
+      position: relative;
       margin: 0;
       display: flex;
       flex-direction: column;
@@ -230,6 +237,24 @@ let nextUniqueId = 0;
       margin: 0;
       text-align: center;
       color: var(--cae-color-on-surface-variant);
+    }
+    /* Overlay placement (opt-in p-galleria parity): float the caption over the image's lower edge on a
+       mostly-opaque surface scrim so on-surface text stays readable over the picture. The below layout
+       (the default) is the guaranteed-contrast one — the scrim is best-effort for WCAG 1.4.3 over bright
+       images, which is why overlay is opt-in. Anchored to the position:relative figure above. */
+    .cae-galleria__caption--overlay {
+      position: absolute;
+      inset-inline: 0;
+      inset-block-end: 0;
+      padding-block: var(--cae-space-1);
+      padding-inline: var(--cae-space-2);
+      /* Solid surface first as a fallback where color-mix is unsupported (keeps text readable, just
+         hides the image edge); the scrim overrides it where color-mix resolves. */
+      background: var(--cae-surface-base);
+      background: color-mix(in srgb, var(--cae-surface-base) 82%, transparent);
+      color: var(--cae-color-on-surface);
+      border-end-start-radius: var(--cae-radius-md);
+      border-end-end-radius: var(--cae-radius-md);
     }
     /* Nav + fullscreen buttons: token-styled, glyphs drawn from currentColor — no icon font. */
     .cae-galleria__nav,
@@ -393,6 +418,15 @@ export class CaeGalleria {
    * Hidden for a single image.
    */
   readonly showIndicators = input(false, { transform: booleanAttribute });
+  /**
+   * Where the built-in caption sits relative to the image. `'below'` (default) renders it under the
+   * image on the surface — guaranteed contrast (WCAG 1.4.3). `'overlay'` floats it over the image's
+   * lower edge for p-galleria visual parity, on a translucent surface scrim; the scrim is best-effort,
+   * so keep `'below'` when captions must stay legible over arbitrary/bright images. Honored in the
+   * fullscreen lightbox too. Ignored when a projected item template owns the content (it renders its
+   * own caption).
+   */
+  readonly captionPosition = input<'below' | 'overlay'>('below');
   /** Accessible name for the gallery group — set one (its role/roledescription is dropped without it). */
   readonly ariaLabel = input('');
   readonly prevAriaLabel = input('Previous image');
@@ -625,6 +659,8 @@ export class CaeGalleria {
           // Hand the projected item template (if any) to the lightbox so fullscreen renders the same
           // custom content as the inline view — not a bare <img> that a non-image item can't fill.
           itemTemplate: this.itemTemplate(),
+          // Carry caption placement so fullscreen matches the inline view.
+          captionPosition: this.captionPosition(),
           onNavigate: (i) => this.activeIndex.set(i),
           prevAriaLabel: this.prevAriaLabel(),
           nextAriaLabel: this.nextAriaLabel(),

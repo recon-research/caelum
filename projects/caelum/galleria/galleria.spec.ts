@@ -330,6 +330,31 @@ describe('CaeGalleria', () => {
     });
   });
 
+  describe('caption placement ([captionPosition], #288)', () => {
+    const caption = (): HTMLElement | null => el.querySelector('.cae-galleria__caption');
+
+    it('defaults to the below layout — the caption is not the overlay variant', async () => {
+      await render({ activeIndex: 1 }); // Bravo carries a caption
+      expect(caption()).not.toBeNull();
+      expect(caption()!.classList.contains('cae-galleria__caption--overlay')).toBe(false);
+    });
+
+    it('[captionPosition="overlay"] floats the caption over the image', async () => {
+      await render({ activeIndex: 1, captionPosition: 'overlay' });
+      expect(caption()!.classList.contains('cae-galleria__caption--overlay')).toBe(true);
+    });
+
+    it('honors overlay placement in the fullscreen lightbox (threaded through the payload)', async () => {
+      await render({ activeIndex: 1, captionPosition: 'overlay' });
+      component.openFullscreen();
+      await settle();
+      const lbCaption = containerEl.querySelector('.cae-galleria-lightbox__caption');
+      expect(lbCaption).not.toBeNull();
+      expect(lbCaption!.classList.contains('cae-galleria-lightbox__caption--overlay')).toBe(true);
+      TestBed.inject(MatDialog).closeAll();
+    });
+  });
+
   describe('fullscreen (openFullscreen config seam — spied CaeDialog.open, no overlay)', () => {
     it('opens the lightbox centered with the current index and the sync + circular seams', async () => {
       await render({ activeIndex: 1, circular: true });
