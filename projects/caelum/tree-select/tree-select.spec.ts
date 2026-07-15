@@ -2,6 +2,8 @@ import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { OverlayContainer } from '@angular/cdk/overlay';
+import { LiveAnnouncer } from '@angular/cdk/a11y';
+import { vi } from 'vitest';
 
 import { CaeTreeSelect, type CaeTreeSelectionMode } from './tree-select';
 // The node model is reused from cae-tree (type-only in the component). A spec may reach the source
@@ -91,6 +93,8 @@ describe('CaeTreeSelect', () => {
     labelEls().find((l) => l.textContent?.trim() === text)!;
   const treeItems = (): HTMLElement[] =>
     Array.from(container().querySelectorAll('[role="treeitem"]'));
+  const treeItemFor = (text: string): HTMLElement =>
+    labelFor(text).closest('[role="treeitem"]') as HTMLElement;
 
   async function open(): Promise<void> {
     trigger().click();
@@ -326,5 +330,84 @@ describe('CaeTreeSelect', () => {
     } finally {
       console.warn = warn;
     }
+  });
+
+  describe('a11y: focus the selected node on open (F2, #281)', () => {
+    // The marker cdkTrapFocus auto-capture redirects its initial focus onto (APG select-only-combobox:
+    // start on the current value's node, not the first node). The real .focus() landing depends on the
+    // mat-tree key manager and is an M4 real-browser check; here we pin the deterministic wiring.
+    const focusTarget = (): HTMLElement | null => container().querySelector('[cdkFocusInitial]');
+
+    it('marks an already-visible selected node as the auto-capture focus target', async () => {
+      host.control.setValue('ws'); // a top-level node — visible at rest
+      await init();
+      await open();
+      expect(focusTarget()).toBe(treeItemFor('Workspace'));
+    });
+
+    it('reveals (expands to) a collapsed deep selection on open and marks it', async () => {
+      host.control.setValue('app'); // ws > proj > app — both ancestors collapsed at rest
+      await init();
+      await open();
+      // The ancestor path was expanded, so the focus target is not stranded inside a display:none subtree.
+      const toggleLabel = (t: string): string | null | undefined =>
+        treeItemFor(t).querySelector('.cae-tree-select__toggle')?.getAttribute('aria-label');
+      expect(toggleLabel('Workspace')).toBe('Collapse Workspace');
+      expect(toggleLabel('Projects')).toBe('Collapse Projects');
+      expect(focusTarget()).toBe(treeItemFor('App'));
+    });
+
+    it('marks nothing when there is no selection (auto-capture keeps its first-node default)', async () => {
+      await init();
+      await open();
+      expect(focusTarget()).toBeNull();
+    });
+
+    it('marks and reveals only the FIRST selected node in multiple mode (not a hidden later one)', async () => {
+      await init({ mode: 'multiple' });
+      host.control.setValue(['settings', 'app']); // settings selected first; App is DOM-order-first but deeper
+      await flush();
+      await open();
+      // Exactly ONE focus target — the first-selected node — even though App precedes it in DOM order and is
+      // also selected. Marking every selected node would let auto-capture pick the deeper, still-hidden App.
+      expect(container().querySelectorAll('[cdkFocusInitial]').length).toBe(1);
+      expect(focusTarget()).toBe(treeItemFor('Settings'));
+      // And the reveal expanded that same node's ancestor (so the target isn't display:none).
+      expect(
+        treeItemFor('Workspace')
+          .querySelector('.cae-tree-select__toggle')
+          ?.getAttribute('aria-label'),
+      ).toBe('Collapse Workspace');
+    });
+  });
+
+  describe('a11y: announce multi-select toggles (F6, #281)', () => {
+    let announce: ReturnType<typeof vi.spyOn>;
+    beforeEach(() => {
+      // Stub announce so the test asserts the call without mounting a real live region.
+      announce = vi.spyOn(TestBed.inject(LiveAnnouncer), 'announce').mockResolvedValue(undefined);
+    });
+
+    it('announces each toggle with the running count in multiple mode', async () => {
+      await init({ mode: 'multiple' });
+      await open();
+      labelFor('App').click();
+      await flush();
+      expect(announce).toHaveBeenLastCalledWith('App selected, 1 selected');
+      labelFor('API').click();
+      await flush();
+      expect(announce).toHaveBeenLastCalledWith('API selected, 2 selected');
+      labelFor('App').click(); // toggle off
+      await flush();
+      expect(announce).toHaveBeenLastCalledWith('App deselected, 1 selected');
+    });
+
+    it('does not announce in single mode (it closes and the value is read on focus return)', async () => {
+      await init(); // single
+      await open();
+      labelFor('Settings').click();
+      await flush();
+      expect(announce).not.toHaveBeenCalled();
+    });
   });
 });
