@@ -74,6 +74,33 @@ class TargetHost {
   }
 }
 
+// Like TargetHost but the consumer drops the item ASYNCHRONOUSLY (the #205 case: a confirm dialog, or
+// `http.delete().subscribe(drop)`). The drop is captured and applied only when the test calls `pendingDrop()`
+// — fully deterministic, no timer/microtask races. This is exactly what the old request-time afterNextRender
+// could not handle (it fired on the first post-request render, while the chip was still present, and never
+// re-armed).
+@Component({
+  imports: [CaeChipSet],
+  template: `
+    <button #ext type="button">outside</button>
+    <cae-chip-set
+      [items]="items()"
+      [emptyFocusTarget]="statusRef()"
+      (removed)="onRemoved($event)"
+    />
+    <p #status tabindex="-1">status</p>
+  `,
+})
+class AsyncTargetHost {
+  items = signal<readonly string[]>(['solo']);
+  readonly statusRef = viewChild<ElementRef<HTMLElement>>('status');
+  readonly extRef = viewChild<ElementRef<HTMLButtonElement>>('ext');
+  pendingDrop: (() => void) | null = null;
+  onRemoved(e: CaeChipRemoveEvent<string>): void {
+    this.pendingDrop = () => this.items.update((l) => l.filter((t) => t !== e.item));
+  }
+}
+
 describe('CaeChipSet', () => {
   let el: HTMLElement;
 
@@ -220,11 +247,11 @@ describe('CaeChipSet', () => {
   });
 
   it('does NOT steal focus when the last chip is removed while focus is OUTSIDE the set (heldFocus gate, #202)', async () => {
-    // Locks the WCAG-3.2.x anti-steal guard `if (!heldFocus) return;`. A real chip removal that did NOT
-    // hold focus in the set (here a non-focusing pointer × — the Safari/Firefox case — with focus parked
-    // on an outside button) must leave focus where it is. This test FAILS if the guard is deleted (the set
-    // would then move focus to emptyFocusTarget). Distinct from the programmatic-clear test above, which
-    // bypasses onRemoved entirely and so never exercises the guard.
+    // Anti-steal (WCAG 3.2.x, #189): a chip removal that did NOT hold focus in the set (here a non-focusing
+    // pointer × — the Safari/Firefox case — with focus parked on an outside BUTTON) leaves focus where it is.
+    // Note focus is on an element OUTSIDE the host, so the move-time ownsFocus check also rejects the move;
+    // the sibling test below (focus on <body>) is what UNIQUELY exercises the request-time heldFocus arm-gate.
+    // Distinct from the programmatic-clear test above, which bypasses onRemoved entirely.
     const f = await makeTarget();
     const extBtn = f.componentInstance.extRef()!.nativeElement;
     extBtn.focus();
@@ -233,6 +260,68 @@ describe('CaeChipSet', () => {
     await settle(f);
     expect(rows(f).length).toBe(0);
     expect(document.activeElement).toBe(extBtn); // not yanked to the empty-focus target
+  });
+
+  it('does NOT arm the empty redirect when the removal did not hold focus (focus on <body>, heldFocus gate #205)', async () => {
+    // The case that UNIQUELY gives the request-time heldFocus arm-gate teeth: with focus on <body> (nothing
+    // focused), a non-focusing pointer × (jsdom .click() does not focus) removes the last chip. heldFocus is
+    // false → the redirect never arms → focus stays on <body>. This FAILS if `heldFocus &&` is dropped from the
+    // arm condition: the marker would arm (wasLast true), the set would empty, and the move-time ownsFocus check
+    // treats <body> as "ours" → focus would jump to emptyFocusTarget. The extBtn test above can't catch that
+    // deletion (its focus is on an outside element, which ownsFocus also rejects).
+    const f = await makeTarget();
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    expect(document.activeElement).toBe(document.body); // nothing focused
+    removeBtn(rows(f)[0])!.click(); // non-focusing pointer × on the last chip; focus stays on <body>
+    await settle(f);
+    expect(rows(f).length).toBe(0);
+    expect(document.activeElement).toBe(document.body); // not redirected to emptyFocusTarget
+  });
+
+  async function makeAsyncTarget(): Promise<ComponentFixture<AsyncTargetHost>> {
+    await TestBed.configureTestingModule({ imports: [AsyncTargetHost] }).compileComponents();
+    const f = TestBed.createComponent(AsyncTargetHost);
+    el = f.nativeElement as HTMLElement;
+    document.body.appendChild(el);
+    f.detectChanges();
+    await f.whenStable();
+    return f;
+  }
+
+  it('lands focus on [emptyFocusTarget] when the last chip is dropped ASYNCHRONOUSLY (#205)', async () => {
+    // The gap the old request-time afterNextRender missed: the consumer defers the drop (a confirm dialog /
+    // http.delete().subscribe). The redirect must key off the set ACTUALLY emptying, not the removal request.
+    const f = await makeAsyncTarget();
+    const soloRemove = removeBtn(rows(f)[0])!;
+    soloRemove.focus();
+    expect(grid(f).contains(document.activeElement)).toBe(true); // focus in the set at removal
+    soloRemove.click(); // request only — the drop is deferred
+    await settle(f);
+    // Genuinely still present: the old afterNextRender would have fired on THIS render and given up.
+    expect(rows(f).length).toBe(1);
+    // Now the async drop lands:
+    f.componentInstance.pendingDrop!();
+    await settle(f);
+    expect(rows(f).length).toBe(0);
+    expect(document.activeElement).toBe(f.componentInstance.statusRef()!.nativeElement); // followed the async emptying
+  });
+
+  it('does NOT steal focus on an async empty when focus legitimately moved away during the gap (#205 re-validation)', async () => {
+    // The move-time ownership re-check: if the user moves focus elsewhere while the async drop is in flight,
+    // the later emptying must NOT yank focus back to [emptyFocusTarget] (WCAG 3.2.5). This FAILS a naive
+    // pending-flag redesign that moves unconditionally once the set empties.
+    const f = await makeAsyncTarget();
+    const soloRemove = removeBtn(rows(f)[0])!;
+    soloRemove.focus();
+    soloRemove.click(); // armed (held focus + last chip)
+    await settle(f);
+    const extBtn = f.componentInstance.extRef()!.nativeElement;
+    extBtn.focus(); // focus legitimately moves away during the async gap
+    expect(document.activeElement).toBe(extBtn);
+    f.componentInstance.pendingDrop!(); // async drop lands → the set empties
+    await settle(f);
+    expect(rows(f).length).toBe(0);
+    expect(document.activeElement).toBe(extBtn); // not stolen to the empty-focus target
   });
 
   it('dev-warns when [emptyFocusTarget] is non-focusable and does not receive focus (#206)', async () => {
