@@ -1,3 +1,4 @@
+import { Directionality } from '@angular/cdk/bidi';
 import { NgTemplateOutlet, isPlatformBrowser } from '@angular/common';
 import {
   ChangeDetectionStrategy,
@@ -61,7 +62,8 @@ export interface CaeCarouselResponsiveOption {
  * from the tab order and the a11y tree. The slide track is an `aria-live` region — **polite when idle so a
  * page change announces the revealed slides, `off` while autoplaying** so the rotation doesn't spam. The
  * previous/next buttons are labelled and disable at the ends (non-circular); the indicator dots are a
- * **roving-tabindex** group (one tab stop) navigable with Left/Right/Home/End (selection follows focus),
+ * **roving-tabindex** group (one tab stop) navigable with Left/Right/Up/Down/Home/End (Left/Right follow
+ * visual order in RTL via {@link Directionality}; Up/Down are direction-independent; selection follows focus),
  * each labelled "Page N of M" with `aria-current` on the active page. The real-browser SR announcement,
  * like cae-tree-table's, is confirmed in the M4 pass (#240).
  *
@@ -94,6 +96,7 @@ export interface CaeCarouselResponsiveOption {
   imports: [NgTemplateOutlet],
   host: {
     class: 'cae-carousel',
+    '[class.cae-carousel--rtl]': 'isRtl()',
     role: 'group',
     // roledescription only when NAMED — an unnamed aria-roledescription="carousel" is announced as a
     // nameless "carousel" (worse than none); the dev-warn nudges the consumer to set [ariaLabel].
@@ -255,12 +258,14 @@ export interface CaeCarouselResponsiveOption {
     .cae-carousel__play:hover {
       border-color: var(--cae-color-primary);
     }
+    /* Physical borders (identical to the inline-end/block-end pair in LTR) so the glyph direction is set
+       solely by the rotation — deterministic under RTL, where it is mirrored below. */
     .cae-carousel__chevron {
       display: inline-block;
       inline-size: 0.5em;
       block-size: 0.5em;
-      border-inline-end: 2px solid currentColor;
-      border-block-end: 2px solid currentColor;
+      border-right: 2px solid currentColor;
+      border-bottom: 2px solid currentColor;
     }
     .cae-carousel__chevron--prev {
       transform: rotate(135deg);
@@ -269,6 +274,14 @@ export interface CaeCarouselResponsiveOption {
     .cae-carousel__chevron--next {
       transform: rotate(-45deg);
       margin-inline-end: 0.2em;
+    }
+    /* RTL: previous sits to the physical right and points right; next points left — mirror the rotations
+       (glyph direction confirmed visually in the #240 browser pass, like the SR announcements). */
+    .cae-carousel--rtl .cae-carousel__chevron--prev {
+      transform: rotate(-45deg);
+    }
+    .cae-carousel--rtl .cae-carousel__chevron--next {
+      transform: rotate(135deg);
     }
     /* Play triangle / pause bars, drawn from currentColor. */
     .cae-carousel__play-icon {
@@ -371,6 +384,14 @@ export class CaeCarousel<T = unknown> {
   /** Whether we're in a browser — autoplay's timer never arms during SSR (matches the matchMedia guard). */
   private readonly isBrowser = isPlatformBrowser(inject(PLATFORM_ID));
   /**
+   * Reads the signal-backed `Directionality.value` directly (reactive on both the root service and a `[dir]`
+   * ancestor) rather than `toSignal(dir.change, {initialValue})`, which reports 'ltr' at construction and
+   * misses a *born-rtl* `[dir]` binding — and, because the sliding-window transform axis and the indicator
+   * Left/Right arrows key off `isRtl()`, would mis-render on first paint (mirrors cae-splitter / cae-image-compare #364).
+   */
+  private readonly directionality = inject(Directionality);
+  protected readonly isRtl = computed(() => this.directionality.value === 'rtl');
+  /**
    * This carousel's own indicator buttons. A **view query** auto-scopes to THIS component's view — a nested
    * `<cae-carousel>` inside a slide keeps its dots in the child's view, invisible here — so focus-by-index
    * needs no per-instance DOM token.
@@ -467,9 +488,13 @@ export class CaeCarousel<T = unknown> {
 
   /** Each slide's flex-basis as a percentage of the viewport (100 / numVisible). */
   protected readonly itemBasis = computed(() => 100 / this.visibleCount());
-  /** The track's translate offset (percent), by whole items. */
+  /**
+   * The track's translate offset (percent), by whole items. In RTL the flex row lays items inline-start
+   * (right) → inline-end, so the window mirrors: the track translates toward the inline-start (positive X)
+   * instead of negative X — read reactively off {@link isRtl}.
+   */
   protected readonly trackTransform = computed(
-    () => `translateX(-${this.windowStart() * this.itemBasis()}%)`,
+    () => `translateX(${this.isRtl() ? '' : '-'}${this.windowStart() * this.itemBasis()}%)`,
   );
 
   /** `[0, 1, …, totalPages-1]` — drives the indicator `@for`. */
@@ -616,11 +641,17 @@ export class CaeCarousel<T = unknown> {
   protected onIndicatorKeydown(event: KeyboardEvent, i: number): void {
     let target: number;
     switch (event.key) {
+      // Left/Right follow VISUAL order — flipped in RTL so ArrowLeft goes to the later page (which sits to
+      // the physical left). Up/Down are the block axis and stay direction-independent (RTL is inline-only).
       case 'ArrowRight':
+        target = this.isRtl() ? i - 1 : i + 1;
+        break;
       case 'ArrowDown':
         target = i + 1;
         break;
       case 'ArrowLeft':
+        target = this.isRtl() ? i + 1 : i - 1;
+        break;
       case 'ArrowUp':
         target = i - 1;
         break;
