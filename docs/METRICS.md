@@ -4,30 +4,46 @@
 
 # METRICS.md -- quantitative process ledger (CMMI-L4)
 
-**Window:** last 90 days (since 2026-04-09) · **Generated:** 2026-07-08 · **Source:** `gh` (tracker + CI), via `scripts/metrics.py`
+**Window:** last 90 days (since 2026-04-16) · **Generated:** 2026-07-15 · **Source:** `gh` (tracker + CI), via `scripts/metrics.py`
 
 The few metrics that each change a decision when they cross a threshold -- not a dashboard. Thresholds are **starting baselines**; a process isn't statistically controllable until the window holds ~20+ data points, so calibrate them per project once there's signal. A :warning: marks a metric past its alarm threshold -- route it to a [`retrospective`](../.claude/skills/retrospective/SKILL.md) (root-cause + leave a guard), don't just note it.
 
 | Metric | Value | Target | What it means |
 |---|---|---|---|
-| Throughput | 10.0/wk | trend only | Merged PRs per week. A trend line, not a target -- a sudden drop flags a blocker. |
+| Throughput | 20.0/wk | trend only | Merged PRs per week. A trend line, not a target -- a sudden drop flags a blocker. |
 | Defect escape rate | 0% | &lt; 15% · alarm &gt; 25% | `bug`s filed / slices merged. Measures gate + review effectiveness; each escape should leave a guard (retrospective, #31). |
 | Rework rate | 0% | &lt; 20% · alarm &gt; 30% | Merged PRs that are themselves fixes. High = slices too big or review too shallow. |
-| Decision latency | 1.0 d | &le; objection window · alarm &gt; 5 d | Median days a `decision` issue stays open. Measures the human-in-loop bottleneck. |
+| Decision latency | 1 d | &le; objection window · alarm &gt; 5 d | Median days a `decision` issue stays open. Measures the human-in-loop bottleneck. |
 | Preflight&harr;CI divergence | 1% | ~0% · alarm &gt; 15% | Fraction of PR CI runs that went red. A faithful preflight keeps this ~0; a climb means preflight was skipped or isn't mirroring CI. |
 
-*Sample this window: 128 PR(s) merged, 0 `bug`(s) filed, 151 PR CI run(s), 8 decision(s) closed. Small samples are noisy -- treat single-digit windows as directional, not controlled.*
+*Sample this window: 257 PR(s) merged, 0 `bug`(s) filed, 282 PR CI run(s), 9 decision(s) closed. Small samples are noisy -- treat single-digit windows as directional, not controlled.*
+
+## Per-slice cost & pace (#255)
+
+Receipts (`cost:` PR comments, posted at merge by `ship_pr` via `scripts/slice_telemetry.py`) aggregated by slice type (the PR-title prefix). **Tripwires, never targets:** a :warning: here routes to a [`retrospective`](../.claude/skills/retrospective/SKILL.md), never gates a merge, and cost rising *with* matching churn/quality is not a finding. 0/40 merged PRs in scope carry receipts (last 40 merges, windowed; receipt-less rows fall back to pr-open->merge wall, no usd).
+
+| Type | n | med wall | med usd | med Δlines | med CI runs |
+|---|---|---|---|---|---|
+| docs | 21 | 1m | n/a | 9 | n/a |
+| (other) | 16 | 3m | n/a | 165 | n/a |
+| cae-carousel | 3 | 4m | n/a | 161 | n/a |
+
+Merge-order trend (oldest→newest): usd `n/a` · wall-h `▁▇▁▁▆▁▆▁▆▄▆▁▆▁▇▁█▂▆▁▆▁▆▁▆▁▆▁▆▁▇▁▇▃▆▁▆▁▆▁` · Δlines `▁▅▁▁▅▁▄▁▅▁▃▁▆▁▇▁▄▁▃▁█▁▄▁▅▁▅▁▆▁▇▁▁▁▆▁▇▁▃▁`
+
+Drift check (newer-half / older-half medians): usd n/a · wall 1.33 · churn 1.25 -- alarm at >=2.0 on cost/wall while churn stays <1.5.
+
+Fastest-growing docs (net lines this window): `docs/provenance/M0-2-transitive-provenance-scan.md` +155 · `docs/PATTERNS.md` +130 · `.claude/skills/README.md` +114 · `docs/AUTOMATION.md` +104 · `docs/ARCHITECTURE.md` +101 *(a process doc growing with no matching slices is the journaling smell -- eyeball it)*
 
 ## Local telemetry (this machine)
 
 | Metric | Value | Target | What it means |
 |---|---|---|---|
-| Skill invocations | 0 across 0 skill(s) -- top: none | trend | Which skills earn their always-resident listing cost (#6 measure-first). |
-| Skills never invoked | 26 *(ledger only 0d old -- alarm arms at 90d)* | 0 once the ledger is 90d old | Zero invocations in this machine's ledger lifetime -- dead weight or broken routing: prune the skill or fix its `description`. Ledger is machine-local: a skill exercised only on another box shows here. |
-| Sessions recorded | 1 -- median cost $1602.71 | trend | Per-session cost distribution; a sharp climb means context hygiene is regressing. |
+| Skill invocations | 3 across 2 skill(s) -- top: onboard x2, plan_work x1 | trend | Which skills earn their always-resident listing cost (#6 measure-first). |
+| Skills never invoked | 29 *(ledger only 6d old -- alarm arms at 90d)* | 0 once the ledger is 90d old | Zero invocations in this machine's ledger lifetime -- dead weight or broken routing: prune the skill or fix its `description`. Ledger is machine-local: a skill exercised only on another box shows here. |
+| Sessions recorded | 1 -- median cost $1024.05 | trend | Per-session cost distribution; a sharp climb means context hygiene is regressing. |
 | Median peak context | 52% *(&lt;5 sessions -- directional)* | &lt; 85% -- alarm &ge; 85% | Peak context% reached per session. High = compacting too late; a forced summary is what drops the Resume point. |
-| Compactions | 1 (0.1/wk) | trend | source=='compact' session starts. Read with the row above: many compactions at low peaks is healthy; few at 90%+ is not. |
-| Permission denials | 1 (0.1/wk) | trend | Denied tool calls (rules or the auto-mode classifier) -- each one stalled autopilot. A climb means the allowlist or the denial protocol (CLAUDE.md > Working style) needs work. |
-| Session cost / merged PR | $12.52 | trend | This machine's windowed session spend over repo-wide merges -- the per-slice price of autopilot. A climb flags context hygiene or slice sizing before the dedicated metrics trip. Directional on multi-machine setups (each box sees only its own spend). |
+| Compactions | 51 (4.0/wk) | trend | source=='compact' session starts. Read with the row above: many compactions at low peaks is healthy; few at 90%+ is not. |
+| Permission denials | 5 (0.4/wk) | trend | Denied tool calls (rules or the auto-mode classifier) -- each one stalled autopilot. A climb means the allowlist or the denial protocol (CLAUDE.md > Working style) needs work. |
+| Session cost / merged PR | $3.98 | trend | This machine's windowed session spend over repo-wide merges -- the per-slice price of autopilot. A climb flags context hygiene or slice sizing before the dedicated metrics trip. Directional on multi-machine setups (each box sees only its own spend). |
 
-*Sources: `.claude/metrics/` -- statusline session snapshots, the skill ledger (age 0d), session-start and permission-denial events. Gitignored: ONE machine's view, not project truth; other machines and CI each see their own or nothing. Skill catalog: 26 on disk.*
+*Sources: `.claude/metrics/` -- statusline session snapshots, the skill ledger (age 6d), session-start and permission-denial events. Gitignored: ONE machine's view, not project truth; other machines and CI each see their own or nothing. Skill catalog: 31 on disk.*

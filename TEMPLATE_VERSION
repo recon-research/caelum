@@ -4,6 +4,28 @@
 # template from `sha` to its HEAD to know what changed — without this stamp, every
 # template update is hand archaeology.
 #
+# NOTE (2026-07-15, #463): sync 12f3608→b637016 (11 commits). Taken: deep_brief
+# skill (#239) + metrics_report skill + MANIFEST skills[] (catalog now 31); two
+# new PreToolUse hooks — block_chained_merge (#253, blocks a checks-watch chained
+# into gh pr merge) + inject_rule_reminders (#252, non-blocking rule injection at
+# commit/merge/push-main) — wired in settings.json (MECHANICAL hooks + $comment
+# only; allow/deny UNTOUCHED, so a single mechanical commit per the new #242 rule);
+# slice_telemetry.py (#255/#256) + metrics.py wholesale (per-slice cost & pace /
+# guard-hits / preflight-times) + the fail-open slice_telemetry call in BOTH
+# preflight shells (mirror kept, 13/13 stages); content ports — Self-Reporting
+# Oracle universal anti-pattern (#244/#248) + SYMPTOMS row, PROJECT_CONVENTIONS
+# Guard-provenance (#253) + Cost-receipts (#255) bullets, AUTOMATION §1 two hook
+# rows + §2 two-commit settings hygiene (#242), MODE_A clean-baseline gate (#243);
+# docs/METRICS.md REGENERATED from Caelum's local ledger. DEVIATIONS — not taken:
+# (1) design_review skill + SEXTANT mobile-register Compose exemplars/goldens
+# (#251) — still deferred #298 (jsdom can't render; gated on #240/M4); (2) pyxis
+# docs/METRICS numbers (regenerated locally, not copied); (3) README #240
+# PROJECT_BACKLOG de-link — N/A, Caelum already removed all refs at go-live; (4)
+# heavy-gate name kept `heavy matrix gate` (#407 deviation held); (5) metrics.py
+# python3 comment spelling re-applied (D-210). Upstream finding (reported to
+# inbox): pyxis README skill-count line still reads "30 skills" though 32 are on
+# disk — same count-drift this sync fixed locally.
+#
 # NOTE (2026-07-14, #407): sync 4193b6d→12f3608. Taken: audit_docs width-cap
 # converged to upstream canonical (#232, superseding Caelum's local #402 impl);
 # audit_staleness.py (#222, new, warn-only) + wiring; heavy-gate #206 aggregation
@@ -27,7 +49,7 @@
 # re-evaluate at that milestone. Also not taken: pyxis-domain content
 # (research/banked/register-game-engine, EXP-03/04/05, docs/METRICS numbers).
 source: https://github.com/recon-research/pyxis (upstream identified + first synced 2026-07-08, template-sync #245)
-sha: 12f3608327b4d27ceae41566d69f98a7c9c1e10e (template sync 4193b6d→12f3608, #407; synced 2026-07-14)
+sha: b6370166f345aa6bb61f73fadff5c5307aa1b0af (template sync 12f3608→b637016, #463; synced 2026-07-15)
 baseline: 276a2d6 (reconstructed — the copy-day HEAD; the original copy recorded no sha, see #245)
 copied: 2026-06-25
-last_update: 2026-07-14
+last_update: 2026-07-15

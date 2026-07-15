@@ -13,16 +13,26 @@
 # can't be statistically controlled until it has data (~20+ points), so treat
 # them as provisional until the window fills, then calibrate per project.
 #
+# Plus "Per-slice cost & pace" (#255): `cost:` receipt comments on merged PRs
+# (posted by ship_pr step 7 via scripts/slice_telemetry.py -- the receipt
+# format's single home) aggregated into medians by slice type, with a
+# drift tripwire and a doc-growth lens. TRIPWIRES, NEVER TARGETS: an alarm
+# routes to a retrospective, never gates a merge -- the moment cost/slice
+# becomes a score, sessions learn to split slices to game it.
+#
 # Plus "Local telemetry (this machine)" (#46/#47): skill usage, session
-# cost/context, compactions -- read from gitignored side-channels written by
-# .claude/statusline.py and the hooks (docs/AUTOMATION.md s1-s2). gh can never
-# see those, so the section is separate and honest about being one machine's
-# view; with no local files it degrades to a one-line pointer.
+# cost/context, compactions, preflight durations -- read from gitignored
+# side-channels written by .claude/statusline.py and the hooks
+# (docs/AUTOMATION.md s1-s2). gh can never see those, so the section is
+# separate and honest about being one machine's view; with no local files it
+# degrades to a one-line pointer.
 #
 # Usage:
 #   python3 scripts/metrics.py                 # write docs/METRICS.md (default 90-day window)
 #   python3 scripts/metrics.py --window-days 30
 #   python3 scripts/metrics.py --print         # print to stdout, do not write the file
+#   python3 scripts/metrics.py --plot <dir>    # also write per-slice trend SVGs to <dir>
+#                                             # (on-demand, never committed -- metrics_report sends them)
 #
 # Single-implementation Python (like the audits/hooks) -- runs on both shells;
 # no .ps1 twin. Stdlib only. cwd-independent.
@@ -38,6 +48,13 @@ if "--window-days" in sys.argv:
         print("metrics: --window-days needs an integer", file=sys.stderr)
         raise SystemExit(2)
 PRINT_ONLY = "--print" in sys.argv
+PLOT_DIR = None
+if "--plot" in sys.argv:
+    try:
+        PLOT_DIR = sys.argv[sys.argv.index("--plot") + 1]
+    except IndexError:
+        print("metrics: --plot needs a directory", file=sys.stderr)
+        raise SystemExit(2)
 
 today = datetime.date.today()
 cutoff = today - datetime.timedelta(days=WINDOW)
@@ -68,6 +85,16 @@ def parse_date(iso):
         return None
     try:
         return datetime.datetime.fromisoformat(iso.replace("Z", "+00:00")).date()
+    except (ValueError, AttributeError):
+        return None
+
+
+def parse_dt(iso):
+    """Full-resolution twin of parse_date (wall-clock math needs hours, not days)."""
+    if not iso:
+        return None
+    try:
+        return datetime.datetime.fromisoformat(iso.replace("Z", "+00:00"))
     except (ValueError, AttributeError):
         return None
 
@@ -132,6 +159,164 @@ runs_w = [r for r in runs if in_window(r.get("createdAt")) and r.get("conclusion
 red = [r for r in runs_w if r.get("conclusion") == "failure"]
 divergence = pct(len(red), len(runs_w))
 
+# --- Per-slice cost & pace (#255) -- receipts + tracker; cross-machine truth.
+# Receipts are `cost:` comments on merged PRs (format single-homed in
+# scripts/slice_telemetry.py). PRs without one (pre-receipt history, or a
+# receipt that failed to post) fall back to pr-open->merge wall and no usd.
+recent = gh_json(["pr", "list", "--state", "merged", "--limit", "40",
+                  "--json", "number,title,mergedAt,createdAt,additions,deletions,changedFiles,comments"]) or []
+
+
+def parse_receipt(comments):
+    rec = None
+    for c in comments or []:
+        b = (c.get("body") or "").strip()
+        if b.startswith("cost: "):
+            rec = dict(t.split("=", 1) for t in b[6:].split() if "=" in t)
+    return rec  # the last receipt wins (a re-post supersedes)
+
+
+def fnum(v):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+slices = []
+for p in sorted(recent, key=lambda p: p.get("mergedAt") or ""):
+    if not in_window(p.get("mergedAt")):
+        continue
+    rec = parse_receipt(p.get("comments")) or {}
+    title = p.get("title", "")
+    typ = title.split(":", 1)[0].strip().lower() if ":" in title else "?"
+    wall = fnum(rec.get("wall-h"))
+    if wall is None:
+        c0, m0 = parse_dt(p.get("createdAt")), parse_dt(p.get("mergedAt"))
+        wall = round((m0 - c0).total_seconds() / 3600, 2) if c0 and m0 else None
+    slices.append({"n": p.get("number"), "type": typ, "wall": wall,
+                   "usd": fnum(rec.get("usd")), "ci": fnum(rec.get("ci-runs")),
+                   "dlines": (p.get("additions") or 0) + (p.get("deletions") or 0),
+                   "receipt": bool(rec)})
+
+
+def med(vals, nd=1):
+    vals = [v for v in vals if v is not None]
+    if not vals:
+        return None
+    m = statistics.median(vals)
+    return round(m, nd) if nd else int(round(m))
+
+
+def fmt_val(v, prefix=""):
+    return f"{prefix}{v}" if v is not None else "n/a"
+
+
+def fmt_wall(v):
+    """Adaptive: fast loops live in minutes, long slices in hours."""
+    if v is None:
+        return "n/a"
+    return f"{v * 60:.0f}m" if v < 1 else f"{v:.1f}h"
+
+
+def spark(vals):
+    """Unicode sparkline; None renders as a middle dot (no data, not zero)."""
+    marks = "▁▂▃▄▅▆▇█"
+    nums = [v for v in vals if v is not None]
+    if not nums:
+        return "n/a"
+    lo, hi = min(nums), max(nums)
+    return "".join("·" if v is None else
+                   (marks[0] if hi == lo else marks[round((v - lo) / (hi - lo) * 7)])
+                   for v in vals)
+
+
+by_type = {}
+for s in slices:
+    by_type.setdefault(s["type"], []).append(s)
+# Lump rare prefixes into "(other)": a median over n<3 is noise, and the
+# prefix vocabulary is free-form per repo -- the big types are the signal.
+lumped = {}
+for typ, rows_t in by_type.items():
+    lumped.setdefault(typ if len(rows_t) >= 3 else "(other)", []).extend(rows_t)
+slice_rows = ["| %s | %d | %s | %s | %s | %s |" % (
+                  typ, len(rows_t),
+                  fmt_wall(med([r["wall"] for r in rows_t], 2)),
+                  fmt_val(med([r["usd"] for r in rows_t], 2), "$"),
+                  fmt_val(med([r["dlines"] for r in rows_t], 0)),
+                  fmt_val(med([r["ci"] for r in rows_t], 0)))
+              for typ, rows_t in sorted(lumped.items(), key=lambda kv: -len(kv[1]))]
+
+# Drift tripwire: newer-half medians vs older-half (merge order). Cost or wall
+# doubling while churn doesn't is the investigate signal -- the "hour-long slice
+# that used to take ten minutes" made visible without watching every session.
+if len(slices) >= 8:
+    half = len(slices) // 2
+    older, newer = slices[:half], slices[half:]
+
+    def _ratio(key):
+        a, b = med([r[key] for r in older], 3), med([r[key] for r in newer], 3)
+        return (b / a) if a and b else None
+
+    r_usd, r_wall, r_churn = _ratio("usd"), _ratio("wall"), _ratio("dlines")
+    drifting = [name for name, r in (("usd", r_usd), ("wall-h", r_wall))
+                if r is not None and r >= 2.0 and (r_churn is None or r_churn < 1.5)]
+    if drifting:
+        drift_note = (":warning: **Cost drift without churn** -- newer-half median "
+                      + "/".join(drifting) + " is >=2x the older half while diff size isn't. "
+                      "Hidden-bloat candidate (journaling doc? swelling gate? context hygiene?) -- "
+                      "route to a retrospective; never fix by splitting slices to beat the number.")
+    else:
+        drift_note = ("Drift check (newer-half / older-half medians): usd %s · wall %s · churn %s "
+                      "-- alarm at >=2.0 on cost/wall while churn stays <1.5."
+                      % tuple(("%.2f" % r) if r else "n/a" for r in (r_usd, r_wall, r_churn)))
+else:
+    drift_note = "Drift check arms at 8+ merges in scope (%d now)." % len(slices)
+
+n_receipts = sum(1 for s in slices if s["receipt"])
+
+
+def doc_growth():
+    """Net .md line growth per file this window, from git alone (no network).
+    textbooks/ (vendored library) and the generated METRICS.md are excluded."""
+    try:
+        r = subprocess.run(["git", "log", "--since", cutoff.isoformat(),
+                            "--numstat", "--format=", "--", "*.md",
+                            ":!textbooks", ":!docs/METRICS.md"],
+                           capture_output=True, text=True, timeout=60)
+        if r.returncode != 0:
+            return []
+    except Exception:
+        return []
+    net = {}
+    for line in r.stdout.splitlines():
+        parts = line.split("\t")
+        if len(parts) == 3 and parts[0].isdigit() and parts[1].isdigit():
+            net[parts[2]] = net.get(parts[2], 0) + int(parts[0]) - int(parts[1])
+    return [(p, n) for p, n in sorted(net.items(), key=lambda kv: -kv[1])[:5] if n > 0]
+
+
+growth = doc_growth()
+growth_line = (("Fastest-growing docs (net lines this window): "
+                + " · ".join(f"`{path}` +{n}" for path, n in growth))
+               if growth else "Fastest-growing docs: none grew this window.")
+
+slice_md = f"""
+## Per-slice cost & pace (#255)
+
+Receipts (`cost:` PR comments, posted at merge by `ship_pr` via `scripts/slice_telemetry.py`) aggregated by slice type (the PR-title prefix). **Tripwires, never targets:** a :warning: here routes to a [`retrospective`](../.claude/skills/retrospective/SKILL.md), never gates a merge, and cost rising *with* matching churn/quality is not a finding. {n_receipts}/{len(slices)} merged PRs in scope carry receipts (last 40 merges, windowed; receipt-less rows fall back to pr-open->merge wall, no usd).
+
+| Type | n | med wall | med usd | med Δlines | med CI runs |
+|---|---|---|---|---|---|
+{chr(10).join(slice_rows) if slice_rows else "| *(no merged PRs in scope)* | 0 | n/a | n/a | n/a | n/a |"}
+
+Merge-order trend (oldest→newest): usd `{spark([s["usd"] for s in slices])}` · wall-h `{spark([s["wall"] for s in slices])}` · Δlines `{spark([s["dlines"] for s in slices])}`
+
+{drift_note}
+
+{growth_line} *(a process doc growing with no matching slices is the journaling smell -- eyeball it)*
+"""
+
 # --- Local telemetry (this machine) -- the skill-layer half of CMMI-L4 (#46/#47).
 LOCAL = os.path.join(".claude", "metrics")
 
@@ -154,6 +339,10 @@ def read_jsonl(path):
 skill_rows = read_jsonl(os.path.join(LOCAL, "skill_usage.jsonl"))
 event_rows = read_jsonl(os.path.join(LOCAL, "events.jsonl"))
 denial_rows = read_jsonl(os.path.join(LOCAL, "permission_denials.jsonl"))
+pf_rows = sorted([r for r in read_jsonl(os.path.join(LOCAL, "preflight_times.jsonl"))
+                  if in_window(r.get("ts"))], key=lambda r: r.get("ts") or "")
+guard_rows = [r for r in read_jsonl(os.path.join(LOCAL, "guard_hits.jsonl"))
+              if in_window(r.get("ts"))]
 sess_rows = []
 for p in glob.glob(os.path.join(LOCAL, "sessions", "*.json")):
     try:
@@ -183,7 +372,7 @@ peaks = [s["peak_context_pct"] for s in sess_w if isinstance(s.get("peak_context
 compacts = [e for e in event_rows if e.get("source") == "compact" and in_window(e.get("ts"))]
 denials_w = [r for r in denial_rows if in_window(r.get("ts"))]
 
-if not (skill_rows or event_rows or sess_rows or denial_rows):
+if not (skill_rows or event_rows or sess_rows or denial_rows or pf_rows or guard_rows):
     local_md = ("\n## Local telemetry (this machine)\n\n"
                 "> No local telemetry here yet -- this section fills in once the statusline "
                 "and the skill/session hooks have run on this machine (docs/AUTOMATION.md s1-s2). "
@@ -224,6 +413,27 @@ else:
         "| Session cost / merged PR | %s | trend | This machine's windowed session spend over repo-wide merges -- the per-slice price of autopilot. A climb flags context hygiene or slice sizing before the dedicated metrics trip. Directional on multi-machine setups (each box sees only its own spend). |"
         % cpp,
     ]
+    if guard_rows:
+        gcounts = {}
+        for r in guard_rows:
+            k = "%s/%s" % (r.get("guard", "?"), r.get("rule", "?"))
+            gcounts[k] = gcounts.get(k, 0) + 1
+        gtop = ", ".join("%s x%d" % (k, v) for k, v in
+                         sorted(gcounts.items(), key=lambda kv: -kv[1])[:5])
+        lrows.append(
+            "| Guard hits | %d across %d guard/rule pair(s) -- top: %s | trend | Fires/catches of the mechanical guards (guard-lifecycle ledger, #253). Zero hits over ~2 retro periods = retirement candidate; constant hits = misaimed noise -- retrospective step 6 judges both. Machine-local. |"
+            % (len(guard_rows), len(gcounts), gtop))
+    pf_secs = [r.get("seconds") for r in pf_rows if isinstance(r.get("seconds"), (int, float))]
+    if pf_secs:
+        pf_h = len(pf_secs) // 2
+        pf_old = statistics.median(pf_secs[:pf_h]) if pf_h else None
+        pf_new = statistics.median(pf_secs[pf_h:]) if pf_secs[pf_h:] else None
+        pf_trend = ((" · halves %.0fs → %.0fs" % (pf_old, pf_new))
+                    if pf_old is not None and pf_new is not None else "")
+        pf_warn = " :warning:" if (pf_old and pf_new and pf_new >= 2 * pf_old and pf_new >= 60) else ""
+        lrows.append(
+            "| Preflight duration | median %.0fs over %d run(s)%s%s | trend -- alarm: newer half &ge;2&times; older and &ge;60s | Wall time of the full local gate (#255). A climb is the test/audit suite outgrowing the loop -- make the gate selective (targeted tests inner-loop, full suite at the merge gate) before it taxes every push. |"
+            % (statistics.median(pf_secs), len(pf_secs), pf_trend, pf_warn))
     local_md = ("\n## Local telemetry (this machine)\n\n"
                 "| Metric | Value | Target | What it means |\n|---|---|---|---|\n"
                 + "\n".join(lrows)
@@ -279,7 +489,7 @@ The few metrics that each change a decision when they cross a threshold -- not a
 {chr(10).join(rows)}
 
 *Sample this window: {n_merged} PR(s) merged, {len(bugs)} `bug`(s) filed, {len(runs_w)} PR CI run(s), {len(dlat)} decision(s) closed. Small samples are noisy -- treat single-digit windows as directional, not controlled.*
-{local_md}"""
+{slice_md}{local_md}"""
 
 if PRINT_ONLY:
     sys.stdout.write(body)
@@ -287,5 +497,43 @@ else:
     with open("docs/METRICS.md", "w", encoding="utf-8", newline="\n") as f:
         f.write(body)
     print(f"metrics: wrote docs/METRICS.md (window {WINDOW}d; "
-          f"{n_merged} merged, {len(bugs)} bugs, {len(runs_w)} PR runs)"
+          f"{n_merged} merged, {len(bugs)} bugs, {len(runs_w)} PR runs, "
+          f"{n_receipts}/{len(slices)} receipts)"
           + ("" if gh_alive else " -- WARNING: gh unreachable, values may be n/a"))
+
+if PLOT_DIR:
+    # On-demand stdlib SVG (the EXP-01 no-matplotlib pattern) -- never committed;
+    # metrics_report sends it to the owner phone-readable.
+    def bar_panel(vals, title, y0, color):
+        x0, w, h = 60, 620, 90
+        parts = ['<text x="%d" y="%d" font-size="12" fill="#667">%s</text>' % (x0, y0 - 8, title)]
+        nums = [v for v in vals if v is not None]
+        if not nums:
+            parts.append('<text x="%d" y="%d" font-size="11" fill="#99a">n/a</text>' % (x0, y0 + h // 2))
+            return "".join(parts)
+        hi = max(nums) or 1
+        bw = w / max(len(vals), 1)
+        for i, v in enumerate(vals):
+            if v is None:
+                continue
+            bh = max((v / hi) * (h - 4), 1)
+            parts.append('<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="%s"/>'
+                         % (x0 + i * bw, y0 + h - bh, max(bw - 2, 1), bh, color))
+        parts.append('<text x="%d" y="%d" font-size="10" fill="#99a" text-anchor="end">max %g</text>'
+                     % (x0 + w, y0 + 4, hi))
+        return "".join(parts)
+
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" width="720" height="400" '
+           'font-family="system-ui, sans-serif">'
+           '<rect width="720" height="400" fill="#fdfdfd"/>'
+           '<text x="60" y="24" font-size="14" fill="#334">Per-slice trend -- merges oldest to newest '
+           '(window %dd, %d merges, %d receipts)</text>' % (WINDOW, len(slices), n_receipts)
+           + bar_panel([s["usd"] for s in slices], "session usd per slice (receipts only)", 70, "#4a7dbd")
+           + bar_panel([s["wall"] for s in slices], "wall hours per slice", 185, "#c98a3d")
+           + bar_panel([s["dlines"] for s in slices], "diff lines per slice (churn)", 300, "#5a9a6e")
+           + '</svg>')
+    os.makedirs(PLOT_DIR, exist_ok=True)
+    plot_path = os.path.join(PLOT_DIR, "per_slice_trend.svg")
+    with open(plot_path, "w", encoding="utf-8") as f:
+        f.write(svg)
+    print(f"metrics: wrote {plot_path}")
