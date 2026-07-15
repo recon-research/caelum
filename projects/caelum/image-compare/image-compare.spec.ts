@@ -250,6 +250,17 @@ describe('CaeImageCompare', () => {
     expect(valueNow()).toBe('51');
   });
 
+  it('inverts PageUp/PageDown under RTL so the coarse keys agree with the arrows (#396)', async () => {
+    await render({}, 'rtl');
+    // PageUp is the coarse ArrowRight: under RTL physical-right is the low-reveal (start) edge, so both
+    // reveal LESS. Before #396, PageUp grew the reveal (unflipped) while ArrowRight shrank it — a disagreement.
+    key('PageUp');
+    expect(valueNow()).toBe('40'); // 50 - 10, matching ArrowRight's RTL direction
+    key('PageDown');
+    key('PageDown');
+    expect(valueNow()).toBe('60'); // 40 + 10 + 10
+  });
+
   // --- Pointer drag (native Pointer Events + capture) ---
 
   it('maps a pointer drag to a reveal %, measured from the start edge (LTR)', async () => {
