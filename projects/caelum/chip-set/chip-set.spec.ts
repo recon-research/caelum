@@ -443,4 +443,147 @@ describe('CaeChipSet', () => {
       console.warn = realWarn;
     }
   });
+
+  describe('per-item [chipRemovable]/[chipDisabled] (#201)', () => {
+    interface Item {
+      id: number;
+      name: string;
+      locked?: boolean;
+      off?: boolean;
+    }
+
+    @Component({
+      imports: [CaeChipSet],
+      template: `
+        <cae-chip-set
+          [items]="items()"
+          [label]="labelFn"
+          [chipRemovable]="removableFn"
+          [chipDisabled]="disabledFn"
+          (removed)="onRemoved($event)"
+        />
+      `,
+    })
+    class PerItemHost {
+      // A mixed list: an open chip (removable), a locked chip (non-removable but enabled), a disabled chip.
+      items = signal<readonly Item[]>([
+        { id: 1, name: 'open' },
+        { id: 2, name: 'locked', locked: true },
+        { id: 3, name: 'off', off: true },
+      ]);
+      labelFn = (t: Item): string => t.name;
+      removableFn = (t: Item): boolean => !t.locked;
+      disabledFn = (t: Item): boolean => !!t.off;
+      events: CaeChipRemoveEvent<Item>[] = [];
+      onRemoved(e: CaeChipRemoveEvent<Item>): void {
+        this.events.push(e);
+        this.items.update((l) => l.filter((x) => x !== e.item));
+      }
+    }
+
+    async function makePerItem(): Promise<ComponentFixture<PerItemHost>> {
+      await TestBed.configureTestingModule({ imports: [PerItemHost] }).compileComponents();
+      const f = TestBed.createComponent(PerItemHost);
+      el = f.nativeElement as HTMLElement;
+      document.body.appendChild(el);
+      f.detectChanges();
+      await f.whenStable();
+      return f;
+    }
+
+    it('renders a × only on removable, non-disabled chips (locked and disabled chips have none)', async () => {
+      const f = await makePerItem();
+      const r = rows(f);
+      expect(r.length).toBe(3);
+      expect(removeBtn(r[0])).not.toBeNull(); // open -> removable
+      expect(removeBtn(r[1])).toBeNull(); // locked -> no × affordance
+      expect(removeBtn(r[2])).toBeNull(); // disabled -> implicitly locked, no ×
+    });
+
+    it('greys + aria-disables a [chipDisabled] chip while a locked-but-enabled chip stays enabled', async () => {
+      const f = await makePerItem();
+      const r = rows(f);
+      // The a11y contract (not just the greying class): Material sets aria-disabled on the disabled chip's
+      // actionable cell. A locked-but-enabled chip is NOT aria-disabled — it's a normal, announced chip.
+      expect(r[2].querySelector('[aria-disabled="true"]')).not.toBeNull(); // disabled 'off'
+      expect(r[1].querySelector('[aria-disabled="true"]')).toBeNull(); // locked != disabled
+      expect(r[0].querySelector('[aria-disabled="true"]')).toBeNull(); // open
+      expect(r[2].classList.contains('mat-mdc-chip-disabled')).toBe(true); // and greyed
+    });
+
+    it('still removes a removable chip in a mixed list ((removed) fires, only that chip drops)', async () => {
+      const f = await makePerItem();
+      removeBtn(rows(f)[0])!.click(); // remove 'open'
+      await settle(f);
+      expect(f.componentInstance.events.map((e) => e.item.name)).toEqual(['open']);
+      expect(rows(f).map((row) => row.textContent!.trim())).toEqual(['locked', 'off']);
+    });
+
+    it('defaults to all-removable, none-disabled when the accessors are unset (non-breaking, v1 behaviour)', async () => {
+      const f = await makeString(); // StringHost binds neither chipRemovable nor chipDisabled
+      const r = rows(f);
+      expect(r.every((row) => removeBtn(row) !== null)).toBe(true);
+      expect(r.some((row) => row.classList.contains('mat-mdc-chip-disabled'))).toBe(false);
+    });
+
+    it('does not remove a locked chip via Backspace (the [removable] gate + onRemoved guard, #201)', async () => {
+      // The × absence isn't what stops a keyboard remove — Material's remove() is gated by [removable], and
+      // onRemoved guards the emit. Backspace on a locked chip must be a no-op. FAILS if [removable] regresses
+      // to a bare `removable` and the guard is dropped. (Positive control: the Enter-on-× test above proves
+      // keyboard removal is wired, so a silent no-op here is the gate working, not a dead event path.)
+      const f = await makePerItem();
+      const lockedRow = rows(f)[1]; // 'locked' — non-removable, enabled, no ×
+      const ev = new KeyboardEvent('keydown', { bubbles: true });
+      Object.defineProperty(ev, 'keyCode', { get: () => 8 }); // BACKSPACE — Material reads keyCode
+      lockedRow.dispatchEvent(ev);
+      await settle(f);
+      expect(f.componentInstance.events).toEqual([]);
+      expect(rows(f).length).toBe(3);
+    });
+
+    it('lands focus on [emptyFocusTarget] when removing the last ENABLED chip leaves only disabled chips (#201)', async () => {
+      // The strand this feature could reintroduce (verified against Material 22): the FocusKeyManager skips
+      // disabled chips and MatChipGrid.focus() no-ops on a disabled-only set, so removing the focused removable
+      // chip when only a disabled sibling remains would drop focus to <body> — even though a chip remains. The
+      // redirect must treat "no enabled chip left" like the empty case. FAILS without the noEnabledChipLeft arm.
+      @Component({
+        imports: [CaeChipSet],
+        template: `
+          <cae-chip-set
+            [items]="items()"
+            [label]="labelFn"
+            [chipDisabled]="disabledFn"
+            [emptyFocusTarget]="statusRef()"
+            (removed)="onRemoved($event)"
+          />
+          <p #status tabindex="-1">status</p>
+        `,
+      })
+      class DisabledSiblingHost {
+        items = signal<readonly Item[]>([
+          { id: 1, name: 'open' },
+          { id: 2, name: 'off', off: true },
+        ]);
+        labelFn = (t: Item): string => t.name;
+        disabledFn = (t: Item): boolean => !!t.off;
+        readonly statusRef = viewChild<ElementRef<HTMLElement>>('status');
+        onRemoved(e: CaeChipRemoveEvent<Item>): void {
+          this.items.update((l) => l.filter((x) => x !== e.item));
+        }
+      }
+      await TestBed.configureTestingModule({ imports: [DisabledSiblingHost] }).compileComponents();
+      const f = TestBed.createComponent(DisabledSiblingHost);
+      el = f.nativeElement as HTMLElement;
+      document.body.appendChild(el);
+      f.detectChanges();
+      await f.whenStable();
+      const openRemove = removeBtn(rows(f)[0])!; // 'open' is removable; the disabled 'off' has no ×
+      openRemove.focus();
+      expect(grid(f).contains(document.activeElement)).toBe(true); // focus in the set at removal
+      openRemove.click(); // remove the only enabled chip — only the disabled 'off' remains
+      await settle(f);
+      expect(rows(f).length).toBe(1); // the disabled chip is still present (set not empty)
+      expect(document.activeElement).toBe(f.componentInstance.statusRef()!.nativeElement); // not stranded on <body>
+    });
+  });
 });
