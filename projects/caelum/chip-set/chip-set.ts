@@ -171,6 +171,19 @@ export class CaeChipSet<T = string> implements OnInit {
         const target = this.emptyFocusTarget();
         const el = target instanceof ElementRef ? target.nativeElement : target;
         el?.focus({ preventScroll: true });
+        // Dev-only DX nudge (zero prod cost): a non-focusable target (a non-interactive element missing
+        // tabindex="-1") or one detached from the DOM makes .focus() a silent no-op, dropping the keyboard
+        // user to <body> — the same as no redirect at all, but hidden. Unlike validateConfig (own inputs,
+        // knowable at init) an EXTERNAL element's focusability is only knowable here, after the call — so
+        // the guard lives in this callback, not ngOnInit (#206). Only nudge when a target was actually bound.
+        // The activeElement compare assumes the documented light-DOM target (a heading / status region); a
+        // shadow-DOM or focus-forwarding target can retarget activeElement to its host, making this a benign
+        // dev-only false positive — accepted rather than shipping an untestable shadow-walk for unsupported use.
+        if (isDevMode() && el && document.activeElement !== el) {
+          console.warn(
+            'cae-chip-set: [emptyFocusTarget] did not receive focus after the set emptied — the element is likely not focusable (a non-interactive target needs tabindex="-1") or is detached from the DOM.',
+          );
+        }
       },
       { injector: this.injector },
     );
