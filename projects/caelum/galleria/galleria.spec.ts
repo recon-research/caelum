@@ -1,3 +1,4 @@
+import { Component, viewChild } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { MatDialog } from '@angular/material/dialog';
@@ -5,6 +6,7 @@ import { of, Subject } from 'rxjs';
 
 import { CaeDialog } from 'caelum/dialog';
 import { CaeGalleria, type CaeGalleriaItem } from './galleria';
+import { CaeGalleriaItemDef, CaeGalleriaThumbnailDef } from './galleria-item';
 
 const ITEMS: readonly CaeGalleriaItem[] = [
   { src: 'a.jpg', alt: 'Alpha' },
@@ -365,6 +367,127 @@ describe('CaeGalleria', () => {
       lbClose()!.click();
       await closed;
       await settle();
+      expect(dialog.openDialogs).toHaveLength(0);
+    });
+  });
+
+  describe('projected templates (#287)', () => {
+    // A host projecting BOTH templates — the typed image model is the first-class default, so these are
+    // optional overrides for non-image content. The galleria keeps its figure/tab wrappers; the templates
+    // replace only the inner content.
+    @Component({
+      imports: [CaeGalleria, CaeGalleriaItemDef, CaeGalleriaThumbnailDef],
+      template: `
+        <cae-galleria [items]="items" ariaLabel="Clips">
+          <ng-template caeGalleriaItem let-item let-i="index">
+            <div class="custom-item" [attr.data-idx]="i">{{ item.alt }} clip</div>
+          </ng-template>
+          <ng-template caeGalleriaThumbnail let-item>
+            <span class="custom-thumb">{{ item.alt }}</span>
+          </ng-template>
+        </cae-galleria>
+      `,
+    })
+    class TemplateHost {
+      readonly items = ITEMS;
+      readonly galleria = viewChild.required(CaeGalleria);
+    }
+
+    let hostFixture: ComponentFixture<TemplateHost>;
+    let hostEl: HTMLElement;
+
+    async function renderHost(): Promise<TemplateHost> {
+      hostFixture = TestBed.createComponent(TemplateHost);
+      document.body.appendChild(hostFixture.nativeElement);
+      hostEl = hostFixture.nativeElement;
+      hostFixture.detectChanges();
+      await hostFixture.whenStable();
+      return hostFixture.componentInstance;
+    }
+
+    afterEach(() => {
+      TestBed.inject(MatDialog).closeAll();
+      hostFixture?.nativeElement.remove();
+    });
+
+    it('renders a projected caeGalleriaItem in the main view (overriding the typed <img>) with reactive context', async () => {
+      const host = await renderHost();
+      // The typed fallback <img> is gone; the custom renderer shows the active item + its index.
+      expect(hostEl.querySelector('.cae-galleria__image')).toBeNull();
+      const custom = hostEl.querySelector('.cae-galleria__figure .custom-item')!;
+      expect(custom.textContent!.trim()).toBe('Alpha clip');
+      expect(custom.getAttribute('data-idx')).toBe('0');
+      // Context is reactive — navigating re-stamps the template with the new item/index.
+      host.galleria().next();
+      hostFixture.detectChanges();
+      await hostFixture.whenStable();
+      const custom2 = hostEl.querySelector('.cae-galleria__figure .custom-item')!;
+      expect(custom2.textContent!.trim()).toBe('Bravo clip');
+      expect(custom2.getAttribute('data-idx')).toBe('1');
+    });
+
+    it('renders a projected caeGalleriaThumbnail inside each role=tab button (a11y wrapper retained)', async () => {
+      await renderHost();
+      // Fallback thumbnail <img> gone; custom content inside every tab; the roving-tab semantics stay.
+      expect(hostEl.querySelector('.cae-galleria__thumb-image')).toBeNull();
+      const tabButtons = Array.from(hostEl.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
+      expect(tabButtons).toHaveLength(3);
+      expect(tabButtons.map((b) => b.querySelector('.custom-thumb')?.textContent?.trim())).toEqual([
+        'Alpha',
+        'Bravo',
+        'Charlie',
+      ]);
+      expect(tabButtons[0].getAttribute('aria-selected')).toBe('true'); // button still owns selection
+    });
+
+    it('drives the fullscreen lightbox with the same projected item template', async () => {
+      const host = await renderHost();
+      host.galleria().openFullscreen();
+      hostFixture.detectChanges();
+      await hostFixture.whenStable();
+      // Fullscreen renders the projected content (threaded through the dialog data), not the bare <img>.
+      expect(containerEl.querySelector('.cae-galleria-lightbox__image')).toBeNull();
+      const lbCustom = containerEl.querySelector('.cae-galleria-lightbox__figure .custom-item');
+      expect(lbCustom).not.toBeNull();
+      expect(lbCustom!.textContent!.trim()).toBe('Alpha clip');
+    });
+
+    it('re-stamps the projected item template on fullscreen navigation (transplanted-view reactivity)', async () => {
+      const host = await renderHost();
+      host.galleria().openFullscreen();
+      hostFixture.detectChanges();
+      await hostFixture.whenStable();
+      const lbItem = () =>
+        containerEl
+          .querySelector('.cae-galleria-lightbox__figure .custom-item')!
+          .textContent!.trim();
+      expect(lbItem()).toBe('Alpha clip');
+      // Navigate inside the overlay: the template is declared in the galleria but stamped in the lightbox
+      // (a separate overlay component), so this proves the transplanted view re-binds on the lightbox's
+      // own index signal — the one reactive path the inline tests don't cover.
+      containerEl.querySelector<HTMLButtonElement>('.cae-galleria-lightbox__nav--next')!.click();
+      hostFixture.detectChanges();
+      await hostFixture.whenStable();
+      expect(lbItem()).toBe('Bravo clip');
+    });
+
+    it('closes the lightbox without error when the host is destroyed mid-fullscreen (#294 + projected template)', async () => {
+      const host = await renderHost();
+      const dialog = TestBed.inject(MatDialog);
+      host.galleria().openFullscreen();
+      hostFixture.detectChanges();
+      await hostFixture.whenStable();
+      expect(dialog.openDialogs).toHaveLength(1);
+      expect(
+        containerEl.querySelector('.cae-galleria-lightbox__figure .custom-item'),
+      ).not.toBeNull();
+      // Destroying the host tears down the projected template's declaration view while the overlay still
+      // holds it. The #294 teardown must close the lightbox and NOT throw on the orphaned transplanted view.
+      const closed = new Promise<void>((resolve) =>
+        dialog.openDialogs[0].afterClosed().subscribe(() => resolve()),
+      );
+      expect(() => hostFixture.destroy()).not.toThrow();
+      await closed;
       expect(dialog.openDialogs).toHaveLength(0);
     });
   });

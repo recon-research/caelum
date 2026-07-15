@@ -1,8 +1,10 @@
+import { NgTemplateOutlet } from '@angular/common';
 import {
   booleanAttribute,
   ChangeDetectionStrategy,
   Component,
   computed,
+  contentChild,
   DestroyRef,
   ElementRef,
   effect,
@@ -15,12 +17,18 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CaeDialog, type CaeDialogRef } from 'caelum/dialog';
 import { CaeGalleriaLightbox, type CaeGalleriaLightboxData } from './galleria-lightbox';
+import {
+  CaeGalleriaItemDef,
+  CaeGalleriaThumbnailDef,
+  type CaeGalleriaTemplateContext,
+} from './galleria-item';
 
 /**
  * One image in a {@link CaeGalleria}. `src`/`alt` are required (every gallery image needs alt text —
  * WCAG 1.1.1); `thumbnailSrc` falls back to `src` when omitted; `caption` shows under the main image
- * and in the lightbox. v1 is a typed image model — content-agnostic projected item/thumbnail templates
- * (`p-galleria`'s `item`/`thumbnail` templates) are a follow-up, a stepping-stone not a scope cut.
+ * and in the lightbox. The typed image model is the first-class path; for non-image content project a
+ * {@link CaeGalleriaItemDef} / {@link CaeGalleriaThumbnailDef} template (`p-galleria`'s `item`/`thumbnail`),
+ * which overrides the `<img>` while `alt` still names the thumbnail tab.
  */
 export interface CaeGalleriaItem {
   /** Full-size image source — the main view and the lightbox. */
@@ -57,6 +65,7 @@ let nextUniqueId = 0;
 @Component({
   selector: 'cae-galleria',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [NgTemplateOutlet],
   template: `
     <section
       class="cae-galleria"
@@ -89,9 +98,16 @@ let nextUniqueId = 0;
           <div class="cae-galleria__main">
             <figure class="cae-galleria__figure">
               @if (activeItem(); as item) {
-                <img class="cae-galleria__image" [src]="item.src" [alt]="item.alt" />
-                @if (item.caption) {
-                  <figcaption class="cae-galleria__caption">{{ item.caption }}</figcaption>
+                @if (itemTemplate(); as tpl) {
+                  <ng-container
+                    [ngTemplateOutlet]="tpl"
+                    [ngTemplateOutletContext]="templateContext(item, clampedIndex())"
+                  ></ng-container>
+                } @else {
+                  <img class="cae-galleria__image" [src]="item.src" [alt]="item.alt" />
+                  @if (item.caption) {
+                    <figcaption class="cae-galleria__caption">{{ item.caption }}</figcaption>
+                  }
                 }
               }
             </figure>
@@ -138,7 +154,14 @@ let nextUniqueId = 0;
                 (click)="select(i)"
                 (keydown)="onThumbKeydown($event, i)"
               >
-                <img class="cae-galleria__thumb-image" [src]="thumbSrc(item)" alt="" />
+                @if (thumbnailTemplate(); as tpl) {
+                  <ng-container
+                    [ngTemplateOutlet]="tpl"
+                    [ngTemplateOutletContext]="templateContext(item, i)"
+                  ></ng-container>
+                } @else {
+                  <img class="cae-galleria__thumb-image" [src]="thumbSrc(item)" alt="" />
+                }
               </button>
             }
           </div>
@@ -326,6 +349,18 @@ export class CaeGalleria {
   /** This gallery's thumbnail tab buttons (view query → auto-scoped to this instance). */
   private readonly thumbBtns = viewChildren<ElementRef<HTMLElement>>('thumbBtn');
 
+  /** Optional projected `caeGalleriaItem` template — overrides the typed `<img>` for the main + lightbox. */
+  private readonly itemDef = contentChild(CaeGalleriaItemDef);
+  protected readonly itemTemplate = computed(() => this.itemDef()?.template ?? null);
+  /** Optional projected `caeGalleriaThumbnail` template — overrides the typed thumbnail `<img>` in the strip. */
+  private readonly thumbnailDef = contentChild(CaeGalleriaThumbnailDef);
+  protected readonly thumbnailTemplate = computed(() => this.thumbnailDef()?.template ?? null);
+
+  /** The {@link CaeGalleriaTemplateContext} handed to a projected item/thumbnail template. */
+  protected templateContext(item: CaeGalleriaItem, index: number): CaeGalleriaTemplateContext {
+    return { $implicit: item, index };
+  }
+
   protected readonly count = computed(() => this.items().length);
   /** The active index clamped into range — the render source of truth (the model may lag/over-set). */
   protected readonly clampedIndex = computed(() =>
@@ -472,6 +507,9 @@ export class CaeGalleria {
           items: this.items(),
           index: this.clampedIndex(),
           circular: this.circular(),
+          // Hand the projected item template (if any) to the lightbox so fullscreen renders the same
+          // custom content as the inline view — not a bare <img> that a non-image item can't fill.
+          itemTemplate: this.itemTemplate(),
           onNavigate: (i) => this.activeIndex.set(i),
           prevAriaLabel: this.prevAriaLabel(),
           nextAriaLabel: this.nextAriaLabel(),

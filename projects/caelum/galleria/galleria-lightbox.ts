@@ -1,6 +1,15 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  signal,
+  type TemplateRef,
+} from '@angular/core';
 import { CAE_DIALOG_DATA, injectCaeDialogRef } from 'caelum/dialog';
 import type { CaeGalleriaItem } from './galleria';
+import type { CaeGalleriaTemplateContext } from './galleria-item';
 
 /**
  * Payload {@link CaeGalleria.openFullscreen} hands the lightbox through {@link CAE_DIALOG_DATA}.
@@ -12,6 +21,8 @@ export interface CaeGalleriaLightboxData {
   items: readonly CaeGalleriaItem[];
   index: number;
   circular: boolean;
+  /** The opener's projected `caeGalleriaItem` template (or null) — so fullscreen renders the same content. */
+  itemTemplate: TemplateRef<CaeGalleriaTemplateContext> | null;
   onNavigate: (index: number) => void;
   prevAriaLabel: string;
   nextAriaLabel: string;
@@ -33,6 +44,7 @@ export interface CaeGalleriaLightboxData {
   // inner div) so it catches keydown bubbling from whichever trapped button holds focus, without making
   // a non-interactive container a tab stop.
   host: { '(keydown)': 'onKeydown($event)' },
+  imports: [NgTemplateOutlet],
   template: `
     <div class="cae-galleria-lightbox">
       <button
@@ -59,9 +71,16 @@ export interface CaeGalleriaLightboxData {
 
       <figure class="cae-galleria-lightbox__figure">
         @if (activeItem(); as item) {
-          <img class="cae-galleria-lightbox__image" [src]="item.src" [alt]="item.alt" />
-          @if (item.caption) {
-            <figcaption class="cae-galleria-lightbox__caption">{{ item.caption }}</figcaption>
+          @if (data.itemTemplate; as tpl) {
+            <ng-container
+              [ngTemplateOutlet]="tpl"
+              [ngTemplateOutletContext]="templateContext(item)"
+            ></ng-container>
+          } @else {
+            <img class="cae-galleria-lightbox__image" [src]="item.src" [alt]="item.alt" />
+            @if (item.caption) {
+              <figcaption class="cae-galleria-lightbox__caption">{{ item.caption }}</figcaption>
+            }
           }
         }
       </figure>
@@ -206,6 +225,11 @@ export class CaeGalleriaLightbox {
   protected readonly atEnd = computed(() => this.index() === this.count - 1);
   /** The polite live-region text — "Image N of M". */
   protected readonly counterText = computed(() => `Image ${this.index() + 1} of ${this.count}`);
+
+  /** The context handed to a projected `caeGalleriaItem` template (mirrors the inline view's context). */
+  protected templateContext(item: CaeGalleriaItem): CaeGalleriaTemplateContext {
+    return { $implicit: item, index: this.index() };
+  }
 
   /** Go back one image; wraps to the last when {@link CaeGalleriaLightboxData.circular}. */
   protected prev(): void {
