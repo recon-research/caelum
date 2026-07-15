@@ -1,3 +1,4 @@
+import { Dir, Direction } from '@angular/cdk/bidi';
 import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
@@ -613,5 +614,86 @@ describe('CaeCarousel responsive (#276)', () => {
 
     fixture.destroy();
     expect(listenerCount(q('1024px'))).toBe(0); // onCleanup removed the ACTUAL listener (no leak)
+  });
+});
+
+// ---- RTL: inline-axis mirroring under a born-rtl [dir] (#276) ----
+
+// Wraps the carousel under a REAL CDK `Dir` ancestor bound rtl BEFORE the first paint — a seeded
+// FakeDirectionality would report 'rtl' from construction and so pass under both the correct value-read and
+// the buggy toSignal(change,{initialValue}) idiom (no teeth). Only the born-rtl property binding exercises
+// the first-paint read (mirrors the cae-splitter / cae-image-compare #364 guard).
+@Component({
+  selector: 'cae-carousel-rtl-host',
+  imports: [CaeCarousel, CaeCarouselItem, Dir],
+  template: `
+    <div [dir]="direction()">
+      <cae-carousel [value]="items()" [numVisible]="1" ariaLabel="RTL carousel">
+        <ng-template caeCarouselItem let-item>{{ item }}</ng-template>
+      </cae-carousel>
+    </div>
+  `,
+})
+class CarouselRtlHost {
+  readonly direction = signal<Direction>('rtl');
+  readonly items = signal<string[]>(['a', 'b', 'c', 'd', 'e', 'f']); // 6 items, numVisible 1 → 6 pages
+}
+
+describe('CaeCarousel RTL (#276)', () => {
+  let fixture: ComponentFixture<CarouselRtlHost>;
+
+  async function mount(direction: Direction): Promise<CaeCarousel<string>> {
+    await TestBed.configureTestingModule({ imports: [CarouselRtlHost] }).compileComponents();
+    fixture = TestBed.createComponent(CarouselRtlHost);
+    fixture.componentInstance.direction.set(direction); // set before first CD → born-rtl
+    document.body.appendChild(fixture.nativeElement);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    return fixture.debugElement.query(By.directive(CaeCarousel)).componentInstance;
+  }
+
+  const transform = (): string =>
+    (fixture.nativeElement.querySelector('.cae-carousel__track') as HTMLElement).style.transform;
+  const activeIndicator = (): HTMLElement =>
+    fixture.nativeElement.querySelector('.cae-carousel__indicator[aria-current="true"]');
+  const arrow = (el: HTMLElement, k: string): void => {
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+    fixture.detectChanges();
+  };
+
+  afterEach(() => fixture?.nativeElement.remove());
+
+  it('mirrors the sliding-window transform toward the inline-start under a born-rtl [dir]', async () => {
+    const carousel = await mount('rtl');
+    carousel.goTo(1); // windowStart 1, itemBasis 100% → offset 100%
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(transform()).toBe('translateX(100%)'); // RTL: positive (inline-start); the LTR form is -100%
+    // the chevron RTL CSS hinges on this host class — assert it tracks isRtl() (the transform reads
+    // isRtl() directly, so a class-name typo would otherwise ship silently until the #240 browser pass).
+    const el = fixture.nativeElement.querySelector('.cae-carousel') as HTMLElement;
+    expect(el.classList.contains('cae-carousel--rtl')).toBe(true);
+  });
+
+  it('keeps the LTR transform negative — the flip is conditional, not always-positive', async () => {
+    const carousel = await mount('ltr');
+    carousel.goTo(1);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(transform()).toBe('translateX(-100%)');
+  });
+
+  it('flips the indicator Left/Right arrows to follow visual order under RTL', async () => {
+    const carousel = await mount('rtl');
+    activeIndicator().focus();
+    arrow(activeIndicator(), 'ArrowLeft'); // physically left = the later page in RTL → advance
+    expect(carousel.page()).toBe(1); // LTR would treat ArrowLeft as prev and clamp at 0
+  });
+
+  it('does NOT flip Up/Down under RTL (the block axis is direction-independent)', async () => {
+    const carousel = await mount('rtl');
+    activeIndicator().focus();
+    arrow(activeIndicator(), 'ArrowDown'); // Down = next regardless of direction
+    expect(carousel.page()).toBe(1);
   });
 });
