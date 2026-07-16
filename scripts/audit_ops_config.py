@@ -58,6 +58,7 @@ PREFLIGHT_TO_CI = {
     "library audits": "Library audits (refs / routing / links)",
     "research audit": "Research audit (citations / structure / links)",
     "provenance (deps license + US-origin, D-11)": "Dependency provenance (license + US-origin, D-11)",
+    "theming scan (D-04 token-only)": "Theming scan (D-04 token-only)",
     "doc budgets": "Doc budgets (anti-drift)",
     "ops-config audit": "Ops-config audit (preflight/CI mirror, settings sanity)",
     "repo-docs links": "Repo-docs link audit (root/docs/.claude/_intake)",

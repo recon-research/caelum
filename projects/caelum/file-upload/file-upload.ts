@@ -191,7 +191,7 @@ export class CaeFileUploadFileDef {
  * list semantics and manages state/progress/upload, and the row wires its actions through the context's
  * `remove`/`cancel`/`retry` callbacks. Absent ⇒ the built-in row renders. Fully content-agnostic.
  *
- * Token-only theming (`--cae-*`/`--mat-sys-*`), `OnPush` + signal state (zoneless), Angular core +
+ * Token-only theming (`--cae-*`), `OnPush` + signal state (zoneless), Angular core +
  * `@angular/common/http` + `@angular/cdk/a11y` only — no foreign uploader (Book 03 provenance clean).
  */
 @Component({
@@ -345,21 +345,21 @@ export class CaeFileUploadFileDef {
       display: flex;
       flex-wrap: wrap;
       align-items: center;
-      gap: var(--mat-sys-title-small-size, 0.75rem);
-      padding: 1rem;
-      border: 2px dashed var(--mat-sys-outline, rgba(0, 0, 0, 0.38));
-      border-radius: var(--mat-sys-corner-medium, 0.75rem);
-      background: var(--mat-sys-surface-container-low, transparent);
-      color: var(--mat-sys-on-surface, inherit);
+      gap: var(--cae-space-3);
+      padding: var(--cae-space-4);
+      border: 2px dashed var(--cae-color-border);
+      border-radius: var(--cae-radius-md);
+      background: var(--cae-surface-raised);
+      color: var(--cae-color-on-surface);
       transition:
-        border-color 150ms ease,
-        background 150ms ease;
+        border-color var(--cae-motion-fast) var(--cae-easing-standard),
+        background var(--cae-motion-fast) var(--cae-easing-standard);
     }
 
     /* Highlight while a file is dragged over — the pointer-drop affordance. */
     .cae-file-upload__dropzone--dragover {
-      border-color: var(--mat-sys-primary, #6750a4);
-      background: var(--mat-sys-primary-container, rgba(103, 80, 164, 0.08));
+      border-color: var(--cae-color-primary);
+      background: color-mix(in srgb, var(--cae-color-primary) 8%, transparent);
     }
 
     .cae-file-upload__dropzone--disabled {
@@ -368,8 +368,8 @@ export class CaeFileUploadFileDef {
 
     /* Show a visible focus ring on the dropzone when the sr-only input is focused (WCAG 2.4.7). */
     .cae-file-upload__dropzone:focus-within {
-      outline: 2px solid var(--mat-sys-primary, #6750a4);
-      outline-offset: 2px;
+      outline: var(--cae-focus-ring);
+      outline-offset: var(--cae-focus-ring-offset);
     }
 
     /* Visually hidden, but kept in the tab order and accessibility tree. */
@@ -388,10 +388,10 @@ export class CaeFileUploadFileDef {
     .cae-file-upload__button {
       display: inline-flex;
       align-items: center;
-      padding: 0.5rem 1rem;
-      border-radius: var(--mat-sys-corner-full, 1.25rem);
-      background: var(--mat-sys-primary, #6750a4);
-      color: var(--mat-sys-on-primary, #fff);
+      padding: var(--cae-space-2) var(--cae-space-4);
+      border-radius: var(--cae-radius-full);
+      background: var(--cae-color-primary);
+      color: var(--cae-color-on-primary);
       cursor: pointer;
       font: inherit;
     }
@@ -401,26 +401,26 @@ export class CaeFileUploadFileDef {
     }
 
     .cae-file-upload__hint {
-      color: var(--mat-sys-on-surface-variant, rgba(0, 0, 0, 0.6));
+      color: var(--cae-color-on-surface-variant);
     }
 
     .cae-file-upload__list {
       list-style: none;
-      margin: 0.75rem 0 0;
+      margin: var(--cae-space-3) 0 0;
       padding: 0;
       display: flex;
       flex-direction: column;
-      gap: 0.5rem;
+      gap: var(--cae-space-2);
     }
 
     .cae-file-upload__item {
       display: flex;
       flex-wrap: wrap;
       align-items: center;
-      gap: 0.5rem;
-      padding: 0.5rem 0.75rem;
-      border-radius: var(--mat-sys-corner-small, 0.5rem);
-      background: var(--mat-sys-surface-container, rgba(0, 0, 0, 0.04));
+      gap: var(--cae-space-2);
+      padding: var(--cae-space-2) var(--cae-space-3);
+      border-radius: var(--cae-radius-md);
+      background: var(--cae-surface-raised);
     }
 
     /* Custom-row wrapper: one full-width flex child of the item, so a multi-root projected row lays out
@@ -435,59 +435,61 @@ export class CaeFileUploadFileDef {
       inline-size: 2rem;
       block-size: 2rem;
       object-fit: cover;
-      border-radius: var(--mat-sys-corner-small, 0.5rem);
+      border-radius: var(--cae-radius-md);
       flex: 0 0 auto;
     }
 
     .cae-file-upload__name {
-      font-weight: 500;
+      font-weight: var(--cae-weight-medium);
     }
 
     .cae-file-upload__size,
     .cae-file-upload__percent {
-      color: var(--mat-sys-on-surface-variant, rgba(0, 0, 0, 0.6));
-      font-size: 0.875em;
+      color: var(--cae-color-on-surface-variant);
+      font-size: var(--cae-text-sm);
     }
 
     .cae-file-upload__progress {
       flex: 1 1 6rem;
       min-inline-size: 4rem;
       block-size: 0.5rem;
-      accent-color: var(--mat-sys-primary, #6750a4);
+      accent-color: var(--cae-color-primary);
     }
 
     .cae-file-upload__error {
-      color: var(--mat-sys-error, #b3261e);
-      font-size: 0.875em;
+      color: var(--cae-color-error);
+      font-size: var(--cae-text-sm);
     }
 
     .cae-file-upload__done {
-      color: var(--mat-sys-primary, #6750a4);
-      font-size: 0.875em;
-      font-weight: 500;
+      color: var(--cae-color-primary);
+      font-size: var(--cae-text-sm);
+      font-weight: var(--cae-weight-medium);
     }
 
     .cae-file-upload__item[data-status='success'] {
-      background: var(--mat-sys-primary-container, rgba(103, 80, 164, 0.08));
+      /* 16%: an 8% primary tint over the raised row fill is near-invisible in light mode —
+         the persistent "Uploaded" text carries the state (WCAG 1.4.1); this keeps it glanceable. */
+      background: color-mix(in srgb, var(--cae-color-primary) 16%, transparent);
     }
 
     .cae-file-upload__action,
     .cae-file-upload__upload {
       font: inherit;
       cursor: pointer;
-      border: 1px solid var(--mat-sys-outline, rgba(0, 0, 0, 0.38));
-      border-radius: var(--mat-sys-corner-full, 1.25rem);
-      padding: 0.25rem 0.75rem;
+      border: 1px solid var(--cae-color-border);
+      border-radius: var(--cae-radius-full);
+      padding: var(--cae-space-1) var(--cae-space-3);
       background: transparent;
       color: inherit;
     }
 
     .cae-file-upload__upload {
-      margin-top: 0.75rem;
-      background: var(--mat-sys-primary, #6750a4);
-      color: var(--mat-sys-on-primary, #fff);
+      margin-top: var(--cae-space-3);
+      background: var(--cae-color-primary);
+      color: var(--cae-color-on-primary);
       border-color: transparent;
-      padding: 0.5rem 1rem;
+      padding: var(--cae-space-2) var(--cae-space-4);
     }
 
     .cae-file-upload__upload[aria-disabled='true'] {
