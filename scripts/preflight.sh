@@ -111,6 +111,11 @@ stage "research audit" python3 research/tools/_audit_research.py
 # in every posture and mirrors CI's static-gates job.
 stage "provenance (deps license + US-origin, D-11)" python3 scripts/check_provenance.py
 
+# Theming-invariant gate (D-04, guard #498): component sources take every design
+# value from the --cae-* bridge — mechanical since the file-upload escape (#496).
+# Node-free; mirrors ci.yml's static-gates step.
+stage "theming scan (D-04 token-only)" python3 scripts/check_theming.py
+
 # Doc-drift budgets (#67), ops-config three-way-mirror integrity (#71), and the
 # repo-docs relative-link audit (#73) — gates from the pyxis template sync (#245),
 # mirroring ci.yml's static-gates steps and preflight.ps1 (same stage names).

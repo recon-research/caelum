@@ -46,6 +46,7 @@
       "Bash(python3 textbooks/tools/_gen_sections.py:*)",
       "Bash(python3 textbooks/tools/_audit:*)",
       "Bash(python3 research/tools/_audit_research.py:*)",
+      "Bash(python3 scripts/slice_telemetry.py:*)",
       "Bash(scripts/preflight.sh:*)",
       "Bash(bash scripts/preflight.sh:*)",
 
@@ -92,6 +93,12 @@
       "PowerShell(python textbooks/tools/_gen_sections.py:*)",
       "PowerShell(python textbooks/tools/_audit:*)",
       "PowerShell(python research/tools/_audit_research.py:*)",
+      "PowerShell(python3 tools/_gen_sections.py:*)",
+      "PowerShell(python3 tools/_audit:*)",
+      "PowerShell(python3 textbooks/tools/_gen_sections.py:*)",
+      "PowerShell(python3 textbooks/tools/_audit:*)",
+      "PowerShell(python3 research/tools/_audit_research.py:*)",
+      "PowerShell(python3 scripts/slice_telemetry.py:*)",
       "PowerShell(scripts\\preflight.ps1:*)",
       "PowerShell(.\\scripts\\preflight.ps1:*)",
       "PowerShell(powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\preflight.ps1:*)"

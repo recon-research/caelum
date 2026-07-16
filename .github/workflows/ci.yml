@@ -182,6 +182,14 @@ jobs:
       - name: Dependency provenance (license + US-origin, D-11)
         run: python3 scripts/check_provenance.py
 
+      # Theming invariant (D-04, guard #498): no hardcoded design values in component
+      # sources — every color/space/radius/type from --cae-* tokens; documented
+      # exceptions carry an in-file `token-exempt:` marker. Added after the
+      # file-upload escape (#496). Mirrored by preflight's `theming scan` stage.
+      - name: Theming scan (D-04 token-only)
+        env: { PYTHONIOENCODING: utf-8, PYTHONUTF8: "1" }
+        run: python3 scripts/check_theming.py
+
       # Doc-drift budgets (#67): the docs are state caches of the tracker; this caps
       # Status/ARCHITECTURE/ROADMAP growth so session journaling cannot creep in.
       # Mirrored by the `doc budgets` stage in scripts/preflight.{sh,ps1}.

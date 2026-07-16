@@ -151,7 +151,7 @@ export interface CaeMultiSelectOption {
       inline-size: 100%;
       padding: var(--cae-space-2) var(--cae-space-3);
       border: 1px solid var(--mat-sys-outline-variant, currentColor);
-      border-radius: var(--mat-sys-corner-extra-small, 4px);
+      border-radius: var(--cae-radius-sm);
       background: var(--mat-sys-surface-container-high, transparent);
       color: var(--mat-sys-on-surface, currentColor);
       font: inherit;
