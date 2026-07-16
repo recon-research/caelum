@@ -275,6 +275,28 @@ else:
 
 n_receipts = sum(1 for s in slices if s["receipt"])
 
+# guard: #263 -- receipts-coverage tripwire. A `cost:` receipt is ship_pr's
+# skill-step-backed artifact: hooks and scripts fire on their own, but a skill
+# step fires only if the skill was invoked -- a session hand-driving gh skips it
+# silently (field failure: Caelum 2026-07-15, two receipt-less merges post-sync).
+# Once receipts exist in scope, every later receipt-less merge is that signal.
+# Tripwire, never a target: the fix is a retrospective (usually a SKILL.md /
+# routing diff), never retroactive receipts posted to quiet the number.
+# Retire-when: same condition as the #263 routing reminders.
+first_r = next((i for i, s in enumerate(slices) if s["receipt"]), None)
+missing = [s["n"] for s in slices[first_r:] if not s["receipt"]] if first_r is not None else []
+if missing:
+    coverage_note = (":warning: **Receipt-less merges since receipts began** -- "
+                     + ", ".join(f"#{n}" for n in missing[:8])
+                     + (f" (+{len(missing) - 8} more)" if len(missing) > 8 else "")
+                     + " carry no `cost:` comment: a session likely drove gh below "
+                       "`ship_pr` (steps 0/7 skipped, checkpoint at risk too). Route to "
+                       "a retrospective -- the guard is skill-layer, not a backfilled receipt.")
+elif first_r is not None:
+    coverage_note = "Receipts coverage: every merge since receipts began carries one."
+else:
+    coverage_note = "Receipts coverage: no receipts in scope yet (adoption pending)."
+
 
 def doc_growth():
     """Net .md line growth per file this window, from git alone (no network).
@@ -313,6 +335,8 @@ Receipts (`cost:` PR comments, posted at merge by `ship_pr` via `scripts/slice_t
 Merge-order trend (oldest→newest): usd `{spark([s["usd"] for s in slices])}` · wall-h `{spark([s["wall"] for s in slices])}` · Δlines `{spark([s["dlines"] for s in slices])}`
 
 {drift_note}
+
+{coverage_note}
 
 {growth_line} *(a process doc growing with no matching slices is the journaling smell -- eyeball it)*
 """

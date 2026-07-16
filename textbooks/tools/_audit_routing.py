@@ -108,6 +108,15 @@ if sk_disk:
             sk_warns.append(f"skill body is {blines} lines (warn > 120; fail > 200) -- trim: procedure detail to the owning doc, lessons to tickets -> {p}")
         if bchars > 16000:
             sk_warns.append(f"skill body is {bchars} chars (warn > 16000: dense long-line body, already fail-length cost) -- move procedure detail to the owning doc, lessons to tickets -> {p}")
+    # guard: #261 -- the README's prose skill count must match the catalog; it went
+    # stale twice (30 vs 32) because nothing asserted prose, only catalog<->disk.
+    # Same class as a stale MANIFEST total_books (the COUNTS check below).
+    rp = "../.claude/skills/README.md"
+    rm = re.search(r"This template's (\d+) skills", open(rp, encoding="utf-8").read()) if os.path.exists(rp) else None
+    if not rm:
+        sk_fails.append(f"README prose count phrase missing (\"This template's N skills\") -- keep it, the count is audit-asserted (#261) -> {rp}")
+    elif int(rm.group(1)) != len(sk_disk):
+        sk_fails.append(f"README prose says {rm.group(1)} skills but {len(sk_disk)} are on disk -- update the prose (and re-measure its token figure) -> {rp}")
 for x in sk_fails: print("  SKILLS", x)
 for x in sk_warns: print("  SKILLS warn:", x)
 print(f"Skills catalog: {len(sk_listed)} listed, {len(sk_disk)} on disk, {len(sk_fails)} problem(s), {len(sk_warns)} warning(s)")

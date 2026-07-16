@@ -109,36 +109,36 @@ if (-not $Quick) {
 
 # --- Real-from-day-one gates (mirror ci.yml's consolidated `static gates` job) ---
 Invoke-Stage 'library audits' {
-    python textbooks/tools/_gen_sections.py
+    python3 textbooks/tools/_gen_sections.py
     if ($LASTEXITCODE -ne 0) { return }
     # The COMMITTED index is what agents grep to verify citations - regen must be a no-op.
     git diff --quiet -- textbooks/SECTIONS.json
     if ($LASTEXITCODE -ne 0) { Write-Host 'SECTIONS.json is stale - commit the regenerated index'; return }
-    python textbooks/tools/_audit_refs.py
+    python3 textbooks/tools/_audit_refs.py
     if ($LASTEXITCODE -ne 0) { return }
-    python textbooks/tools/_audit_routing.py
+    python3 textbooks/tools/_audit_routing.py
     if ($LASTEXITCODE -ne 0) { return }
-    python textbooks/tools/_audit_links.py
+    python3 textbooks/tools/_audit_links.py
 }
 
-Invoke-Stage 'research audit' { python research/tools/_audit_research.py }
+Invoke-Stage 'research audit' { python3 research/tools/_audit_research.py }
 
 # Dependency-provenance gate (issue #4, D-11): the M0-2 scan automated. Node-free
 # (reads the committed package-lock.json + provenance/allowlist.json), mirrors
 # CI's static-gates job.
-Invoke-Stage 'provenance (deps license + US-origin, D-11)' { python scripts/check_provenance.py }
+Invoke-Stage 'provenance (deps license + US-origin, D-11)' { python3 scripts/check_provenance.py }
 
 # Doc-drift budgets (#67), ops-config three-way-mirror integrity (#71), and the
 # repo-docs relative-link audit (#73) - gates from the pyxis template sync (#245),
 # mirroring ci.yml's static-gates steps and preflight.sh (same stage names).
-Invoke-Stage 'doc budgets' { python scripts/audit_docs.py }
-Invoke-Stage 'ops-config audit' { python scripts/audit_ops_config.py }
-Invoke-Stage 'repo-docs links' { python scripts/audit_repo_links.py }
+Invoke-Stage 'doc budgets' { python3 scripts/audit_docs.py }
+Invoke-Stage 'ops-config audit' { python3 scripts/audit_ops_config.py }
+Invoke-Stage 'repo-docs links' { python3 scripts/audit_repo_links.py }
 
 # Content-drift staleness (#222) - claim-heavy docs (research notes + ARCHITECTURE) whose
 # referenced files changed after the doc's last commit. WARN-ONLY: the script always
 # exits 0; warnings are re-verify prompts. Mirrors ci.yml's "Staleness audit" step.
-Invoke-Stage 'staleness audit (warn-only)' { python scripts/audit_staleness.py }
+Invoke-Stage 'staleness audit (warn-only)' { python3 scripts/audit_staleness.py }
 
 Invoke-Stage 'todo hygiene (vs origin/main)' {
     # Mirrors ci.yml's hygiene step (same pathspecs, same regex - change both together).

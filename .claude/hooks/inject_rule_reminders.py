@@ -22,6 +22,14 @@
 # Fires append (fail-open) to .claude/metrics/guard_hits.jsonl -- guard-
 # lifecycle telemetry (#253): a guard that never fires is dead weight; one
 # that fires constantly is misaimed noise. metrics.py can trend this ledger.
+#
+# guard: #263 (skill-routing rules) -- the merge/pr-create/slice-push texts also
+# NAME THE OWNING SKILL and the steps owed. Field failure (Caelum, 2026-07-15):
+# a session hand-drove git/gh below ship_pr; hook- and script-backed mechanics
+# fired, skill-step-backed ones (claim/receipt/checkpoint) silently didn't.
+# Skill invocation is unobservable to hooks, so the guard is routing at the
+# moment, not enforcement. Retire-when: the harness gains native skill-step
+# enforcement, or fleet receipts-coverage holds ~100% across 2+ retro periods.
 import json, os, re, subprocess, sys
 
 # The separator class matches block_naked_todos: compound ("a && git commit")
@@ -37,10 +45,20 @@ RULES = [
      "Merge rules (ship_pr steps 5-6, #177): the checks must have been READ GREEN with "
      "your own eyes already, and this merge must be a SEPARATE command -- never chained "
      "onto a watch/poll; never --admin; a red or unreadable check routes back to "
-     "preflight, never forward to merge."),
+     "preflight, never forward to merge. Merging belongs to ship_pr -- driving gh by "
+     "hand skips its steps: the cost receipt (step 7) posts right after this merge, and "
+     "the merge-time checkpoint rides the same breath (#263)."),
+    (re.compile(SEP + r"gh\s+pr\s+create\b"), "pr-create",
+     "PR creation is ship_pr step 4 -- if you are hand-driving gh, invoke the skill: "
+     "the claim (step 0) should already exist on the ticket, the body goes via "
+     "--body-file (never inline), and the cost receipt (step 7) is owed at merge (#263)."),
     (re.compile(SEP + r"git\s+push\b[^\n;&|]*[\s:]main\b"), "push-main",
      "Push rules (conventions > Merge policy): `main` is never pushed directly -- work "
      "rides a slice/checkpoint branch through a PR."),
+    (re.compile(SEP + r"git\s+push\b[^\n;&|]*\bslice/"), "slice-push",
+     "Pushing a slice branch is the CLAIM (ship_pr step 0): post the claim comment on "
+     "the ticket and snapshot `python3 scripts/slice_telemetry.py claim <NN>` -- the "
+     "merge receipt (step 7) reads this snapshot (#263)."),
 ]
 
 

@@ -32,6 +32,10 @@ is the enforcement:
      was comment-enforced only; drift fails UNSAFE and silently -- widen
      changes.if without widening heavy-gate.if and the zero-coverage hole
      #206 closed reopens in the new condition slice with no red anywhere.
+  6. interpreter spelling (D-210, #262): no bare-`python`-plus-whitespace
+     invocation in the executable machinery (scripts/, hooks, workflows).
+     Bare Ubuntu 24.04+ ships no `python`; dev boxes mask the defect via
+     python-is-python3, and downstreams re-patched it on every sync.
 
 Mirrored three ways itself: ci.yml > static gates > "Ops-config audit" ==
 preflight.{sh,ps1} "ops-config audit" stage (the map below includes it).
@@ -334,6 +338,29 @@ def check_settings(path, root, problems):
     print(f"deny tripwires checked: {len(SHELLS) * len(DENY_TRIPWIRES)}")
 
 
+# guard: #262 (D-210, intake #260) -- a bare-`python`-plus-whitespace invocation in
+# the executable machinery breaks on bare Ubuntu 24.04+ (no `python` binary): loudly
+# in preflight stages, silently where output is swallowed. Dev boxes mask it via
+# python-is-python3, so only an audit catches it before a downstream does. Scope is
+# executable surfaces incl. their copy-paste header comments; settings.json's
+# dual-spelling allowlist entries are deliberate (see its $comment) and out of scope.
+# Retire-when: D-210 is superseded (an interpreter shim ships with the template).
+INTERPRETER_SCOPE = ("scripts/*.sh", "scripts/*.ps1", "scripts/*.py",
+                     ".claude/hooks/*.py", ".github/workflows/*.yml")
+BARE_PYTHON = re.compile(r"(?<![\w./-])python(?=\s)")
+
+
+def check_interpreter_spelling(root, problems):
+    for pat in INTERPRETER_SCOPE:
+        for path in sorted(root.glob(pat)):
+            for i, line in enumerate(read(path).splitlines(), 1):
+                if BARE_PYTHON.search(line):
+                    problems.append(
+                        f"bare `python` invocation (D-210: spell it python3 -- bare "
+                        f"Ubuntu ships no `python`) -> {path}:{i}: {line.strip()[:80]}"
+                    )
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--root", default=".", help="repo root to audit (default: cwd)")
@@ -379,6 +406,7 @@ def main():
             check_todo_exemptions(root, problems)
             check_if_mirror(ci_path, problems)
             check_settings(settings_path, root, problems)
+    check_interpreter_spelling(root, problems)
 
     if problems:
         print()
