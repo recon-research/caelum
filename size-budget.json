@@ -32,7 +32,7 @@
     "caelum-breadcrumb": 4096,
     "caelum-order-list": 18432,
     "caelum-pick-list": 18432,
-    "caelum-tree-select": 13312,
+    "caelum-tree-select": 16896,
     "caelum-switch": 3712,
     "caelum-toggle-button": 3456,
     "caelum-select-button": 4608,

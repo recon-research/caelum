@@ -4,6 +4,7 @@ import {
   Component,
   computed,
   effect,
+  ElementRef,
   forwardRef,
   inject,
   input,
@@ -73,6 +74,17 @@ let nextUniqueId = 0;
  * family is CVA-only, so there is no separate `(clear)` output (a deliberate deviation from `p-treeSelect`'s
  * `onClear`). A dev-only guard warns when two nodes share a `value` key (colliding selection identity).
  *
+ * **Filtering (`[filterable]`, #282).** An opt-in search box at the top of the panel narrows the tree to
+ * nodes matching the query plus their ancestor path (`p-treeSelect`'s `filter`, the tree cousin of
+ * `cae-multi-select`'s `filterable`). Because this panel owns its focus trap, the box is fully keyboard-
+ * and SR-reachable — focus starts in it on open, `ArrowDown` moves into the tree, and a polite live region
+ * announces the result count. Filtering feeds a **pruned `dataSource`** (not hidden-in-place rows) so the
+ * CDK key manager roves over exactly the visible nodes; surviving branches are force-expanded so matches
+ * are reachable, and the pre-filter expansion is snapshotted and restored on clear. Filtering is view-only:
+ * it never mutates the value, so a selected-but-filtered-out key round-trips and its label returns when the
+ * filter clears. (Real-browser SR/focus verification — like the reveal-on-open — is an M4 item; the wiring
+ * is unit-tested here.)
+ *
  * Token-only theming (surface/elevation/border/focus-ring from `--cae-*`; Book 04 §3.6). No foreign
  * library. Zoneless-compatible: `OnPush` + signal state (provisional on #9; Book 01 §3.2).
  */
@@ -139,7 +151,24 @@ let nextUniqueId = 0;
       (overlayKeydown)="onOverlayKeydown($event)"
       (detach)="close()"
     >
-      <div class="cae-tree-select__panel" cdkTrapFocus [cdkTrapFocusAutoCapture]="true">
+      <div #panel class="cae-tree-select__panel" cdkTrapFocus [cdkTrapFocusAutoCapture]="true">
+        @if (filterable()) {
+          <!-- In-panel filter: focus starts here on open (cdkFocusInitial), so a keyboard user types
+               immediately; ArrowDown moves into the tree. It sits inside the focus trap, so unlike
+               cae-multi-select's mat-select-parked filter it is fully keyboard/SR-reachable. -->
+          <input
+            #filterInput
+            type="text"
+            class="cae-tree-select__filter"
+            autocomplete="off"
+            [attr.cdkFocusInitial]="''"
+            [placeholder]="filterPlaceholder()"
+            [attr.aria-label]="filterAriaLabel()"
+            [attr.aria-controls]="panelId"
+            (input)="onFilter(filterInput.value)"
+            (keydown)="onFilterKeydown($event)"
+          />
+        }
         <mat-tree
           #tree="matTree"
           [id]="panelId"
@@ -206,6 +235,14 @@ let nextUniqueId = 0;
             </div>
           </mat-nested-tree-node>
         </mat-tree>
+        @if (isFiltering() && filteredNodes().length === 0) {
+          <div class="cae-tree-select__empty" role="presentation">{{ emptyMessage() }}</div>
+        }
+        <!-- Polite live region announcing the filter result count as the query changes (empty when not
+             filtering, so it stays silent until the user searches). -->
+        <div class="cae-tree-select__sr" aria-live="polite" aria-atomic="true">
+          {{ filterResultText() }}
+        </div>
       </div>
     </ng-template>
   `,
@@ -316,6 +353,45 @@ let nextUniqueId = 0;
       background: var(--cae-surface-raised);
       box-shadow: var(--cae-elevation-3);
     }
+    .cae-tree-select__filter {
+      box-sizing: border-box;
+      inline-size: 100%;
+      /* Floor the touch target to the density-INVARIANT --cae-target-min so it holds WCAG 2.5.8 in the
+         compact density arm (padding off --cae-space-* alone would shrink below the minimum). */
+      min-block-size: var(--cae-target-min);
+      margin-block-end: var(--cae-space-2);
+      padding: var(--cae-space-2) var(--cae-space-3);
+      border: 1px solid var(--cae-color-border);
+      border-radius: var(--cae-radius-sm);
+      background: var(--cae-surface-base);
+      color: var(--cae-color-on-surface);
+      font: inherit;
+    }
+    .cae-tree-select__filter:focus-visible {
+      outline: var(--cae-focus-ring);
+      outline-offset: var(--cae-focus-ring-offset);
+      border-color: var(--cae-color-primary);
+    }
+    .cae-tree-select__filter::placeholder {
+      color: var(--cae-color-on-surface-variant);
+    }
+    .cae-tree-select__empty {
+      padding: var(--cae-space-2) var(--cae-space-1);
+      color: var(--cae-color-on-surface-variant);
+    }
+    /* Visually-hidden live region — announced by screen readers, out of the visual layout. */
+    .cae-tree-select__sr {
+      position: absolute;
+      inline-size: 1px;
+      block-size: 1px;
+      margin: -1px;
+      padding: 0;
+      border: 0;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
     .cae-tree-select__row {
       display: inline-flex;
       align-items: center;
@@ -401,6 +477,31 @@ export class CaeTreeSelect implements ControlValueAccessor {
    */
   readonly ariaDescribedby = input('');
 
+  /**
+   * Show an opt-in in-panel search box that filters the tree to nodes matching the typed query (plus
+   * their ancestor path, so a match is reachable) — `p-treeSelect`'s `filter`, and the tree cousin of
+   * `cae-multi-select`'s `filterable`. Unlike `cae-multi-select` (where Material parks focus on the
+   * `mat-select` host, so its filter is a v1 mouse convenience), this panel owns its focus trap, so the
+   * filter box is fully keyboard- and screen-reader-reachable: on open focus starts in it, and
+   * `ArrowDown` moves into the tree. Filtering is view-only — it never changes the selection value, and
+   * a selected-but-filtered-out key stays in the model (its label reappears when the filter clears).
+   */
+  readonly filterable = input(false, { transform: booleanAttribute });
+  /** Placeholder for the filter box. */
+  readonly filterPlaceholder = input('Filter');
+  /** Accessible name for the filter box (it has no visible label). */
+  readonly filterAriaLabel = input('Filter nodes');
+  /** Shown in the panel (and announced) when the filter matches nothing. */
+  readonly emptyMessage = input('No matches');
+  /**
+   * Predicate deciding whether a node matches the typed query (already lower-cased + trimmed).
+   * Defaults to a case-insensitive label substring match; override for e.g. prefix or key matching. A
+   * node matches on its own text only — its ancestors are kept regardless, so the match stays reachable.
+   */
+  readonly filterWith = input<(node: CaeTreeNode, query: string) => boolean>((node, query) =>
+    node.label.toLowerCase().includes(query),
+  );
+
   /** Whether `multiple` selection is active (derived from {@link selectionMode}). */
   protected readonly multiple = computed(() => this.selectionMode() === 'multiple');
 
@@ -432,6 +533,70 @@ export class CaeTreeSelect implements ControlValueAccessor {
 
   /** The rendered panel tree — reached to reveal (expand-to) the selected node when the panel opens. */
   private readonly treeRef = viewChild(MatTree);
+  /** The panel element — reached to move focus from the filter box into the first tree node. */
+  private readonly panelRef = viewChild<ElementRef<HTMLElement>>('panel');
+
+  /** The live filter text; empty when not searching. Reset when the panel closes. */
+  protected readonly query = signal('');
+  /** Whether a filter query is actively narrowing the tree (opted in AND non-blank). */
+  protected readonly isFiltering = computed(
+    () => this.filterable() && this.query().trim().length > 0,
+  );
+  /**
+   * The nodes shown in the panel: the full tree when not filtering, otherwise the matching nodes plus
+   * their ancestor paths. A node that matches the predicate keeps its whole subtree (original object —
+   * so its identity, and expansion, survive); an ancestor of a match is kept with only its surviving
+   * branches (a fresh object, reconciled by {@link expansionKey} not reference); a node with no match
+   * in its subtree is dropped. Feeding a pruned `dataSource` (rather than hiding rows in place) is what
+   * keeps the CDK key manager's roving navigation over exactly the visible nodes.
+   */
+  protected readonly filteredNodes = computed<readonly CaeTreeNode[]>(() => {
+    if (!this.isFiltering()) return this.nodes();
+    const query = this.query().trim().toLowerCase();
+    const predicate = this.filterWith();
+    const prune = (nodes: readonly CaeTreeNode[]): CaeTreeNode[] => {
+      const kept: CaeTreeNode[] = [];
+      for (const node of nodes) {
+        if (predicate(node, query)) {
+          kept.push(node); // match → keep the whole subtree (original reference)
+        } else if (node.children?.length) {
+          const keptChildren = prune(node.children);
+          if (keptChildren.length) kept.push({ ...node, children: keptChildren }); // ancestor of a match
+        }
+      }
+      return kept;
+    };
+    return prune(this.nodes());
+  });
+  /** How many nodes match the query on their own (ancestors kept for reachability don't count). */
+  protected readonly matchCount = computed(() => {
+    if (!this.isFiltering()) return 0;
+    const query = this.query().trim().toLowerCase();
+    const predicate = this.filterWith();
+    let count = 0;
+    const walk = (nodes: readonly CaeTreeNode[]): void => {
+      for (const node of nodes) {
+        if (predicate(node, query)) count++;
+        if (node.children?.length) walk(node.children);
+      }
+    };
+    walk(this.nodes());
+    return count;
+  });
+  /** The polite live-region text — "N result(s)" or the empty message; blank when not filtering. */
+  protected readonly filterResultText = computed(() => {
+    if (!this.isFiltering()) return '';
+    const count = this.matchCount();
+    return count === 0 ? this.emptyMessage() : `${count} result${count === 1 ? '' : 's'}`;
+  });
+
+  // Filter-expansion bookkeeping (untracked): the pre-filter expansion snapshot, restored on clear.
+  // Keyed by node OBJECT — snapshot and restore both walk `nodes()`, so reference identity is stable
+  // between them. (Deliberately NOT a `mat-tree` `expansionKey`: a stable key makes the tree cache child
+  // structure by key, which would defeat the structural pruning below — so filtering relies on the
+  // pruned copies' fresh identity to re-flatten, and this effect maintains their expansion each keystroke.)
+  private wasFiltering = false;
+  private preFilterExpanded = new Set<CaeTreeNode>();
 
   /** Below-start with a flip-to-above fallback so the panel never clips off-viewport. */
   protected readonly positions: ConnectedPosition[] = [
@@ -504,6 +669,63 @@ export class CaeTreeSelect implements ControlValueAccessor {
         for (const ancestor of this.ancestorPath(firstKey)) tree.expand(ancestor);
       });
     });
+    // While filtering, force-expand every surviving internal node so its matches are reachable — the CDK
+    // tree key manager only descends into EXPANDED subtrees, so a collapsed ancestor of a match would
+    // hide it from roving navigation. Snapshot the pre-filter expansion on the first filtering keystroke
+    // and restore it when the query clears, so the filter is a temporary overlay that leaves the user's
+    // manual expansion intact. `filteredNodes` is a tracked dep (re-runs per keystroke to expand fresh
+    // matches); the tree read + expansion mutations are untracked (they must not re-trigger the effect).
+    effect(() => {
+      const filtering = this.isFiltering();
+      const filtered = this.filteredNodes();
+      const tree = untracked(this.treeRef);
+      if (!tree) return;
+      untracked(() => {
+        if (filtering) {
+          if (!this.wasFiltering) this.preFilterExpanded = this.snapshotExpanded();
+          this.wasFiltering = true;
+          const expandInternal = (nodes: readonly CaeTreeNode[]): void => {
+            for (const node of nodes) {
+              if (node.children?.length) {
+                tree.expand(node);
+                expandInternal(node.children);
+              }
+            }
+          };
+          expandInternal(filtered);
+        } else if (this.wasFiltering) {
+          this.wasFiltering = false;
+          const restore = (nodes: readonly CaeTreeNode[]): void => {
+            for (const node of nodes) {
+              if (node.children?.length) {
+                if (this.preFilterExpanded.has(node)) tree.expand(node);
+                else tree.collapse(node);
+                restore(node.children);
+              }
+            }
+          };
+          restore(this.nodes());
+          this.preFilterExpanded = new Set();
+        }
+      });
+    });
+  }
+
+  /** Snapshot every currently-expanded internal node (the pre-filter state), keyed by object identity. */
+  private snapshotExpanded(): Set<CaeTreeNode> {
+    const tree = this.treeRef();
+    const expanded = new Set<CaeTreeNode>();
+    if (!tree) return expanded;
+    const walk = (nodes: readonly CaeTreeNode[]): void => {
+      for (const node of nodes) {
+        if (node.children?.length) {
+          if (tree.isExpanded(node)) expanded.add(node);
+          walk(node.children);
+        }
+      }
+    };
+    walk(this.nodes());
+    return expanded;
   }
 
   /**
@@ -528,8 +750,8 @@ export class CaeTreeSelect implements ControlValueAccessor {
   }
 
   // --- Panel rendering (mat-tree data API, mirrors cae-tree) ---
-  /** A fresh mutable array for Material's `dataSource` (which rejects readonly). */
-  protected readonly dataSource = computed(() => [...this.nodes()]);
+  /** A fresh mutable array for Material's `dataSource` (which rejects readonly) — filtered when searching. */
+  protected readonly dataSource = computed(() => [...this.filteredNodes()]);
   /** Derives a node's children for Material's hierarchy expansion (mutable copy for the CDK). */
   protected readonly childrenAccessor = (node: CaeTreeNode): CaeTreeNode[] => [
     ...(node.children ?? []),
@@ -594,10 +816,12 @@ export class CaeTreeSelect implements ControlValueAccessor {
   /**
    * Whether this node is the SINGLE auto-capture focus target on open — the first selected key's node
    * (see {@link focusInitialKey}). Null-safe so an empty selection (`focusInitialKey === undefined`)
-   * never matches a navigational node's absent `value`.
+   * never matches a navigational node's absent `value`. Yields to the filter box when `filterable`: the
+   * input carries `cdkFocusInitial` instead, so focus starts there (and marking two targets would let
+   * `querySelector` pick whichever comes first in DOM order — the input — anyway).
    */
   protected isFocusInitial(node: CaeTreeNode): boolean {
-    return node.value != null && node.value === this.focusInitialKey();
+    return !this.filterable() && node.value != null && node.value === this.focusInitialKey();
   }
   /**
    * `aria-selected` for a node. Dropped (`null`) for a navigational node. In SINGLE mode it is set
@@ -626,7 +850,35 @@ export class CaeTreeSelect implements ControlValueAccessor {
   protected close(): void {
     if (!this.isOpen()) return;
     this.isOpen.set(false);
+    // Reset the filter so the next open shows the full tree. The panel view (and its filter input) is
+    // destroyed on close, so clearing the query is enough; also drop the filter-expansion bookkeeping
+    // so a reopened, fresh tree starts from a clean (reveal-only) expansion state.
+    this.query.set('');
+    this.wasFiltering = false;
+    this.preFilterExpanded = new Set();
     this.onTouched();
+  }
+
+  // --- Filtering ---
+  protected onFilter(text: string): void {
+    this.query.set(text);
+  }
+  /**
+   * Keyboard in the filter box: `ArrowDown` moves focus into the tree (its first node), from where the
+   * CDK key manager takes over. Printable + caret keys (Home/End/Left/Right) edit the query — the tree's
+   * key manager listens on the `mat-tree` element, not this input's ancestors, so they don't leak into
+   * navigation and need no `stopPropagation`. `Escape` bubbles to the overlay keydown handler (close).
+   */
+  protected onFilterKeydown(event: KeyboardEvent): void {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      this.focusFirstNode();
+    }
+  }
+  /** Move focus to the first rendered tree node (from the filter box). No-op if the tree is empty. */
+  private focusFirstNode(): void {
+    const first = this.panelRef()?.nativeElement.querySelector<HTMLElement>('[role="treeitem"]');
+    first?.focus();
   }
 
   protected onTriggerKeydown(event: KeyboardEvent): void {

@@ -40,6 +40,9 @@ const NODES: readonly CaeTreeNode[] = [
       [ariaLabel]="ariaLabel()"
       [required]="required()"
       [showClear]="showClear()"
+      [filterable]="filterable()"
+      [emptyMessage]="emptyMessage()"
+      [filterWith]="filterWith()"
     />
   `,
 })
@@ -52,6 +55,12 @@ class Host {
   readonly ariaLabel = signal('Pick a node');
   readonly required = signal(false);
   readonly showClear = signal(false);
+  readonly filterable = signal(false);
+  readonly emptyMessage = signal('No matches');
+  // Defaults to the component's own predicate (case-insensitive label substring); a test overrides it.
+  readonly filterWith = signal<(node: CaeTreeNode, query: string) => boolean>((node, query) =>
+    node.label.toLowerCase().includes(query),
+  );
 }
 
 describe('CaeTreeSelect', () => {
@@ -76,7 +85,18 @@ describe('CaeTreeSelect', () => {
 
   // Set inputs (mode especially — its value shape depends on it) BEFORE the first render, then flush.
   async function init(
-    overrides: Partial<Record<'mode' | 'ariaLabel' | 'required' | 'showClear', unknown>> = {},
+    overrides: Partial<
+      Record<
+        | 'mode'
+        | 'ariaLabel'
+        | 'required'
+        | 'showClear'
+        | 'filterable'
+        | 'emptyMessage'
+        | 'filterWith',
+        unknown
+      >
+    > = {},
   ) {
     for (const [k, v] of Object.entries(overrides))
       (host as never as Record<string, { set(v: unknown): void }>)[k].set(v);
@@ -538,6 +558,176 @@ describe('CaeTreeSelect', () => {
       } finally {
         console.warn = warn;
       }
+    });
+  });
+
+  describe('[filterable] — in-panel filter (#282)', () => {
+    const filterInput = (): HTMLInputElement | null =>
+      container().querySelector('.cae-tree-select__filter');
+    const emptyMsg = (): HTMLElement | null =>
+      panel()?.querySelector('.cae-tree-select__empty') ?? null;
+    const srRegion = (): HTMLElement | null =>
+      panel()?.querySelector('.cae-tree-select__sr') ?? null;
+    const shownLabels = (): (string | undefined)[] => labelEls().map((l) => l.textContent?.trim());
+    const toggleLabel = (t: string): string | null | undefined =>
+      treeItemFor(t).querySelector('.cae-tree-select__toggle')?.getAttribute('aria-label');
+    async function type(text: string): Promise<void> {
+      const input = filterInput()!;
+      input.value = text;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      await flush();
+    }
+
+    it('renders no filter box by default (filterable off)', async () => {
+      await init();
+      await open();
+      expect(filterInput()).toBeNull();
+    });
+
+    it('renders the filter box with its accessible name + placeholder when enabled', async () => {
+      await init({ filterable: true });
+      await open();
+      const input = filterInput();
+      expect(input).not.toBeNull();
+      expect(input!.getAttribute('aria-label')).toBe('Filter nodes');
+      expect(input!.getAttribute('placeholder')).toBe('Filter');
+    });
+
+    it('narrows a leaf match to it plus its ancestor path (siblings pruned)', async () => {
+      await init({ filterable: true });
+      await open();
+      await type('api');
+      // API matches; its ancestors Workspace > Projects are kept for reachability; App/Settings/the
+      // value-less group are pruned entirely (removed from the DOM, not merely hidden).
+      expect(shownLabels()).toEqual(['Workspace', 'Projects', 'API']);
+    });
+
+    it('keeps the whole subtree of a node that matches on its own text', async () => {
+      await init({ filterable: true });
+      await open();
+      await type('projects');
+      // Projects matches → its full subtree (App, API) stays; Workspace kept as ancestor; Settings pruned.
+      expect(shownLabels()).toEqual(['Workspace', 'Projects', 'App', 'API']);
+    });
+
+    it('matches case-insensitively', async () => {
+      await init({ filterable: true });
+      await open();
+      await type('SETTINGS');
+      expect(shownLabels()).toEqual(['Workspace', 'Settings']);
+    });
+
+    it('force-expands surviving ancestors so a deep match is reachable', async () => {
+      await init({ filterable: true });
+      await open();
+      await type('api'); // ws > proj > api, both ancestors collapsed at rest
+      expect(toggleLabel('Workspace')).toBe('Collapse Workspace');
+      expect(toggleLabel('Projects')).toBe('Collapse Projects');
+    });
+
+    it('shows the empty message and no tree items when nothing matches', async () => {
+      await init({ filterable: true, emptyMessage: 'Nothing here' });
+      await open();
+      await type('zzz-no-match');
+      expect(treeItems().length).toBe(0);
+      expect(emptyMsg()?.textContent?.trim()).toBe('Nothing here');
+    });
+
+    it('announces the result count in a polite live region', async () => {
+      await init({ filterable: true });
+      await open();
+      const region = srRegion()!;
+      expect(region.getAttribute('aria-live')).toBe('polite');
+      await type('api'); // one match
+      expect(region.textContent?.trim()).toBe('1 result');
+      await type('s'); // Workspace, Projects, Settings
+      expect(region.textContent?.trim()).toBe('3 results');
+      await type('zzz'); // none
+      expect(region.textContent?.trim()).toBe('No matches');
+    });
+
+    it('selecting a filtered result still emits its key and closes (single mode)', async () => {
+      await init({ filterable: true });
+      await open();
+      await type('settings');
+      labelFor('Settings').click();
+      await flush();
+      expect(host.control.value).toBe('settings');
+      expect(panel()).toBeNull();
+    });
+
+    it('filtering is view-only — a selected key filtered out of view stays in the value', async () => {
+      host.control.setValue('app');
+      await init({ filterable: true });
+      await open();
+      await type('settings'); // App is not shown
+      expect(shownLabels()).toEqual(['Workspace', 'Settings']);
+      expect(host.control.value).toBe('app'); // value untouched
+      await type(''); // clear the filter
+      expect(shownLabels()).toContain('App'); // App is back
+      expect(host.control.value).toBe('app');
+    });
+
+    it('restores the full tree and the pre-filter expansion when the query clears', async () => {
+      await init({ filterable: true });
+      await open();
+      // Manually expand only Workspace before filtering (Projects stays collapsed).
+      treeItemFor('Workspace').querySelector<HTMLElement>('.cae-tree-select__toggle')!.click();
+      await flush();
+      expect(toggleLabel('Workspace')).toBe('Collapse Workspace');
+      expect(toggleLabel('Projects')).toBe('Expand Projects');
+      // Filtering to 'api' force-expands Workspace AND Projects...
+      await type('api');
+      expect(toggleLabel('Projects')).toBe('Collapse Projects');
+      // ...clearing restores exactly the pre-filter state: Workspace expanded, Projects collapsed again.
+      await type('');
+      expect(shownLabels()).toContain('Settings'); // full tree back
+      expect(toggleLabel('Workspace')).toBe('Collapse Workspace');
+      expect(toggleLabel('Projects')).toBe('Expand Projects');
+    });
+
+    it('marks the filter box (not a selected node) as the auto-capture focus target', async () => {
+      host.control.setValue('ws');
+      await init({ filterable: true });
+      await open();
+      const target = container().querySelector('[cdkFocusInitial]');
+      expect(target).toBe(filterInput());
+      expect(container().querySelectorAll('[cdkFocusInitial]').length).toBe(1);
+    });
+
+    it('moves focus into the tree on ArrowDown from the filter box', async () => {
+      await init({ filterable: true });
+      await open();
+      const input = filterInput()!;
+      input.focus();
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      await flush();
+      expect(document.activeElement).toBe(treeItems()[0]);
+    });
+
+    it('honors a custom filterWith predicate for both the shown set and the announced count', async () => {
+      // A key-prefix matcher instead of the default label substring: only nodes whose value starts with
+      // "ap" match (App 'app', API 'api'). The shown set AND the live count must both use it (same seam).
+      await init({
+        filterable: true,
+        filterWith: (node: CaeTreeNode, query: string) => (node.value ?? '').startsWith(query),
+      });
+      await open();
+      await type('ap');
+      expect(shownLabels()).toEqual(['Workspace', 'Projects', 'App', 'API']); // ancestors + the 2 matches
+      expect(srRegion()?.textContent?.trim()).toBe('2 results'); // count agrees with the shown matches
+    });
+
+    it('resets the filter when the panel closes and reopens', async () => {
+      await init({ filterable: true });
+      await open();
+      await type('api');
+      expect(shownLabels()).toEqual(['Workspace', 'Projects', 'API']);
+      panel()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await flush();
+      await open();
+      expect(filterInput()!.value).toBe(''); // query cleared
+      expect(shownLabels()).toContain('Settings'); // full tree shown again
     });
   });
 });
