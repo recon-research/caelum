@@ -435,6 +435,196 @@ describe('CaeTreeSelect', () => {
     });
   });
 
+  describe('checkbox mode — tri-state parent↔child propagation (#280)', () => {
+    it('checking a parent checks its whole subtree (down-propagation)', async () => {
+      await init({ mode: 'checkbox' });
+      await open();
+      labelFor('Projects').click();
+      await flush();
+      // proj + both leaves are checked; the value carries the fully-checked parent AND its leaves.
+      expect([...(host.control.value as string[])].sort()).toEqual(['api', 'app', 'proj']);
+      expect(treeItemFor('Projects').getAttribute('aria-checked')).toBe('true');
+      expect(treeItemFor('App').getAttribute('aria-checked')).toBe('true');
+      expect(treeItemFor('API').getAttribute('aria-checked')).toBe('true');
+      // Workspace has an unchecked sibling (Settings) → indeterminate, not in the value.
+      expect(treeItemFor('Workspace').getAttribute('aria-checked')).toBe('mixed');
+      expect(treeItemFor('Settings').getAttribute('aria-checked')).toBe('false');
+    });
+
+    it('checking every child rolls the parent up to checked (up-propagation)', async () => {
+      await init({ mode: 'checkbox' });
+      await open();
+      labelFor('App').click();
+      await flush();
+      expect(treeItemFor('Projects').getAttribute('aria-checked')).toBe('mixed'); // one of two
+      labelFor('API').click();
+      await flush();
+      expect(treeItemFor('Projects').getAttribute('aria-checked')).toBe('true'); // both → checked
+      expect([...(host.control.value as string[])]).toContain('proj'); // the parent joins the value
+    });
+
+    it('a partially-checked parent is indeterminate (aria-checked=mixed + the mixed box)', async () => {
+      await init({ mode: 'checkbox' });
+      await open();
+      labelFor('App').click();
+      await flush();
+      expect(host.control.value).toEqual(['app']); // only the leaf; the parent is derived, not stored
+      expect(treeItemFor('Projects').getAttribute('aria-checked')).toBe('mixed');
+      expect(treeItemFor('Workspace').getAttribute('aria-checked')).toBe('mixed');
+      expect(container().querySelector('.cae-tree-select__checkbox--mixed')).not.toBeNull();
+    });
+
+    it('unchecking a checked parent clears its whole subtree', async () => {
+      await init({ mode: 'checkbox' });
+      await open();
+      labelFor('Projects').click(); // check all
+      await flush();
+      labelFor('Projects').click(); // uncheck all
+      await flush();
+      expect(host.control.value).toEqual([]);
+      expect(treeItemFor('App').getAttribute('aria-checked')).toBe('false');
+      expect(treeItemFor('Projects').getAttribute('aria-checked')).toBe('false');
+    });
+
+    it('unchecking one child drops the parent from the value and marks it mixed', async () => {
+      await init({ mode: 'checkbox' });
+      await open();
+      labelFor('Projects').click(); // proj + app + api all checked
+      await flush();
+      labelFor('App').click(); // uncheck one leaf
+      await flush();
+      expect([...(host.control.value as string[])].sort()).toEqual(['api']); // proj rolled back off
+      expect(treeItemFor('Projects').getAttribute('aria-checked')).toBe('mixed');
+      expect(treeItemFor('App').getAttribute('aria-checked')).toBe('false');
+      expect(treeItemFor('API').getAttribute('aria-checked')).toBe('true');
+    });
+
+    it('clicking an indeterminate parent checks the whole subtree', async () => {
+      await init({ mode: 'checkbox' });
+      await open();
+      labelFor('App').click(); // Projects → mixed
+      await flush();
+      expect(treeItemFor('Projects').getAttribute('aria-checked')).toBe('mixed');
+      labelFor('Projects').click(); // mixed → check all
+      await flush();
+      expect(treeItemFor('Projects').getAttribute('aria-checked')).toBe('true');
+      expect([...(host.control.value as string[])].sort()).toEqual(['api', 'app', 'proj']);
+    });
+
+    it('writeValue canonicalizes — writing all of a parent’s children adds the parent', async () => {
+      await init({ mode: 'checkbox' });
+      host.control.setValue(['app', 'api']); // both leaves, parent key omitted
+      await flush();
+      // The trigger summarizes the CANONICAL set (proj + app + api = 3), proving the roll-up on write.
+      expect(trigger().textContent?.trim()).toContain('3 selected');
+      await open();
+      expect(treeItemFor('Projects').getAttribute('aria-checked')).toBe('true');
+    });
+
+    it('uses aria-checked (not aria-selected) and gives value-less nodes no checkbox', async () => {
+      await init({ mode: 'checkbox' });
+      await open();
+      // a selectable node carries aria-checked, never aria-selected, in checkbox mode
+      expect(treeItemFor('App').getAttribute('aria-selected')).toBeNull();
+      expect(treeItemFor('App').getAttribute('aria-checked')).toBe('false');
+      // the navigational group (no value) gets no aria-checked; exactly one box per selectable node (6)
+      expect(treeItemFor('Read-only group').getAttribute('aria-checked')).toBeNull();
+      expect(container().querySelectorAll('.cae-tree-select__checkbox').length).toBe(6);
+      // its value-bearing child is still checkable
+      labelFor('Child').click();
+      await flush();
+      expect(host.control.value).toEqual(['ro-child']);
+    });
+
+    it('does not mark aria-multiselectable (state rides aria-checked, not aria-selected)', async () => {
+      await init({ mode: 'checkbox' });
+      await open();
+      expect(
+        container().querySelector('[role="tree"]')?.getAttribute('aria-multiselectable'),
+      ).toBeNull();
+    });
+
+    it('announces each toggle with the running count and keeps the panel open', async () => {
+      const announce = vi
+        .spyOn(TestBed.inject(LiveAnnouncer), 'announce')
+        .mockResolvedValue(undefined);
+      await init({ mode: 'checkbox' });
+      await open();
+      labelFor('App').click();
+      await flush();
+      expect(announce).toHaveBeenLastCalledWith('App checked, 1 selected');
+      expect(panel()).not.toBeNull(); // stays open like multiple mode
+      labelFor('Projects').click(); // App already checked → this checks proj + api too (3 total)
+      await flush();
+      expect(announce).toHaveBeenLastCalledWith('Projects checked, 3 selected');
+      labelFor('Projects').click(); // uncheck the subtree
+      await flush();
+      expect(announce).toHaveBeenLastCalledWith('Projects unchecked, 0 selected');
+    });
+
+    it('clear resets to an empty array', async () => {
+      await init({ mode: 'checkbox', showClear: true });
+      host.control.setValue(['app', 'api']);
+      await flush();
+      const clearBtn = fixture.nativeElement.querySelector(
+        '.cae-tree-select__clear',
+      ) as HTMLButtonElement;
+      clearBtn.click();
+      await flush();
+      expect(host.control.value).toEqual([]);
+    });
+
+    it('retains a value written before nodes() load, then rolls it up when they arrive', async () => {
+      host.nodes.set([]); // options not loaded yet (async tree)
+      await init({ mode: 'checkbox' });
+      host.control.setValue(['app', 'api']); // patch the form value before the options arrive
+      await flush();
+      expect(host.control.value).toEqual(['app', 'api']); // retained, NOT dropped
+      host.nodes.set(NODES); // options arrive
+      await flush();
+      await open();
+      // the retained keys now resolve and roll their parent up in the view
+      expect(treeItemFor('App').getAttribute('aria-checked')).toBe('true');
+      expect(treeItemFor('Projects').getAttribute('aria-checked')).toBe('true');
+    });
+
+    it('unchecking a filtered parent still clears its pruned-from-view descendants', async () => {
+      await init({ mode: 'checkbox', filterable: true });
+      host.control.setValue(['app', 'api']); // Projects fully checked
+      await flush();
+      await open();
+      const filter = container().querySelector('.cae-tree-select__filter') as HTMLInputElement;
+      filter.value = 'App'; // matches App only; API is pruned from the view
+      filter.dispatchEvent(new Event('input', { bubbles: true }));
+      await flush();
+      expect(labelEls().some((l) => l.textContent?.trim() === 'API')).toBe(false); // API hidden
+      labelFor('Projects').click(); // uncheck the (still-checked) parent
+      await flush();
+      // the hidden API must be cleared too — not left stranded in the value
+      expect(host.control.value).toEqual([]);
+    });
+
+    it('a value-less leaf sibling does not block a parent from rolling up', async () => {
+      host.nodes.set([
+        {
+          value: 'p',
+          label: 'Parent',
+          children: [
+            { label: 'Decoration' }, // value-less leaf — no checkbox, no opinion
+            { value: 'y', label: 'Y' },
+          ],
+        },
+      ]);
+      await init({ mode: 'checkbox' });
+      await open();
+      labelFor('Y').click(); // the only selectable descendant
+      await flush();
+      // Parent rolls up to checked (the value-less leaf is excluded from the tally) and joins the value
+      expect(treeItemFor('Parent').getAttribute('aria-checked')).toBe('true');
+      expect([...(host.control.value as string[])].sort()).toEqual(['p', 'y']);
+    });
+  });
+
   describe('[showClear] — reset the selection (#282)', () => {
     const clearBtn = (): HTMLButtonElement | null =>
       fixture.nativeElement.querySelector('.cae-tree-select__clear');
