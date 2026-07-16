@@ -79,8 +79,9 @@ let nextUniqueId = 0;
  * `cae-multi-select`'s `filterable`). Because this panel owns its focus trap, the box is fully keyboard-
  * and SR-reachable — focus starts in it on open, `ArrowDown` moves into the tree, and a polite live region
  * announces the result count. Filtering feeds a **pruned `dataSource`** (not hidden-in-place rows) so the
- * CDK key manager roves over exactly the visible nodes; surviving branches are force-expanded so matches
- * are reachable, and the pre-filter expansion is snapshotted and restored on clear. Filtering is view-only:
+ * CDK key manager roves over exactly the visible nodes; surviving branches (fresh copies) are
+ * force-expanded so matches are reachable, and because only the copies are ever expanded, clearing the
+ * filter restores the user's pre-filter expansion for free. Filtering is view-only:
  * it never mutates the value, so a selected-but-filtered-out key round-trips and its label returns when the
  * filter clears. (Real-browser SR/focus verification — like the reveal-on-open — is an M4 item; the wiring
  * is unit-tested here.)
@@ -497,6 +498,8 @@ export class CaeTreeSelect implements ControlValueAccessor {
    * Predicate deciding whether a node matches the typed query (already lower-cased + trimmed).
    * Defaults to a case-insensitive label substring match; override for e.g. prefix or key matching. A
    * node matches on its own text only — its ancestors are kept regardless, so the match stays reachable.
+   * A custom predicate is called for EVERY node including navigational ones, so guard an optional field:
+   * a `value`-based matcher must handle `node.value === undefined` (e.g. `(node.value ?? '').startsWith(q)`).
    */
   readonly filterWith = input<(node: CaeTreeNode, query: string) => boolean>((node, query) =>
     node.label.toLowerCase().includes(query),
@@ -544,21 +547,26 @@ export class CaeTreeSelect implements ControlValueAccessor {
   );
   /**
    * The nodes shown in the panel: the full tree when not filtering, otherwise the matching nodes plus
-   * their ancestor paths. A node that matches the predicate keeps its whole subtree (original object —
-   * so its identity, and expansion, survive); an ancestor of a match is kept with only its surviving
-   * branches (a fresh object, reconciled by {@link expansionKey} not reference); a node with no match
-   * in its subtree is dropped. Feeding a pruned `dataSource` (rather than hiding rows in place) is what
-   * keeps the CDK key manager's roving navigation over exactly the visible nodes.
+   * their ancestor paths. A node that matches the predicate keeps its whole subtree; an ancestor of a
+   * match is kept with only its surviving branches; a node with no match in its subtree is dropped.
+   * Every kept node is a **fresh copy** (deliberately no `mat-tree` `expansionKey` — a stable key would
+   * make the tree cache child structure by key and defeat this pruning, so it re-flattens by the copies'
+   * reference identity). Cloning the *whole* kept branch (not just ancestors) is what lets the
+   * force-expand effect touch only throwaway copies, never the originals — so clearing the filter
+   * restores the pre-filter expansion for free. Feeding a pruned `dataSource` (rather than hiding rows
+   * in place) keeps the CDK key manager roving over exactly the visible nodes.
    */
   protected readonly filteredNodes = computed<readonly CaeTreeNode[]>(() => {
     if (!this.isFiltering()) return this.nodes();
     const query = this.query().trim().toLowerCase();
     const predicate = this.filterWith();
+    const clone = (node: CaeTreeNode): CaeTreeNode =>
+      node.children?.length ? { ...node, children: node.children.map(clone) } : { ...node };
     const prune = (nodes: readonly CaeTreeNode[]): CaeTreeNode[] => {
       const kept: CaeTreeNode[] = [];
       for (const node of nodes) {
         if (predicate(node, query)) {
-          kept.push(node); // match → keep the whole subtree (original reference)
+          kept.push(clone(node)); // match → keep the whole subtree, as fresh copies
         } else if (node.children?.length) {
           const keptChildren = prune(node.children);
           if (keptChildren.length) kept.push({ ...node, children: keptChildren }); // ancestor of a match
@@ -589,14 +597,6 @@ export class CaeTreeSelect implements ControlValueAccessor {
     const count = this.matchCount();
     return count === 0 ? this.emptyMessage() : `${count} result${count === 1 ? '' : 's'}`;
   });
-
-  // Filter-expansion bookkeeping (untracked): the pre-filter expansion snapshot, restored on clear.
-  // Keyed by node OBJECT — snapshot and restore both walk `nodes()`, so reference identity is stable
-  // between them. (Deliberately NOT a `mat-tree` `expansionKey`: a stable key makes the tree cache child
-  // structure by key, which would defeat the structural pruning below — so filtering relies on the
-  // pruned copies' fresh identity to re-flatten, and this effect maintains their expansion each keystroke.)
-  private wasFiltering = false;
-  private preFilterExpanded = new Set<CaeTreeNode>();
 
   /** Below-start with a flip-to-above fallback so the panel never clips off-viewport. */
   protected readonly positions: ConnectedPosition[] = [
@@ -671,61 +671,35 @@ export class CaeTreeSelect implements ControlValueAccessor {
     });
     // While filtering, force-expand every surviving internal node so its matches are reachable — the CDK
     // tree key manager only descends into EXPANDED subtrees, so a collapsed ancestor of a match would
-    // hide it from roving navigation. Snapshot the pre-filter expansion on the first filtering keystroke
-    // and restore it when the query clears, so the filter is a temporary overlay that leaves the user's
-    // manual expansion intact. `filteredNodes` is a tracked dep (re-runs per keystroke to expand fresh
-    // matches); the tree read + expansion mutations are untracked (they must not re-trigger the effect).
+    // hide it from roving navigation. `filteredNodes` is a tracked dep (re-runs per keystroke to expand
+    // fresh matches); the tree read + expansion mutations are untracked. Every surviving node is a fresh
+    // COPY (see `filteredNodes`), so this only ever expands throwaway copies — the ORIGINAL nodes'
+    // expansion is never touched, so clearing the filter restores the user's pre-filter expansion for
+    // free (the originals re-render with the state they still hold). No snapshot/restore needed.
     effect(() => {
-      const filtering = this.isFiltering();
+      if (!this.isFiltering()) return;
       const filtered = this.filteredNodes();
       const tree = untracked(this.treeRef);
       if (!tree) return;
       untracked(() => {
-        if (filtering) {
-          if (!this.wasFiltering) this.preFilterExpanded = this.snapshotExpanded();
-          this.wasFiltering = true;
-          const expandInternal = (nodes: readonly CaeTreeNode[]): void => {
-            for (const node of nodes) {
-              if (node.children?.length) {
-                tree.expand(node);
-                expandInternal(node.children);
-              }
+        const expandInternal = (nodes: readonly CaeTreeNode[]): void => {
+          for (const node of nodes) {
+            if (node.children?.length) {
+              tree.expand(node);
+              expandInternal(node.children);
             }
-          };
-          expandInternal(filtered);
-        } else if (this.wasFiltering) {
-          this.wasFiltering = false;
-          const restore = (nodes: readonly CaeTreeNode[]): void => {
-            for (const node of nodes) {
-              if (node.children?.length) {
-                if (this.preFilterExpanded.has(node)) tree.expand(node);
-                else tree.collapse(node);
-                restore(node.children);
-              }
-            }
-          };
-          restore(this.nodes());
-          this.preFilterExpanded = new Set();
-        }
+          }
+        };
+        expandInternal(filtered);
       });
     });
-  }
-
-  /** Snapshot every currently-expanded internal node (the pre-filter state), keyed by object identity. */
-  private snapshotExpanded(): Set<CaeTreeNode> {
-    const tree = this.treeRef();
-    const expanded = new Set<CaeTreeNode>();
-    if (!tree) return expanded;
-    const walk = (nodes: readonly CaeTreeNode[]): void => {
-      for (const node of nodes) {
-        if (node.children?.length) {
-          if (tree.isExpanded(node)) expanded.add(node);
-          walk(node.children);
-        }
-      }
-    };
-    walk(this.nodes());
-    return expanded;
+    // Reset the filter whenever the panel is closed OR the filter is disabled, so it can never linger
+    // behind an empty (destroyed/uncontrolled) box. This is the single source of truth for "no visible
+    // box → no query"; it covers every close path — `close()`, backdrop `detach`, and `setDisabledState`
+    // (which closes without calling `close()`) — where a per-path reset would be easy to miss.
+    effect(() => {
+      if (!this.isOpen() || !this.filterable()) this.query.set('');
+    });
   }
 
   /**
@@ -849,13 +823,7 @@ export class CaeTreeSelect implements ControlValueAccessor {
   }
   protected close(): void {
     if (!this.isOpen()) return;
-    this.isOpen.set(false);
-    // Reset the filter so the next open shows the full tree. The panel view (and its filter input) is
-    // destroyed on close, so clearing the query is enough; also drop the filter-expansion bookkeeping
-    // so a reopened, fresh tree starts from a clean (reveal-only) expansion state.
-    this.query.set('');
-    this.wasFiltering = false;
-    this.preFilterExpanded = new Set();
+    this.isOpen.set(false); // the reset effect clears the filter query on any close (incl. this one)
     this.onTouched();
   }
 

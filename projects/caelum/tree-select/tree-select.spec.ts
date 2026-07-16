@@ -676,10 +676,14 @@ describe('CaeTreeSelect', () => {
       await flush();
       expect(toggleLabel('Workspace')).toBe('Collapse Workspace');
       expect(toggleLabel('Projects')).toBe('Expand Projects');
-      // Filtering to 'api' force-expands Workspace AND Projects...
-      await type('api');
+      // Filter on 'projects' — an INTERNAL node match. Its whole subtree shows and it is force-expanded.
+      // This is the teeth: if the force-expand touched the ORIGINAL Projects (not a throwaway copy), the
+      // expansion would leak and Projects would stay expanded after clearing.
+      await type('projects');
       expect(toggleLabel('Projects')).toBe('Collapse Projects');
-      // ...clearing restores exactly the pre-filter state: Workspace expanded, Projects collapsed again.
+      expect(shownLabels()).toEqual(['Workspace', 'Projects', 'App', 'API']);
+      // Clearing restores exactly the pre-filter state: Workspace expanded (manual), Projects collapsed —
+      // the filter's expansion of the Projects COPY never touched the original.
       await type('');
       expect(shownLabels()).toContain('Settings'); // full tree back
       expect(toggleLabel('Workspace')).toBe('Collapse Workspace');
@@ -706,16 +710,35 @@ describe('CaeTreeSelect', () => {
     });
 
     it('honors a custom filterWith predicate for both the shown set and the announced count', async () => {
-      // A key-prefix matcher instead of the default label substring: only nodes whose value starts with
-      // "ap" match (App 'app', API 'api'). The shown set AND the live count must both use it (same seam).
+      // A key-prefix matcher on the node VALUE, deliberately chosen so the query diverges from the label
+      // predicate: 'ws' matches Workspace by its value 'ws', but the default label-substring predicate
+      // finds "ws" in NO label — so if either filteredNodes or matchCount ignored filterWith, this fails.
       await init({
         filterable: true,
         filterWith: (node: CaeTreeNode, query: string) => (node.value ?? '').startsWith(query),
       });
       await open();
-      await type('ap');
-      expect(shownLabels()).toEqual(['Workspace', 'Projects', 'App', 'API']); // ancestors + the 2 matches
-      expect(srRegion()?.textContent?.trim()).toBe('2 results'); // count agrees with the shown matches
+      await type('ws');
+      // Workspace matches → its whole subtree shows; the count reflects the single (own-text) match.
+      expect(shownLabels()).toEqual(['Workspace', 'Projects', 'App', 'API', 'Settings']);
+      expect(srRegion()?.textContent?.trim()).toBe('1 result');
+    });
+
+    it('resets a stale filter when the control is disabled mid-filter and later reopened', async () => {
+      // Regression (#282 review): setDisabledState closes WITHOUT calling close(), so a per-path query
+      // reset would be missed — the reopened panel would show a stale, collapsed, filtered tree behind an
+      // empty box. The reset effect (keyed on isOpen/filterable) covers this path.
+      await init({ filterable: true });
+      await open();
+      await type('api');
+      expect(shownLabels()).toEqual(['Workspace', 'Projects', 'API']);
+      host.control.disable(); // setDisabledState(true) — closes the panel directly
+      await flush();
+      host.control.enable();
+      await flush();
+      await open();
+      expect(filterInput()!.value).toBe(''); // box is empty...
+      expect(shownLabels()).toContain('Settings'); // ...and the tree is NOT stale-filtered
     });
 
     it('resets the filter when the panel closes and reopens', async () => {
