@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 # metrics.py -- the quantitative process-metrics ledger (CMMI-L4).
 #
+# Module shape is FLAT (no main() nesting) by design: downstreams take
+# machinery wholesale, and a downstream that restructured this file found the
+# upstream diffs stop applying mechanically (~150-line hand-rewire, #276).
+# Keep it flat; a restructure here breaks every downstream's next sync.
+#
 # Writes docs/METRICS.md from the tracker + CI, queried mechanically via `gh`
 # (never hand-typed). Run at each compaction checkpoint (prepare_compaction
 # refreshes it). This is NOT a CI gate -- it needs gh auth + network, and a
@@ -164,7 +169,7 @@ divergence = pct(len(red), len(runs_w))
 # scripts/slice_telemetry.py). PRs without one (pre-receipt history, or a
 # receipt that failed to post) fall back to pr-open->merge wall and no usd.
 recent = gh_json(["pr", "list", "--state", "merged", "--limit", "40",
-                  "--json", "number,title,mergedAt,createdAt,additions,deletions,changedFiles,comments"]) or []
+                  "--json", "number,title,mergedAt,createdAt,additions,deletions,changedFiles,comments,headRefName"]) or []
 
 
 def parse_receipt(comments):
@@ -197,7 +202,14 @@ for p in sorted(recent, key=lambda p: p.get("mergedAt") or ""):
     slices.append({"n": p.get("number"), "type": typ, "wall": wall,
                    "usd": fnum(rec.get("usd")), "ci": fnum(rec.get("ci-runs")),
                    "dlines": (p.get("additions") or 0) + (p.get("deletions") or 0),
-                   "receipt": bool(rec)})
+                   "receipt": bool(rec),
+                   # Checkpoint-path merges (conventions > Right-sized slices:
+                   # doc-only checkpoint/<date> branch + PR) never carry a receipt
+                   # by design -- classify by BRANCH, not title prefix: titles are
+                   # free-form per repo, and real docs:/ops: slices do receipt
+                   # (#269, intake #268 -- 5 of Caelum's 6 tripwire flags were
+                   # checkpoint PRs drowning the one genuine miss).
+                   "expects_receipt": not (p.get("headRefName") or "").startswith("checkpoint/")})
 
 
 def med(vals, nd=1):
@@ -279,12 +291,16 @@ n_receipts = sum(1 for s in slices if s["receipt"])
 # skill-step-backed artifact: hooks and scripts fire on their own, but a skill
 # step fires only if the skill was invoked -- a session hand-driving gh skips it
 # silently (field failure: Caelum 2026-07-15, two receipt-less merges post-sync).
-# Once receipts exist in scope, every later receipt-less merge is that signal.
-# Tripwire, never a target: the fix is a retrospective (usually a SKILL.md /
-# routing diff), never retroactive receipts posted to quiet the number.
+# Once receipts exist in scope, every later receipt-expected merge without one
+# is that signal (checkpoint-path merges are exempt -- see expects_receipt
+# above; refined by #269 after the tripwire's first field run flagged 5
+# checkpoint PRs against 1 true positive). Tripwire, never a target: the fix
+# is a retrospective (usually a SKILL.md / routing diff), never retroactive
+# receipts posted to quiet the number.
 # Retire-when: same condition as the #263 routing reminders.
 first_r = next((i for i, s in enumerate(slices) if s["receipt"]), None)
-missing = [s["n"] for s in slices[first_r:] if not s["receipt"]] if first_r is not None else []
+missing = ([s["n"] for s in slices[first_r:] if s["expects_receipt"] and not s["receipt"]]
+           if first_r is not None else [])
 if missing:
     coverage_note = (":warning: **Receipt-less merges since receipts began** -- "
                      + ", ".join(f"#{n}" for n in missing[:8])
@@ -293,7 +309,8 @@ if missing:
                        "`ship_pr` (steps 0/7 skipped, checkpoint at risk too). Route to "
                        "a retrospective -- the guard is skill-layer, not a backfilled receipt.")
 elif first_r is not None:
-    coverage_note = "Receipts coverage: every merge since receipts began carries one."
+    coverage_note = ("Receipts coverage: every receipt-expected merge since receipts began "
+                     "carries one (checkpoint-path merges exempt -- receipt-less by design).")
 else:
     coverage_note = "Receipts coverage: no receipts in scope yet (adoption pending)."
 

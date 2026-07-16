@@ -111,10 +111,14 @@ if sk_disk:
     # guard: #261 -- the README's prose skill count must match the catalog; it went
     # stale twice (30 vs 32) because nothing asserted prose, only catalog<->disk.
     # Same class as a stale MANIFEST total_books (the COUNTS check below).
+    # #274 (intakes #271/#272/#273): anchor on the subject-independent tail --
+    # the original "This template's" literal forced awkward wording on every
+    # downstream (one forked the regex, re-patching it each sync). Any subject
+    # works: "This template's / This project's / <Name>'s N skills total ...".
     rp = "../.claude/skills/README.md"
-    rm = re.search(r"This template's (\d+) skills", open(rp, encoding="utf-8").read()) if os.path.exists(rp) else None
+    rm = re.search(r"(\d+) skills total", open(rp, encoding="utf-8").read()) if os.path.exists(rp) else None
     if not rm:
-        sk_fails.append(f"README prose count phrase missing (\"This template's N skills\") -- keep it, the count is audit-asserted (#261) -> {rp}")
+        sk_fails.append(f"README prose count phrase missing (\"<N> skills total\") -- keep that anchor, the count is audit-asserted (#261/#274) -> {rp}")
     elif int(rm.group(1)) != len(sk_disk):
         sk_fails.append(f"README prose says {rm.group(1)} skills but {len(sk_disk)} are on disk -- update the prose (and re-measure its token figure) -> {rp}")
 for x in sk_fails: print("  SKILLS", x)

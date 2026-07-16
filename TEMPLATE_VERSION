@@ -4,6 +4,27 @@
 # template from `sha` to its HEAD to know what changed — without this stamp, every
 # template update is hand archaeology.
 #
+# NOTE (2026-07-16, #484): sync 5e8dbc0→d04440a (4 commits). Taken WHOLESALE (all five
+# byte-identical to baseline, ZERO Caelum machinery deviations): inject_rule_reminders.py
+# v2 (#275 first-push -u/--set-upstream re-key, prefix-independent — was inert on non-slice/
+# branches; #279 path-aware git-commit rules from the staged index + gh-issue-close routing),
+# ship_pr step-0 claim grep widened to the issue-number invariant (#275), _audit_routing.py
+# README skill-count regex anchored on "<N> skills total" (#274 — Caelum README already read
+# "31 skills total", audit stays green), update_from_template SKILL steps 3/5 (#276 debt-size
+# fork + structural-divergence hand-port note; #277 D-210 dual-spelling surface note),
+# metrics.py expects_receipt checkpoint-exempt classifier + flat-shape pin (#269 — Caelum's
+# OWN field data motivated it, intake #268). BY HAND: settings.json $comment hook-behavior
+# substance ported into Caelum's condensed deviation (allow/deny byte-identical, #242
+# mechanical); docs/AUTOMATION.md inject row (identical baseline → replaced). docs/METRICS.md
+# REGENERATED from Caelum's local ledger. No deviations withheld — all 4 upstream commits
+# applied. FINDING (→ pyxis inbox + #485): the #269 expects_receipt exemption HARDCODES the
+# "checkpoint/" prefix (same latent class as the #275 slice/ fix). Caelum's convention IS
+# checkpoint/<date>, but recent practice DRIFTED to docs/checkpoint-* → the exemption matched
+# ZERO Caelum PRs, leaving 3 historical checkpoint PRs (#478/#480/#483, transient/self-heal)
+# flagged beside the 1 GENUINE receipt-less slice #467. Reconciliation = adhere to
+# checkpoint/<date> (#485); metrics.py kept WHOLESALE (its mirror value for Caelum's
+# checkpoint fact equals upstream — no deviation).
+#
 # NOTE (2026-07-15, #474): sync b637016→5e8dbc0 (3 commits). Taken WHOLESALE:
 # inject_rule_reminders.py (new gh-pr-create + slice-push rules routing to ship_pr's
 # owed steps, #266 — from a live Caelum field failure) + _audit_routing.py README
@@ -63,7 +84,7 @@
 # re-evaluate at that milestone. Also not taken: pyxis-domain content
 # (research/banked/register-game-engine, EXP-03/04/05, docs/METRICS numbers).
 source: https://github.com/recon-research/pyxis (upstream identified + first synced 2026-07-08, template-sync #245)
-sha: 5e8dbc0d4e35731493398e98ab3cb491de928eb7 (template sync b637016→5e8dbc0, #474; synced 2026-07-15)
+sha: d04440a7d9c6e1e09731aea0c035d06434e505fe (template sync 5e8dbc0→d04440a, #484; synced 2026-07-16)
 baseline: 276a2d6 (reconstructed — the copy-day HEAD; the original copy recorded no sha, see #245)
 copied: 2026-06-25
-last_update: 2026-07-15
+last_update: 2026-07-16
