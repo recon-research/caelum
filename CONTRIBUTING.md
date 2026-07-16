@@ -6,7 +6,7 @@ Thanks for your interest! Two paths in:
 
 Use the **[Request / feedback form](https://github.com/recon-research/caelum/issues/new?template=0-request.yml)** — free-form, and the only template a newcomer needs. It gets triaged into the project's internal ticket flow, and you'll receive a disposition reply on the issue. The other issue templates (slice / decision / followup / research) are the project's internal process machinery; you're welcome to read them but don't need them.
 
-For vulnerabilities, use [SECURITY.md](SECURITY.md) — not a public issue.
+For vulnerabilities, use [SECURITY.md](SECURITY.md) — not a public issue. Community standards: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## Code contributions
 

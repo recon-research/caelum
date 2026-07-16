@@ -7,7 +7,7 @@
 
 Caelum pairs Material's foundation with a full application-UI surface, designed to be adopted incrementally — one component at a time — in new and existing Angular apps. Components are named and parity-mapped against their PrimeNG counterparts (`p-*` → `cae-*`), so a migrating team can swap them in at their own pace. Its canonical demo is **Forge**, an example admin console built only from Caelum components.
 
-> **Status:** in active development and further along than you'd guess — 50+ components, 1,300+ tests, CI-gated a11y/theming/provenance invariants. Milestones M0–M2 are complete; M3 (the long tail) is in progress. **Not yet published to npm** (package name pending [#501](https://github.com/recon-research/caelum/issues/501)). The live plan is [`docs/ROADMAP.md`](docs/ROADMAP.md).
+> **Status:** in active development and further along than you'd guess — 50+ components, 1,300+ tests, CI-gated a11y/theming/provenance invariants. Milestones M0–M2 are complete; M3 (the long tail) is in progress. **Not yet published to npm** — it will publish as **`@recon-research/caelum`** (D-501; the repo-wide rename lands pre-publish, [#514](https://github.com/recon-research/caelum/issues/514)). The live plan is [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Components
 
@@ -68,7 +68,7 @@ See [`docs/ROADMAP.md`](docs/ROADMAP.md). In short: **M0** foundation + theming 
 
 ## Contributing
 
-Bugs, requests, and feedback are welcome — the [Request / feedback form](https://github.com/recon-research/caelum/issues/new?template=0-request.yml) needs no knowledge of the project's internal process. For code contributions (PR flow, CI gates, conventions), see [`CONTRIBUTING.md`](CONTRIBUTING.md); to report a vulnerability, see [`SECURITY.md`](SECURITY.md).
+Bugs, requests, and feedback are welcome — the [Request / feedback form](https://github.com/recon-research/caelum/issues/new?template=0-request.yml) needs no knowledge of the project's internal process. For code contributions (PR flow, CI gates, conventions), see [`CONTRIBUTING.md`](CONTRIBUTING.md); to report a vulnerability, see [`SECURITY.md`](SECURITY.md). Community standards: [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) (Contributor Covenant v2.1).
 
 ## License
 
