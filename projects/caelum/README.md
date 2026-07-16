@@ -9,7 +9,7 @@ Caelum ships 50+ components, each as its own tree-shakable secondary entry point
 - **US-origin-clean supply chain** — every runtime dependency is transitively vetted (permissive license, US-maintained); a machine-readable attestation (`us-origin.attestation.json`) ships in this package.
 - **Clean adapter boundaries** — the data grid's TanStack dependency is optional (`peerDependenciesMeta`) and confined to a single adapter.
 
-> **Not yet published to npm** — the package name is being finalized. Until then, build from source.
+> **Not yet published to npm** — it will publish as `@recon-research/caelum`. Until then, build from source.
 
 ## Peer dependencies
 
