@@ -1,6 +1,28 @@
 {
   "name": "caelum",
   "version": "0.0.1",
+  "description": "Comprehensive, accessible Angular component library on Material + CDK, with PrimeNG-parity breadth (p-* → cae-*), token-only theming, and a US-origin-clean supply chain.",
+  "license": "MIT",
+  "keywords": [
+    "angular",
+    "components",
+    "component-library",
+    "angular-material",
+    "cdk",
+    "primeng-migration",
+    "accessibility",
+    "a11y",
+    "theming",
+    "design-tokens"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/recon-research/caelum.git"
+  },
+  "bugs": {
+    "url": "https://github.com/recon-research/caelum/issues"
+  },
+  "homepage": "https://github.com/recon-research/caelum#readme",
   "peerDependencies": {
     "@angular/cdk": "^22.0.0 || ^23.0.0",
     "@angular/common": "^22.0.0 || ^23.0.0",
