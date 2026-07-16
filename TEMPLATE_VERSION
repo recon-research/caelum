@@ -4,6 +4,20 @@
 # template from `sha` to its HEAD to know what changed — without this stamp, every
 # template update is hand archaeology.
 #
+# NOTE (2026-07-15, #474): sync b637016→5e8dbc0 (3 commits). Taken WHOLESALE:
+# inject_rule_reminders.py (new gh-pr-create + slice-push rules routing to ship_pr's
+# owed steps, #266 — from a live Caelum field failure) + _audit_routing.py README
+# skill-count guard (#264). Applied BY HAND onto project-mirrored files:
+# audit_ops_config.py check 6 (bare-python audit, D-210/#262) + metrics.py
+# receipts-coverage tripwire (#266). python3 sweep of the D-210 re-patch's misses:
+# preflight.ps1 (10 sites) + metrics_report SKILL (2). Content ports: AUTOMATION hook
+# row, README audit-assert clause + Caelum's own count (31, not pyxis's 32), settings
+# $comment inventory sentence (grants UNTOUCHED, #242 mechanical). docs/METRICS.md
+# REGENERATED locally (never pyxis numbers) — the new tripwire at once flagged Caelum's
+# own #465/#467/#468/#470/#471/#473 as receipt-less (the field failure the guard exists
+# for; fix = the installed JIT routing, never backfilled receipts). No deviations
+# withheld — all 3 upstream commits fully applied.
+#
 # NOTE (2026-07-15, #463): sync 12f3608→b637016 (11 commits). Taken: deep_brief
 # skill (#239) + metrics_report skill + MANIFEST skills[] (catalog now 31); two
 # new PreToolUse hooks — block_chained_merge (#253, blocks a checks-watch chained
@@ -49,7 +63,7 @@
 # re-evaluate at that milestone. Also not taken: pyxis-domain content
 # (research/banked/register-game-engine, EXP-03/04/05, docs/METRICS numbers).
 source: https://github.com/recon-research/pyxis (upstream identified + first synced 2026-07-08, template-sync #245)
-sha: b6370166f345aa6bb61f73fadff5c5307aa1b0af (template sync 12f3608→b637016, #463; synced 2026-07-15)
+sha: 5e8dbc0d4e35731493398e98ab3cb491de928eb7 (template sync b637016→5e8dbc0, #474; synced 2026-07-15)
 baseline: 276a2d6 (reconstructed — the copy-day HEAD; the original copy recorded no sha, see #245)
 copied: 2026-06-25
 last_update: 2026-07-15
