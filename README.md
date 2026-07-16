@@ -1,32 +1,62 @@
 # Caelum
 
-**A comprehensive, accessible Angular 22 component library built on Angular Material, the CDK, and Angular Aria.**
+[![CI](https://github.com/recon-research/caelum/actions/workflows/ci.yml/badge.svg)](https://github.com/recon-research/caelum/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Caelum is an open-source component library that pairs Material's foundation with the breadth a full-featured application UI needs, designed to be adopted incrementally — one component at a time — in new and existing Angular apps. Its canonical demo is **Forge**, an example admin console.
+**A comprehensive, accessible Angular 22 component library built on Angular Material, the CDK, and Angular Aria — with the breadth teams expect when they leave PrimeNG.**
 
-> **Status: early development (pre-release).** The domain knowledge library is complete; the component-code scaffold is the next milestone (**M0 — Foundation**). Nothing is published to npm yet. Track progress in [`docs/ROADMAP.md`](docs/ROADMAP.md).
+Caelum pairs Material's foundation with a full application-UI surface, designed to be adopted incrementally — one component at a time — in new and existing Angular apps. Components are named and parity-mapped against their PrimeNG counterparts (`p-*` → `cae-*`), so a migrating team can swap them in at their own pace. Its canonical demo is **Forge**, an example admin console built only from Caelum components.
+
+> **Status:** in active development and further along than you'd guess — 50+ components, 1,300+ tests, CI-gated a11y/theming/provenance invariants. Milestones M0–M2 are complete; M3 (the long tail) is in progress. **Not yet published to npm** (package name pending [#501](https://github.com/recon-research/caelum/issues/501)). The live plan is [`docs/ROADMAP.md`](docs/ROADMAP.md).
+
+## Components
+
+Every component is its own tree-shakable secondary entry point, importable independently.
+
+| Family | Components |
+|---|---|
+| Form controls | form-field · input · textarea · select · autocomplete · multi-select · listbox · checkbox · radio · switch · slider · password · input-mask · input-number · input-otp · select-button · toggle-button |
+| Buttons & menus | button · split-button · menu · menubar · context-menu · tab-menu · breadcrumb |
+| Data | table · grid (TanStack adapter) · tree · tree-table · tree-select · order-list · pick-list |
+| Overlays & feedback | dialog · confirm · toast · tooltip · progress-bar · progress-spinner |
+| Media | image · image-compare · carousel · galleria |
+| Layout & structure | accordion · card · tabs · stepper · splitter · toolbar · scroll-panel · divider |
+| Misc | badge · chip · chip-set · file-upload |
+
+Coming from PrimeNG? The **[`p-*` → `cae-*` comparison map](textbooks/reference/COMPARISON.md)** covers the full PrimeNG surface with a migration-effort tier per component.
+
+## Try it
+
+Caelum isn't on npm yet. Until it is, the Forge demo is the fastest way to see the library:
+
+```bash
+git clone https://github.com/recon-research/caelum.git
+cd caelum
+npm ci
+npm start   # Forge on http://localhost:4200 — light/dark, density toggle, live components
+```
+
+A hosted Forge demo is planned ([#495](https://github.com/recon-research/caelum/issues/495)).
 
 ## Design principles
 
-- **Incremental adoption.** Caelum is built to drop into an existing app gradually, component by component — no big-bang rewrite. Teams coming from another component suite such as PrimeNG can use an optional mapping guide (`p-*` → `cae-*`) and schematic codemods to translate existing components to their Caelum equivalents at their own pace.
+- **Incremental adoption.** Caelum is built to drop into an existing app gradually, component by component — no big-bang rewrite. Teams coming from another component suite such as PrimeNG can use the mapping guide (`p-*` → `cae-*`) to translate existing components to their Caelum equivalents at their own pace.
 - **Accessibility as a baseline.** Every component ships with explicit keyboard and ARIA behavior, verified with axe plus manual keyboard and screen-reader passes.
-- **Token-only theming.** Every color, space, radius, and type value comes from a design-token bridge — no hardcoded values — with light and dark parity. (`D-04`)
+- **Token-only theming.** Every color, space, radius, and type value comes from a design-token bridge — no hardcoded values — with light/dark parity (via `color-scheme` + `light-dark()`) and a density switch. (`D-04`)
 - **Free, permissively licensed dependencies.** Everything Caelum relies on at runtime is free and under a permissive license — no paid tiers.
 - **US-origin supply chain.** As a project requirement, every runtime dependency — transitively — is maintained by a US-based entity under a permissive license; provenance is scanned in CI and a machine-readable origin attestation ships inside the package. (`D-05` / `D-10`)
 - **Clean adapter boundaries.** The few areas that call for a specialized third-party library — data grid, charts, rich-text editor — sit behind neutral interfaces, with each library confined to a single adapter file and vetted for provenance, enforced by lint. (`D-03`)
 
-## What's in this repository today
-
-Caelum is built in the open, and the knowledge that drives it lives here alongside the (forthcoming) code:
+## What's in this repository
 
 | Path | What it is |
 |------|------------|
-| [`textbooks/`](textbooks/) | A 20-book, self-validating knowledge library (RAG) covering Angular 22, the CDK/Aria primitives, the adapter layer, quality, and distribution — see the [outline](textbooks/LIBRARY_OUTLINE.md) and the [library readme](textbooks/README.md). |
+| [`projects/caelum/`](projects/caelum/) | The library — one self-contained entry point per component, plus the [token bridge](projects/caelum/styles/). |
+| [`projects/forge/`](projects/forge/) | Forge, the demo admin console exercising every shipped component. |
 | [`docs/`](docs/) | [Architecture](docs/ARCHITECTURE.md) (shape, invariants, decision log) and the [Roadmap](docs/ROADMAP.md) (milestones M0–M4). |
-| [`research/`](research/) | Frontier research notes — every claim sourced, tiered, and dated — that ground the library's decisions. |
+| [`textbooks/`](textbooks/) | A 20-book, self-validating knowledge library (RAG) that grounds the build — see the [outline](textbooks/LIBRARY_OUTLINE.md) and [library readme](textbooks/README.md). |
+| [`research/`](research/) | Frontier research notes — every claim sourced, tiered, and dated. |
 | [`CLAUDE.md`](CLAUDE.md), [`.claude/`](.claude/) | The autopilot harness (see below). |
-
-The component library (`projects/caelum`) and the Forge demo (`projects/forge`) arrive with milestone **M0**.
 
 ## Built on autopilot
 
@@ -34,11 +64,11 @@ Caelum is built and tested almost entirely by **Claude Code**, running on an aut
 
 ## Roadmap
 
-See [`docs/ROADMAP.md`](docs/ROADMAP.md). In short: **M0** foundation + theming + direct components → **M1** composed components → **M2** the three adapters → **M3** the long tail → **M4** parity hardening and adoption.
+See [`docs/ROADMAP.md`](docs/ROADMAP.md). In short: **M0** foundation + theming ☑ → **M1** composed components ☑ → **M2** adapters ☑ → **M3** the long tail ◐ → **M4** parity hardening and adoption.
 
 ## Contributing
 
-Caelum is in early foundation work; the public contribution flow opens up as the code scaffold lands. Until then, the [architecture](docs/ARCHITECTURE.md) and [roadmap](docs/ROADMAP.md) docs are the best way to understand where it's headed, and issues are welcome.
+Bugs, requests, and feedback are welcome — the [Request / feedback form](https://github.com/recon-research/caelum/issues/new?template=0-request.yml) needs no knowledge of the project's internal process. For code contributions (PR flow, CI gates, conventions), see [`CONTRIBUTING.md`](CONTRIBUTING.md); to report a vulnerability, see [`SECURITY.md`](SECURITY.md).
 
 ## License
 

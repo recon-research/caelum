@@ -32,6 +32,7 @@ Truth order: **git/CI &gt; issue tracker &gt; docs &gt; chat memory.** On any mi
 | **Status block** (above) | one line at **every merge** (the merge-time checkpoint); fully at `prepare_compaction`; verified by `onboard` |
 | **docs/ROADMAP.md** | the moment a slice/milestone changes state |
 | **docs/ARCHITECTURE.md** | only when a `D-NN` decision lands |
+| **README.md** (public front door) | at every **milestone exit** (status line, milestone glyphs, components table); its status prose is a scale-floor + ROADMAP pointer by design, so it can't rot between milestones (#492 — it fossilized at go-live once) |
 | **Issue tracker** | continuously — **defer = file now**, never "I'll note it later" |
 
 ## The reference library — use it
