@@ -15,6 +15,7 @@ import {
   isDevMode,
   model,
   numberAttribute,
+  untracked,
   viewChildren,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -54,7 +55,9 @@ let nextUniqueId = 0;
  * `role="tabpanel"` main view, selection-follows-focus with a roving tabindex), an optional
  * **indicator-dots** row (`[showIndicators]`, off by default), a position live-region,
  * and a **fullscreen lightbox** opened through {@link CaeDialog} (D-15, Book 09 §3.3) — Material's
- * centered modal supplies the focus-trap, `Escape`/backdrop dismissal, and focus-restore for free.
+ * centered modal supplies the focus-trap, `Escape`/backdrop dismissal, and focus-restore for free. Set
+ * `[fullScreen]` to drop the inline UI entirely and run as an overlay-only gallery driven by a consumer
+ * trigger through the two-way `[(visible)]` open-state model (which also mirrors the lightbox inline).
  *
  * State lives in signals (zoneless, Book 11 §3.5 pt 4); `activeIndex` is a two-way `model` shared with
  * the lightbox so navigating fullscreen updates the inline view. No foreign media library (Book 11
@@ -78,11 +81,11 @@ let nextUniqueId = 0;
   template: `
     <section
       class="cae-galleria"
-      role="group"
-      [attr.aria-roledescription]="ariaLabel() ? 'gallery' : null"
-      [attr.aria-label]="ariaLabel() || null"
+      [attr.role]="fullScreen() ? null : 'group'"
+      [attr.aria-roledescription]="!fullScreen() && ariaLabel() ? 'gallery' : null"
+      [attr.aria-label]="fullScreen() ? null : ariaLabel() || null"
     >
-      @if (count() > 0) {
+      @if (count() > 0 && !fullScreen()) {
         <div
           class="cae-galleria__layout"
           [class.cae-galleria__layout--vertical]="thumbsVertical()"
@@ -523,6 +526,30 @@ export class CaeGalleria {
   /** Show the prev/next navigators over the main image (default on). Hidden for a single image. */
   readonly showNavigators = input(true, { transform: booleanAttribute });
   /**
+   * Fullscreen-only mode (p-galleria `[fullScreen]`, default off). When true the galleria renders **no
+   * inline UI** — it is an overlay-only component whose fullscreen lightbox is opened by a consumer trigger
+   * through {@link visible} (there is no inline button in this mode). Default false keeps the inline layout
+   * byte-identical. The inline-strip inputs — {@link showThumbnails}, {@link numVisible},
+   * {@link thumbnailsPosition}, {@link showIndicators}, {@link showNavigators} — are **inert** here: the
+   * lightbox viewer navigates by prev/next + a position counter, with no thumbnail strip (a deliberate
+   * divergence from p-galleria's masked strip). A **static** mode flag, set once at creation: toggling it
+   * `true`→`false` while the lightbox is open is unsupported — it would render the inline layout *and* leave
+   * the overlay open at once (nothing reconciles them on a `fullScreen` change).
+   */
+  readonly fullScreen = input(false, { transform: booleanAttribute });
+  /**
+   * Two-way open-state of the fullscreen lightbox — mirrors *and* controls whether it is showing, in
+   * **both** inline and {@link fullScreen} modes. Opening it (the inline fullscreen button,
+   * {@link openFullscreen}, or setting this `true`) reflects here; `Escape`/backdrop/close set it back to
+   * `false`. Additive — existing consumers that don't bind it are unaffected. In `fullScreen` mode this is
+   * the only way to show the gallery, so pair it with your own trigger button. A `true` set on an empty
+   * gallery is honored once items arrive (it never force-opens nothing, nor closes on a transient empty).
+   * Known edges (#500, end-state stays consistent): toggling `false`→`true` again *within* the lightbox's
+   * close animation may drop the reopen; and a host destroyed while open leaves `visible` `true` (reset it
+   * in the host if you toggle the galleria's existence via `@if`).
+   */
+  readonly visible = model(false);
+  /**
    * Show a row of indicator dots that navigate to each image (default OFF — p-galleria parity). Opt in for
    * dots-style navigation — on its own (with `[showThumbnails]="false"`) or alongside the thumbnail strip.
    * When shown alongside the strip, the dots render after it (below the layout) in every
@@ -659,6 +686,22 @@ export class CaeGalleria {
       // consumer's pre-set [(activeIndex)] down to 0 — when items arrive this re-runs and clamps the
       // preserved index into the real range.
       if (this.count() > 0 && this.activeIndex() !== clamped) this.activeIndex.set(clamped);
+    });
+
+    // Drive the fullscreen lightbox from the two-way [(visible)] model — the open path for [fullScreen]
+    // mode (which has no inline trigger) and a programmatic open/close hook in inline mode. Both `visible`
+    // and `count` are read as deps: a born-visible gallery whose items load after init opens when they
+    // arrive. Opening self-guards (empty gallery / already-open) inside openLightbox; it NEVER auto-closes
+    // on a transient-empty collection (no `count()===0` close branch — same guard as the clamp effect
+    // above), so a still-loading gallery can't dismiss itself. The imperative part is untracked so it
+    // doesn't re-run on lightboxRef churn.
+    effect(() => {
+      const open = this.visible();
+      const nonEmpty = this.count() > 0;
+      untracked(() => {
+        if (open && nonEmpty) this.openLightbox();
+        else if (!open) this.lightboxRef?.close();
+      });
     });
 
     // When the strip is windowed ([numVisible]), keep the SELECTED thumbnail scrolled into view as the active
@@ -828,14 +871,24 @@ export class CaeGalleria {
   }
 
   /**
-   * Open the fullscreen lightbox at the current image. Material (via {@link CaeDialog}) supplies the
-   * centered modal, focus-trap, `Escape`/backdrop dismissal, and focus-restore to whatever was focused
-   * when it opened — the fullscreen button on the click/keyboard path. The lightbox live-syncs
-   * `activeIndex` back through `onNavigate`, so the inline view reflects whatever was last seen, however
-   * the dialog closes. No-ops on an empty gallery, or when a lightbox is already open (no stacking).
+   * Open the fullscreen lightbox at the current image — the inline fullscreen button's action and a public
+   * imperative hook. Sets {@link visible} true; no-ops on an empty gallery or when one is already open. It
+   * is mode-agnostic (works in [fullScreen] mode too), but there, prefer binding [(visible)] to your trigger.
    */
   openFullscreen(): void {
+    this.openLightbox();
+  }
+
+  /**
+   * Mount the fullscreen lightbox (guarded against an empty gallery and against stacking a second one).
+   * Material (via {@link CaeDialog}) supplies the centered modal, focus-trap, `Escape`/backdrop dismissal,
+   * and focus-restore to whatever was focused when it opened. The lightbox live-syncs `activeIndex` back
+   * through `onNavigate`, so the inline view reflects whatever was last seen however the dialog closes.
+   * {@link visible} mirrors the open state both ways — set true here, reset false when it closes.
+   */
+  private openLightbox(): void {
     if (this.count() === 0 || this.lightboxRef) return;
+    this.visible.set(true);
     this.lightboxRef = this.dialog.open<CaeGalleriaLightbox, void, CaeGalleriaLightboxData>(
       CaeGalleriaLightbox,
       {
@@ -860,11 +913,15 @@ export class CaeGalleria {
         },
       },
     );
-    // Release the guard when the lightbox closes. afterClosed emits once then completes, but tie it to the
-    // DestroyRef so a host destroyed mid-lightbox can't leave the closure pinning this instance (#294).
+    // Release the guard and reflect the closed state when the lightbox closes by any path (Escape/backdrop/
+    // close button, or a programmatic visible=false). afterClosed emits once then completes, but tie it to
+    // the DestroyRef so a host destroyed mid-lightbox can't leave the closure pinning this instance (#294).
     this.lightboxRef
       .afterClosed()
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => (this.lightboxRef = null));
+      .subscribe(() => {
+        this.lightboxRef = null;
+        this.visible.set(false);
+      });
   }
 }

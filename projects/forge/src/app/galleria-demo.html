@@ -26,3 +26,22 @@
     Viewing: <code>{{ currentAlt() }}</code>
   </p>
 </cae-card>
+
+<cae-card class="forge-galleria-card">
+  <h3 class="forge-galleria-card__title">Fullscreen-only gallery</h3>
+  <p class="forge-galleria-card__lead">
+    With <code>[fullScreen]="true"</code> the gallery renders <strong>no inline strip</strong> — it
+    lives entirely in the lightbox, opened by <em>your own</em> trigger through the two-way
+    <code>[(visible)]</code> model. <kbd>Escape</kbd>, the backdrop, or the close button set
+    <code>visible</code> back to <code>false</code>. It shares <code>[(activeIndex)]</code> with the
+    inline gallery above, so it opens on whichever plate is selected there.
+  </p>
+  <cae-button variant="outlined" (click)="fsVisible.set(true)">Open fullscreen gallery</cae-button>
+  <cae-galleria
+    [items]="images"
+    ariaLabel="Star plates (fullscreen)"
+    [fullScreen]="true"
+    [(visible)]="fsVisible"
+    [(activeIndex)]="index"
+  />
+</cae-card>
