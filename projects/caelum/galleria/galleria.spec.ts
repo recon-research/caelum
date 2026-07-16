@@ -426,6 +426,90 @@ describe('CaeGalleria', () => {
     });
   });
 
+  describe('thumbnail windowing ([numVisible], #481)', () => {
+    const SIX: readonly CaeGalleriaItem[] = [
+      { src: 'a.jpg', alt: 'Alpha' },
+      { src: 'b.jpg', alt: 'Bravo' },
+      { src: 'c.jpg', alt: 'Charlie' },
+      { src: 'd.jpg', alt: 'Delta' },
+      { src: 'e.jpg', alt: 'Echo' },
+      { src: 'f.jpg', alt: 'Foxtrot' },
+    ];
+    const strip = (): HTMLElement | null => el.querySelector('[role="tablist"]');
+    const isWindowed = (): boolean => strip()!.classList.contains('cae-galleria__thumbs--windowed');
+    const numVisibleVar = (): string =>
+      strip()!.style.getPropertyValue('--cae-galleria-num-visible').trim();
+
+    // Assert through the DOM the windowed()/visibleCount() computeds drive (the --windowed class + the
+    // --cae-galleria-num-visible cap var) rather than widening those protected computeds to public.
+    it('does not window by default (numVisible 0): no --windowed class, no cap var, every thumb present', async () => {
+      await render({ items: SIX });
+      expect(isWindowed()).toBe(false);
+      expect(numVisibleVar()).toBe('');
+      expect(tabs()).toHaveLength(6); // all thumbnails stay in the DOM / a11y tree
+    });
+
+    it('[numVisible]=3 over 6 images windows the strip: --windowed class + --cae-galleria-num-visible=3', async () => {
+      await render({ items: SIX, numVisible: 3 });
+      expect(isWindowed()).toBe(true);
+      expect(numVisibleVar()).toBe('3');
+      // Only the VISIBLE count is capped (a CSS viewport size, whose paint is deferred to the #240 browser
+      // pass) — here we assert the a11y invariant that matters in jsdom: all 6 tabs stay in the DOM tree.
+      expect(tabs()).toHaveLength(6);
+    });
+
+    it('coerces a string [numVisible] to a number (numberAttribute)', async () => {
+      await render({ items: SIX, numVisible: '3' });
+      expect(isWindowed()).toBe(true);
+      expect(numVisibleVar()).toBe('3');
+    });
+
+    it('floors a fractional [numVisible] to a whole thumbnail count', async () => {
+      await render({ items: SIX, numVisible: 3.9 });
+      expect(numVisibleVar()).toBe('3'); // visibleCount() floored 3.9 → 3
+    });
+
+    it('does not window when numVisible >= the image count (shows them all, like 0)', async () => {
+      await render({ items: SIX, numVisible: 6 });
+      expect(isWindowed()).toBe(false);
+      expect(numVisibleVar()).toBe('');
+    });
+
+    it('is inert with the strip hidden ([showThumbnails]=false)', async () => {
+      await render({ items: SIX, numVisible: 3, showThumbnails: false });
+      expect(strip()).toBeNull();
+    });
+
+    it('scrolls the selected thumbnail into view on nav when windowed', async () => {
+      await render({ items: SIX, numVisible: 3, activeIndex: 0 });
+      // jsdom doesn't implement scrollIntoView (the component calls it optionally), so plant a mock to observe.
+      const scrollSpy = vi.fn();
+      tabs()[4].scrollIntoView = scrollSpy;
+      // Jump past the visible window by a NON-keyboard path (setInput, like a consumer / lightbox sync) — the
+      // roving keyboard already scrolls via focusThumb(), so this proves the separate follow-scroll effect.
+      fixture.componentRef.setInput('activeIndex', 4);
+      await settle();
+      expect(scrollSpy).toHaveBeenCalled();
+    });
+
+    it('does NOT auto-scroll the strip on the same nav when un-windowed (byte-identical default)', async () => {
+      await render({ items: SIX, activeIndex: 0 }); // numVisible 0
+      const scrollSpy = vi.fn();
+      tabs()[4].scrollIntoView = scrollSpy;
+      fixture.componentRef.setInput('activeIndex', 4);
+      await settle();
+      expect(scrollSpy).not.toHaveBeenCalled(); // the follow-scroll effect is gated on windowed()
+    });
+
+    it('composes with a vertical strip ([thumbnailsPosition="left"])', async () => {
+      await render({ items: SIX, numVisible: 3, thumbnailsPosition: 'left' });
+      const layout = el.querySelector('.cae-galleria__layout')!;
+      expect(layout.classList.contains('cae-galleria__layout--vertical')).toBe(true);
+      expect(isWindowed()).toBe(true);
+      expect(numVisibleVar()).toBe('3');
+    });
+  });
+
   describe('fullscreen (openFullscreen config seam — spied CaeDialog.open, no overlay)', () => {
     it('opens the lightbox centered with the current index and the sync + circular seams', async () => {
       await render({ activeIndex: 1, circular: true });
