@@ -81,70 +81,111 @@ let nextUniqueId = 0;
     >
       @if (count() > 0) {
         <div
-          class="cae-galleria__stage"
-          [attr.role]="hasThumbnails() ? 'tabpanel' : null"
-          [id]="panelId"
-          [attr.aria-labelledby]="hasThumbnails() ? tabId(clampedIndex()) : null"
+          class="cae-galleria__layout"
+          [class.cae-galleria__layout--vertical]="thumbsVertical()"
+          [class.cae-galleria__layout--before]="thumbsBefore()"
         >
-          @if (showNavigators() && count() > 1) {
-            <button
-              type="button"
-              class="cae-galleria__nav cae-galleria__nav--prev"
-              [attr.aria-label]="prevAriaLabel()"
-              [attr.aria-disabled]="atStart() && !circular() ? 'true' : null"
-              (click)="prev()"
-            >
-              <span
-                class="cae-galleria__chevron cae-galleria__chevron--prev"
-                aria-hidden="true"
-              ></span>
-            </button>
-          }
+          <div
+            class="cae-galleria__stage"
+            [attr.role]="hasThumbnails() ? 'tabpanel' : null"
+            [id]="panelId"
+            [attr.aria-labelledby]="hasThumbnails() ? tabId(clampedIndex()) : null"
+          >
+            @if (showNavigators() && count() > 1) {
+              <button
+                type="button"
+                class="cae-galleria__nav cae-galleria__nav--prev"
+                [attr.aria-label]="prevAriaLabel()"
+                [attr.aria-disabled]="atStart() && !circular() ? 'true' : null"
+                (click)="prev()"
+              >
+                <span
+                  class="cae-galleria__chevron cae-galleria__chevron--prev"
+                  aria-hidden="true"
+                ></span>
+              </button>
+            }
 
-          <div class="cae-galleria__main">
-            <figure class="cae-galleria__figure">
-              @if (activeItem(); as item) {
-                @if (itemTemplate(); as tpl) {
-                  <ng-container
-                    [ngTemplateOutlet]="tpl"
-                    [ngTemplateOutletContext]="templateContext(item, clampedIndex())"
-                  ></ng-container>
-                } @else {
-                  <img class="cae-galleria__image" [src]="item.src" [alt]="item.alt" />
-                  @if (item.caption) {
-                    <figcaption
-                      class="cae-galleria__caption"
-                      [class.cae-galleria__caption--overlay]="captionPosition() === 'overlay'"
-                    >
-                      {{ item.caption }}
-                    </figcaption>
+            <div class="cae-galleria__main">
+              <figure class="cae-galleria__figure">
+                @if (activeItem(); as item) {
+                  @if (itemTemplate(); as tpl) {
+                    <ng-container
+                      [ngTemplateOutlet]="tpl"
+                      [ngTemplateOutletContext]="templateContext(item, clampedIndex())"
+                    ></ng-container>
+                  } @else {
+                    <img class="cae-galleria__image" [src]="item.src" [alt]="item.alt" />
+                    @if (item.caption) {
+                      <figcaption
+                        class="cae-galleria__caption"
+                        [class.cae-galleria__caption--overlay]="captionPosition() === 'overlay'"
+                      >
+                        {{ item.caption }}
+                      </figcaption>
+                    }
                   }
                 }
-              }
-            </figure>
-            <button
-              type="button"
-              class="cae-galleria__fullscreen"
-              [attr.aria-label]="fullscreenAriaLabel()"
-              (click)="openFullscreen()"
-            >
-              <span class="cae-galleria__expand-glyph" aria-hidden="true"></span>
-            </button>
+              </figure>
+              <button
+                type="button"
+                class="cae-galleria__fullscreen"
+                [attr.aria-label]="fullscreenAriaLabel()"
+                (click)="openFullscreen()"
+              >
+                <span class="cae-galleria__expand-glyph" aria-hidden="true"></span>
+              </button>
+            </div>
+
+            @if (showNavigators() && count() > 1) {
+              <button
+                type="button"
+                class="cae-galleria__nav cae-galleria__nav--next"
+                [attr.aria-label]="nextAriaLabel()"
+                [attr.aria-disabled]="atEnd() && !circular() ? 'true' : null"
+                (click)="next()"
+              >
+                <span
+                  class="cae-galleria__chevron cae-galleria__chevron--next"
+                  aria-hidden="true"
+                ></span>
+              </button>
+            }
           </div>
 
-          @if (showNavigators() && count() > 1) {
-            <button
-              type="button"
-              class="cae-galleria__nav cae-galleria__nav--next"
-              [attr.aria-label]="nextAriaLabel()"
-              [attr.aria-disabled]="atEnd() && !circular() ? 'true' : null"
-              (click)="next()"
+          @if (hasThumbnails()) {
+            <div
+              class="cae-galleria__thumbs"
+              role="tablist"
+              [attr.aria-label]="thumbnailsLabel()"
+              [attr.aria-orientation]="thumbsVertical() ? 'vertical' : null"
             >
-              <span
-                class="cae-galleria__chevron cae-galleria__chevron--next"
-                aria-hidden="true"
-              ></span>
-            </button>
+              @for (item of items(); track $index; let i = $index) {
+                <button
+                  #thumbBtn
+                  type="button"
+                  role="tab"
+                  class="cae-galleria__thumb"
+                  [class.cae-galleria__thumb--active]="i === clampedIndex()"
+                  [id]="tabId(i)"
+                  [attr.aria-selected]="i === clampedIndex()"
+                  [attr.aria-controls]="panelId"
+                  [attr.aria-label]="thumbLabel(item, i)"
+                  [tabindex]="i === clampedIndex() ? 0 : -1"
+                  (click)="select(i)"
+                  (keydown)="onThumbKeydown($event, i)"
+                >
+                  @if (thumbnailTemplate(); as tpl) {
+                    <ng-container
+                      [ngTemplateOutlet]="tpl"
+                      [ngTemplateOutletContext]="templateContext(item, i)"
+                    ></ng-container>
+                  } @else {
+                    <img class="cae-galleria__thumb-image" [src]="thumbSrc(item)" alt="" />
+                  }
+                </button>
+              }
+            </div>
           }
         </div>
 
@@ -166,36 +207,6 @@ let nextUniqueId = 0;
           </div>
         }
 
-        @if (hasThumbnails()) {
-          <div class="cae-galleria__thumbs" role="tablist" [attr.aria-label]="thumbnailsLabel()">
-            @for (item of items(); track $index; let i = $index) {
-              <button
-                #thumbBtn
-                type="button"
-                role="tab"
-                class="cae-galleria__thumb"
-                [class.cae-galleria__thumb--active]="i === clampedIndex()"
-                [id]="tabId(i)"
-                [attr.aria-selected]="i === clampedIndex()"
-                [attr.aria-controls]="panelId"
-                [attr.aria-label]="thumbLabel(item, i)"
-                [tabindex]="i === clampedIndex() ? 0 : -1"
-                (click)="select(i)"
-                (keydown)="onThumbKeydown($event, i)"
-              >
-                @if (thumbnailTemplate(); as tpl) {
-                  <ng-container
-                    [ngTemplateOutlet]="tpl"
-                    [ngTemplateOutletContext]="templateContext(item, i)"
-                  ></ng-container>
-                } @else {
-                  <img class="cae-galleria__thumb-image" [src]="thumbSrc(item)" alt="" />
-                }
-              </button>
-            }
-          </div>
-        }
-
         <!-- Polite position announcement. ARIA announces live-region CHANGES only, so the initial value
              is silent and each navigation reads "Image N of M". The library convention is an in-template
              live region (cae-carousel does the same), not the LiveAnnouncer service. -->
@@ -208,6 +219,42 @@ let nextUniqueId = 0;
   styles: `
     :host {
       display: block;
+    }
+    /* The stage + thumbnail strip lay out as a flex box so [thumbnailsPosition] can place the strip on any
+       side. DOM order is always stage -> strip; only flex-direction / -reverse changes the VISUAL side, so
+       reading + focus order stay image -> thumbnails in every position (WCAG 2.4.3). Indicators + the SR
+       status region are siblings after this box. */
+    .cae-galleria__layout {
+      display: flex;
+      flex-direction: column;
+      gap: var(--cae-space-3);
+    }
+    /* left/right: strip beside the image. flex-start so the (capped, scrollable) strip top-aligns with the
+       image instead of stretching the row to its full content height. A vertical strip is entirely
+       block/physical-axis — Up/Down navigate it and its placement is PHYSICAL (left is always physical-left),
+       so RTL leaves a vertical strip untouched. Base (row) = right; --before (row-reverse) = left, under LTR. */
+    .cae-galleria__layout--vertical {
+      flex-direction: row;
+      align-items: flex-start;
+    }
+    .cae-galleria__layout--vertical > .cae-galleria__stage {
+      flex: 1 1 auto;
+      min-inline-size: 0;
+    }
+    /* top/left: strip visually first — reverse the main axis (DOM order unchanged, see above). */
+    .cae-galleria__layout--before:not(.cae-galleria__layout--vertical) {
+      flex-direction: column-reverse;
+    }
+    .cae-galleria__layout--vertical.cae-galleria__layout--before {
+      flex-direction: row-reverse;
+    }
+    /* flex row/row-reverse resolve against the dir attribute, which would mirror left/right under RTL; re-swap
+       via the host --rtl flag so the physical side stays put (visual side is #240-verified, like the chevrons). */
+    :host(.cae-galleria--rtl) .cae-galleria__layout--vertical {
+      flex-direction: row-reverse;
+    }
+    :host(.cae-galleria--rtl) .cae-galleria__layout--vertical.cae-galleria__layout--before {
+      flex-direction: row;
     }
     .cae-galleria__stage {
       display: flex;
@@ -329,13 +376,24 @@ let nextUniqueId = 0;
       border: 2px solid currentColor;
       border-radius: var(--cae-radius-sm);
     }
-    /* Thumbnail strip: a horizontally-scrollable row; the active thumb is scrolled into view on nav. */
+    /* Thumbnail strip: a horizontally-scrollable row (top/bottom); the active thumb is scrolled into view on
+       nav. The gap from the main view comes from the layout box gap (not a margin here) so it is uniform
+       across all four positions. */
     .cae-galleria__thumbs {
       display: flex;
       gap: var(--cae-space-2);
-      margin-block-start: var(--cae-space-3);
       overflow-x: auto;
       padding-block-end: var(--cae-space-1);
+    }
+    /* Vertical strip (left/right): stack on the block axis and scroll on Y, capped to the image's
+       max-block-size so a long strip scrolls beside the image instead of towering past it. The 60vh matches
+       .cae-galleria__image (structural strip/image geometry, not a themeable design value). */
+    .cae-galleria__layout--vertical .cae-galleria__thumbs {
+      flex-direction: column;
+      overflow-y: auto;
+      max-block-size: 60vh;
+      padding-block-end: 0;
+      padding-inline-end: var(--cae-space-1);
     }
     .cae-galleria__thumb {
       flex: 0 0 auto;
@@ -433,7 +491,8 @@ export class CaeGalleria {
   /**
    * Show a row of indicator dots that navigate to each image (default OFF — p-galleria parity). Opt in for
    * dots-style navigation — on its own (with `[showThumbnails]="false"`) or alongside the thumbnail strip.
-   * Hidden for a single image.
+   * When shown alongside the strip, the dots render after it (below the layout) in every
+   * {@link thumbnailsPosition}. Hidden for a single image.
    */
   readonly showIndicators = input(false, { transform: booleanAttribute });
   /**
@@ -445,6 +504,16 @@ export class CaeGalleria {
    * own caption).
    */
   readonly captionPosition = input<'below' | 'overlay'>('below');
+  /**
+   * Where the thumbnail strip sits relative to the main image (`p-galleria`'s `thumbnailsPosition`).
+   * `'bottom'` (default) / `'top'` lay the strip out HORIZONTALLY under / over the image; `'left'` / `'right'`
+   * lay it out VERTICALLY beside the image and flip the tablist to `aria-orientation="vertical"` (all four
+   * arrow keys + Home/End already drive it). A vertical strip is entirely block/physical-axis — `'left'` is
+   * always PHYSICAL-left — so RTL leaves it untouched (Book 05 §3.3). Ignored for a single image or when
+   * `[showThumbnails]="false"`. The strip stays after the main view in DOM order in every position, so reading
+   * / focus order is image → strip throughout (WCAG 2.4.3); only the visual placement moves.
+   */
+  readonly thumbnailsPosition = input<'top' | 'bottom' | 'left' | 'right'>('bottom');
   /** Accessible name for the gallery group — set one (its role/roledescription is dropped without it). */
   readonly ariaLabel = input('');
   readonly prevAriaLabel = input('Previous image');
@@ -508,6 +577,14 @@ export class CaeGalleria {
    * gallery is a plain figure, never an orphan tabpanel pointing at a non-existent tab.
    */
   protected readonly hasThumbnails = computed(() => this.showThumbnails() && this.count() > 1);
+  /** A `'left'`/`'right'` strip lays out on the block axis (vertical); `'top'`/`'bottom'` is horizontal. */
+  protected readonly thumbsVertical = computed(
+    () => this.thumbnailsPosition() === 'left' || this.thumbnailsPosition() === 'right',
+  );
+  /** `'top'`/`'left'` place the strip visually BEFORE the main view (main-axis reverse; DOM order unchanged). */
+  protected readonly thumbsBefore = computed(
+    () => this.thumbnailsPosition() === 'top' || this.thumbnailsPosition() === 'left',
+  );
 
   constructor() {
     // Tear down this gallery's lightbox when the host is destroyed while it's still open (#294): close the

@@ -357,6 +357,75 @@ describe('CaeGalleria', () => {
     });
   });
 
+  describe('thumbnail position ([thumbnailsPosition], #288)', () => {
+    const layout = (): HTMLElement | null => el.querySelector('.cae-galleria__layout');
+    const tablist = (): HTMLElement | null => el.querySelector('[role="tablist"]');
+    const stage = (): HTMLElement | null => el.querySelector('.cae-galleria__stage');
+
+    it('defaults to bottom — horizontal strip (no vertical/before classes, no aria-orientation)', async () => {
+      await render();
+      expect(layout()!.classList.contains('cae-galleria__layout--vertical')).toBe(false);
+      expect(layout()!.classList.contains('cae-galleria__layout--before')).toBe(false);
+      // horizontal is the ARIA default for a tablist, so the attribute is omitted (not "horizontal").
+      expect(tablist()!.getAttribute('aria-orientation')).toBeNull();
+    });
+
+    it('[thumbnailsPosition="top"] reverses the main axis but stays horizontal (no aria-orientation)', async () => {
+      await render({ thumbnailsPosition: 'top' });
+      expect(layout()!.classList.contains('cae-galleria__layout--before')).toBe(true);
+      expect(layout()!.classList.contains('cae-galleria__layout--vertical')).toBe(false);
+      expect(tablist()!.getAttribute('aria-orientation')).toBeNull();
+    });
+
+    it('[thumbnailsPosition="left"] is a vertical strip placed before the stage', async () => {
+      await render({ thumbnailsPosition: 'left' });
+      expect(layout()!.classList.contains('cae-galleria__layout--vertical')).toBe(true);
+      expect(layout()!.classList.contains('cae-galleria__layout--before')).toBe(true);
+      expect(tablist()!.getAttribute('aria-orientation')).toBe('vertical');
+    });
+
+    it('[thumbnailsPosition="right"] is a vertical strip placed after the stage', async () => {
+      await render({ thumbnailsPosition: 'right' });
+      expect(layout()!.classList.contains('cae-galleria__layout--vertical')).toBe(true);
+      expect(layout()!.classList.contains('cae-galleria__layout--before')).toBe(false);
+      expect(tablist()!.getAttribute('aria-orientation')).toBe('vertical');
+    });
+
+    it('keeps the strip AFTER the main view in DOM order in every position (reading/focus order, WCAG 2.4.3)', async () => {
+      for (const pos of ['top', 'bottom', 'left', 'right'] as const) {
+        await render({ thumbnailsPosition: pos });
+        // FOLLOWING means the tablist comes after the stage in document order regardless of visual side.
+        const rel = stage()!.compareDocumentPosition(tablist()!);
+        expect(rel & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      }
+    });
+
+    // The thumbnail keymap is orientation-INDEPENDENT (Down and Right both advance regardless of position),
+    // so a vertical strip stays fully navigable. Also the only Down-on-a-thumbnail coverage (the other
+    // thumbnail keyboard tests exercise Left/Right/Home/End; Up/Down were only covered on the indicators).
+    it('ArrowDown and ArrowRight both advance the thumbnail roving focus (orientation-independent keymap)', async () => {
+      await render({ thumbnailsPosition: 'left', activeIndex: 0 });
+      const active = () => el.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')!;
+      active().dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      await settle();
+      expect(component.activeIndex()).toBe(1);
+      active().dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+      await settle();
+      expect(component.activeIndex()).toBe(2);
+    });
+
+    it('renders no tablist (position moot) for a single image', async () => {
+      fixture = TestBed.createComponent(CaeGalleria);
+      fixture.componentRef.setInput('items', [ITEMS[0]]);
+      fixture.componentRef.setInput('ariaLabel', 'Solo');
+      fixture.componentRef.setInput('thumbnailsPosition', 'left');
+      document.body.appendChild(fixture.nativeElement);
+      el = fixture.nativeElement;
+      await settle();
+      expect(tablist()).toBeNull();
+    });
+  });
+
   describe('fullscreen (openFullscreen config seam — spied CaeDialog.open, no overlay)', () => {
     it('opens the lightbox centered with the current index and the sync + circular seams', async () => {
       await render({ activeIndex: 1, circular: true });
