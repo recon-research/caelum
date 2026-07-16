@@ -32,4 +32,19 @@
       Selected keys: <code>{{ multiText() }}</code>
     </p>
   </div>
+
+  <div class="forge-tree-select">
+    <span id="forge-ts-checkbox" class="forge-tree-select__label">Scope of access</span>
+    <cae-tree-select
+      [nodes]="resources"
+      selectionMode="checkbox"
+      ariaLabelledby="forge-ts-checkbox"
+      placeholder="Check resources…"
+      [formControl]="checkbox"
+    />
+    <p class="forge-tree-select__note">
+      Checking a parent checks its subtree; a partly-checked parent is indeterminate. Checked keys:
+      <code>{{ checkboxText() }}</code>
+    </p>
+  </div>
 </cae-card>

@@ -23,8 +23,16 @@ import type { ConnectedPosition } from '@angular/cdk/overlay';
 // (the "reuse the node model" goal, ROADMAP M3). A node's `value` is its selection KEY here.
 import type { CaeTreeNode } from 'caelum/tree';
 
-/** Single- or multi-select node selection. `checkbox` (tri-state propagation) is a follow-up (#264-class). */
-export type CaeTreeSelectionMode = 'single' | 'multiple';
+/**
+ * Node selection: `single` (one key), `multiple` (independent keys, no propagation), or `checkbox`
+ * (per-node checkbox with tri-state parent↔child propagation — checking a parent checks its whole
+ * subtree; partially-checked children mark the parent indeterminate). `single` emits a `string`;
+ * `multiple`/`checkbox` emit a `string[]`.
+ */
+export type CaeTreeSelectionMode = 'single' | 'multiple' | 'checkbox';
+
+/** A value-bearing node's checkbox state in `checkbox` mode (WAI-ARIA `aria-checked` tri-state). */
+type CaeTreeCheckState = 'checked' | 'unchecked' | 'mixed';
 
 // Module-scoped id counter for the panel's stable `id` (aria-controls target). Deterministic per
 // load — no Math.random/Date.now (the reproducible-build rule).
@@ -40,7 +48,7 @@ let nextUniqueId = 0;
  * selected node **key(s)** — a node's {@link CaeTreeNode.value} — while the trigger shows the matching
  * label(s). Expansion state is view-only and never leaks into the value. Like `cae-listbox`, the seam
  * is a plain value (not a `model()`) to match the PrimeNG migration target: a `string` (`''` when
- * empty) in `single` mode, a `string[]` in `multiple` mode. A node without a `value` is navigational
+ * empty) in `single` mode, a `string[]` in `multiple` **and** `checkbox` mode. A node without a `value` is navigational
  * (expand/collapse only), never selectable.
  *
  * **The panel is the library's first `cdkConnectedOverlay` (#279).** Every other picker
@@ -85,6 +93,24 @@ let nextUniqueId = 0;
  * it never mutates the value, so a selected-but-filtered-out key round-trips and its label returns when the
  * filter clears. (Real-browser SR/focus verification — like the reveal-on-open — is an M4 item; the wiring
  * is unit-tested here.)
+ *
+ * **Checkbox mode (`selectionMode='checkbox'`, #280).** A third mode gives every selectable node a
+ * checkbox with **tri-state parent↔child propagation** (`p-treeSelect` `selectionMode="checkbox"` +
+ * `propagateSelectionUp/Down`): checking a parent checks its whole subtree (down), and a parent whose
+ * children are *all* checked rolls up to checked while a partially-checked parent shows **indeterminate**
+ * (up). The value is the same `string[]` seam as `multiple`, holding the **canonical set of fully-checked
+ * keys** — leaves *and* fully-checked parents (parity: a fully-checked parent IS selected). Indeterminate
+ * parents are derived state, never in the value; `writeValue` canonicalizes an arbitrary key set the same
+ * way (writing all of a parent's children rolls the parent up in the *view*, and the parent joins the
+ * emitted value on the next change — `writeValue` itself never re-emits, per the CVA contract), and a key
+ * with no node yet is **retained** so it round-trips once its node loads (like `single`/`multiple`). Both
+ * the canonical set and each node's tri-state come from one post-order walk ({@link classify}). A11y
+ * follows the APG "tree with checkboxes" pattern: `aria-checked` (`true`/`false`/`mixed`) rides the
+ * **treeitem** and the box is a decorative indicator — NOT a nested focusable — so the single roving tab
+ * stop is preserved, exactly as in `single`/`multiple`. Because checkbox state rides `aria-checked`,
+ * `aria-multiselectable` (which pairs with the `aria-selected` model) is deliberately omitted in this
+ * mode. Like `multiple`, the panel stays open on toggle and each change is announced with the running
+ * count. (Same node-selection + tri-state hazard class as `cae-tree-table` #264.)
  *
  * Token-only theming (surface/elevation/border/focus-ring from `--cae-*`; Book 04 §3.6). No foreign
  * library. Zoneless-compatible: `OnPush` + signal state (provisional on #9; Book 01 §3.2).
@@ -184,15 +210,23 @@ let nextUniqueId = 0;
           <mat-tree-node
             *matTreeNodeDef="let node"
             [attr.aria-selected]="ariaSelected(node)"
+            [attr.aria-checked]="ariaChecked(node)"
             [attr.cdkFocusInitial]="isFocusInitial(node) ? '' : null"
             (activation)="onActivate(node)"
             (click)="onActivate(node, $event)"
           >
             <span
               class="cae-tree-select__row cae-tree-select__row--leaf"
-              [class.cae-tree-select__row--selected]="isNodeSelected(node)"
+              [class.cae-tree-select__row--selected]="!checkbox() && isNodeSelected(node)"
             >
-              @if (isNodeSelected(node)) {
+              @if (checkbox() && isSelectable(node)) {
+                <span
+                  class="cae-tree-select__checkbox"
+                  [class.cae-tree-select__checkbox--checked]="nodeCheckState(node) === 'checked'"
+                  [class.cae-tree-select__checkbox--mixed]="nodeCheckState(node) === 'mixed'"
+                  aria-hidden="true"
+                ></span>
+              } @else if (!checkbox() && isNodeSelected(node)) {
                 <span class="cae-tree-select__check" aria-hidden="true">✓</span>
               }
               <span class="cae-tree-select__label">{{ node.label }}</span>
@@ -205,13 +239,14 @@ let nextUniqueId = 0;
             *matTreeNodeDef="let node; when: hasChild"
             [isExpandable]="true"
             [attr.aria-selected]="ariaSelected(node)"
+            [attr.aria-checked]="ariaChecked(node)"
             [attr.cdkFocusInitial]="isFocusInitial(node) ? '' : null"
             (activation)="onActivate(node)"
             (click)="onActivate(node, $event)"
           >
             <span
               class="cae-tree-select__row"
-              [class.cae-tree-select__row--selected]="isNodeSelected(node)"
+              [class.cae-tree-select__row--selected]="!checkbox() && isNodeSelected(node)"
             >
               <button
                 type="button"
@@ -222,7 +257,14 @@ let nextUniqueId = 0;
               >
                 <span aria-hidden="true">{{ tree.isExpanded(node) ? '▾' : '▸' }}</span>
               </button>
-              @if (isNodeSelected(node)) {
+              @if (checkbox() && isSelectable(node)) {
+                <span
+                  class="cae-tree-select__checkbox"
+                  [class.cae-tree-select__checkbox--checked]="nodeCheckState(node) === 'checked'"
+                  [class.cae-tree-select__checkbox--mixed]="nodeCheckState(node) === 'mixed'"
+                  aria-hidden="true"
+                ></span>
+              } @else if (!checkbox() && isNodeSelected(node)) {
                 <span class="cae-tree-select__check" aria-hidden="true">✓</span>
               }
               <span class="cae-tree-select__label">{{ node.label }}</span>
@@ -425,6 +467,36 @@ let nextUniqueId = 0;
       inline-size: var(--cae-space-3);
       color: var(--cae-color-primary);
     }
+    /* Checkbox mode: a decorative tri-state indicator — the treeitem carries the real aria-checked, so
+       this box is aria-hidden and NOT interactive (the row/treeitem is the hit target, needing no
+       --cae-target-min floor of its own). Drawn entirely from tokens: an empty bordered box on the base
+       surface, primary-filled with a ✓ (checked) or − (indeterminate). */
+    .cae-tree-select__checkbox {
+      box-sizing: border-box;
+      flex: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      inline-size: var(--cae-space-4);
+      block-size: var(--cae-space-4);
+      border: 1px solid var(--cae-color-border);
+      border-radius: var(--cae-radius-sm);
+      background: var(--cae-surface-base);
+      color: var(--cae-color-on-primary);
+      font-size: 0.75em;
+      line-height: 1;
+    }
+    .cae-tree-select__checkbox--checked,
+    .cae-tree-select__checkbox--mixed {
+      border-color: var(--cae-color-primary);
+      background: var(--cae-color-primary);
+    }
+    .cae-tree-select__checkbox--checked::after {
+      content: '✓';
+    }
+    .cae-tree-select__checkbox--mixed::after {
+      content: '−';
+    }
     .cae-tree-select__label {
       cursor: pointer;
     }
@@ -449,9 +521,10 @@ export class CaeTreeSelect implements ControlValueAccessor {
   /** The nodes to choose from, as nested data. A node's `value` is its selection key. */
   readonly nodes = input<readonly CaeTreeNode[]>([]);
   /**
-   * `single` (default) → the value is a `string`; `multiple` → a `string[]`. Set ONCE, statically:
-   * the value seam's shape depends on it, so a runtime flip changes the emitted type mid-flight.
-   * `checkbox` (tri-state parent↔child propagation) is a follow-up (#264-class), not this value.
+   * `single` (default) → the value is a `string`; `multiple` and `checkbox` → a `string[]`. `checkbox`
+   * adds per-node checkboxes with tri-state parent↔child propagation (see the class docstring). Set
+   * ONCE, statically: the value seam's shape depends on it, so a runtime flip changes the emitted type
+   * mid-flight (a dev-only warning fires if it changes after init).
    */
   readonly selectionMode = input<CaeTreeSelectionMode>('single');
   /** Text shown in the trigger when nothing is selected. */
@@ -507,6 +580,10 @@ export class CaeTreeSelect implements ControlValueAccessor {
 
   /** Whether `multiple` selection is active (derived from {@link selectionMode}). */
   protected readonly multiple = computed(() => this.selectionMode() === 'multiple');
+  /** Whether `checkbox` (tri-state) selection is active. */
+  protected readonly checkbox = computed(() => this.selectionMode() === 'checkbox');
+  /** Whether the value seam is an array (`multiple` OR `checkbox`) rather than a lone `string`. */
+  protected readonly arrayValued = computed(() => this.multiple() || this.checkbox());
 
   // Selection is tracked internally as a value array (0/1 entries in single mode, N in multiple),
   // then projected to the mode-appropriate seam (`string` | `string[]`) on emit/write — like cae-listbox.
@@ -723,6 +800,102 @@ export class CaeTreeSelect implements ControlValueAccessor {
     return path;
   }
 
+  /**
+   * The engine of `checkbox` mode: one post-order walk over {@link nodes} that both **canonicalizes**
+   * an arbitrary set of seed keys and derives every value-bearing node's tri-state — the single source
+   * of truth for both the emitted value and the `aria-checked`/box display.
+   *
+   * - **Down:** a node forced checked (it is a seed, or an ancestor is checked) forces its whole
+   *   subtree checked.
+   * - **Up:** a parent whose children are *all* checked rolls up to `checked` (and joins `canonical` —
+   *   the `p-treeSelect` parity where a fully-checked parent IS selected); some-but-not-all → `mixed`
+   *   (indeterminate); none → `unchecked`.
+   *
+   * Value-less navigational nodes carry no checkbox (never added to `canonical`) but pass their subtree
+   * state through transparently, so a value-bearing ancestor still rolls up over them. A node whose
+   * subtree carries NO selectable (value-bearing) node is `relevant: false` — it has no checkbox state
+   * to contribute, so it is excluded from a parent's all/any-checked tally rather than counted as
+   * `unchecked` (which would wrongly pin the parent to `mixed` forever). Idempotent on an already-
+   * canonical seed set, so re-running it for display reproduces the stored selection exactly.
+   */
+  private classify(seeds: ReadonlySet<string>): {
+    canonical: string[];
+    states: Map<string, CaeTreeCheckState>;
+  } {
+    const canonical: string[] = [];
+    const states = new Map<string, CaeTreeCheckState>();
+    // Returns the node's tri-state AND whether its subtree contains any selectable node (`relevant`).
+    const visit = (
+      node: CaeTreeNode,
+      forcedByAncestor: boolean,
+    ): { state: CaeTreeCheckState; relevant: boolean } => {
+      const forced = forcedByAncestor || (node.value != null && seeds.has(node.value));
+      let anyRelevantChild = false;
+      let allChecked = true;
+      let anyChecked = false;
+      for (const child of node.children ?? []) {
+        const childResult = visit(child, forced);
+        if (!childResult.relevant) continue; // a no-selectable-content subtree has no opinion
+        anyRelevantChild = true;
+        if (childResult.state !== 'checked') allChecked = false;
+        if (childResult.state !== 'unchecked') anyChecked = true;
+      }
+      // A node with no relevant children (a leaf, or a parent of only value-less nodes) takes its state
+      // straight from `forced`; otherwise it rolls up over its selectable children.
+      const state: CaeTreeCheckState = !anyRelevantChild
+        ? forced
+          ? 'checked'
+          : 'unchecked'
+        : allChecked
+          ? 'checked'
+          : anyChecked
+            ? 'mixed'
+            : 'unchecked';
+      if (node.value != null) {
+        states.set(node.value, state);
+        if (state === 'checked') canonical.push(node.value);
+      }
+      return { state, relevant: node.value != null || anyRelevantChild };
+    };
+    for (const node of this.nodes()) visit(node, false);
+    return { canonical, states };
+  }
+
+  /** Locate a node in the ORIGINAL (unfiltered) tree by its `value` key — used to walk a full subtree. */
+  private findNodeByKey(key: string): CaeTreeNode | undefined {
+    let found: CaeTreeNode | undefined;
+    const walk = (nodes: readonly CaeTreeNode[]): boolean => {
+      for (const node of nodes) {
+        if (node.value === key) {
+          found = node;
+          return true;
+        }
+        if (node.children?.length && walk(node.children)) return true;
+      }
+      return false;
+    };
+    walk(this.nodes());
+    return found;
+  }
+
+  /** Every `value` key in a node's subtree, the node included — the keys to drop on an uncheck cascade. */
+  private subtreeKeys(node: CaeTreeNode): string[] {
+    const keys: string[] = [];
+    const walk = (n: CaeTreeNode): void => {
+      if (n.value != null) keys.push(n.value);
+      for (const child of n.children ?? []) walk(child);
+    };
+    walk(node);
+    return keys;
+  }
+
+  /** The `value` keys of the ancestors of the node holding `key` (root→parent), for the uncheck cascade. */
+  private ancestorKeys(key: string): string[] {
+    return this.ancestorPath(key)
+      .map((node) => node.value)
+      .filter((value): value is string => value != null);
+  }
+
   // --- Panel rendering (mat-tree data API, mirrors cae-tree) ---
   /** A fresh mutable array for Material's `dataSource` (which rejects readonly) — filtered when searching. */
   protected readonly dataSource = computed(() => [...this.filteredNodes()]);
@@ -764,7 +937,7 @@ export class CaeTreeSelect implements ControlValueAccessor {
   protected readonly displayText = computed(() => {
     const names = this.resolvedLabels();
     if (names.length === 0) return this.placeholder();
-    if (!this.multiple()) return names[0];
+    if (!this.arrayValued()) return names[0];
     return names.length <= 2 ? names.join(', ') : `${names.length} selected`;
   });
   /**
@@ -783,9 +956,37 @@ export class CaeTreeSelect implements ControlValueAccessor {
   protected isSelected(value: string): boolean {
     return this.selectedValues().includes(value);
   }
+  /** Whether this node can be selected/checked — it carries a `value` key (navigational nodes don't). */
+  protected isSelectable(node: CaeTreeNode): boolean {
+    return node.value != null;
+  }
   /** Whether this node is selected (null-safe: a node without a `value` is never selectable). */
   protected isNodeSelected(node: CaeTreeNode): boolean {
     return node.value != null && this.isSelected(node.value);
+  }
+  /**
+   * Per value-bearing node checkbox state for `checkbox` mode, derived from the current (canonical)
+   * selection via one {@link classify} pass. Empty in the other modes (no checkboxes). A node's own
+   * `value` keys the map; a value-less navigational node has no entry (and no checkbox).
+   */
+  protected readonly nodeStates = computed(() =>
+    this.checkbox()
+      ? this.classify(new Set(this.selectedValues())).states
+      : new Map<string, CaeTreeCheckState>(),
+  );
+  /** This node's checkbox state (checkbox mode); `unchecked` for a value-less / unlisted node. */
+  protected nodeCheckState(node: CaeTreeNode): CaeTreeCheckState {
+    return (node.value != null && this.nodeStates().get(node.value)) || 'unchecked';
+  }
+  /**
+   * `aria-checked` for a node's treeitem — the APG "tree with checkboxes" tri-state. `null` outside
+   * `checkbox` mode and for value-less nodes (which carry no checkbox), so it never doubles up with
+   * `aria-selected` (which {@link ariaSelected} drops in checkbox mode).
+   */
+  protected ariaChecked(node: CaeTreeNode): 'true' | 'false' | 'mixed' | null {
+    if (!this.checkbox() || node.value == null) return null;
+    const state = this.nodeCheckState(node);
+    return state === 'checked' ? 'true' : state === 'mixed' ? 'mixed' : 'false';
   }
   /**
    * Whether this node is the SINGLE auto-capture focus target on open — the first selected key's node
@@ -803,6 +1004,7 @@ export class CaeTreeSelect implements ControlValueAccessor {
    * MULTIPLE mode (an `aria-multiselectable` tree) every selectable node carries its true/false state.
    */
   protected ariaSelected(node: CaeTreeNode): boolean | null {
+    if (this.checkbox()) return null; // checkbox mode conveys state via aria-checked (tri-state), not aria-selected
     if (node.value == null) return null;
     if (!this.multiple() && !this.isSelected(node.value)) return null;
     return this.isSelected(node.value);
@@ -878,7 +1080,9 @@ export class CaeTreeSelect implements ControlValueAccessor {
     event?.stopPropagation();
     const key = node.value;
     if (key == null) return; // navigational node — not selectable
-    if (this.multiple()) {
+    if (this.checkbox()) {
+      this.toggleCheckbox(node, key);
+    } else if (this.multiple()) {
       const wasSelected = this.isSelected(key);
       const next = wasSelected
         ? this.selectedValues().filter((value) => value !== key)
@@ -902,6 +1106,35 @@ export class CaeTreeSelect implements ControlValueAccessor {
   }
 
   /**
+   * Toggle a node's checkbox (`checkbox` mode) with tri-state propagation. A `checked` node UNchecks:
+   * its subtree keys and its ancestor keys are dropped from the seed set (an ancestor can no longer be
+   * fully checked, and a leftover subtree key would wrongly roll it back up). An `unchecked` OR `mixed`
+   * node CHECKS: adding it as a seed makes {@link classify} force its whole subtree on and roll any
+   * now-fully-checked ancestor up. The recomputed canonical set is stored and emitted; like `multiple`
+   * the panel stays open and the toggle + running count is announced (a11y F6, #281).
+   */
+  private toggleCheckbox(node: CaeTreeNode, key: string): void {
+    const seeds = new Set(this.selectedValues());
+    const wasChecked = this.nodeCheckState(node) === 'checked';
+    if (wasChecked) {
+      // Walk the subtree from the ORIGINAL tree, not `node`: while filtering, `node` is a pruned clone
+      // from the filtered dataSource, so its children may be missing — walking it would leave a
+      // filtered-out checked descendant in the value and wrongly roll the parent back up to mixed.
+      const original = this.findNodeByKey(key) ?? node;
+      for (const value of this.subtreeKeys(original)) seeds.delete(value);
+      for (const value of this.ancestorKeys(key)) seeds.delete(value);
+    } else {
+      seeds.add(key);
+    }
+    const canonical = this.classify(seeds).canonical;
+    this.selectedValues.set(canonical);
+    this.onChangeFn([...canonical]);
+    this.announcer.announce(
+      `${node.label} ${wasChecked ? 'unchecked' : 'checked'}, ${canonical.length} selected`,
+    );
+  }
+
+  /**
    * Reset the selection to empty (the `[showClear]` × button). Emits the mode-appropriate empty value
    * (`''` single / `[]` multiple) and marks the control touched. The × renders only while there's a
    * selection, so clearing UNMOUNTS it: if it held focus (keyboard activation), move focus to the
@@ -916,7 +1149,7 @@ export class CaeTreeSelect implements ControlValueAccessor {
       (this.origin()?.elementRef.nativeElement as HTMLElement | undefined)?.focus();
     }
     this.selectedValues.set([]);
-    this.onChangeFn(this.multiple() ? [] : '');
+    this.onChangeFn(this.arrayValued() ? [] : '');
     this.onTouched();
   }
 
@@ -926,7 +1159,24 @@ export class CaeTreeSelect implements ControlValueAccessor {
   // SINGLE-select resolves to empty (not a junk single item); a lone string written to a MULTIPLE-
   // select is coerced to a one-element array. null/''/[] all mean "empty" for a selection control.
   writeValue(value: string | readonly string[] | null | undefined): void {
-    if (this.multiple()) {
+    if (this.checkbox()) {
+      // Canonicalize an arbitrary written key set through the SAME tri-state walk as a toggle: seeds
+      // propagate down (a written parent checks its subtree) and roll up (all children written → the
+      // parent is added). So `['app','api']` (both of Projects' leaves) canonicalizes to `[...,'proj']`.
+      // Any key with no node YET is RETAINED, not dropped: a value written before an async `nodes()`
+      // loads must round-trip like it does in single/multiple, else it is silently lost. classify
+      // ignores unknown keys and `nodeStates`/`resolvedLabels` derive off `nodes()`, so when the node
+      // arrives the retained key rolls up and displays; the next toggle emits the fully canonical set.
+      // No onChange — writeValue is the model→view direction (CVA contract).
+      const seeds = Array.isArray(value)
+        ? [...value]
+        : value != null && value !== ''
+          ? [value as string]
+          : [];
+      const known = this.labelByValue();
+      const canonical = this.classify(new Set(seeds)).canonical;
+      this.selectedValues.set([...canonical, ...seeds.filter((key) => !known.has(key))]);
+    } else if (this.multiple()) {
       this.selectedValues.set(
         Array.isArray(value) ? [...value] : value != null && value !== '' ? [value as string] : [],
       );
