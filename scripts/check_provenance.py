@@ -27,6 +27,11 @@ import re
 import sys
 from pathlib import Path
 
+# Windows: piped stdout defaults to cp1252 — the report's em-dashes mojibake and
+# unencodable chars would crash the gate; the harness/CI consoles are UTF-8 (#503).
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 ROOT = Path(__file__).resolve().parent.parent
 LOCKFILE = ROOT / "package-lock.json"
 ALLOWLIST = ROOT / "provenance" / "allowlist.json"

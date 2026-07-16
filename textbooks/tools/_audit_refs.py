@@ -1,5 +1,8 @@
-import re, glob, os, json
+import re, glob, os, json, sys
 os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # cwd-independent: data lives beside tools/
+# Windows: cp1252 piped stdout would crash on the report's `§` notation (#503).
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 M = json.load(open("MANIFEST.json", encoding="utf-8"))
 # #70: per-book maturity. A citation into a book that is not yet `covered`
 # asserts authority hollow headings don't have (scaffolds are indexed by

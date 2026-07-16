@@ -53,6 +53,10 @@ def run(args, timeout=8):
 
 def main():
     log_event()  # telemetry first: must run even if the banner below bails early
+    # Windows: piped stdout defaults to cp1252-strict; a non-ASCII char in a decision
+    # title would raise UnicodeEncodeError and break the exit-0 contract (#489/#503).
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     # Hook cwd is wherever Claude Code was launched; CLAUDE.md lives at repo root.
     root = os.environ.get("CLAUDE_PROJECT_DIR")
     if not (root and os.path.isdir(root)):
@@ -64,8 +68,10 @@ def main():
         text = open("CLAUDE.md", encoding="utf-8", errors="replace").read()
     except Exception:
         return 0
-    # `?  — tolerate a markdown-backtick-wrapped sha in the Status line.
-    m = re.search(r"As of:\*\*\s*([^·\n]+)·\s*`?([0-9a-fA-F]{7,40})", text)
+    # Tolerate a markdown-backtick-wrapped sha AND prose between the separator and the
+    # sha (Caelum writes `As of: <date> · main @ \`<sha>\``) — the strict form never
+    # matched here, so the staleness check had silently never fired (#489).
+    m = re.search(r"As of:\*\*\s*([^·\n]+)·[^`\n]*?`?([0-9a-fA-F]{7,40})", text)
     if m:
         stamp_date, stamp_sha = m.group(1).strip(), m.group(2).strip()
         head = run(["git", "rev-parse", "--short", "HEAD"])
@@ -80,7 +86,9 @@ def main():
                              f"but HEAD is {head} ({behind} non-checkpoint commit(s) later) -- reconcile Status first (onboard step 3).")
             else:
                 lines.append(f"[status-anchor] fresh: stamped {stamp_date} @ {stamp_sha} (no non-checkpoint commits since).")
-    elif "<date" in text or "&lt;date" in text:
+    # Placeholder check anchored to the As-of line itself: a literal like
+    # `checkpoint/<date>` elsewhere in Status must not read as "unfilled" (#489).
+    elif re.search(r"As of:\*\*\s*(?:<|&lt;)", text):
         lines.append("[status-anchor] Status block is still template placeholders -- run onboard Mode A.")
     decisions = run(["gh", "issue", "list", "--label", "decision", "--state", "open",
                      "--limit", "10", "--json", "number,title",
