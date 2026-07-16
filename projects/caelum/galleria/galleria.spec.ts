@@ -761,6 +761,197 @@ describe('CaeGalleria', () => {
       expect(dialog.openDialogs).toHaveLength(0);
     });
   });
+
+  describe('fullScreen overlay mode ([fullScreen] + [(visible)], #488)', () => {
+    const lightbox = (): HTMLElement | null => containerEl.querySelector('.cae-galleria-lightbox');
+    const layout = (): HTMLElement | null => el.querySelector('.cae-galleria__layout');
+    const dialogs = () => TestBed.inject(MatDialog).openDialogs;
+    // afterClosed is async — capture the open dialog's close promise, fire the trigger, flush the effect
+    // that may initiate the close, then drain. Asserting right after closeAll()+settle() races the chain.
+    async function awaitClose(trigger: () => void): Promise<void> {
+      const ref = dialogs()[0];
+      const closed = ref
+        ? new Promise<void>((resolve) => ref.afterClosed().subscribe(() => resolve()))
+        : Promise.resolve();
+      trigger();
+      fixture.detectChanges();
+      await closed;
+      await settle();
+    }
+
+    // Host that binds [(visible)] and records each visibleChange emission — to prove exactly-once semantics.
+    @Component({
+      imports: [CaeGalleria],
+      template: `<cae-galleria
+        [items]="items"
+        ariaLabel="Emit host"
+        [(visible)]="v"
+        (visibleChange)="emits.push($event)"
+      />`,
+    })
+    class VisibleEmitHost {
+      readonly items = ITEMS;
+      readonly v = signal(false);
+      readonly emits: boolean[] = [];
+      readonly galleria = viewChild.required(CaeGalleria);
+    }
+
+    it('renders the inline layout by default (fullScreen off) — byte-identical', async () => {
+      await render();
+      expect(el.querySelector('.cae-galleria')).not.toBeNull();
+      expect(layout()).not.toBeNull();
+      expect(tabs()).toHaveLength(3);
+      expect(lightbox()).toBeNull();
+    });
+
+    it('[fullScreen]=true renders NO inline UI and drops the empty group semantics', async () => {
+      await render({ fullScreen: true });
+      const section = el.querySelector('.cae-galleria')!;
+      // The section element persists, but with no inline stage/strip/tabs...
+      expect(section).not.toBeNull();
+      expect(layout()).toBeNull();
+      expect(el.querySelector('.cae-galleria__stage')).toBeNull();
+      expect(tabs()).toHaveLength(0);
+      // ...and it is NOT an empty labelled role=group (an AT user must not hit an empty "gallery" group;
+      // the name lives on the lightbox instead). Inline mode keeps role=group — see the group test above.
+      expect(section.getAttribute('role')).toBeNull();
+      expect(section.getAttribute('aria-roledescription')).toBeNull();
+      expect(section.getAttribute('aria-label')).toBeNull();
+      // visible defaults false → nothing auto-opens.
+      expect(lightbox()).toBeNull();
+      expect(component.visible()).toBe(false);
+    });
+
+    it('opens the lightbox when [(visible)] is set true in fullScreen mode', async () => {
+      await render({ fullScreen: true });
+      component.visible.set(true);
+      await settle();
+      expect(lightbox()).not.toBeNull();
+      expect(dialogs()).toHaveLength(1);
+      TestBed.inject(MatDialog).closeAll();
+    });
+
+    it('reflects a lightbox close back into [(visible)] (two-way sync)', async () => {
+      await render({ fullScreen: true });
+      component.visible.set(true);
+      await settle();
+      expect(lightbox()).not.toBeNull();
+      await awaitClose(() => TestBed.inject(MatDialog).closeAll());
+      expect(lightbox()).toBeNull();
+      expect(component.visible()).toBe(false);
+    });
+
+    it('closes an open lightbox when [(visible)] is set false', async () => {
+      await render({ fullScreen: true });
+      component.visible.set(true);
+      await settle();
+      expect(dialogs()).toHaveLength(1);
+      await awaitClose(() => component.visible.set(false));
+      expect(dialogs()).toHaveLength(0);
+      expect(lightbox()).toBeNull();
+    });
+
+    it('mirrors open-state in INLINE mode too: openFullscreen() sets visible, close clears it', async () => {
+      await render(); // inline mode (fullScreen off)
+      expect(component.visible()).toBe(false);
+      component.openFullscreen();
+      await settle();
+      expect(component.visible()).toBe(true);
+      await awaitClose(() => TestBed.inject(MatDialog).closeAll());
+      expect(component.visible()).toBe(false);
+    });
+
+    it('honors a born-visible set on an empty gallery only once items arrive (empty-async guard)', async () => {
+      fixture = TestBed.createComponent(CaeGalleria);
+      component = fixture.componentInstance;
+      fixture.componentRef.setInput('items', []);
+      fixture.componentRef.setInput('ariaLabel', 'Late gallery');
+      fixture.componentRef.setInput('fullScreen', true);
+      fixture.componentRef.setInput('visible', true);
+      document.body.appendChild(fixture.nativeElement);
+      el = fixture.nativeElement;
+      await settle();
+      // No items yet → nothing forced open, even though visible is true.
+      expect(lightbox()).toBeNull();
+      // Items arrive: the still-true visible now opens the viewer (count() is an effect dep).
+      fixture.componentRef.setInput('items', ITEMS);
+      await settle();
+      expect(lightbox()).not.toBeNull();
+      expect(component.visible()).toBe(true);
+      TestBed.inject(MatDialog).closeAll();
+    });
+
+    it('does NOT auto-close an open lightbox when items transiently empty (no count===0 close branch)', async () => {
+      await render({ fullScreen: true });
+      component.visible.set(true);
+      await settle();
+      expect(lightbox()).not.toBeNull();
+      // CaeDialog.open returns the live MatDialogRef, so this IS the galleria's lightboxRef — spying its
+      // close() catches the effect's synchronous close() call directly (afterClosed/DOM removal is async
+      // and would race a bare "still in the DOM" assertion).
+      const closeSpy = vi.spyOn(dialogs()[0], 'close');
+      // A transient reload emptying items must not dismiss the open viewer (only !visible closes it).
+      fixture.componentRef.setInput('items', []);
+      await settle();
+      expect(closeSpy).not.toHaveBeenCalled();
+      expect(component.visible()).toBe(true);
+      closeSpy.mockRestore();
+      TestBed.inject(MatDialog).closeAll();
+    });
+
+    it('opens the lightbox from [(visible)] in INLINE mode too (mode-agnostic)', async () => {
+      await render(); // inline mode, fullScreen off
+      expect(lightbox()).toBeNull();
+      component.visible.set(true);
+      await settle();
+      expect(lightbox()).not.toBeNull();
+      expect(dialogs()).toHaveLength(1);
+      TestBed.inject(MatDialog).closeAll();
+    });
+
+    it('reopens after a full close (open → close → visible=true again releases the ref)', async () => {
+      await render({ fullScreen: true });
+      component.visible.set(true);
+      await settle();
+      expect(dialogs()).toHaveLength(1);
+      await awaitClose(() => TestBed.inject(MatDialog).closeAll());
+      expect(dialogs()).toHaveLength(0);
+      expect(component.visible()).toBe(false);
+      // A fresh open after the previous fully closed must mount a NEW lightbox — proves afterClosed released
+      // lightboxRef (a dropped `lightboxRef = null` would leave the guard set and this second open inert).
+      component.visible.set(true);
+      await settle();
+      expect(dialogs()).toHaveLength(1);
+      expect(lightbox()).not.toBeNull();
+      TestBed.inject(MatDialog).closeAll();
+    });
+
+    it('emits visibleChange exactly once on open and once on close (no spurious re-emit)', async () => {
+      const hf = TestBed.createComponent(VisibleEmitHost);
+      const host = hf.componentInstance;
+      document.body.appendChild(hf.nativeElement);
+      hf.detectChanges();
+      await hf.whenStable();
+      // Open via the button path (false→true once). openLightbox's own visible.set(true) is a same-value
+      // no-op and the effect's re-run early-returns, so neither double-fires the output.
+      host.galleria().openFullscreen();
+      hf.detectChanges();
+      await hf.whenStable();
+      expect(host.emits).toEqual([true]);
+      // Close (Escape/backdrop path): afterClosed sets visible false exactly once.
+      const dialog = TestBed.inject(MatDialog);
+      const closed = new Promise<void>((r) =>
+        dialog.openDialogs[0].afterClosed().subscribe(() => r()),
+      );
+      dialog.closeAll();
+      hf.detectChanges();
+      await closed;
+      hf.detectChanges();
+      await hf.whenStable();
+      expect(host.emits).toEqual([true, false]);
+      hf.nativeElement.remove();
+    });
+  });
 });
 
 // ---- RTL: thumbnail + indicator arrow keys mirror visual order under a born-rtl [dir] (#288) ----
