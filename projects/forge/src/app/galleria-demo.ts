@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
 
+import { CaeButton } from 'caelum/button';
 import { CaeCard } from 'caelum/card';
 import { CaeGalleria, type CaeGalleriaItem } from 'caelum/galleria';
 
@@ -57,7 +58,7 @@ const IMAGES: readonly CaeGalleriaItem[] = [
 @Component({
   selector: 'app-galleria-demo',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CaeCard, CaeGalleria],
+  imports: [CaeButton, CaeCard, CaeGalleria],
   templateUrl: './galleria-demo.html',
   styleUrl: './galleria-demo.scss',
 })
@@ -69,4 +70,10 @@ export class GalleriaDemo {
 
   /** The current plate's alt text — proves selection (inline OR fullscreen) flows back through the model. */
   protected readonly currentAlt = computed(() => this.images[this.index()]?.alt ?? '');
+
+  /**
+   * Open-state of the second, `[fullScreen]` gallery — that mode renders no inline UI, so the consumer
+   * owns the trigger (this button) and drives it through the two-way `[(visible)]` model (#488).
+   */
+  protected readonly fsVisible = signal(false);
 }
