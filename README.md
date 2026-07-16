@@ -5,7 +5,7 @@
 
 **A comprehensive, accessible Angular 22 component library built on Angular Material, the CDK, and Angular Aria — with the breadth teams expect when they leave PrimeNG.**
 
-Caelum pairs Material's foundation with a full application-UI surface, designed to be adopted incrementally — one component at a time — in new and existing Angular apps. Components are named and parity-mapped against their PrimeNG counterparts (`p-*` → `cae-*`), so a migrating team can swap them in at their own pace. Its canonical demo is **Forge**, an example admin console built only from Caelum components.
+Caelum pairs Material's foundation with a full application-UI surface, designed to be adopted incrementally — one component at a time — in new and existing Angular apps. Components are named and parity-mapped against their PrimeNG counterparts (`p-*` → `cae-*`), so a migrating team can swap them in at their own pace. Its canonical demo is **Forge**, an example admin console built only from Caelum components — [see it live](https://recon-research.github.io/caelum/).
 
 > **Status:** in active development and further along than you'd guess — 50+ components, 1,300+ tests, CI-gated a11y/theming/provenance invariants. Milestones M0–M2 are complete; M3 (the long tail) is in progress. **Not yet published to npm** — it will publish as **`@recon-research/caelum`** (D-501; the repo-wide rename lands pre-publish, [#514](https://github.com/recon-research/caelum/issues/514)). The live plan is [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
@@ -27,7 +27,9 @@ Coming from PrimeNG? The **[`p-*` → `cae-*` comparison map](textbooks/referenc
 
 ## Try it
 
-Caelum isn't on npm yet. Until it is, the Forge demo is the fastest way to see the library:
+**Live demo: [recon-research.github.io/caelum](https://recon-research.github.io/caelum/)** — Forge, redeployed on every merge to `main` (light/dark, density toggle, every shipped component).
+
+Caelum isn't on npm yet. To run Forge locally instead:
 
 ```bash
 git clone https://github.com/recon-research/caelum.git
@@ -36,7 +38,6 @@ npm ci
 npm start   # Forge on http://localhost:4200 — light/dark, density toggle, live components
 ```
 
-A hosted Forge demo is planned ([#495](https://github.com/recon-research/caelum/issues/495)).
 
 ## Design principles
 
