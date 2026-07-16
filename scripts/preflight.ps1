@@ -27,6 +27,10 @@ param(
     [switch]$SkipSmoke
 )
 
+# Known asymmetry vs the sh mirror (documented, accepted): this moves the CALLER's
+# cwd to the repo root for the rest of the session (the sh script's `cd` dies with
+# its subshell). Kept because the script exits from many stages and a Push/Pop pair
+# across every exit path costs more than the asymmetry (#503).
 Set-Location (Split-Path -Parent $PSScriptRoot)
 
 $script:Failed = $false
@@ -102,8 +106,16 @@ if (-not $Quick) {
     # client-side library, Forge a static SPA -- build+test IS the operability proof.
     # CI=true makes the builder run once and exit (GitHub Actions sets it too).
     Invoke-StageIfNode 'test (caelum + Forge)' {
+        # Scope CI=true to this stage: PS scripts run in-process, so a bare assignment
+        # leaks into the calling session (the sh mirror's `CI=true npx ng test` is
+        # per-command by construction) (#503).
+        $prevCI = $env:CI
         $env:CI = 'true'
-        npx ng test
+        try {
+            npx ng test
+        } finally {
+            if ($null -eq $prevCI) { Remove-Item Env:\CI -ErrorAction SilentlyContinue } else { $env:CI = $prevCI }
+        }
     }
 }
 

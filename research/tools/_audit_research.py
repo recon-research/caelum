@@ -9,6 +9,9 @@
 # porting; either is a fine adaptation, not drift (#197, moonlight's recorded deviation).
 import json, re, glob, os, sys, datetime
 os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # cwd-independent: data lives beside tools/
+# Windows: cp1252 piped stdout would mojibake/crash the report's em-dashes (#503).
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 errs, warns = [], []
 STRICT_STALE = "--strict-staleness" in sys.argv

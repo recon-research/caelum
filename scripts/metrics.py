@@ -68,7 +68,9 @@ cutoff = today - datetime.timedelta(days=WINDOW)
 def gh_json(args):
     """Run a gh command; return parsed JSON, or None on ANY failure (fail-soft)."""
     try:
-        r = subprocess.run(["gh"] + args, capture_output=True, text=True, timeout=90)
+        # encoding pinned: cp1252 default on Windows nulls whole gh calls on emoji bytes (#503)
+        r = subprocess.run(["gh"] + args, capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=90)
     except Exception:
         return None
     if r.returncode != 0:
@@ -322,7 +324,8 @@ def doc_growth():
         r = subprocess.run(["git", "log", "--since", cutoff.isoformat(),
                             "--numstat", "--format=", "--", "*.md",
                             ":!textbooks", ":!docs/METRICS.md"],
-                           capture_output=True, text=True, timeout=60)
+                           capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=60)
         if r.returncode != 0:
             return []
     except Exception:
@@ -533,6 +536,9 @@ The few metrics that each change a decision when they cross a threshold -- not a
 {slice_md}{local_md}"""
 
 if PRINT_ONLY:
+    # body carries Δ/→/sparklines; cp1252-strict piped stdout would crash on Windows (#503)
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.stdout.write(body)
 else:
     with open("docs/METRICS.md", "w", encoding="utf-8", newline="\n") as f:

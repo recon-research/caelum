@@ -29,5 +29,6 @@ for num in sorted(by_num):
         if sid is None: continue
         secs.append({"id": sid, "title": clean, "line": i, "level": len(m.group(1))})
     out["books"][str(num)] = {"path": b["path"], "title": b["title"], "section_count": len(secs), "sections": secs}
-json.dump(out, open("SECTIONS.json", "w", encoding="utf-8"), indent=1, ensure_ascii=False)
+# newline pinned: without it Windows writes CRLF and every preflight dirties the tree (#503)
+json.dump(out, open("SECTIONS.json", "w", encoding="utf-8", newline="\n"), indent=1, ensure_ascii=False)
 print(f"Wrote SECTIONS.json: {len(out['books'])} books, {sum(b['section_count'] for b in out['books'].values())} sections")

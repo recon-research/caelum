@@ -53,7 +53,10 @@ def out(msg):
 def gh_json(args):
     """Run a gh command; parsed JSON or None on ANY failure (fail-soft)."""
     try:
-        r = subprocess.run(["gh"] + args, capture_output=True, text=True, timeout=90)
+        # encoding pinned: Windows text=True defaults to cp1252, which mangles the
+        # claim comment's `·` (CLAIM_RE never matches) and raises on emoji bytes (#503)
+        r = subprocess.run(["gh"] + args, capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=90)
     except Exception:
         return None
     if r.returncode != 0:
@@ -190,7 +193,8 @@ def cmd_receipt(pr, issue, dry_run):
         return
     try:
         r = subprocess.run(["gh", "pr", "comment", str(pr), "--body", line],
-                           capture_output=True, text=True, timeout=90)
+                           capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=90)
         posted = r.returncode == 0
     except Exception:
         posted = False
