@@ -1,6 +1,7 @@
 import { Directionality } from '@angular/cdk/bidi';
 import { NgTemplateOutlet } from '@angular/common';
 import {
+  afterRenderEffect,
   booleanAttribute,
   ChangeDetectionStrategy,
   Component,
@@ -13,6 +14,7 @@ import {
   input,
   isDevMode,
   model,
+  numberAttribute,
   viewChildren,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -56,7 +58,8 @@ let nextUniqueId = 0;
  *
  * State lives in signals (zoneless, Book 11 §3.5 pt 4); `activeIndex` is a two-way `model` shared with
  * the lightbox so navigating fullscreen updates the inline view. No foreign media library (Book 11
- * §3.5 gate 6). The strip renders every thumbnail in v1 (fully keyboard-verifiable); cdk-virtual-scroll
+ * §3.5 gate 6). The strip always renders every thumbnail in the DOM/a11y tree (fully keyboard-verifiable);
+ * `[numVisible]` only caps how many are VISIBLE at once (the rest scroll). True cdk-virtual-scroll
  * virtualization for very large galleries is a follow-up gated on the M4 browser runner (#240), since
  * verifying roving focus over a virtualized strip needs real layout jsdom can't provide (#274).
  *
@@ -157,6 +160,8 @@ let nextUniqueId = 0;
             <div
               class="cae-galleria__thumbs"
               role="tablist"
+              [class.cae-galleria__thumbs--windowed]="windowed()"
+              [style.--cae-galleria-num-visible]="windowed() ? visibleCount() : null"
               [attr.aria-label]="thumbnailsLabel()"
               [attr.aria-orientation]="thumbsVertical() ? 'vertical' : null"
             >
@@ -219,6 +224,11 @@ let nextUniqueId = 0;
   styles: `
     :host {
       display: block;
+      /* Built-in thumbnail extent — the single source for both the rendered thumb size and the [numVisible]
+         viewport cap, so they can never drift. Override these to window a projected caeGalleriaThumbnail of a
+         different size (a documented hook); themes may also retune the built-in thumb size through them. */
+      --cae-galleria-thumb-inline: 5rem;
+      --cae-galleria-thumb-block: 3.5rem;
     }
     /* The stage + thumbnail strip lay out as a flex box so [thumbnailsPosition] can place the strip on any
        side. DOM order is always stage -> strip; only flex-direction / -reverse changes the VISUAL side, so
@@ -395,6 +405,30 @@ let nextUniqueId = 0;
       padding-block-end: 0;
       padding-inline-end: var(--cae-space-1);
     }
+    /* [numVisible] windowing: cap the strip viewport to N thumbnails; the remainder scroll (native overflow is
+       already on this element), so the slide stays RTL- and axis-correct with no transform math. N comes from
+       the --cae-galleria-num-visible binding; the per-thumb extent from the shared vars above. The fit is
+       APPROXIMATE — the calc omits every thumb's 2px frame (4px x N) and the scroll padding, so the viewport
+       runs a few px short and the Nth thumb clips (rather than the next peeking); pixel-exact fit is the #240
+       browser pass. Horizontal caps the inline size (top/bottom); vertical caps the block size (left/right,
+       min()-clamped to the 60vh tower-guard). */
+    .cae-galleria__layout:not(.cae-galleria__layout--vertical) .cae-galleria__thumbs--windowed {
+      max-inline-size: calc(
+        var(--cae-galleria-num-visible) * var(--cae-galleria-thumb-inline) +
+          (var(--cae-galleria-num-visible) - 1) * var(--cae-space-2)
+      );
+    }
+    .cae-galleria__layout--vertical .cae-galleria__thumbs--windowed {
+      /* min() so a large numVisible can only TIGHTEN the 60vh tower-guard, never grow past it (the windowed
+         rule wins on source order at equal specificity, so without the clamp a big N would defeat the guard). */
+      max-block-size: min(
+        60vh,
+        calc(
+          var(--cae-galleria-num-visible) * var(--cae-galleria-thumb-block) +
+            (var(--cae-galleria-num-visible) - 1) * var(--cae-space-2)
+        )
+      );
+    }
     .cae-galleria__thumb {
       flex: 0 0 auto;
       padding: 0;
@@ -412,9 +446,9 @@ let nextUniqueId = 0;
     }
     .cae-galleria__thumb-image {
       display: block;
-      /* Structural thumbnail geometry (a fixed strip height), not a themeable design value. */
-      block-size: 3.5rem;
-      inline-size: 5rem;
+      /* Fixed thumbnail geometry, from the shared extent vars above (kept in lock-step with the window cap). */
+      block-size: var(--cae-galleria-thumb-block);
+      inline-size: var(--cae-galleria-thumb-inline);
       object-fit: cover;
       border-radius: var(--cae-radius-sm);
     }
@@ -514,6 +548,21 @@ export class CaeGalleria {
    * / focus order is image → strip throughout (WCAG 2.4.3); only the visual placement moves.
    */
   readonly thumbnailsPosition = input<'top' | 'bottom' | 'left' | 'right'>('bottom');
+  /**
+   * Cap the thumbnail strip to N thumbnails at a time; the rest scroll (native overflow), and the selected
+   * thumbnail is kept in view as the image changes. `0` (default) shows every thumbnail in one scrollable strip.
+   *
+   * NOTE — this default DIVERGES from `p-galleria`'s `numVisible` default of `3`: windowing by default would
+   * silently shrink every existing `cae-galleria`, which the no-regression rule forbids, so it is opt-in here.
+   * Pass `[numVisible]="3"` for the p-galleria footprint. The viewport is sized off `--cae-galleria-thumb-inline`
+   * / `--cae-galleria-thumb-block` (the built-in thumbnail extent) — override those custom properties to window a
+   * projected `caeGalleriaThumbnail` of a different size (their layout effect is browser-verified, #240). Because
+   * it slides by NATIVE scroll, it is RTL- and
+   * axis-correct for free (no transform math). Pointer paging navigators (`showThumbnailNavigators`) are a
+   * separate #288 follow-on; the pixel-exact fit + scroll landing are verified in the browser runner (#240).
+   * Inert for a single image or `[showThumbnails]="false"`, and a no-op when `numVisible >= items.length`.
+   */
+  readonly numVisible = input(0, { transform: numberAttribute });
   /** Accessible name for the gallery group — set one (its role/roledescription is dropped without it). */
   readonly ariaLabel = input('');
   readonly prevAriaLabel = input('Previous image');
@@ -585,6 +634,16 @@ export class CaeGalleria {
   protected readonly thumbsBefore = computed(
     () => this.thumbnailsPosition() === 'top' || this.thumbnailsPosition() === 'left',
   );
+  /** {@link numVisible} floored to a whole number of thumbnails (a fractional binding is meaningless). */
+  protected readonly visibleCount = computed(() => Math.floor(this.numVisible()));
+  /**
+   * Whether the strip is windowed to {@link numVisible} thumbnails. Requires a real strip (more than one
+   * thumbnail) and a window strictly smaller than the set — `numVisible >= count` (or `0`) shows them all.
+   * When true, the strip viewport caps to N thumbs and the selected thumb is scrolled into view on nav.
+   */
+  protected readonly windowed = computed(
+    () => this.hasThumbnails() && this.visibleCount() >= 1 && this.visibleCount() < this.count(),
+  );
 
   constructor() {
     // Tear down this gallery's lightbox when the host is destroyed while it's still open (#294): close the
@@ -600,6 +659,18 @@ export class CaeGalleria {
       // consumer's pre-set [(activeIndex)] down to 0 — when items arrive this re-runs and clamps the
       // preserved index into the real range.
       if (this.count() > 0 && this.activeIndex() !== clamped) this.activeIndex.set(clamped);
+    });
+
+    // When the strip is windowed ([numVisible]), keep the SELECTED thumbnail scrolled into view as the active
+    // image changes by ANY path (main nav, lightbox sync, programmatic) — keyboard roving already scrolls via
+    // focusThumb() (so the keyboard path double-scrolls the same element, harmlessly). Native scroll, so it is
+    // RTL- and axis-correct for free. Reactive: it re-runs on an active-index, windowed-flag, or thumbnail-set
+    // change (the last, via thumbBtns() in scrollThumbIntoView, re-anchors after the @for rebuilds) — NOT on a
+    // plain re-render, so it won't tug a user's manual strip scroll. Gated to windowed to leave the un-windowed
+    // default byte-identical.
+    afterRenderEffect(() => {
+      if (!this.windowed()) return;
+      this.scrollThumbIntoView(this.clampedIndex());
     });
 
     // Dev-only guidance: an unlabeled gallery, or images missing alt text.
@@ -694,10 +765,14 @@ export class CaeGalleria {
 
   /** Move focus to thumb `i` (the new roving tab stop) and scroll it into the visible strip. */
   private focusThumb(i: number): void {
-    const el = this.thumbBtns()[i]?.nativeElement;
-    el?.focus();
-    // scrollIntoView is a no-op stub under jsdom; the optional call guards a missing implementation.
-    el?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+    this.thumbBtns()[i]?.nativeElement.focus();
+    this.scrollThumbIntoView(i);
+  }
+
+  /** Scroll thumb `i` into the visible strip window. scrollIntoView is a no-op stub under jsdom (its landing
+   * is #240-verified; the optional call also guards a missing implementation); assert the call, not the paint. */
+  private scrollThumbIntoView(i: number): void {
+    this.thumbBtns()[i]?.nativeElement.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
   }
 
   /**
