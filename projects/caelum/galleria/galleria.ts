@@ -1,3 +1,4 @@
+import { Directionality } from '@angular/cdk/bidi';
 import { NgTemplateOutlet } from '@angular/common';
 import {
   booleanAttribute,
@@ -66,6 +67,10 @@ let nextUniqueId = 0;
 @Component({
   selector: 'cae-galleria',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  // The nav chevron glyphs are drawn from physical borders + a fixed rotation; under RTL the prev/next
+  // arrows must re-aim to still point the way the strip flows. This host flag drives the `:host(.--rtl)`
+  // chevron rules (mirrors cae-carousel #276). isRtl() also drives the keyboard keymap (single source).
+  host: { '[class.cae-galleria--rtl]': 'isRtl()' },
   imports: [NgTemplateOutlet],
   template: `
     <section
@@ -292,8 +297,11 @@ let nextUniqueId = 0;
       display: inline-block;
       inline-size: 0.5em;
       block-size: 0.5em;
-      border-inline-end: 2px solid currentColor;
-      border-block-end: 2px solid currentColor;
+      /* PHYSICAL borders (not logical): the base corner must stay the same under RTL so the glyph direction
+         is set solely by the rotation below — otherwise a logical border flips the corner AND the fixed
+         rotation would leave the arrow pointing up/down under RTL (cae-carousel #276 made the same switch). */
+      border-right: 2px solid currentColor;
+      border-bottom: 2px solid currentColor;
     }
     .cae-galleria__chevron--prev {
       transform: rotate(135deg);
@@ -302,6 +310,16 @@ let nextUniqueId = 0;
     .cae-galleria__chevron--next {
       transform: rotate(-45deg);
       margin-inline-end: 0.2em;
+    }
+    /* Under RTL the strip flows right-to-left, so the nav re-aims: prev points right, next points left (the
+       rotations swap). Only the transform changes — the physical base corner above is direction-independent.
+       Class driven by isRtl() (host binding). The glyph's visual direction is confirmed in the #240 browser
+       pass; jsdom asserts only that the host flag tracks isRtl(). */
+    :host(.cae-galleria--rtl) .cae-galleria__chevron--prev {
+      transform: rotate(-45deg);
+    }
+    :host(.cae-galleria--rtl) .cae-galleria__chevron--next {
+      transform: rotate(135deg);
     }
     /* Expand hint: a framed square from currentColor (the aria-label carries the meaning). */
     .cae-galleria__expand-glyph {
@@ -463,6 +481,15 @@ export class CaeGalleria {
     return { $implicit: item, index };
   }
 
+  /**
+   * Text direction, read straight off the signal-backed {@link Directionality.value} (reactive on both the
+   * root service and a `[dir]` ancestor). The thumbnail/indicator Left/Right arrow keys follow VISUAL order
+   * so they key off this; reading via `toSignal(dir.change, {initialValue})` would miss a born-rtl `[dir]`
+   * on first paint (mirrors cae-carousel #276 / cae-splitter / cae-image-compare #364).
+   */
+  private readonly directionality = inject(Directionality);
+  protected readonly isRtl = computed(() => this.directionality.value === 'rtl');
+
   protected readonly count = computed(() => this.items().length);
   /** The active index clamped into range — the render source of truth (the model may lag/over-set). */
   protected readonly clampedIndex = computed(() =>
@@ -550,18 +577,26 @@ export class CaeGalleria {
   }
 
   /**
-   * The thumbnail tablist's roving-tabindex keyboard model: Left/Up → previous, Right/Down → next,
-   * Home/End → first/last — each moving focus to (and selecting) the target thumb. Selection follows
-   * focus, which is why the active thumb is the single tab stop.
+   * The thumbnail tablist's roving-tabindex keyboard model: Left/Right step through the strip in VISUAL
+   * order (flipped under RTL, since the strip lays out right-to-left), Up/Down are the direction-independent
+   * block axis, Home/End → first/last — each moving focus to (and selecting) the target thumb. Selection
+   * follows focus, which is why the active thumb is the single tab stop.
    */
   protected onThumbKeydown(event: KeyboardEvent, i: number): void {
     let target: number;
     switch (event.key) {
+      // Left/Right follow VISUAL order — flipped under RTL so ArrowRight steps to the thumb physically to the
+      // right (the lower index in an RTL strip). Up/Down are the block axis and stay direction-independent
+      // (RTL is inline-only). Mirrors cae-carousel's indicator keymap (#276).
       case 'ArrowRight':
+        target = this.isRtl() ? i - 1 : i + 1;
+        break;
       case 'ArrowDown':
         target = i + 1;
         break;
       case 'ArrowLeft':
+        target = this.isRtl() ? i + 1 : i - 1;
+        break;
       case 'ArrowUp':
         target = i - 1;
         break;
@@ -599,19 +634,24 @@ export class CaeGalleria {
   }
 
   /**
-   * The indicator group's roving-tabindex keyboard model, mirroring the thumbnail strip: Left/Up → previous,
-   * Right/Down → next, Home/End → first/last — each moving focus to (and selecting) the target dot. Arrow
-   * keys follow logical order (not visual/RTL); the gallery's full RTL story — thumbnails and dots alike —
-   * is the deferred vertical/RTL item on #288.
+   * The indicator group's roving-tabindex keyboard model, mirroring the thumbnail strip: Left/Right step in
+   * VISUAL order (flipped under RTL), Up/Down are the direction-independent block axis, Home/End → first/last
+   * — each moving focus to (and selecting) the target dot.
    */
   protected onIndicatorKeydown(event: KeyboardEvent, i: number): void {
     let target: number;
     switch (event.key) {
+      // Left/Right follow VISUAL order (flipped under RTL); Up/Down are the block axis, direction-independent
+      // (RTL is inline-only) — same keymap as the thumbnail strip and cae-carousel (#276).
       case 'ArrowRight':
+        target = this.isRtl() ? i - 1 : i + 1;
+        break;
       case 'ArrowDown':
         target = i + 1;
         break;
       case 'ArrowLeft':
+        target = this.isRtl() ? i + 1 : i - 1;
+        break;
       case 'ArrowUp':
         target = i - 1;
         break;

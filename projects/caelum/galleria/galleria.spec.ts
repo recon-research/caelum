@@ -1,7 +1,9 @@
-import { Component, viewChild } from '@angular/core';
+import { Component, signal, viewChild } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { Dir, type Direction } from '@angular/cdk/bidi';
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { MatDialog } from '@angular/material/dialog';
+import { By } from '@angular/platform-browser';
 import { of, Subject } from 'rxjs';
 
 import { CaeDialog } from 'caelum/dialog';
@@ -605,5 +607,109 @@ describe('CaeGalleria', () => {
       await closed;
       expect(dialog.openDialogs).toHaveLength(0);
     });
+  });
+});
+
+// ---- RTL: thumbnail + indicator arrow keys mirror visual order under a born-rtl [dir] (#288) ----
+
+// Wraps the galleria under a REAL CDK Dir ancestor bound rtl BEFORE first paint — a seeded
+// FakeDirectionality would report 'rtl' from construction and pass under both the correct value-read and the
+// buggy toSignal(change,{initialValue}) idiom (no teeth, per #364). Only the born-rtl [dir] binding exercises
+// the first-paint read the Left/Right keymap depends on.
+@Component({
+  selector: 'cae-galleria-rtl-host',
+  imports: [CaeGalleria, Dir],
+  template: `
+    <div [dir]="direction()">
+      <cae-galleria
+        [items]="items()"
+        ariaLabel="RTL gallery"
+        [showIndicators]="true"
+        [(activeIndex)]="index"
+      />
+    </div>
+  `,
+})
+class GalleriaRtlHost {
+  readonly direction = signal<Direction>('rtl');
+  readonly items = signal<readonly CaeGalleriaItem[]>([
+    { src: 'a.jpg', alt: 'Alpha' },
+    { src: 'b.jpg', alt: 'Bravo' },
+    { src: 'c.jpg', alt: 'Charlie' },
+    { src: 'd.jpg', alt: 'Delta' },
+    { src: 'e.jpg', alt: 'Echo' },
+  ]);
+  // Start mid-strip so both arrows have room — a boundary start could clamp and mask an un-inverted keymap.
+  readonly index = signal(2);
+}
+
+describe('CaeGalleria RTL arrow keys (#288)', () => {
+  let fixture: ComponentFixture<GalleriaRtlHost>;
+
+  async function mount(direction: Direction): Promise<CaeGalleria> {
+    await TestBed.configureTestingModule({ imports: [GalleriaRtlHost] }).compileComponents();
+    fixture = TestBed.createComponent(GalleriaRtlHost);
+    fixture.componentInstance.direction.set(direction); // set before first CD → born-rtl
+    document.body.appendChild(fixture.nativeElement);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    return fixture.debugElement.query(By.directive(CaeGalleria)).componentInstance;
+  }
+
+  const activeTab = (): HTMLElement =>
+    fixture.nativeElement.querySelector('[role="tab"][aria-selected="true"]');
+  const activeDot = (): HTMLElement =>
+    fixture.nativeElement.querySelector('.cae-galleria__indicator--active');
+  const arrow = (elm: HTMLElement, key: string): void => {
+    elm.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+    fixture.detectChanges();
+  };
+
+  afterEach(() => fixture?.nativeElement.remove());
+
+  it('thumbnails: ArrowRight steps to the lower index (visually-right thumb) under born-rtl', async () => {
+    const g = await mount('rtl');
+    arrow(activeTab(), 'ArrowRight'); // physical-right = lower index in an RTL strip
+    expect(g.activeIndex()).toBe(1); // LTR would advance to 3
+  });
+
+  it('thumbnails: ArrowLeft steps to the higher index under born-rtl', async () => {
+    const g = await mount('rtl');
+    arrow(activeTab(), 'ArrowLeft');
+    expect(g.activeIndex()).toBe(3);
+  });
+
+  it('thumbnails: LTR keeps ArrowRight → next (the flip is conditional, not always-inverted)', async () => {
+    const g = await mount('ltr');
+    arrow(activeTab(), 'ArrowRight');
+    expect(g.activeIndex()).toBe(3);
+  });
+
+  it('thumbnails: Up/Down do NOT flip under RTL (block axis is direction-independent)', async () => {
+    const g = await mount('rtl');
+    arrow(activeTab(), 'ArrowDown'); // Down = next regardless of direction
+    expect(g.activeIndex()).toBe(3);
+  });
+
+  it('indicators: ArrowRight/ArrowLeft mirror visual order under born-rtl', async () => {
+    const g = await mount('rtl');
+    arrow(activeDot(), 'ArrowRight'); // physical-right = lower index
+    expect(g.activeIndex()).toBe(1);
+    arrow(activeDot(), 'ArrowLeft'); // physical-left = higher index; back up to 2
+    expect(g.activeIndex()).toBe(2);
+  });
+
+  // The chevron glyphs re-aim under RTL via a host flag (the pixel rotation is #240-verified; here we assert
+  // only that the flag tracks isRtl() — a class-name typo would otherwise ship silently until that pass).
+  it('sets the --rtl host flag under born-rtl (drives the chevron re-aim)', async () => {
+    await mount('rtl');
+    const host = fixture.nativeElement.querySelector('cae-galleria') as HTMLElement;
+    expect(host.classList.contains('cae-galleria--rtl')).toBe(true);
+  });
+
+  it('clears the --rtl host flag under LTR (the flag is conditional, not always-on)', async () => {
+    await mount('ltr');
+    const host = fixture.nativeElement.querySelector('cae-galleria') as HTMLElement;
+    expect(host.classList.contains('cae-galleria--rtl')).toBe(false);
   });
 });

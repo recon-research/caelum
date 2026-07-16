@@ -277,10 +277,14 @@ export class CaeGalleriaLightbox {
   }
 
   /**
-   * Keyboard nav while the modal is focused (parity with the inline strip): Left/Right step, Home/End
-   * jump to first/last. `Escape` is Material's own dismissal (this handler never touches it).
+   * Keyboard nav while the modal is focused: Left/Right step prev/next, Home/End jump to first/last.
+   * `Escape` is Material's own dismissal (this handler never touches it). Stepping is LOGICAL (Left→prev):
+   * unlike the inline strip (which flips Left/Right under RTL), the lightbox renders LTR — `openFullscreen`
+   * passes no dialog `direction` — so its arrows don't yet mirror. Making it RTL-aware is #466 (part of #288).
    */
   protected onKeydown(event: KeyboardEvent): void {
+    // TODO(#466): flip Left/Right (and re-aim the chevrons) under RTL, to match the inline strip — needs the
+    // lightbox dialog opened with direction:rtl so its layout mirrors first. Kept LTR-only until then.
     switch (event.key) {
       case 'ArrowLeft':
         event.preventDefault();
