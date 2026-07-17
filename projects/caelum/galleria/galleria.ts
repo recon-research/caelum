@@ -1,5 +1,5 @@
 import { Directionality } from '@angular/cdk/bidi';
-import { NgTemplateOutlet } from '@angular/common';
+import { NgTemplateOutlet, isPlatformBrowser } from '@angular/common';
 import {
   afterRenderEffect,
   booleanAttribute,
@@ -15,6 +15,7 @@ import {
   isDevMode,
   model,
   numberAttribute,
+  PLATFORM_ID,
   signal,
   untracked,
   viewChildren,
@@ -44,6 +45,21 @@ export interface CaeGalleriaItem {
   thumbnailSrc?: string;
   /** Optional caption shown beneath the main image and in the lightbox. */
   caption?: string;
+}
+
+/**
+ * One responsive breakpoint rule for {@link CaeGalleria.responsiveOptions} (`p-galleria` parity). When the
+ * viewport is at most `breakpoint` wide, the thumbnail strip windows to `numVisible` thumbnails instead of
+ * the base {@link CaeGalleria.numVisible}. When several rules match, the **narrowest** (smallest) breakpoint
+ * wins — so order the array however you like; give each `breakpoint` an absolute CSS length (`px`/`rem`), as
+ * the tie-break parses it with `parseFloat` and can't compare mixed units. `numVisible` follows the base
+ * input's meaning: `0` shows every thumbnail (windowing off at that breakpoint). #288.
+ */
+export interface CaeGalleriaResponsiveOption {
+  /** A CSS `max-width` length (e.g. `'768px'`) — the rule applies at or below this viewport width. */
+  breakpoint: string;
+  /** Thumbnails to window the strip to at this breakpoint; `0` shows them all. Overrides the base numVisible. */
+  numVisible: number;
 }
 
 /** Monotonic id source so a page can hold many galleries without id collisions (no `Math.random`). */
@@ -606,6 +622,8 @@ let nextUniqueId = 0;
 export class CaeGalleria {
   private readonly dialog = inject(CaeDialog);
   private readonly destroyRef = inject(DestroyRef);
+  /** Browser vs SSR — gates the `[responsiveOptions]` matchMedia effect (no `matchMedia` on the server). */
+  private readonly isBrowser = isPlatformBrowser(inject(PLATFORM_ID));
   /** The open lightbox ref, or null — guards against stacking a second lightbox on a double-open. */
   private lightboxRef: CaeDialogRef<void> | null = null;
 
@@ -703,8 +721,23 @@ export class CaeGalleria {
    * axis-correct for free (no transform math). Pointer paging navigators (`showThumbnailNavigators`) are a
    * separate #288 follow-on; the pixel-exact fit + scroll landing are verified in the browser runner (#240).
    * Inert for a single image or `[showThumbnails]="false"`, and a no-op when `numVisible >= items.length`.
+   * Vary it by viewport with {@link responsiveOptions}.
    */
   readonly numVisible = input(0, { transform: numberAttribute });
+  /**
+   * Per-breakpoint overrides for {@link numVisible} by viewport width (`p-galleria` parity, mirrors
+   * cae-carousel #276). Each {@link CaeGalleriaResponsiveOption} windows the strip to its own `numVisible`
+   * when the viewport is at most its `breakpoint` wide; the **narrowest** matching rule wins, else the base
+   * {@link numVisible} applies. Re-evaluated live as the viewport crosses a breakpoint — browser only (SSR /
+   * no `matchMedia` keeps the base window). Because the strip windows by NATIVE SCROLL, every thumbnail stays
+   * mounted and reachable at every breakpoint, and the selected thumb is re-scrolled into view when the window
+   * resizes — so a crossing that stays windowed never strands keyboard focus (unlike cae-carousel's translate
+   * track). One exception: with {@link showThumbnailNavigators} on, a crossing that flips the show-all/windowed
+   * boundary re-stamps the strip through its `@if` and drops focus to the body — the runtime re-stamp gap
+   * tracked in #535 (now also viewport-triggered; real focus-restore is the deferred fix). Bind a stable array
+   * reference — a new literal each CD needlessly rebuilds the `matchMedia` listeners.
+   */
+  readonly responsiveOptions = input<readonly CaeGalleriaResponsiveOption[]>([]);
   /** Accessible name for the gallery group — set one (its role/roledescription is dropped without it). */
   readonly ariaLabel = input('');
   readonly prevAriaLabel = input('Previous image');
@@ -782,8 +815,41 @@ export class CaeGalleria {
   protected readonly thumbsBefore = computed(
     () => this.thumbnailsPosition() === 'top' || this.thumbnailsPosition() === 'left',
   );
-  /** {@link numVisible} floored to a whole number of thumbnails (a fractional binding is meaningless). */
-  protected readonly visibleCount = computed(() => Math.floor(this.numVisible()));
+  /**
+   * Live per-breakpoint match state, keyed by each {@link responsiveOptions} entry's `breakpoint` string,
+   * maintained by the responsive effect in the constructor. Empty during SSR and when there are no
+   * responsive options, so the base {@link numVisible} applies. Read only by {@link activeOption}.
+   */
+  private readonly matches = signal<ReadonlyMap<string, boolean>>(new Map());
+  /**
+   * The {@link responsiveOptions} rule in effect for the current viewport, or `null` when none matches (→
+   * the base {@link numVisible}). Among the currently-matching rules the **narrowest** breakpoint wins; a
+   * rule whose breakpoint doesn't parse as a length never wins. Purely derived from {@link responsiveOptions}
+   * + {@link matches} (mirrors cae-carousel #276).
+   */
+  private readonly activeOption = computed<CaeGalleriaResponsiveOption | null>(() => {
+    const matches = this.matches();
+    let best: CaeGalleriaResponsiveOption | null = null;
+    let bestWidth = Infinity;
+    for (const o of this.responsiveOptions()) {
+      if (!matches.get(o.breakpoint)) continue;
+      const width = parseFloat(o.breakpoint);
+      if (Number.isFinite(width) && width < bestWidth) {
+        bestWidth = width;
+        best = o;
+      }
+    }
+    return best;
+  });
+  /**
+   * The effective strip window — the {@link activeOption} responsive override or the base {@link numVisible}
+   * — floored to a whole number of thumbnails (a fractional binding is meaningless). The single source every
+   * windowing derivation reads (`--cae-galleria-num-visible`, {@link windowed}, {@link maxThumbStart}), so
+   * responsive overrides flow everywhere without touching the template.
+   */
+  protected readonly visibleCount = computed(() =>
+    Math.floor(this.activeOption()?.numVisible ?? this.numVisible()),
+  );
   /**
    * Whether the strip is windowed to {@link numVisible} thumbnails. Requires a real strip (more than one
    * thumbnail) and a window strictly smaller than the set — `numVisible >= count` (or `0`) shows them all.
@@ -823,6 +889,31 @@ export class CaeGalleria {
     // tied to the same DestroyRef in openFullscreen().
     this.destroyRef.onDestroy(() => this.lightboxRef?.close());
 
+    // Responsive strip window: keep a live match-map for each [responsiveOptions] breakpoint so
+    // visibleCount() picks up the narrowest matching numVisible override. Re-runs — rebuilding the
+    // matchMedia listeners — whenever the options change; browser-only (SSR / no matchMedia leaves the map
+    // empty, so the base [numVisible] applies). Listeners are torn down on every re-run and on destroy via
+    // onCleanup. The `change` handler writes a signal from outside a CD tick, which the zoneless scheduler
+    // picks up. Mirrors cae-carousel #276. #288.
+    effect((onCleanup) => {
+      const opts = this.responsiveOptions();
+      if (!this.isBrowser || typeof window.matchMedia !== 'function' || opts.length === 0) {
+        this.matches.set(new Map());
+        return;
+      }
+      const queries = opts.map((o) => window.matchMedia(`(max-width: ${o.breakpoint})`));
+      const sync = () => {
+        const next = new Map<string, boolean>();
+        opts.forEach((o, i) => next.set(o.breakpoint, queries[i].matches));
+        this.matches.set(next);
+      };
+      sync();
+      for (const q of queries) q.addEventListener('change', sync);
+      onCleanup(() => {
+        for (const q of queries) q.removeEventListener('change', sync);
+      });
+    });
+
     // Keep the two-way model in range when items shrink or a consumer over-sets it. Runs after CD (no
     // ExpressionChanged hazard); the guard prevents a write loop.
     effect(() => {
@@ -852,14 +943,18 @@ export class CaeGalleria {
     // When the strip is windowed ([numVisible]), keep the SELECTED thumbnail scrolled into view as the active
     // image changes by ANY path (main nav, lightbox sync, programmatic) — keyboard roving already scrolls via
     // focusThumb() (so the keyboard path double-scrolls the same element, harmlessly). Native scroll, so it is
-    // RTL- and axis-correct for free. Reactive: it re-runs on an active-index, windowed-flag, or thumbnail-set
-    // change (the last, via thumbBtns() in scrollThumbIntoView, re-anchors after the @for rebuilds) — NOT on a
-    // plain re-render, so it won't tug a user's manual strip scroll. Gated to windowed to leave the un-windowed
-    // default byte-identical.
+    // RTL- and axis-correct for free. Reactive: it re-runs on an active-index, windowed-flag, window-size, or
+    // thumbnail-set change (the last, via thumbBtns() in scrollThumbIntoView, re-anchors after the @for
+    // rebuilds) — NOT on a plain re-render, so it won't tug a user's manual strip scroll. Gated to windowed to
+    // leave the un-windowed default byte-identical.
     afterRenderEffect(() => {
       // Nav mode drives the strip position from thumbWindowStart (below) instead, so this
       // selection-follow scroll would fight it — leave it to the un-paged windowed strip.
       if (!this.windowed() || this.thumbNavActive()) return;
+      // Read visibleCount() as an explicit dep: a live [responsiveOptions] / [numVisible] change that only
+      // TIGHTENS the window (both sizes still windowed, so windowed() doesn't notify) must re-scroll the
+      // selected thumb, which can otherwise sit clipped outside the now-smaller viewport.
+      this.visibleCount();
       this.scrollThumbIntoView(this.clampedIndex());
     });
 

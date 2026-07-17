@@ -7,7 +7,7 @@ import { By } from '@angular/platform-browser';
 import { of, Subject } from 'rxjs';
 
 import { CaeDialog } from 'caelum/dialog';
-import { CaeGalleria, type CaeGalleriaItem } from './galleria';
+import { CaeGalleria, type CaeGalleriaItem, type CaeGalleriaResponsiveOption } from './galleria';
 import { CaeGalleriaItemDef, CaeGalleriaThumbnailDef } from './galleria-item';
 
 const ITEMS: readonly CaeGalleriaItem[] = [
@@ -686,6 +686,131 @@ describe('CaeGalleria', () => {
       expect(wrap()).toBeNull(); // back to the bare strip
       expect(tabs()).toHaveLength(6); // thumbnails survive the re-stamp
       expect(el.querySelector('[role="tablist"]')).not.toBeNull();
+    });
+  });
+
+  describe('responsive numVisible ([responsiveOptions], #288)', () => {
+    // 6 items so a windowed strip (numVisible < 6) has thumbnails beyond the window.
+    const SIX: readonly CaeGalleriaItem[] = Array.from({ length: 6 }, (_, i) => ({
+      src: `img-${i}.jpg`,
+      alt: `Image ${i + 1}`,
+    }));
+    const q = (bp: string): string => `(max-width: ${bp})`;
+    let realMatchMedia: typeof window.matchMedia;
+
+    // A controllable matchMedia fake (mirrors cae-carousel #276): `matching` is the set of query strings
+    // currently matching; `fire()` flips one and notifies its listeners exactly as a real MediaQueryList
+    // change does; `listenerCount()` reports live `change` listeners so a cleanup leak is caught, not merely
+    // "removeEventListener was called".
+    function installMatchMedia(matching: Set<string>): {
+      fire: (query: string, matches: boolean) => void;
+      listenerCount: (query: string) => number;
+    } {
+      const registry = new Map<string, Set<() => void>>();
+      const mm = (query: string) => ({
+        media: query,
+        get matches(): boolean {
+          return matching.has(query);
+        },
+        addEventListener: (_type: 'change', cb: () => void): void => {
+          let set = registry.get(query);
+          if (!set) registry.set(query, (set = new Set()));
+          set.add(cb);
+        },
+        removeEventListener: (_type: 'change', cb: () => void): void => {
+          registry.get(query)?.delete(cb);
+        },
+      });
+      (window as unknown as { matchMedia: (query: string) => unknown }).matchMedia = mm;
+      const fire = (query: string, matches: boolean): void => {
+        if (matches) matching.add(query);
+        else matching.delete(query);
+        registry.get(query)?.forEach((cb) => cb());
+      };
+      const listenerCount = (query: string): number => registry.get(query)?.size ?? 0;
+      return { fire, listenerCount };
+    }
+
+    // `--cae-galleria-num-visible` is bound to visibleCount() only while windowed, so it is a direct read of
+    // the resolved window ('' = not windowed / property removed).
+    const windowVar = (): string =>
+      (el.querySelector('.cae-galleria__thumbs') as HTMLElement | null)?.style
+        .getPropertyValue('--cae-galleria-num-visible')
+        .trim() ?? '';
+
+    // render() runs one settle; the responsive effect writes `matches` during that CD, so a second settle
+    // renders the resolved window (mirrors the carousel spec's double pass).
+    async function mount(base: number, options: CaeGalleriaResponsiveOption[]): Promise<void> {
+      await render({ items: SIX, numVisible: base, responsiveOptions: options });
+      await settle();
+    }
+
+    beforeEach(() => {
+      realMatchMedia = window.matchMedia;
+    });
+    afterEach(() => {
+      window.matchMedia = realMatchMedia;
+    });
+
+    it('windows the strip to a matching breakpoint override (base 4 → 3)', async () => {
+      installMatchMedia(new Set([q('1024px')]));
+      await mount(4, [{ breakpoint: '1024px', numVisible: 3 }]);
+      expect(windowVar()).toBe('3'); // the override, not the base 4
+    });
+
+    it('picks the NARROWEST matching rule when several match', async () => {
+      installMatchMedia(new Set([q('1024px'), q('560px')]));
+      await mount(4, [
+        { breakpoint: '1024px', numVisible: 3 },
+        { breakpoint: '560px', numVisible: 2 },
+      ]);
+      expect(windowVar()).toBe('2'); // 560 (narrowest) wins over 1024
+    });
+
+    it('falls back to the base numVisible when no rule matches', async () => {
+      installMatchMedia(new Set()); // a wide viewport: nothing matches
+      await mount(4, [{ breakpoint: '1024px', numVisible: 3 }]);
+      expect(windowVar()).toBe('4'); // base window
+    });
+
+    it('turns windowing OFF at a breakpoint whose numVisible is 0 (show-all override)', async () => {
+      installMatchMedia(new Set([q('1024px')]));
+      await mount(4, [{ breakpoint: '1024px', numVisible: 0 }]);
+      // 0 = show every thumbnail → not windowed → the custom property is removed; base 4 fully replaced.
+      expect(windowVar()).toBe('');
+    });
+
+    it('re-resolves live on a viewport crossing, and removes listeners on destroy', async () => {
+      const { fire, listenerCount } = installMatchMedia(new Set([q('1024px')]));
+      await mount(4, [{ breakpoint: '1024px', numVisible: 3 }]);
+      expect(windowVar()).toBe('3'); // starts matched
+      expect(listenerCount(q('1024px'))).toBe(1); // one live change listener while mounted
+
+      fire(q('1024px'), false); // viewport grows past 1024 → the rule stops matching
+      await settle();
+      expect(windowVar()).toBe('4'); // re-resolved to the base window live, no re-mount
+
+      fixture.destroy();
+      expect(listenerCount(q('1024px'))).toBe(0); // onCleanup removed the ACTUAL listener (no leak)
+    });
+
+    it('re-scrolls the selected thumb when a live crossing only tightens the window (non-nav)', async () => {
+      const { fire } = installMatchMedia(new Set()); // wide viewport: the base window applies first
+      await mount(4, [{ breakpoint: '768px', numVisible: 2 }]); // base 4 windowed (4 < 6); rule not yet matching
+      fixture.componentRef.setInput('activeIndex', 3);
+      await settle();
+      // Spy the selected thumb's scrollIntoView. showThumbnailNavigators is off, so the strip never re-stamps
+      // and this element stays stable across the crossing (a re-stamp would swap it out — see #535).
+      const scrollSpy = vi.fn();
+      tabs()[3].scrollIntoView = scrollSpy;
+
+      fire(q('768px'), true); // viewport shrinks past 768 → visibleCount 4→2, still windowed (both < 6)
+      await settle();
+
+      expect(windowVar()).toBe('2'); // the tighten resolved
+      // Teeth for the visibleCount() dep read: without it, windowed()/clampedIndex() are unchanged by a
+      // both-windowed tighten, so the follow-scroll effect would NOT re-run and the spy would stay uncalled.
+      expect(scrollSpy).toHaveBeenCalled();
     });
   });
 
