@@ -943,4 +943,134 @@ describe('CaeTreeSelect', () => {
       expect(shownLabels()).toContain('Settings'); // full tree shown again
     });
   });
+
+  describe('per-node disabled (#282, on decision #526)', () => {
+    // 'api' (a leaf under Projects) and 'settings' (a top-level leaf) are disabled; 'proj'/'app' are not.
+    const DISABLED_NODES: readonly CaeTreeNode[] = [
+      {
+        value: 'proj',
+        label: 'Projects',
+        children: [
+          { value: 'app', label: 'App' },
+          { value: 'api', label: 'API', disabled: true },
+        ],
+      },
+      { value: 'settings', label: 'Settings', disabled: true },
+    ];
+
+    it('does not select a disabled node on click, and marks it aria-disabled (not aria-selected)', async () => {
+      host.nodes.set(DISABLED_NODES);
+      await init();
+      await open();
+      labelFor('Settings').click();
+      await flush();
+      expect(host.control.value).toBe(''); // unchanged — disabled node is inert to selection
+      const item = treeItemFor('Settings');
+      expect(item.getAttribute('aria-disabled')).toBe('true');
+      expect(item.getAttribute('aria-selected')).toBeNull();
+      // It is still IN the tree (focusable/roving-reachable), not removed.
+      expect(treeItems().map((t) => t.textContent?.trim())).toContain(
+        treeItemFor('Settings').textContent?.trim(),
+      );
+      expect(item.querySelector('.cae-tree-select__row--disabled')).not.toBeNull();
+    });
+
+    it('does not select a disabled node via the keyboard (Enter on its treeitem)', async () => {
+      host.nodes.set(DISABLED_NODES);
+      await init();
+      await open();
+      const item = treeItemFor('Settings');
+      item.focus();
+      item.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      await flush();
+      expect(host.control.value).toBe(''); // Enter on a disabled node is a no-op
+      expect(panel()).not.toBeNull(); // and does not commit/close
+    });
+
+    it('checkbox: a disabled child is excluded from cascade and the parent tally', async () => {
+      host.nodes.set(DISABLED_NODES);
+      await init({ mode: 'checkbox' });
+      await open();
+      labelFor('Projects').click(); // check the parent
+      await flush();
+      // 'api' is disabled → NOT forced by the parent cascade and NOT in the value; the parent still
+      // rolls up to checked from its one enabled child ('app').
+      expect([...(host.control.value as string[])].sort()).toEqual(['app', 'proj']);
+      expect(treeItemFor('Projects').getAttribute('aria-checked')).toBe('true');
+      expect(treeItemFor('App').getAttribute('aria-checked')).toBe('true');
+      // A disabled node carries no checkbox state at all.
+      expect(treeItemFor('API').getAttribute('aria-checked')).toBeNull();
+    });
+
+    it('checkbox: a disabled node renders no checkbox', async () => {
+      host.nodes.set(DISABLED_NODES);
+      await init({ mode: 'checkbox' });
+      await open();
+      // Only the two enabled value-bearing nodes (proj, app) get a box; api + settings get none.
+      expect(container().querySelectorAll('.cae-tree-select__checkbox').length).toBe(2);
+    });
+
+    it('writeValue retains a disabled key unshown, and it resolves when the node is enabled', async () => {
+      host.nodes.set(DISABLED_NODES);
+      await init(); // single mode
+      host.control.setValue('settings'); // a disabled node's key
+      await flush();
+      // Retained in the value (not dropped)…
+      expect(host.control.value).toBe('settings');
+      // …but not shown selected while disabled (label unresolved → placeholder).
+      expect(trigger().textContent?.trim()).toContain('Select…');
+      // Enabling the node resolves the held key for free (the async-key round-trip path).
+      host.nodes.set([
+        DISABLED_NODES[0],
+        { value: 'settings', label: 'Settings' }, // same key, now enabled
+      ]);
+      await flush();
+      expect(trigger().textContent?.trim()).toContain('Settings');
+    });
+
+    it('checkbox: an ancestor cascade passes THROUGH a disabled internal node to enabled descendants', async () => {
+      // gp (enabled) → parent (DISABLED) → child (enabled leaf). Checking gp must force the enabled
+      // grandchild ON — the disabled internal node is transparent to the cascade — yet the disabled
+      // node itself is excluded from the value and carries no checkbox.
+      host.nodes.set([
+        {
+          value: 'gp',
+          label: 'Grandparent',
+          children: [
+            {
+              value: 'parent',
+              label: 'Parent',
+              disabled: true,
+              children: [{ value: 'child', label: 'Child' }],
+            },
+          ],
+        },
+      ]);
+      await init({ mode: 'checkbox' });
+      await open();
+      labelFor('Grandparent').click();
+      await flush();
+      expect([...(host.control.value as string[])].sort()).toEqual(['child', 'gp']); // 'parent' excluded
+      expect(treeItemFor('Grandparent').getAttribute('aria-checked')).toBe('true');
+      expect(treeItemFor('Child').getAttribute('aria-checked')).toBe('true'); // forced through the disabled node
+      expect(treeItemFor('Parent').getAttribute('aria-checked')).toBeNull(); // disabled → no checkbox
+    });
+
+    it('checkbox: writeValue retains a disabled key unshown, resolving to checked when enabled', async () => {
+      host.nodes.set(DISABLED_NODES);
+      await init({ mode: 'checkbox' });
+      host.control.setValue(['api']); // 'api' is disabled
+      await flush();
+      expect(host.control.value).toEqual(['api']); // retained, not canonicalized away
+      expect(trigger().textContent?.trim()).toContain('Select…'); // unresolved while disabled
+      // Enable the node → the held key resolves for free (same round-trip as an async-loaded key).
+      host.nodes.set([
+        { value: 'proj', label: 'Projects', children: [{ value: 'api', label: 'API' }] },
+      ]);
+      await flush();
+      expect(trigger().textContent?.trim()).toContain('API');
+      await open();
+      expect(treeItemFor('API').getAttribute('aria-checked')).toBe('true');
+    });
+  });
 });

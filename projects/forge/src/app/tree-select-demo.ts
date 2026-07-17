@@ -9,6 +9,8 @@ import type { CaeTreeNode } from 'caelum/tree';
 // A small, deterministic workspace-resource hierarchy (no Math.random / Date.now — the
 // reproducible-build rule). A node's `value` is its selection KEY; the group nodes carry keys too,
 // so they are selectable as well as expandable (a real p-treeSelect allows selecting any node).
+// "Mobile App" is `disabled` (#282): it stays visible and keyboard-focusable, but is dimmed and cannot
+// be picked in any of the three modes — the per-node opt-out demonstrated live.
 const RESOURCES: readonly CaeTreeNode[] = [
   {
     value: 'ws',
@@ -20,7 +22,7 @@ const RESOURCES: readonly CaeTreeNode[] = [
         children: [
           { value: 'web', label: 'Web App' },
           { value: 'api', label: 'API Service' },
-          { value: 'mobile', label: 'Mobile App' },
+          { value: 'mobile', label: 'Mobile App', disabled: true },
         ],
       },
       {
