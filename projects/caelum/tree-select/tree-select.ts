@@ -112,6 +112,19 @@ let nextUniqueId = 0;
  * mode. Like `multiple`, the panel stays open on toggle and each change is announced with the running
  * count. (Same node-selection + tri-state hazard class as `cae-tree-table` #264.)
  *
+ * **Disabled nodes (`CaeTreeNode.disabled`, #282).** A node marked `disabled` is inert to selection in
+ * every mode: it cannot be activated (Enter/Space/click no-op), renders `aria-disabled="true"`, is
+ * dimmed, and carries neither `aria-selected` nor a checkbox — yet it stays **focusable** (roving
+ * keyboard reaches it and a screen reader announces it; the aria-disabled-focusable pattern, Book 05
+ * §3.2 / Book 16 §2.2). Expansion is view-only and stays operable (the toggle, and Left/Right). In
+ * `checkbox` mode a disabled node is transparent like a value-less one: it is excluded from the
+ * canonical set and from its parent's roll-up tally, and an ancestor's cascade passes *through* it to
+ * enabled descendants (disable a whole branch by disabling its nodes). A disabled node's `value`,
+ * if written into the control, is **retained but shown unselected** and resolves for free once the node
+ * is enabled — the same round-trip as a key written before its async node loads. Per-node state lives on
+ * the shared node model (decision #526, provisional — on-node fields for `p-tree` parity). The
+ * component-level **leaf-only** selectability constraint remains open on #282.
+ *
  * Token-only theming (surface/elevation/border/focus-ring from `--cae-*`; Book 04 §3.6). No foreign
  * library. Zoneless-compatible: `OnPush` + signal state (provisional on #9; Book 01 §3.2).
  */
@@ -211,6 +224,7 @@ let nextUniqueId = 0;
             *matTreeNodeDef="let node"
             [attr.aria-selected]="ariaSelected(node)"
             [attr.aria-checked]="ariaChecked(node)"
+            [attr.aria-disabled]="node.disabled ? 'true' : null"
             [attr.cdkFocusInitial]="isFocusInitial(node) ? '' : null"
             (activation)="onActivate(node)"
             (click)="onActivate(node, $event)"
@@ -218,6 +232,7 @@ let nextUniqueId = 0;
             <span
               class="cae-tree-select__row cae-tree-select__row--leaf"
               [class.cae-tree-select__row--selected]="!checkbox() && isNodeSelected(node)"
+              [class.cae-tree-select__row--disabled]="node.disabled"
             >
               @if (checkbox() && isSelectable(node)) {
                 <span
@@ -240,6 +255,7 @@ let nextUniqueId = 0;
             [isExpandable]="true"
             [attr.aria-selected]="ariaSelected(node)"
             [attr.aria-checked]="ariaChecked(node)"
+            [attr.aria-disabled]="node.disabled ? 'true' : null"
             [attr.cdkFocusInitial]="isFocusInitial(node) ? '' : null"
             (activation)="onActivate(node)"
             (click)="onActivate(node, $event)"
@@ -247,6 +263,7 @@ let nextUniqueId = 0;
             <span
               class="cae-tree-select__row"
               [class.cae-tree-select__row--selected]="!checkbox() && isNodeSelected(node)"
+              [class.cae-tree-select__row--disabled]="node.disabled"
             >
               <button
                 type="button"
@@ -449,6 +466,24 @@ let nextUniqueId = 0;
     .cae-tree-select__row--selected {
       color: var(--cae-color-primary);
       background: var(--cae-surface-sunken);
+    }
+    /* Disabled node: dimmed + not-allowed, but still focusable (aria-disabled, not removed from the
+       roving order). The label/check area cannot be picked; the expand toggle keeps its own
+       cursor:pointer (expansion is view-only and stays operable). */
+    .cae-tree-select__row--disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    /* A disabled node is still roving-focusable (aria-disabled, not removed from the tree) — but the
+       0.5 opacity would composite its focus outline down to half strength too. Restore full opacity
+       while focused so the ring paints crisply (the order-list disabled precedent; WCAG 2.4.7 / 1.4.11). */
+    mat-tree-node:focus-visible > .cae-tree-select__row--disabled,
+    mat-nested-tree-node:focus-visible > .cae-tree-select__row--disabled {
+      opacity: 1;
+    }
+    /* The label rule below sets cursor:pointer; re-assert not-allowed over the disabled row's label. */
+    .cae-tree-select__row--disabled .cae-tree-select__label {
+      cursor: not-allowed;
     }
     .cae-tree-select__toggle {
       display: inline-flex;
@@ -829,7 +864,12 @@ export class CaeTreeSelect implements ControlValueAccessor {
       node: CaeTreeNode,
       forcedByAncestor: boolean,
     ): { state: CaeTreeCheckState; relevant: boolean } => {
-      const forced = forcedByAncestor || (node.value != null && seeds.has(node.value));
+      // A disabled node is inert to selection: it is not a valid seed, contributes no checkbox state,
+      // and is excluded from its parent's tally — treated exactly like a value-less navigational node
+      // (an ancestor's force still passes THROUGH it to enabled descendants; #282). {@link isSelectable}
+      // is the shared gate.
+      const selectable = this.isSelectable(node);
+      const forced = forcedByAncestor || (selectable && seeds.has(node.value!));
       let anyRelevantChild = false;
       let allChecked = true;
       let anyChecked = false;
@@ -851,11 +891,11 @@ export class CaeTreeSelect implements ControlValueAccessor {
           : anyChecked
             ? 'mixed'
             : 'unchecked';
-      if (node.value != null) {
-        states.set(node.value, state);
-        if (state === 'checked') canonical.push(node.value);
+      if (selectable) {
+        states.set(node.value!, state);
+        if (state === 'checked') canonical.push(node.value!);
       }
-      return { state, relevant: node.value != null || anyRelevantChild };
+      return { state, relevant: selectable || anyRelevantChild };
     };
     for (const node of this.nodes()) visit(node, false);
     return { canonical, states };
@@ -913,7 +953,11 @@ export class CaeTreeSelect implements ControlValueAccessor {
     const map = new Map<string, string>();
     const walk = (nodes: readonly CaeTreeNode[]): void => {
       for (const node of nodes) {
-        if (node.value != null) map.set(node.value, node.label);
+        // A disabled node's key does NOT resolve to a display label: it is treated as unresolved, so a
+        // selected-then-disabled (or written-while-disabled) key is retained in the value but shown
+        // unselected — and resolves for free if the node is later enabled, exactly like an async key
+        // that arrives after its value was written (#282).
+        if (this.isSelectable(node)) map.set(node.value!, node.label);
         if (node.children?.length) walk(node.children);
       }
     };
@@ -956,13 +1000,19 @@ export class CaeTreeSelect implements ControlValueAccessor {
   protected isSelected(value: string): boolean {
     return this.selectedValues().includes(value);
   }
-  /** Whether this node can be selected/checked — it carries a `value` key (navigational nodes don't). */
+  /**
+   * Whether this node can be selected/checked — it carries a `value` key (navigational nodes don't)
+   * AND is not `disabled` (#282). A `disabled` node stays focusable and expandable but is inert to
+   * selection in every mode, so this is the shared gate the checkbox render, the aria state, and
+   * {@link classify} read; {@link onActivate} applies the same value-and-`disabled` gate inline (to
+   * narrow `value` to a non-null key for the branches below it).
+   */
   protected isSelectable(node: CaeTreeNode): boolean {
-    return node.value != null;
+    return node.value != null && !node.disabled;
   }
-  /** Whether this node is selected (null-safe: a node without a `value` is never selectable). */
+  /** Whether this node is selected — never true for a navigational or `disabled` node. */
   protected isNodeSelected(node: CaeTreeNode): boolean {
-    return node.value != null && this.isSelected(node.value);
+    return this.isSelectable(node) && this.isSelected(node.value!);
   }
   /**
    * Per value-bearing node checkbox state for `checkbox` mode, derived from the current (canonical)
@@ -974,9 +1024,9 @@ export class CaeTreeSelect implements ControlValueAccessor {
       ? this.classify(new Set(this.selectedValues())).states
       : new Map<string, CaeTreeCheckState>(),
   );
-  /** This node's checkbox state (checkbox mode); `unchecked` for a value-less / unlisted node. */
+  /** This node's checkbox state (checkbox mode); `unchecked` for a value-less / disabled / unlisted node. */
   protected nodeCheckState(node: CaeTreeNode): CaeTreeCheckState {
-    return (node.value != null && this.nodeStates().get(node.value)) || 'unchecked';
+    return (this.isSelectable(node) && this.nodeStates().get(node.value!)) || 'unchecked';
   }
   /**
    * `aria-checked` for a node's treeitem — the APG "tree with checkboxes" tri-state. `null` outside
@@ -984,7 +1034,7 @@ export class CaeTreeSelect implements ControlValueAccessor {
    * `aria-selected` (which {@link ariaSelected} drops in checkbox mode).
    */
   protected ariaChecked(node: CaeTreeNode): 'true' | 'false' | 'mixed' | null {
-    if (!this.checkbox() || node.value == null) return null;
+    if (!this.checkbox() || !this.isSelectable(node)) return null; // navigational OR disabled → no checkbox
     const state = this.nodeCheckState(node);
     return state === 'checked' ? 'true' : state === 'mixed' ? 'mixed' : 'false';
   }
@@ -996,7 +1046,7 @@ export class CaeTreeSelect implements ControlValueAccessor {
    * `querySelector` pick whichever comes first in DOM order — the input — anyway).
    */
   protected isFocusInitial(node: CaeTreeNode): boolean {
-    return !this.filterable() && node.value != null && node.value === this.focusInitialKey();
+    return !this.filterable() && this.isSelectable(node) && node.value === this.focusInitialKey();
   }
   /**
    * `aria-selected` for a node. Dropped (`null`) for a navigational node. In SINGLE mode it is set
@@ -1005,9 +1055,9 @@ export class CaeTreeSelect implements ControlValueAccessor {
    */
   protected ariaSelected(node: CaeTreeNode): boolean | null {
     if (this.checkbox()) return null; // checkbox mode conveys state via aria-checked (tri-state), not aria-selected
-    if (node.value == null) return null;
-    if (!this.multiple() && !this.isSelected(node.value)) return null;
-    return this.isSelected(node.value);
+    if (!this.isSelectable(node)) return null; // navigational OR disabled → not a selection target
+    if (!this.multiple() && !this.isSelected(node.value!)) return null;
+    return this.isSelected(node.value!);
   }
 
   // --- Open / close ---
@@ -1079,7 +1129,7 @@ export class CaeTreeSelect implements ControlValueAccessor {
   protected onActivate(node: CaeTreeNode, event?: Event): void {
     event?.stopPropagation();
     const key = node.value;
-    if (key == null) return; // navigational node — not selectable
+    if (key == null || node.disabled) return; // navigational OR disabled node — not selectable
     if (this.checkbox()) {
       this.toggleCheckbox(node, key);
     } else if (this.multiple()) {

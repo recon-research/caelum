@@ -7,6 +7,16 @@ export interface CaeTreeNode {
   label: string;
   /** Optional value identifying the node in `(nodeSelect)`; the whole node is emitted. */
   value?: string;
+  /**
+   * When `true`, the node cannot be selected/checked: it renders `aria-disabled="true"`, is visually
+   * dimmed, and is excluded from selection in every mode — but stays focusable, so roving keyboard
+   * still reaches it and a screen reader announces it (the aria-disabled-focusable pattern; Book 05
+   * §3.2, Book 16 §2.2/§3.4). Expansion is view-only and stays operable. Honored today by
+   * `cae-tree-select` (#282, provisional on decision #526 — per-node state on the shared node model);
+   * `cae-tree` (#527) and `cae-tree-table` (#264) follow. A disabled node's `value` written into a
+   * form control is retained but shown unselected, resolving if the node is later enabled.
+   */
+  disabled?: boolean;
   /** Child nodes; presence (and non-emptiness) makes this node expandable. */
   children?: readonly CaeTreeNode[];
 }
