@@ -250,6 +250,10 @@ export interface CaeCarouselResponsiveOption {
       justify-content: center;
       inline-size: var(--cae-space-5);
       block-size: var(--cae-space-5);
+      /* Floor the hit target to the density-INVARIANT --cae-target-min (24px) so it holds WCAG 2.5.8
+         under [data-density=compact], where --cae-space-5 tightens to 16px (interactive-hit-target floor). */
+      min-inline-size: var(--cae-target-min);
+      min-block-size: var(--cae-target-min);
       padding: 0;
       border: 1px solid var(--cae-color-border);
       border-radius: var(--cae-radius-full);
@@ -345,21 +349,41 @@ export interface CaeCarouselResponsiveOption {
     .cae-carousel__play-icon--pause::after {
       inset-inline-end: 0.12em;
     }
+    /* flex-wrap so the target-min-floored dots (24px hit target each) wrap instead of overflowing the
+       no-wrap controls row when a carousel has many pages (#456 review); justify-content centres the
+       wrapped rows (inert for the common single-row case). */
     .cae-carousel__indicators {
       display: inline-flex;
+      flex-wrap: wrap;
       align-items: center;
+      justify-content: center;
       gap: var(--cae-space-1);
     }
+    /* Indicator dots: the BUTTON is the hit target, floored to --cae-target-min (24px) so it holds
+       WCAG 2.5.8 in every density arm; the visible dot is a smaller ::before circle centered inside it.
+       Sizing the button off --cae-space-2 would shrink the target to 6px under [data-density=compact]
+       (interactive-hit-target floor convention). Mirrors the galleria indicator. */
     .cae-carousel__indicator {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-inline-size: var(--cae-target-min);
+      min-block-size: var(--cae-target-min);
+      padding: 0;
+      border: 0;
+      border-radius: var(--cae-radius-full);
+      background: none;
+      cursor: pointer;
+    }
+    .cae-carousel__indicator::before {
+      content: '';
       inline-size: var(--cae-space-2);
       block-size: var(--cae-space-2);
-      padding: 0;
       border: 1px solid var(--cae-color-border);
       border-radius: var(--cae-radius-full);
       background: transparent;
-      cursor: pointer;
     }
-    .cae-carousel__indicator--active {
+    .cae-carousel__indicator--active::before {
       background: var(--cae-color-primary);
       border-color: var(--cae-color-primary);
     }
