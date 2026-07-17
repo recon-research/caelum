@@ -23,6 +23,17 @@
 # CURRENT session's identity. Claim comments read session_id from it —
 # <hostname>/<session_id[:8]>, conventions › Concurrent writers. Per-worktree
 # like all of .claude/metrics/, so one writer per checkout ⇒ unambiguous.
+#
+# guard: #297 (intake #288, both defects hit live downstream) — Status
+# detection lives in classify() and is corpus-tested via --selftest (run by
+# audit_ops_config): (a) the As-of regex tolerates prose between the separator
+# and an optionally-backticked sha (Caelum's "main @ `sha`" form made the
+# staleness check silently inert — the hook's whole point, with no signal);
+# (b) the placeholder test anchors to the As-of line itself — the old
+# `"<date" in text` matched the literal `checkpoint/<date>` that our own
+# branch-naming convention plants in downstream Status prose, instructing a
+# re-onboard of an onboarded project. Silent no-banner is invisible without
+# the corpus; --selftest is not a hook invocation, so it may exit nonzero.
 import json, os, re, subprocess, sys
 from datetime import datetime, timezone
 
@@ -51,12 +62,52 @@ def run(args, timeout=8):
     except Exception:
         return ""
 
+def classify(text):
+    # The corpus-tested core (#297): ("anchored", date, sha) | ("placeholder",)
+    # | ("none",). [^`\n]*? tolerates prose between the separator and the
+    # (optionally backticked) sha; the placeholder test is anchored to the
+    # As-of line so `checkpoint/<date>` elsewhere in prose can't match.
+    m = re.search(r"As of:\*\*\s*([^·\n]+)·[^`\n]*?`?([0-9a-fA-F]{7,40})", text)
+    if m:
+        return ("anchored", m.group(1).strip(), m.group(2).strip())
+    if re.search(r"As of:\*\*\s*(?:<|&lt;)", text):
+        return ("placeholder",)
+    return ("none",)
+
+
+def selftest():
+    # Real downstream Status shapes — each asserts which banner branch fires.
+    cases = [
+        ("template placeholder", "**As of:** <date · main short-sha> · **Phase:**", ("placeholder",)),
+        ("escaped placeholder", "**As of:** &lt;date · main short-sha&gt;", ("placeholder",)),
+        ("plain filled", "**As of:** 2026-07-16 · d04440a · **Phase:** 1", ("anchored", "2026-07-16", "d04440a")),
+        ("backticked sha", "**As of:** 2026-07-16 · `d04440a`", ("anchored", "2026-07-16", "d04440a")),
+        ("caelum prose+backtick", "**As of:** 2026-07-16 · main @ `a7823dd`", ("anchored", "2026-07-16", "a7823dd")),
+        ("caelum prose bare sha", "**As of:** 2026-07-16 · main @ a7823dd", ("anchored", "2026-07-16", "a7823dd")),
+        ("filled + checkpoint prose", "**As of:** 2026-07-16 · d04440a\ncheckpoint/<date> branch rule",
+         ("anchored", "2026-07-16", "d04440a")),
+        ("checkpoint prose only, no As-of", "use a checkpoint/<date> branch", ("none",)),
+        ("no status at all", "hello world", ("none",)),
+    ]
+    failed = 0
+    for name, text, want in cases:
+        got = classify(text)
+        ok = got == want
+        failed += 0 if ok else 1
+        print(f"{'PASS' if ok else 'FAIL'} banner-classify: {name} -> {got!r}" + ("" if ok else f" (want {want!r})"))
+    return 1 if failed else 0
+
+
 def main():
+    # cp1252 stdout guard (#296 rider from intake #288): gh-sourced decision
+    # titles can carry chars outside cp1252 -- an unguarded write would break
+    # the exit-0-always contract on Windows. Fail-open like everything here.
+    try:
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
     log_event()  # telemetry first: must run even if the banner below bails early
-    # Windows: piped stdout defaults to cp1252-strict; a non-ASCII char in a decision
-    # title would raise UnicodeEncodeError and break the exit-0 contract (#489/#503).
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     # Hook cwd is wherever Claude Code was launched; CLAUDE.md lives at repo root.
     root = os.environ.get("CLAUDE_PROJECT_DIR")
     if not (root and os.path.isdir(root)):
@@ -68,12 +119,9 @@ def main():
         text = open("CLAUDE.md", encoding="utf-8", errors="replace").read()
     except Exception:
         return 0
-    # Tolerate a markdown-backtick-wrapped sha AND prose between the separator and the
-    # sha (Caelum writes `As of: <date> · main @ \`<sha>\``) — the strict form never
-    # matched here, so the staleness check had silently never fired (#489).
-    m = re.search(r"As of:\*\*\s*([^·\n]+)·[^`\n]*?`?([0-9a-fA-F]{7,40})", text)
-    if m:
-        stamp_date, stamp_sha = m.group(1).strip(), m.group(2).strip()
+    kind = classify(text)
+    if kind[0] == "anchored":
+        stamp_date, stamp_sha = kind[1], kind[2]
         head = run(["git", "rev-parse", "--short", "HEAD"])
         if head:
             # Exclude commits that touch only CLAUDE.md: the post-merge Status-stamp
@@ -86,9 +134,7 @@ def main():
                              f"but HEAD is {head} ({behind} non-checkpoint commit(s) later) -- reconcile Status first (onboard step 3).")
             else:
                 lines.append(f"[status-anchor] fresh: stamped {stamp_date} @ {stamp_sha} (no non-checkpoint commits since).")
-    # Placeholder check anchored to the As-of line itself: a literal like
-    # `checkpoint/<date>` elsewhere in Status must not read as "unfilled" (#489).
-    elif re.search(r"As of:\*\*\s*(?:<|&lt;)", text):
+    elif kind[0] == "placeholder":
         lines.append("[status-anchor] Status block is still template placeholders -- run onboard Mode A.")
     decisions = run(["gh", "issue", "list", "--label", "decision", "--state", "open",
                      "--limit", "10", "--json", "number,title",
@@ -100,4 +146,4 @@ def main():
     return 0
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(selftest() if "--selftest" in sys.argv else main())

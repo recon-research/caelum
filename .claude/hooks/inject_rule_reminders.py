@@ -50,6 +50,16 @@
 # don't chase it. Rejected: Edit/Write matchers (fire per edit -- #253 noise bar);
 # WebFetch citation reminders (high frequency, low precision -- the artifact
 # passes through the commit anyway). Retire-when: with #263.
+#
+# guard: #290 (AskUserQuestion elicitation bar) -- the one moment where a JIT
+# rule and its governed action coincide exactly: the question tool itself.
+# TIMING, honest: additionalContext lands alongside the tool result -- i.e.
+# with/after the owner's answer -- so this is the audit-the-exchange moment
+# (was the owner equipped to evaluate these options? repair before building
+# on the answer), never a pre-ask gate. Text routes to understand_intent +
+# research/notes/intent-elicitation.md (single-home). Wired as its own
+# settings matcher; owner go-ahead in-session 2026-07-16 on #290.
+# Retire-when: with #263, or zero fires across 2+ retro periods (#253).
 import json, os, re, subprocess, sys
 
 # The separator class matches block_naked_todos: compound ("a && git commit")
@@ -85,6 +95,18 @@ RULES = [
      "(triage_inbox step 4); a decision ticket owes its D-NN row in ARCHITECTURE "
      "Appendix A before the close (onboard step 4 audits this) (#279)."),
 ]
+
+# #290: fired for the AskUserQuestion tool (own settings matcher), not for
+# shell commands -- see the guard header for the timing honesty.
+ASK_RULE = (
+    "A structured question is reaching the owner (elicitation bar -- "
+    "understand_intent owns the procedure; grounding: "
+    "research/notes/intent-elicitation.md): options owe end-state consequences "
+    "(what the owner's week looks like after shipping), recommended default "
+    "first, genuinely distinguishable; only forks whose interpretations diverge "
+    "in consequences deserve a question; teach before asking -- if the owner "
+    "wasn't equipped to evaluate these options, close that gap before building "
+    "on the answer (#290).")
 
 # Path-aware commit rules (#279): consulted only when the commit rule above has
 # fired; each pattern matches repo-relative staged paths. One line per matched
@@ -171,7 +193,15 @@ def main():
         payload = json.load(sys.stdin)
     except Exception:
         return 0
-    if payload.get("tool_name") not in ("Bash", "PowerShell"):
+    tool = payload.get("tool_name")
+    if tool == "AskUserQuestion":
+        log_fires(["ask-user-question"])
+        print(json.dumps({"hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "additionalContext": ASK_RULE,
+        }}))
+        return 0
+    if tool not in ("Bash", "PowerShell"):
         return 0
     command = str(payload.get("tool_input", {}).get("command", ""))
     # Don't scan heredoc bodies: a commit MESSAGE that mentions `gh pr merge`

@@ -35,6 +35,11 @@ import argparse
 import re
 import sys
 from pathlib import Path
+# Windows cp1252 stdout guard (#296): gate output carries non-ASCII
+# (em-dashes, section signs, file text); a cp1252-strict console mojibakes
+# or crashes an otherwise-green run. Uniform across every gate script.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 STATUS_MAX_LINES = 15     # CLAUDE.md ## Status: non-blank, non-blockquote lines
 MILESTONE_MAX_LINES = 30  # docs/ROADMAP.md: non-blank lines per milestone section

@@ -8,10 +8,12 @@
 # (M.get(kind, []) default, empty globs). Keep or delete the three banked lines when
 # porting; either is a fine adaptation, not drift (#197, moonlight's recorded deviation).
 import json, re, glob, os, sys, datetime
-os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # cwd-independent: data lives beside tools/
-# Windows: cp1252 piped stdout would mojibake/crash the report's em-dashes (#503).
+# Windows cp1252 stdout guard (#296): gate output carries non-ASCII
+# (em-dashes, section signs, file text); a cp1252-strict console mojibakes
+# or crashes an otherwise-green run. Uniform across every gate script.
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # cwd-independent: data lives beside tools/
 
 errs, warns = [], []
 STRICT_STALE = "--strict-staleness" in sys.argv

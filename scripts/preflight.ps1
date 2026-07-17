@@ -38,6 +38,30 @@ $script:Skipped = 0
 $Watch = [System.Diagnostics.Stopwatch]::new()
 $Total = [System.Diagnostics.Stopwatch]::StartNew()
 
+# --- python3 sentinel (#299, intake #289) -- shell-level, python-free, FIRST.
+# Every gate below AND every .claude/ hook (guards, telemetry, session banner)
+# plus the statusline runs through python3 -- and hooks are fail-open, so a
+# dead interpreter removes the guard rails SILENTLY. Fresh Windows boxes
+# resolve python3 to the dead Microsoft Store alias stub; real installs ship
+# python.exe but no python3.exe (hit live downstream).
+$py3ok = $false
+try {
+    $global:LASTEXITCODE = 0
+    $null = & python3 -c "print('ok')" 2>$null
+    if ($? -and $LASTEXITCODE -eq 0) { $py3ok = $true }
+} catch { $py3ok = $false }
+if (-not $py3ok) {
+    Write-Host "FAIL  python3 sentinel -- 'python3' is missing or not executable here." -ForegroundColor Red
+    Write-Host "  Every gate below and every .claude/ hook depends on it, and hooks are"
+    Write-Host "  fail-open: without it the guards, telemetry, and banner die SILENTLY."
+    Write-Host "  Remedy (Windows): real installs ship python.exe but no python3.exe --"
+    Write-Host "    copy or mklink python.exe -> python3.exe beside it (precedes the"
+    Write-Host "    WindowsApps stub on PATH), and disable the Store 'App execution"
+    Write-Host "    alias' for python3. Store Python ships python3.exe already."
+    Write-Host "PREFLIGHT: FAIL -- do not push" -ForegroundColor Red
+    exit 1
+}
+
 function Skip-Stage {
     # An unconfigured placeholder: reports SKIP (counted in the summary) instead
     # of a hollow PASS. configure_project replaces these with real Invoke-Stage bodies.
