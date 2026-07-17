@@ -1,5 +1,6 @@
 import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { afterEach, beforeEach, vi } from 'vitest';
 
 import { CaeBreadcrumb, CaeBreadcrumbItem, CaeBreadcrumbSelectEvent } from './breadcrumb';
 
@@ -270,5 +271,67 @@ describe('CaeBreadcrumb', () => {
     fixture.detectChanges();
     expect(crumbTexts()).toEqual(['Root', 'Leaf']);
     expect(nav.querySelector('[aria-current="page"]')!.textContent!.trim()).toBe('Leaf');
+  });
+
+  // The hit-target floor (#456 residual: --cae-target-min on .cae-breadcrumb__link) is CSS-only; jsdom
+  // can't measure painted layout, so it's verified by review + the M4 browser pass (#405), not a unit
+  // test — matching how the #530 first-pass floors shipped. The list-semantics and dev-warn below ARE
+  // DOM/console-observable, so they carry unit teeth.
+
+  describe('list semantics (#385)', () => {
+    it('marks the <ol>/<li> with explicit role=list/listitem so VoiceOver keeps list semantics under list-style:none', () => {
+      render({ items: TRAIL });
+      expect(nav.querySelector('ol')!.getAttribute('role')).toBe('list');
+      const listitems = Array.from(nav.querySelectorAll('li'));
+      expect(listitems.length).toBe(3);
+      for (const li of listitems) {
+        expect(li.getAttribute('role')).toBe('listitem');
+      }
+    });
+  });
+
+  describe('nameless-crumb dev-warn (#384)', () => {
+    let warn: ReturnType<typeof vi.spyOn>;
+    beforeEach(() => {
+      warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    });
+    afterEach(() => warn.mockRestore());
+
+    it('warns once when an interactive link crumb has an empty label', () => {
+      render({ items: [{ label: '', url: '/x' }, { label: 'Here' }] });
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('nameless'));
+      // 'interactive link crumb' (not the bare 'link', which the static "link-name" text always
+      // matches) — so this pins the crumb.url ? 'link' : 'command' branch.
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('interactive link crumb'));
+    });
+
+    it('warns when an interactive command crumb has a whitespace-only label', () => {
+      render({ items: [{ label: '   ', command: true }, { label: 'Here' }] });
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('command'));
+    });
+
+    it('does NOT warn for a well-formed trail (every interactive crumb is named)', () => {
+      render({ items: TRAIL });
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('does NOT warn for a nameless current page, a disabled crumb, or inert url-less text', () => {
+      // The last crumb is the current page (inert text) even with a url — a nameless one is a different,
+      // non-4.1.2 concern, out of #384's scope (teeth for the isCurrent guard).
+      render({
+        items: [
+          { label: 'Root', url: '/' },
+          { label: '', url: '/current' },
+        ],
+      });
+      // A disabled crumb (even with a url) is inert, and a url-less non-command crumb is inert text
+      // (teeth for the !disabled and interactive guards).
+      render({
+        items: [{ label: '', url: '/x', disabled: true }, { label: '' }, { label: 'End' }],
+      });
+      expect(warn).not.toHaveBeenCalled();
+    });
   });
 });

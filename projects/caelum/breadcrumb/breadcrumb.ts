@@ -1,4 +1,12 @@
-import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  effect,
+  input,
+  isDevMode,
+  output,
+} from '@angular/core';
 
 /**
  * One crumb in a `cae-breadcrumb` trail. A crumb is a labelled ancestor; when it carries a `url` it
@@ -28,7 +36,8 @@ export interface CaeBreadcrumbItem {
    * `url` is set (a link takes precedence — intercept its navigation via the event's `originalEvent`),
    * on the current/last crumb (never interactive), or when `disabled`. Wire the action to `(itemSelect)`.
    * Give it a non-empty `label`: that text is the button's accessible name (an empty label yields a
-   * nameless button — axe `button-name`, WCAG 4.1.2), the same requirement a link crumb's label carries.
+   * nameless button — axe `button-name`, WCAG 4.1.2), the same requirement a link crumb's label carries;
+   * a dev-mode `console.warn` fires if any interactive crumb's label is empty (#384).
    */
   command?: boolean;
 }
@@ -55,7 +64,9 @@ export interface CaeBreadcrumbSelectEvent {
  * the laziest-sufficient rung: semantic markup plus token styling.
  *
  * **The structure.** A `<nav>` with an accessible name (`[ariaLabel]`, default `"Breadcrumb"`, so
- * multiple navs on a page stay distinguishable) wraps an `<ol>` (the crumbs are ordered).
+ * multiple navs on a page stay distinguishable) wraps an `<ol>` (the crumbs are ordered) carrying
+ * explicit `role="list"`/`"listitem"` — `list-style:none` otherwise strips the list semantics under
+ * WebKit/VoiceOver, leaving the trail as loose text with no list boundary (#385).
  * `[home]` (parity with `p-breadcrumb`'s home item) and `[items]` render as **one trail** — home is
  * pinned first. The **last** crumb of that combined trail is the current page (plain text with
  * `aria-current="page"`, never a self-link); every earlier crumb with a `url` is a real `<a href>`,
@@ -99,9 +110,13 @@ export interface CaeBreadcrumbSelectEvent {
   template: `
     @if (crumbs().length) {
       <nav [attr.aria-label]="ariaLabel().trim() || 'Breadcrumb'">
-        <ol class="cae-breadcrumb__list">
+        <!-- role="list"/"listitem": list-style:none strips WebKit/VoiceOver's implicit list semantics,
+             so name them explicitly — otherwise Safari+VoiceOver announce the trail as loose text with
+             no "list, N items" boundary (#385; the cae-file-upload precedent). Redundant-but-harmless on
+             conforming engines; an <ol>'s ordinal nicety is a fair trade for a list that survives at all. -->
+        <ol class="cae-breadcrumb__list" role="list">
           @for (item of crumbs(); track $index; let last = $last; let first = $first) {
-            <li class="cae-breadcrumb__item">
+            <li class="cae-breadcrumb__item" role="listitem">
               @if (!first) {
                 <span class="cae-breadcrumb__sep" aria-hidden="true">{{ separator() }}</span>
               }
@@ -159,6 +174,18 @@ export interface CaeBreadcrumbSelectEvent {
     }
     /* Underlined at rest so the link affordance is not conveyed by colour alone (WCAG 1.4.1 / F73). */
     .cae-breadcrumb__link {
+      /* Floor the hit target to the density-INVARIANT --cae-target-min (24px) so every interactive crumb
+         (a link <a> and a command <button> both carry this class) meets WCAG 2.5.8 in every density arm.
+         A text crumb has no vertical padding — its block-size is pure line-height, which tightens with
+         density/theme — and adjacent crumbs sit only --cae-space-2 apart, so the 2.5.8 spacing exception
+         can't rescue a sub-24px target. inline-flex is required for the min-* floor to take effect on the
+         otherwise-inline <a>; the min only grows a short crumb, leaving normal word-labels shrink-wrapped.
+         (interactive-hit-target floor convention; #456 · PATTERNS §10.) */
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-inline-size: var(--cae-target-min);
+      min-block-size: var(--cae-target-min);
       color: var(--cae-color-primary);
       text-decoration: underline;
       border-radius: var(--cae-radius-sm);
@@ -216,4 +243,29 @@ export class CaeBreadcrumb {
     const home = this.home();
     return home ? [home, ...this.items()] : this.items();
   });
+
+  constructor() {
+    // Dev-only DX guard (#384): an interactive crumb — a link (`url`) or a command button (`command`),
+    // and neither the current page nor `disabled` — with an empty/whitespace `label` renders as a
+    // NAMELESS control (axe link-name / button-name, WCAG 4.1.2). The interface documents "give it a
+    // non-empty label"; this warns when the data violates it. Reactive to crumbs(), so it re-checks
+    // whenever the trail changes; the whole effect is gated out of production by isDevMode(). The current
+    // page (last crumb) is inert text — a nameless one is a different, non-4.1.2 concern, out of scope.
+    if (isDevMode()) {
+      effect(() => {
+        const crumbs = this.crumbs();
+        crumbs.forEach((crumb, i) => {
+          const isCurrent = i === crumbs.length - 1;
+          const isInteractive = !isCurrent && !crumb.disabled && (!!crumb.url || !!crumb.command);
+          if (isInteractive && !crumb.label?.trim()) {
+            console.warn(
+              `cae-breadcrumb: an interactive ${crumb.url ? 'link' : 'command'} crumb has an empty ` +
+                `label, so it renders as a nameless control (axe link-name/button-name, WCAG 4.1.2). ` +
+                'Give every interactive crumb a non-empty `label`.',
+            );
+          }
+        });
+      });
+    }
+  }
 }
