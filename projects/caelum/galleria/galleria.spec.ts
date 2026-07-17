@@ -7,11 +7,7 @@ import { By } from '@angular/platform-browser';
 import { of, Subject } from 'rxjs';
 
 import { CaeDialog } from 'caelum/dialog';
-import {
-  CaeGalleria,
-  type CaeGalleriaItem,
-  type CaeGalleriaResponsiveOption,
-} from './galleria';
+import { CaeGalleria, type CaeGalleriaItem, type CaeGalleriaResponsiveOption } from './galleria';
 import { CaeGalleriaItemDef, CaeGalleriaThumbnailDef } from './galleria-item';
 
 const ITEMS: readonly CaeGalleriaItem[] = [
