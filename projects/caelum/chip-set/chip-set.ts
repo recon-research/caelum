@@ -1,9 +1,11 @@
 import {
+  afterNextRender,
   afterRenderEffect,
   ChangeDetectionStrategy,
   Component,
   ElementRef,
   inject,
+  Injector,
   input,
   isDevMode,
   OnInit,
@@ -103,12 +105,15 @@ export interface CaeChipRemoveEvent<T> {
 })
 export class CaeChipSet<T = string> implements OnInit {
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly injector = inject(Injector);
 
   /**
-   * A focus-holding removal of the LAST chip that hasn't emptied the set yet — armed in {@link onRemoved},
-   * consumed by the empty-set redirect effect (constructor) once {@link items} actually reaches 0, which may
-   * be a later, **async** render. `null` when nothing is pending. Wrapped (not a bare `T`) so any item value,
-   * including a falsy one, stays distinguishable from "not armed". #205.
+   * A focus-holding removal of the LAST enabled chip whose async drop hasn't emptied the set yet — armed in
+   * {@link onRemoved} (only when removing that chip alone would leave no enabled chip), consumed by the redirect
+   * effect (constructor) once {@link items} actually reaches no-enabled-chip, which may be a later, **async**
+   * render (#205). A **synchronous cascade** multi-drop takes the separate one-shot path in {@link onRemoved}
+   * instead (#448). `null` when nothing is pending. Wrapped (not a bare `T`) so any item value, including a
+   * falsy one, stays distinguishable from "not armed".
    */
   private pendingEmptyRemoval: { readonly item: T } | null = null;
 
@@ -165,9 +170,13 @@ export class CaeChipSet<T = string> implements OnInit {
    * **Sync or async drop:** the move is keyed off the set *actually* emptying, so dropping the removed item
    * later (a confirm dialog, `http.delete().subscribe(...)`) still lands focus; at that moment it re-checks
    * that focus is still stranded (`<body>`) or inside the set, so a focus that legitimately moved during the
-   * async gap is never stolen (#205). Scope: this covers a removal that **alone** leaves no focusable chip (the
-   * last enabled chip). An emptying that needs a **cascade / multi-item drop** from a `>1` set, or **concurrent** overlapping
-   * async removals, falls back to the consumer — the single-slot intent can't represent them (#448).
+   * async gap is never stolen (#205). Scope: covers a removal that **alone** leaves no focusable chip (the last
+   * enabled chip, dropped sync or async), and a **synchronous cascade / multi-item drop** — a `(removed)` handler
+   * that filters several items at once, emptying a `>1` set inside the emit (#448). Still out, both falling back
+   * to the consumer: (a) an **async cascade** — the handler drops *untracked* sibling items in a later task,
+   * genuinely indistinguishable from a coincident programmatic clear once deferred; and (b) **concurrent**
+   * overlapping async removals — distinguishable in principle (every departed item was removal-tracked, unlike a
+   * clear) but deferred on the added state a departure-diff would cost (#448).
    *
    * If the target is itself a live region being updated (as Forge's count is) its text may be announced a
    * second time when focus lands — a plain heading/container avoids that. Accepts a raw `HTMLElement` (a
@@ -184,19 +193,19 @@ export class CaeChipSet<T = string> implements OnInit {
   readonly removed = output<CaeChipRemoveEvent<T>>();
 
   constructor() {
-    // Drive the empty-set focus redirect off {@link items} actually reaching 0 — NOT a request-time
-    // afterNextRender — so an ASYNC drop (a confirm dialog, or `(removed)=>http.delete().subscribe(drop)`)
-    // still lands focus once its later render empties the set (#205). afterRenderEffect runs post-render (the
-    // emptied DOM is in place) and re-runs whenever items() changes. Three outcomes once a removal is armed:
+    // Drive the empty-set focus redirect off {@link items} actually reaching no-enabled-chip — NOT a
+    // request-time afterNextRender — so an ASYNC drop (a confirm dialog, or `(removed)=>http.delete()
+    // .subscribe(drop)`) still lands focus once its later render empties the set (#205). afterRenderEffect runs
+    // post-render (the emptied DOM is in place) and re-runs whenever items() changes. This effect owns the
+    // last-enabled-chip path (marker armed in {@link onRemoved}); a SYNCHRONOUS cascade multi-drop takes the
+    // one-shot path there instead (#448). Three outcomes once the marker is armed:
     //   • the removed item is still present → the async drop hasn't landed; keep the marker armed and wait.
-    //   • it's gone but a sibling remains → the grid's own FocusKeyManager redirected; just disarm.
-    //   • it's gone and the set is empty → move focus to emptyFocusTarget, but ONLY after RE-VALIDATING that
-    //     focus is still ours to move (stranded on <body>/null, or still inside the set). If focus legitimately
-    //     moved elsewhere during an async gap we don't steal it (WCAG 3.2.5) — the move-time counterpart to
-    //     onRemoved's request-time heldFocus gate. This ownership re-check BOUNDS a stale marker's harm rather
-    //     than eliminating it: a *cancelled* last-chip removal (item never dropped) leaves the marker armed, so
-    //     a later unrelated empty-on-<body> would redirect — benign (body→target strands no meaningful focus),
-    //     and there is no clean causal expiry signal, so it is an accepted residual (#448).
+    //   • it's gone but an enabled chip remains → the grid's own FocusKeyManager redirected; just disarm.
+    //   • it's gone and no enabled chip is left → land focus on emptyFocusTarget IF it's still ours to move
+    //     (see {@link focusEmptyTargetIfOurs}). This BOUNDS a stale marker's harm rather than eliminating it: a
+    //     *cancelled* last-chip removal (item never dropped) leaves the marker armed, so a later unrelated
+    //     empty-on-<body> would redirect — benign (body→target strands no meaningful focus), and there is no
+    //     clean causal expiry signal, so it is an accepted residual (#448).
     afterRenderEffect(() => {
       const items = this.items();
       const pending = this.pendingEmptyRemoval;
@@ -207,53 +216,90 @@ export class CaeChipSet<T = string> implements OnInit {
       // disabled-only remainder is NOT skippable (the grid can't focus it), so fall through and land on
       // emptyFocusTarget exactly like the fully-empty case (#201).
       if (items.some((x) => !this.isDisabled(x))) return;
-      const active = document.activeElement;
-      const ownsFocus =
-        active === null || active === document.body || this.host.nativeElement.contains(active);
-      if (!ownsFocus) return; // focus moved away during the async gap — don't steal it (WCAG 3.2.5)
-      const target = this.emptyFocusTarget();
-      const el = target instanceof ElementRef ? target.nativeElement : target;
-      el?.focus({ preventScroll: true });
-      // Dev-only DX nudge (zero prod cost): a non-focusable target (a non-interactive element missing
-      // tabindex="-1") or one detached from the DOM makes .focus() a silent no-op, dropping the keyboard user
-      // to <body> — the same as no redirect at all, but hidden. Unlike validateConfig (own inputs, knowable at
-      // init) an EXTERNAL element's focusability is only knowable here, after the call — so the guard lives in
-      // this effect (#206). Only nudge when a target was actually bound. The activeElement compare assumes the
-      // documented light-DOM target (a heading / status region); a shadow-DOM or focus-forwarding target can
-      // retarget activeElement to its host, a benign dev-only false positive — accepted rather than shipping
-      // an untestable shadow-walk for unsupported use.
-      if (isDevMode() && el && document.activeElement !== el) {
-        console.warn(
-          'cae-chip-set: [emptyFocusTarget] did not receive focus after the set emptied — the element is likely not focusable (a non-interactive target needs tabindex="-1") or is detached from the DOM.',
-        );
-      }
+      this.focusEmptyTargetIfOurs();
     });
   }
 
   /**
+   * Land focus on {@link emptyFocusTarget} after the set reached no-enabled-chip — but ONLY after re-validating
+   * that focus is still ours to move (stranded on `<body>`/null, or still inside the set). If focus legitimately
+   * moved elsewhere (an async gap, or a concurrent interaction) we don't steal it (WCAG 3.2.5) — the move-time
+   * counterpart to onRemoved's request-time heldFocus gate. Shared by the async last-chip effect (constructor)
+   * and the synchronous-cascade one-shot ({@link redirectAfterSyncCascade}).
+   */
+  private focusEmptyTargetIfOurs(): void {
+    const active = document.activeElement;
+    const ownsFocus =
+      active === null || active === document.body || this.host.nativeElement.contains(active);
+    if (!ownsFocus) return; // focus moved away — don't steal it (WCAG 3.2.5)
+    const target = this.emptyFocusTarget();
+    const el = target instanceof ElementRef ? target.nativeElement : target;
+    el?.focus({ preventScroll: true });
+    // Dev-only DX nudge (zero prod cost): a non-focusable target (a non-interactive element missing
+    // tabindex="-1") or one detached from the DOM makes .focus() a silent no-op, dropping the keyboard user to
+    // <body> — the same as no redirect at all, but hidden. Unlike validateConfig (own inputs, knowable at init)
+    // an EXTERNAL element's focusability is only knowable here, after the call — so the guard lives here (#206).
+    // Only nudge when a target was actually bound. The activeElement compare assumes the documented light-DOM
+    // target (a heading / status region); a shadow-DOM or focus-forwarding target can retarget activeElement to
+    // its host, a benign dev-only false positive — accepted rather than shipping an untestable shadow-walk.
+    if (isDevMode() && el && document.activeElement !== el) {
+      console.warn(
+        'cae-chip-set: [emptyFocusTarget] did not receive focus after the set emptied — the element is likely not focusable (a non-interactive target needs tabindex="-1") or is detached from the DOM.',
+      );
+    }
+  }
+
+  /**
    * Chip-removal request handler. Emits {@link removed} (the consumer owns the drop), then — when the removal
-   * (a) held focus inside the set and (b) targeted the LAST remaining chip — arms the empty-set focus
-   * redirect. Both conditions are captured **before** the emit, since a synchronous drop mutates {@link items}
-   * during it. The actual move is driven off `items` emptying (constructor effect), so a consumer that drops
-   * the item **asynchronously** (a confirm dialog, `http.delete().subscribe(...)`) still lands focus once the
-   * later render empties the set (#205). A non-last removal leaves a sibling the grid redirects to; a remove
-   * that didn't hold focus (a non-focusing pointer × in Safari/Firefox, or focus already elsewhere) must never
-   * yank focus — so neither arms the redirect (WCAG 3.2.x, the #189 anti-steal principle).
+   * **held focus inside the set** — routes the empty-set focus redirect down one of two paths by the pre-emit
+   * last-ness (captured before the emit, since a synchronous drop mutates {@link items} during it):
+   *  - **Last enabled chip** → arm {@link pendingEmptyRemoval}; the constructor effect lands focus once `items`
+   *    actually empties, so an **async** drop (a confirm dialog, `http.delete().subscribe(...)`) still works (#205).
+   *  - **Not last** → schedule a one-shot post-render check ({@link redirectAfterSyncCascade}) that redirects
+   *    only if the (removed) handler **synchronously** cascaded the set empty from `>1` (#448); an async or
+   *    concurrent emptying falls back to the consumer (scope + why → {@link emptyFocusTarget}).
+   * A remove that didn't hold focus (a non-focusing pointer × in Safari/Firefox, or focus already elsewhere)
+   * takes neither path — it must never yank focus (WCAG 3.2.x, the #189 anti-steal principle).
    */
   protected onRemoved(item: T, index: number): void {
     // Defence in depth: a locked/disabled chip renders no × and Material won't fire (removed) on a
     // non-removable chip, but never emit a removal request for one even if a stray event arrives.
     if (!this.isRemovable(item)) return;
     const heldFocus = this.host.nativeElement.contains(document.activeElement);
-    // Arm the empty-set redirect when this removal will leave NO focusable chip for Material's
-    // FocusKeyManager to land on — the set fully empties, OR only DISABLED chips remain. Material skips
-    // disabled chips in its roving key manager and MatChipGrid.focus() no-ops on a disabled-only set, so
-    // without this a keyboard remove is dropped to <body> even though a (disabled) "sibling" remains — the
-    // exact strand this component exists to prevent (#201). Captured before emit(), since a synchronous
-    // drop mutates items() during it.
-    const noEnabledChipLeft = !this.items().some((x) => x !== item && !this.isDisabled(x));
-    this.removed.emit({ item, index });
-    if (heldFocus && noEnabledChipLeft) this.pendingEmptyRemoval = { item };
+    // Whether removing THIS chip alone would leave no focusable chip — the set fully empties, OR only DISABLED
+    // chips remain (Material skips disabled chips in its roving key manager and MatChipGrid.focus() no-ops on a
+    // disabled-only set, so without a redirect a keyboard remove drops to <body> even though a disabled
+    // "sibling" remains — the exact strand #201 prevents). Captured PRE-emit, since a synchronous drop mutates
+    // items() during it.
+    const emptiesAlone = !this.items().some((x) => x !== item && !this.isDisabled(x));
+    this.removed.emit({ item, index }); // consumer owns the drop — sync or async, and may cascade to siblings
+    if (!heldFocus) return; // the removal didn't hold focus → never steal it from elsewhere (WCAG 3.2.x, #189)
+    if (emptiesAlone) {
+      // Predicted last-enabled-chip removal — the async-safe path (#205): the drop may land later (a confirm
+      // dialog / http.delete().subscribe(drop)), so let the effect redirect once items() actually empties.
+      this.pendingEmptyRemoval = { item };
+    } else {
+      // Not last on its own — but the (removed) handler may have SYNCHRONOUSLY cascaded, dropping this chip AND
+      // siblings and emptying a >1 set in the same change-detection flush (#448). Check ONCE after the removal's
+      // render: a synchronous drop has propagated (the set is empty → redirect); an async drop has NOT (the item
+      // is still present → no-op, leaving no stale marker). Async / concurrent emptyings stay the consumer
+      // fallback (scope + why on {@link emptyFocusTarget}).
+      afterNextRender(() => this.redirectAfterSyncCascade(item), { injector: this.injector });
+    }
+  }
+
+  /**
+   * One-shot post-render check for a **synchronous cascade** removal (#448): if the just-removed `item` is gone
+   * and no enabled chip remains, the (removed) handler emptied a `>1` set inside the removal's change-detection
+   * flush — a real removal-caused emptying — so land focus on {@link emptyFocusTarget}. If `item` is still
+   * present the drop was async (no-op here — the deferred-emptying fallback lives on {@link emptyFocusTarget}),
+   * and a surviving enabled chip means the grid's FocusKeyManager already redirected.
+   */
+  private redirectAfterSyncCascade(item: T): void {
+    const items = this.items();
+    if (items.includes(item)) return; // async drop — not a synchronous cascade
+    if (items.some((x) => !this.isDisabled(x))) return; // an enabled chip remains → grid redirected
+    this.focusEmptyTargetIfOurs();
   }
 
   /** The remove button's accessible name: the {@link removeAriaLabel} override, else `"Remove <label>"`. */

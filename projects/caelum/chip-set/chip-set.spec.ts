@@ -324,6 +324,132 @@ describe('CaeChipSet', () => {
     expect(document.activeElement).toBe(extBtn); // not stolen to the empty-focus target
   });
 
+  it('lands focus on [emptyFocusTarget] when a SYNCHRONOUS cascade removal empties a >1 set (#448)', async () => {
+    // #448: a (removed) handler that drops SEVERAL items at once — a parent-cascades-to-children multi-drop —
+    // empties the set from length > 1. The pre-emit "empties alone" predictor is false (children still present),
+    // so the redirect must arm on the POST-emit observed emptying. Synchronous ⇒ unambiguously removal-caused
+    // (no async gap for a coincident clear). FAILS without the emptiedNow trigger — focus falls to <body>.
+    @Component({
+      imports: [CaeChipSet],
+      template: `
+        <cae-chip-set
+          [items]="items()"
+          [emptyFocusTarget]="statusRef()"
+          (removed)="onRemoved($event)"
+        />
+        <p #status tabindex="-1">status</p>
+      `,
+    })
+    class CascadeHost {
+      items = signal<readonly string[]>(['parent', 'child-a', 'child-b']);
+      readonly statusRef = viewChild<ElementRef<HTMLElement>>('status');
+      onRemoved(e: CaeChipRemoveEvent<string>): void {
+        // Removing the parent cascades to its children — the whole set empties synchronously from length 3.
+        if (e.item === 'parent') this.items.set([]);
+        else this.items.update((l) => l.filter((t) => t !== e.item));
+      }
+    }
+    await TestBed.configureTestingModule({ imports: [CascadeHost] }).compileComponents();
+    const f = TestBed.createComponent(CascadeHost);
+    el = f.nativeElement as HTMLElement;
+    document.body.appendChild(el);
+    f.detectChanges();
+    await f.whenStable();
+    const parentRemove = removeBtn(rows(f)[0])!; // 'parent'
+    parentRemove.focus();
+    expect(grid(f).contains(document.activeElement)).toBe(true); // focus in the set at removal
+    parentRemove.click(); // cascade-drops all three synchronously inside the emit
+    await settle(f);
+    expect(rows(f).length).toBe(0); // emptied from length 3
+    expect(document.activeElement).toBe(f.componentInstance.statusRef()!.nativeElement); // redirected, not <body>
+  });
+
+  it('does NOT redirect on a coincident programmatic clear during an async NON-last removal (#448 anti-steal)', async () => {
+    // The counterpart guard: once a drop is DEFERRED, an emptying can't be told apart from a coincident
+    // programmatic clear, so the sync-cascade arm must NOT widen the async path. A NON-last chip is removed
+    // async (drop pending) while two siblings remain; the consumer then clears the whole set. The emptying is
+    // the CLEAR's doing, not the removal's → no redirect (WCAG 3.2.5). FAILS if emptiedNow leaked into async.
+    @Component({
+      imports: [CaeChipSet],
+      template: `
+        <cae-chip-set
+          [items]="items()"
+          [emptyFocusTarget]="statusRef()"
+          (removed)="onRemoved($event)"
+        />
+        <p #status tabindex="-1">status</p>
+      `,
+    })
+    class AsyncClearHost {
+      items = signal<readonly string[]>(['a', 'b', 'c']);
+      readonly statusRef = viewChild<ElementRef<HTMLElement>>('status');
+      pendingDrop: (() => void) | null = null;
+      onRemoved(e: CaeChipRemoveEvent<string>): void {
+        this.pendingDrop = () => this.items.update((l) => l.filter((t) => t !== e.item));
+      }
+      clear(): void {
+        this.items.set([]);
+      }
+    }
+    await TestBed.configureTestingModule({ imports: [AsyncClearHost] }).compileComponents();
+    const f = TestBed.createComponent(AsyncClearHost);
+    el = f.nativeElement as HTMLElement;
+    document.body.appendChild(el);
+    f.detectChanges();
+    await f.whenStable();
+    const aRemove = removeBtn(rows(f)[0])!; // 'a' — a NON-last chip
+    aRemove.focus();
+    expect(grid(f).contains(document.activeElement)).toBe(true);
+    aRemove.click(); // async removal request; the drop is deferred (pendingDrop captured, 'a' still present)
+    await settle(f);
+    expect(rows(f).length).toBe(3); // nothing dropped yet, siblings remain — nothing armed
+    f.componentInstance.clear(); // programmatic clear empties the set
+    await settle(f);
+    expect(rows(f).length).toBe(0);
+    // The emptying was the clear's, not the removal's — focus fell to <body>, not stolen to the target.
+    expect(document.activeElement).not.toBe(f.componentInstance.statusRef()!.nativeElement);
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it('does NOT redirect to [emptyFocusTarget] on a non-last sync removal — focus stays on the grid sibling (#448)', async () => {
+    // The one-shot's "enabled chip remains" guard: a non-last SYNCHRONOUS removal (emptiesAlone false → the
+    // one-shot path) whose drop leaves an enabled sibling must let the grid's FocusKeyManager keep focus on that
+    // sibling, NOT yank it to the target. FAILS if redirectAfterSyncCascade drops its `items.some(enabled)` guard
+    // (the one-shot would then steal focus off the redirected sibling — a WCAG 3.2.5 steal).
+    @Component({
+      imports: [CaeChipSet],
+      template: `
+        <cae-chip-set
+          [items]="items()"
+          [emptyFocusTarget]="statusRef()"
+          (removed)="onRemoved($event)"
+        />
+        <p #status tabindex="-1">status</p>
+      `,
+    })
+    class MultiTargetHost {
+      items = signal<readonly string[]>(['alpha', 'beta', 'gamma']);
+      readonly statusRef = viewChild<ElementRef<HTMLElement>>('status');
+      onRemoved(e: CaeChipRemoveEvent<string>): void {
+        this.items.update((l) => l.filter((t) => t !== e.item));
+      }
+    }
+    await TestBed.configureTestingModule({ imports: [MultiTargetHost] }).compileComponents();
+    const f = TestBed.createComponent(MultiTargetHost);
+    el = f.nativeElement as HTMLElement;
+    document.body.appendChild(el);
+    f.detectChanges();
+    await f.whenStable();
+    const betaRemove = removeBtn(rows(f)[1])!; // 'beta' — a non-last middle chip
+    betaRemove.focus();
+    expect(grid(f).contains(document.activeElement)).toBe(true);
+    betaRemove.click(); // sync drop of 'beta'; alpha + gamma remain → one-shot fires but must NOT redirect
+    await settle(f);
+    expect(rows(f).length).toBe(2);
+    expect(document.activeElement).not.toBe(f.componentInstance.statusRef()!.nativeElement); // not the target
+    expect(grid(f).contains(document.activeElement)).toBe(true); // grid kept focus on a sibling
+  });
+
   it('dev-warns when [emptyFocusTarget] is non-focusable and does not receive focus (#206)', async () => {
     // The DX guard: a target missing tabindex="-1" (or detached) makes .focus() a silent no-op, dropping
     // the keyboard user to <body> — same as no redirect, but hidden. Here the target is a plain <p> (not
