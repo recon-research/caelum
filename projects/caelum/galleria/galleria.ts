@@ -15,6 +15,7 @@ import {
   isDevMode,
   model,
   numberAttribute,
+  signal,
   untracked,
   viewChildren,
 } from '@angular/core';
@@ -160,40 +161,84 @@ let nextUniqueId = 0;
           </div>
 
           @if (hasThumbnails()) {
-            <div
-              class="cae-galleria__thumbs"
-              role="tablist"
-              [class.cae-galleria__thumbs--windowed]="windowed()"
-              [style.--cae-galleria-num-visible]="windowed() ? visibleCount() : null"
-              [attr.aria-label]="thumbnailsLabel()"
-              [attr.aria-orientation]="thumbsVertical() ? 'vertical' : null"
-            >
-              @for (item of items(); track $index; let i = $index) {
+            <!-- The strip is shared via a template: rendered BARE (byte-identical to a strip with no
+                 navigators, a direct __layout child) when paging is off, or flanked by the pointer paging
+                 navigators inside a wrap when on. The wrap flips to a column so the arrows sit before/after a
+                 vertical strip on its scroll axis. -->
+            <ng-template #stripTpl>
+              <div
+                class="cae-galleria__thumbs"
+                role="tablist"
+                [id]="thumbListId"
+                [class.cae-galleria__thumbs--windowed]="windowed()"
+                [style.--cae-galleria-num-visible]="windowed() ? visibleCount() : null"
+                [attr.aria-label]="thumbnailsLabel()"
+                [attr.aria-orientation]="thumbsVertical() ? 'vertical' : null"
+              >
+                @for (item of items(); track $index; let i = $index) {
+                  <button
+                    #thumbBtn
+                    type="button"
+                    role="tab"
+                    class="cae-galleria__thumb"
+                    [class.cae-galleria__thumb--active]="i === clampedIndex()"
+                    [id]="tabId(i)"
+                    [attr.aria-selected]="i === clampedIndex()"
+                    [attr.aria-controls]="panelId"
+                    [attr.aria-label]="thumbLabel(item, i)"
+                    [tabindex]="i === clampedIndex() ? 0 : -1"
+                    (click)="select(i)"
+                    (keydown)="onThumbKeydown($event, i)"
+                  >
+                    @if (thumbnailTemplate(); as tpl) {
+                      <ng-container
+                        [ngTemplateOutlet]="tpl"
+                        [ngTemplateOutletContext]="templateContext(item, i)"
+                      ></ng-container>
+                    } @else {
+                      <img class="cae-galleria__thumb-image" [src]="thumbSrc(item)" alt="" />
+                    }
+                  </button>
+                }
+              </div>
+            </ng-template>
+
+            @if (thumbNavActive()) {
+              <div
+                class="cae-galleria__thumbs-wrap"
+                [class.cae-galleria__thumbs-wrap--vertical]="thumbsVertical()"
+              >
                 <button
-                  #thumbBtn
                   type="button"
-                  role="tab"
-                  class="cae-galleria__thumb"
-                  [class.cae-galleria__thumb--active]="i === clampedIndex()"
-                  [id]="tabId(i)"
-                  [attr.aria-selected]="i === clampedIndex()"
-                  [attr.aria-controls]="panelId"
-                  [attr.aria-label]="thumbLabel(item, i)"
-                  [tabindex]="i === clampedIndex() ? 0 : -1"
-                  (click)="select(i)"
-                  (keydown)="onThumbKeydown($event, i)"
+                  class="cae-galleria__thumb-nav cae-galleria__thumb-nav--prev"
+                  [attr.aria-label]="prevThumbnailsAriaLabel()"
+                  [attr.aria-controls]="thumbListId"
+                  [attr.aria-disabled]="thumbsAtStart() ? 'true' : null"
+                  (click)="pageThumbs(-1)"
                 >
-                  @if (thumbnailTemplate(); as tpl) {
-                    <ng-container
-                      [ngTemplateOutlet]="tpl"
-                      [ngTemplateOutletContext]="templateContext(item, i)"
-                    ></ng-container>
-                  } @else {
-                    <img class="cae-galleria__thumb-image" [src]="thumbSrc(item)" alt="" />
-                  }
+                  <span
+                    class="cae-galleria__chevron cae-galleria__thumb-chevron--prev"
+                    aria-hidden="true"
+                  ></span>
                 </button>
-              }
-            </div>
+                <ng-container [ngTemplateOutlet]="stripTpl"></ng-container>
+                <button
+                  type="button"
+                  class="cae-galleria__thumb-nav cae-galleria__thumb-nav--next"
+                  [attr.aria-label]="nextThumbnailsAriaLabel()"
+                  [attr.aria-controls]="thumbListId"
+                  [attr.aria-disabled]="thumbsAtEnd() ? 'true' : null"
+                  (click)="pageThumbs(1)"
+                >
+                  <span
+                    class="cae-galleria__chevron cae-galleria__thumb-chevron--next"
+                    aria-hidden="true"
+                  ></span>
+                </button>
+              </div>
+            } @else {
+              <ng-container [ngTemplateOutlet]="stripTpl"></ng-container>
+            }
           }
         </div>
 
@@ -321,9 +366,10 @@ let nextUniqueId = 0;
       border-end-start-radius: var(--cae-radius-md);
       border-end-end-radius: var(--cae-radius-md);
     }
-    /* Nav + fullscreen buttons: token-styled, glyphs drawn from currentColor — no icon font. */
+    /* Nav + fullscreen + thumbnail-paging buttons: token-styled, glyphs drawn from currentColor — no icon font. */
     .cae-galleria__nav,
-    .cae-galleria__fullscreen {
+    .cae-galleria__fullscreen,
+    .cae-galleria__thumb-nav {
       flex: 0 0 auto;
       display: inline-flex;
       align-items: center;
@@ -348,14 +394,20 @@ let nextUniqueId = 0;
     }
     /* Ends use aria-disabled (not the disabled property) so the focused button KEEPS focus instead of
        blurring to <body> when it dims at an end (WCAG 2.4.3); prev()/next() already no-op there. */
-    .cae-galleria__nav[aria-disabled='true'] {
+    .cae-galleria__nav[aria-disabled='true'],
+    .cae-galleria__thumb-nav[aria-disabled='true'] {
       color: var(--cae-color-on-surface-variant);
       opacity: 0.5;
       cursor: default;
     }
     .cae-galleria__nav:not([aria-disabled='true']):hover,
+    .cae-galleria__thumb-nav:not([aria-disabled='true']):hover,
     .cae-galleria__fullscreen:hover {
       border-color: var(--cae-color-primary);
+    }
+    .cae-galleria__thumb-nav:focus-visible {
+      outline: var(--cae-focus-ring);
+      outline-offset: var(--cae-focus-ring-offset);
     }
     .cae-galleria__chevron {
       display: inline-block;
@@ -392,6 +444,44 @@ let nextUniqueId = 0;
       block-size: 0.7em;
       border: 2px solid currentColor;
       border-radius: var(--cae-radius-sm);
+    }
+    /* Wrap that flanks the strip with its pointer paging navigators (showThumbnailNavigators). Row for a
+       horizontal strip ([prev] strip [next]); column for a vertical one ([up] / strip / [down]). Rendered
+       ONLY when paging is active — an un-paged strip is emitted bare, so its layout stays byte-identical. */
+    .cae-galleria__thumbs-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--cae-space-2);
+      min-inline-size: 0;
+    }
+    .cae-galleria__thumbs-wrap--vertical {
+      flex-direction: column;
+    }
+    /* Paging chevrons re-aim by axis, in their OWN classes so the item-nav chevron rotations never reach them.
+       Horizontal: prev points to the strip start (left LTR / right RTL), next to the end. Vertical: prev up,
+       next down — a physical block axis, so RTL leaves it (the RTL rules are scoped away from --vertical). */
+    .cae-galleria__thumb-chevron--prev {
+      transform: rotate(135deg);
+    }
+    .cae-galleria__thumb-chevron--next {
+      transform: rotate(-45deg);
+    }
+    :host(.cae-galleria--rtl)
+      .cae-galleria__thumbs-wrap:not(.cae-galleria__thumbs-wrap--vertical)
+      .cae-galleria__thumb-chevron--prev {
+      transform: rotate(-45deg);
+    }
+    :host(.cae-galleria--rtl)
+      .cae-galleria__thumbs-wrap:not(.cae-galleria__thumbs-wrap--vertical)
+      .cae-galleria__thumb-chevron--next {
+      transform: rotate(135deg);
+    }
+    .cae-galleria__thumbs-wrap--vertical .cae-galleria__thumb-chevron--prev {
+      transform: rotate(225deg);
+    }
+    .cae-galleria__thumbs-wrap--vertical .cae-galleria__thumb-chevron--next {
+      transform: rotate(45deg);
     }
     /* Thumbnail strip: a horizontally-scrollable row (top/bottom); the active thumb is scrolled into view on
        nav. The gap from the main view comes from the layout box gap (not a margin here) so it is uniform
@@ -530,13 +620,34 @@ export class CaeGalleria {
   /** Show the prev/next navigators over the main image (default on). Hidden for a single image. */
   readonly showNavigators = input(true, { transform: booleanAttribute });
   /**
+   * Show pointer paging navigators that step the **thumbnail strip** one window at a time (`p-galleria`'s
+   * `showThumbnailNavigators`; default OFF). They render only when the strip is actually windowed
+   * (`[numVisible]` caps it below the item count) — with no window there is nothing to page, so they stay
+   * hidden. Naming note: Caelum keeps {@link showNavigators} for the **item** arrows (rather than renaming
+   * it to p-galleria's `showItemNavigators`, which would break existing consumers), so the pair reads
+   * `showNavigators` + `showThumbnailNavigators` (#288). Paging shifts a window-start index by
+   * {@link numVisible} thumbnails; the arrows dim at the strip ends via `aria-disabled` (never native
+   * `[disabled]`, which would blur focus to `<body>` — the aria-disabled-at-bounds house pattern) and
+   * re-aim under RTL / a vertical strip like the item chevrons. Keyboard users page the strip with the
+   * arrow keys on the roving tablist regardless; these are the equivalent pointer affordance. The
+   * strip's pixel-exact scroll landing is browser-verified (#240). Inert when the strip is not windowed.
+   *
+   * Known edges (both narrow, filed #535; neither affects the default opt-out path): the pager tracks its
+   * own window index, independent of the strip's native scroll — a pointer user who *manually* scrolls the
+   * strip and then pages will see it snap back to the paged window; and toggling this input (or
+   * {@link numVisible} across the windowed threshold) at runtime re-stamps the strip, so a thumbnail
+   * focused at that instant loses focus.
+   */
+  readonly showThumbnailNavigators = input(false, { transform: booleanAttribute });
+  /**
    * Fullscreen-only mode (p-galleria `[fullScreen]`, default off). When true the galleria renders **no
    * inline UI** — it is an overlay-only component whose fullscreen lightbox is opened by a consumer trigger
    * through {@link visible} (there is no inline button in this mode). Default false keeps the inline layout
    * byte-identical. The inline-strip inputs — {@link showThumbnails}, {@link numVisible},
    * {@link thumbnailsPosition}, {@link showIndicators}, {@link showNavigators} — are **inert** here: the
    * lightbox viewer navigates by prev/next + a position counter, with no thumbnail strip (a deliberate
-   * divergence from p-galleria's masked strip). A **static** mode flag, set once at creation: toggling it
+   * divergence from p-galleria's masked strip) — so {@link showThumbnailNavigators} is inert here too. A
+   * **static** mode flag, set once at creation: toggling it
    * `true`→`false` while the lightbox is open is unsupported — it would render the inline layout *and* leave
    * the overlay open at once (nothing reconciles them on a `fullScreen` change).
    */
@@ -602,12 +713,18 @@ export class CaeGalleria {
   readonly closeAriaLabel = input('Close');
   /** Accessible name for the thumbnail tablist. */
   readonly thumbnailsLabel = input('Image thumbnails');
+  /** Accessible name for the {@link showThumbnailNavigators} "previous thumbnails" paging button. */
+  readonly prevThumbnailsAriaLabel = input('Previous thumbnails');
+  /** Accessible name for the {@link showThumbnailNavigators} "next thumbnails" paging button. */
+  readonly nextThumbnailsAriaLabel = input('Next thumbnails');
   /** Accessible name for the indicator-dots group. */
   readonly indicatorsLabel = input('Choose image to display');
 
   /** Per-instance id root so `panelId`/`tabId` never collide across galleries on one page. */
   private readonly uid = nextUniqueId++;
   protected readonly panelId = `cae-galleria-panel-${this.uid}`;
+  /** Stable id for the thumbnail tablist — the paging navigators' `aria-controls` target. */
+  protected readonly thumbListId = `cae-galleria-thumblist-${this.uid}`;
   /** Stable id for thumbnail tab `i` — the tabpanel's `aria-labelledby` points at the active one. */
   protected tabId(i: number): string {
     return `cae-galleria-tab-${this.uid}-${i}`;
@@ -676,6 +793,30 @@ export class CaeGalleria {
     () => this.hasThumbnails() && this.visibleCount() >= 1 && this.visibleCount() < this.count(),
   );
 
+  /**
+   * Whether the pointer thumbnail-paging navigators are live: opted in AND the strip is actually windowed
+   * (nothing to page otherwise). Gating on {@link windowed} keeps the un-windowed strip byte-identical —
+   * the whole page-index model below is inert until this is true.
+   */
+  protected readonly thumbNavActive = computed(
+    () => this.showThumbnailNavigators() && this.windowed(),
+  );
+  /**
+   * The index of the first thumbnail in the visible window when paging via {@link showThumbnailNavigators}.
+   * The single source of truth for the paged strip position: the arrows shift it by {@link visibleCount},
+   * and selection reconciles it (see the constructor effect) so the active thumb stays in view. Inert
+   * unless {@link thumbNavActive}.
+   */
+  private readonly thumbWindowStart = signal(0);
+  /** The largest valid {@link thumbWindowStart} — pages stop here so the last window is full, not past the end. */
+  protected readonly maxThumbStart = computed(() =>
+    Math.max(0, this.count() - this.visibleCount()),
+  );
+  /** At the first window — the "previous thumbnails" arrow dims (aria-disabled). Pure arithmetic (jsdom-testable). */
+  protected readonly thumbsAtStart = computed(() => this.thumbWindowStart() <= 0);
+  /** At the last window — the "next thumbnails" arrow dims (aria-disabled). */
+  protected readonly thumbsAtEnd = computed(() => this.thumbWindowStart() >= this.maxThumbStart());
+
   constructor() {
     // Tear down this gallery's lightbox when the host is destroyed while it's still open (#294): close the
     // modal so focus isn't stranded on <body> with no live restore target. The afterClosed subscription is
@@ -716,8 +857,37 @@ export class CaeGalleria {
     // plain re-render, so it won't tug a user's manual strip scroll. Gated to windowed to leave the un-windowed
     // default byte-identical.
     afterRenderEffect(() => {
-      if (!this.windowed()) return;
+      // Nav mode drives the strip position from thumbWindowStart (below) instead, so this
+      // selection-follow scroll would fight it — leave it to the un-paged windowed strip.
+      if (!this.windowed() || this.thumbNavActive()) return;
       this.scrollThumbIntoView(this.clampedIndex());
+    });
+
+    // Nav mode only: keep the window-start index valid AND the active thumb inside the window. Runs on a
+    // selection / numVisible / count change: clamps thumbWindowStart down when the strip shrinks, then pages
+    // the window to reveal the active thumb (above it → align to it; below it → align its trailing edge). It
+    // reads thumbWindowStart via untracked so its own write can't re-trigger it (no loop); the paging arrows
+    // are the other writer (an independent browse, which this leaves alone unless the selection moves out).
+    effect(() => {
+      if (!this.thumbNavActive()) return;
+      const sel = this.clampedIndex();
+      const n = this.visibleCount();
+      const maxStart = this.maxThumbStart();
+      const start = untracked(() => this.thumbWindowStart());
+      let next = Math.min(start, maxStart);
+      if (sel < next) next = sel;
+      else if (sel >= next + n) next = sel - n + 1;
+      next = Math.max(0, Math.min(next, maxStart));
+      if (next !== start) this.thumbWindowStart.set(next);
+    });
+
+    // Nav mode only: align the window-start thumbnail to the strip's start edge whenever the window moves
+    // (paging or a selection reconcile). Native scroll → RTL/axis-correct for free; scrollIntoView is a
+    // jsdom no-op stub (its landing is #240-verified — assert the call, not the paint), same as the
+    // un-paged path's scrollThumbIntoView.
+    afterRenderEffect(() => {
+      if (!this.thumbNavActive()) return;
+      this.scrollThumbToWindowStart(this.thumbWindowStart());
     });
 
     // Dev-only guidance: an unlabeled gallery, or images missing alt text.
@@ -820,6 +990,32 @@ export class CaeGalleria {
    * is #240-verified; the optional call also guards a missing implementation); assert the call, not the paint. */
   private scrollThumbIntoView(i: number): void {
     this.thumbBtns()[i]?.nativeElement.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }
+
+  /**
+   * Page the windowed thumbnail strip by one window ({@link visibleCount} thumbnails); `dir` is `-1`
+   * (previous) or `+1` (next). The `Math.min`/`Math.max` clamp makes it a **no-op at the strip ends** — the
+   * arrow is `aria-disabled` there but still focusable, so this guard (not a native `[disabled]`) is what
+   * keeps a keyboard user from being dropped to `<body>`. Inert unless {@link thumbNavActive}.
+   */
+  protected pageThumbs(dir: -1 | 1): void {
+    if (!this.thumbNavActive()) return;
+    const next = Math.max(
+      0,
+      Math.min(this.thumbWindowStart() + dir * this.visibleCount(), this.maxThumbStart()),
+    );
+    if (next !== this.thumbWindowStart()) this.thumbWindowStart.set(next);
+  }
+
+  /** Align the window-start thumbnail to the strip's start edge (block axis for a vertical strip, inline for a
+   * horizontal one; `'start'` is writing-direction-aware, so it's RTL-correct). jsdom-stubbed like
+   * {@link scrollThumbIntoView} — the landing is #240-verified. */
+  private scrollThumbToWindowStart(i: number): void {
+    this.thumbBtns()[i]?.nativeElement.scrollIntoView?.(
+      this.thumbsVertical()
+        ? { block: 'start', inline: 'nearest' }
+        : { block: 'nearest', inline: 'start' },
+    );
   }
 
   /**

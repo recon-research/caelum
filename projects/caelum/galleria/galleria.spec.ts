@@ -510,6 +510,185 @@ describe('CaeGalleria', () => {
     });
   });
 
+  describe('thumbnail paging navigators ([showThumbnailNavigators], #288)', () => {
+    const SIX: readonly CaeGalleriaItem[] = [
+      { src: 'a.jpg', alt: 'Alpha' },
+      { src: 'b.jpg', alt: 'Bravo' },
+      { src: 'c.jpg', alt: 'Charlie' },
+      { src: 'd.jpg', alt: 'Delta' },
+      { src: 'e.jpg', alt: 'Echo' },
+      { src: 'f.jpg', alt: 'Foxtrot' },
+    ];
+    const navPrevThumb = (): HTMLButtonElement | null =>
+      el.querySelector('.cae-galleria__thumb-nav--prev');
+    const navNextThumb = (): HTMLButtonElement | null =>
+      el.querySelector('.cae-galleria__thumb-nav--next');
+    const wrap = (): HTMLElement | null => el.querySelector('.cae-galleria__thumbs-wrap');
+    const dis = (b: HTMLButtonElement | null): string | null => b!.getAttribute('aria-disabled');
+    // The window position is otherwise unobservable in jsdom (native scroll; all thumbs always in the DOM,
+    // and the bounds computeds use <=/>= so aria-disabled can't reveal an OUT-OF-RANGE window). We read it
+    // off WHICH thumbnail the window-start scroll targets — a dropped clamp corrupts the index and the NEXT
+    // page lands the wrong thumb. Spy AFTER render so the initial-render scroll isn't captured.
+    const spyScrolls = (): number[] => {
+      const hit: number[] = [];
+      tabs().forEach((t, i) => {
+        t.scrollIntoView = (() => hit.push(i)) as typeof t.scrollIntoView;
+      });
+      return hit;
+    };
+
+    it('are hidden by default even when the strip is windowed (opt-in)', async () => {
+      await render({ items: SIX, numVisible: 2 });
+      expect(navPrevThumb()).toBeNull();
+      expect(navNextThumb()).toBeNull();
+      expect(wrap()).toBeNull(); // the strip renders bare (byte-identical to the un-paged path)
+    });
+
+    it('stay hidden when opted in but the strip is NOT windowed (nothing to page)', async () => {
+      await render({ items: SIX, showThumbnailNavigators: true }); // numVisible 0 → not windowed
+      expect(navPrevThumb()).toBeNull();
+      expect(navNextThumb()).toBeNull();
+      // …and when numVisible covers every thumbnail.
+      fixture.componentRef.setInput('numVisible', 6);
+      await settle();
+      expect(navPrevThumb()).toBeNull();
+    });
+
+    it('render when windowed + opted in — labelled buttons OUTSIDE the tablist (not tabs)', async () => {
+      await render({ items: SIX, numVisible: 2, showThumbnailNavigators: true });
+      expect(navPrevThumb()!.getAttribute('aria-label')).toBe('Previous thumbnails');
+      expect(navNextThumb()!.getAttribute('aria-label')).toBe('Next thumbnails');
+      // The pagers are not tabs and don't join the roving tablist — all 6 tabs stay, none is a pager.
+      expect(tabs()).toHaveLength(6);
+      expect(navPrevThumb()!.getAttribute('role')).toBeNull();
+      expect(navNextThumb()!.getAttribute('role')).toBeNull();
+      // aria-controls points both pagers at the tablist they window.
+      const tablistId = el.querySelector('[role="tablist"]')!.id;
+      expect(tablistId).toBeTruthy();
+      expect(navPrevThumb()!.getAttribute('aria-controls')).toBe(tablistId);
+      expect(navNextThumb()!.getAttribute('aria-controls')).toBe(tablistId);
+    });
+
+    it('dim at the window bounds via aria-disabled and page by one window (visibleCount) on click', async () => {
+      await render({ items: SIX, numVisible: 2, activeIndex: 0, showThumbnailNavigators: true });
+      // Start window [0,2): prev dimmed, next live. maxThumbStart = 6 - 2 = 4.
+      expect(dis(navPrevThumb())).toBe('true');
+      expect(dis(navNextThumb())).toBeNull();
+
+      navNextThumb()!.click();
+      await settle();
+      // windowStart 0 → 2: both live now.
+      expect(dis(navPrevThumb())).toBeNull();
+      expect(dis(navNextThumb())).toBeNull();
+
+      navNextThumb()!.click();
+      await settle();
+      // windowStart 2 → 4 (= maxThumbStart): next dims, prev live.
+      expect(dis(navPrevThumb())).toBeNull();
+      expect(dis(navNextThumb())).toBe('true');
+    });
+
+    it('lower clamp has teeth: a prev-click at the start is a true no-op — the next page still lands window 2', async () => {
+      await render({ items: SIX, numVisible: 2, activeIndex: 0, showThumbnailNavigators: true });
+      const hit = spyScrolls();
+      navPrevThumb()!.click(); // at the start bound → the Math.max(0, …) clamp makes it a no-op
+      await settle();
+      navNextThumb()!.click(); // window 0 → 2
+      await settle();
+      // Correct: prev no-op (no window change → no scroll), next → thumb 2. If Math.max(0, …) were dropped,
+      // prev would set windowStart -2 (scroll no-ops on the missing thumb) and the next page → 0, landing
+      // thumb 0 — never thumb 2. aria-disabled alone can't catch this (−2 <= 0 still reads "at start").
+      expect(hit).toContain(2);
+      expect(hit).not.toContain(0);
+    });
+
+    it('upper clamp has teeth: a next-click at the end is a true no-op — the next prev still lands window 2', async () => {
+      await render({ items: SIX, numVisible: 2, activeIndex: 0, showThumbnailNavigators: true });
+      navNextThumb()!.click(); // 0 → 2
+      await settle();
+      navNextThumb()!.click(); // 2 → 4 (= maxThumbStart)
+      await settle();
+      const hit = spyScrolls();
+      navNextThumb()!.click(); // at the end bound → the Math.min(…, maxThumbStart) clamp no-ops
+      await settle();
+      navPrevThumb()!.click(); // window 4 → 2
+      await settle();
+      // Correct: next no-op, prev → thumb 2. If Math.min were dropped, next would set windowStart 6 and prev
+      // → 4, landing thumb 4 — never thumb 2 (and 6 >= maxThumbStart still reads "at end", so aria misses it).
+      expect(hit).toContain(2);
+      expect(hit).not.toContain(4);
+    });
+
+    it('aligns the window-start thumbnail to the strip start edge on page (scrollIntoView inline:start)', async () => {
+      await render({ items: SIX, numVisible: 2, activeIndex: 0, showThumbnailNavigators: true });
+      const scrollSpy = vi.fn();
+      tabs()[2].scrollIntoView = scrollSpy; // the thumb that becomes windowStart after one page
+      navNextThumb()!.click(); // windowStart 0 → 2
+      await settle();
+      expect(scrollSpy).toHaveBeenCalledWith(expect.objectContaining({ inline: 'start' }));
+    });
+
+    it('reconciles the window to keep the active thumbnail in view when selection jumps out', async () => {
+      await render({ items: SIX, numVisible: 2, activeIndex: 0, showThumbnailNavigators: true });
+      expect(dis(navNextThumb())).toBeNull(); // windowStart 0, not at end
+      // Select image 5 (a non-keyboard path, e.g. lightbox sync) — out of the [0,2) window: reconcile snaps
+      // windowStart to 5 - 2 + 1 = 4 (= maxThumbStart), so the active thumb sits in the last window.
+      fixture.componentRef.setInput('activeIndex', 5);
+      await settle();
+      expect(dis(navNextThumb())).toBe('true'); // now at the end window
+      expect(dis(navPrevThumb())).toBeNull();
+    });
+
+    it('reconciles BACKWARD too — selecting a low image pulls the window down to reveal it', async () => {
+      await render({ items: SIX, numVisible: 2, activeIndex: 5, showThumbnailNavigators: true });
+      expect(dis(navNextThumb())).toBe('true'); // window reconciled to [4,6) at the end
+      const hit = spyScrolls();
+      fixture.componentRef.setInput('activeIndex', 0); // jump below the window (the sel < start branch)
+      await settle();
+      // reconcile: sel 0 < start 4 → windowStart 0 → prev dims, and the window-start scroll targets thumb 0.
+      expect(dis(navPrevThumb())).toBe('true');
+      expect(hit).toContain(0);
+    });
+
+    it('survives a runtime numVisible increase — the window reconciles to stay in range (no out-of-range thumb)', async () => {
+      await render({ items: SIX, numVisible: 2, activeIndex: 4, showThumbnailNavigators: true });
+      navNextThumb()!.click(); // page toward the end (window ≥ [3,5))
+      await settle();
+      // Grow numVisible to 4: maxThumbStart shrinks 4 → 2, so a window ≥ 3 is now out of range. The reconcile
+      // must pull it back; the bounds stay coherent and paging targets only real thumbnails.
+      const hit = spyScrolls();
+      fixture.componentRef.setInput('numVisible', 4);
+      await settle();
+      expect(dis(navNextThumb())).toBe('true'); // window at the (new) end, maxThumbStart = 6 - 4 = 2
+      navPrevThumb()!.click(); // → window 0
+      await settle();
+      expect(hit.every((i) => i >= 0 && i < 6)).toBe(true); // never scrolls a non-existent thumbnail
+      expect(hit).toContain(0);
+    });
+
+    it('flanks a vertical strip — the wrap flips to a column ([thumbnailsPosition="left"])', async () => {
+      await render({
+        items: SIX,
+        numVisible: 2,
+        thumbnailsPosition: 'left',
+        showThumbnailNavigators: true,
+      });
+      expect(wrap()!.classList.contains('cae-galleria__thumbs-wrap--vertical')).toBe(true);
+      expect(navPrevThumb()).not.toBeNull();
+      expect(navNextThumb()).not.toBeNull();
+    });
+
+    it('toggling paging on/off keeps the strip and its roving tabs intact (template re-stamp)', async () => {
+      await render({ items: SIX, numVisible: 2, showThumbnailNavigators: true });
+      expect(tabs()).toHaveLength(6);
+      fixture.componentRef.setInput('showThumbnailNavigators', false);
+      await settle();
+      expect(wrap()).toBeNull(); // back to the bare strip
+      expect(tabs()).toHaveLength(6); // thumbnails survive the re-stamp
+      expect(el.querySelector('[role="tablist"]')).not.toBeNull();
+    });
+  });
+
   describe('fullscreen (openFullscreen config seam — spied CaeDialog.open, no overlay)', () => {
     it('opens the lightbox centered with the current index and the sync + circular seams', async () => {
       await render({ activeIndex: 1, circular: true });
