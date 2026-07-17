@@ -101,8 +101,12 @@ export interface CaeTreeNode {
       gap: var(--cae-space-1);
       min-block-size: var(--cae-space-5);
     }
+    /* Leaf rows have no toggle; this compensator reserves the toggle's footprint so leaf labels line up
+       with expandable siblings. It MUST track the toggle's hit-target floor (--cae-target-min + the row
+       gap), NOT --cae-space-5 — the toggle is now a density-invariant 24px (#456), so a space-5 value
+       (16px at compact) would leave a ragged left edge. */
     .cae-tree__row--leaf {
-      padding-inline-start: var(--cae-space-5);
+      padding-inline-start: calc(var(--cae-target-min) + var(--cae-space-1));
     }
     .cae-tree__toggle {
       display: inline-flex;
@@ -110,6 +114,12 @@ export interface CaeTreeNode {
       justify-content: center;
       inline-size: var(--cae-space-4);
       block-size: var(--cae-space-4);
+      /* Floor the (borderless) toggle's hit target to the density-INVARIANT --cae-target-min (24px) so it
+         holds WCAG 2.5.8 in every density arm — --cae-space-4 tightens to 12px under [data-density=compact].
+         The button is transparent, so this grows only the tap area; the chevron glyph stays centered and
+         unchanged (interactive-hit-target floor convention). */
+      min-inline-size: var(--cae-target-min);
+      min-block-size: var(--cae-target-min);
       padding: 0;
       border: 0;
       background: none;

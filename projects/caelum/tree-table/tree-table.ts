@@ -241,7 +241,10 @@ interface CaeTreeTableRow<T> {
       gap: var(--cae-space-1);
       padding-inline-start: calc(var(--cae-tt-level, 0) * var(--cae-space-4));
     }
-    /* Toggle button + its leaf-row spacer share a width so text lines up across branches and leaves. */
+    /* Toggle button + its leaf-row spacer share a width so text lines up across branches and leaves — so
+       the WCAG 2.5.8 floor goes on the SHARED rule, keeping branch (toggle) and leaf (spacer) aligned. The
+       borderless toggle is a density-invariant 24px (--cae-space-4 would tighten to 12px under compact); the
+       chevron glyph stays centered and unchanged, only the tap area grows (interactive-hit-target floor). */
     .cae-tree-table__toggle,
     .cae-tree-table__toggle-spacer {
       display: inline-flex;
@@ -249,6 +252,8 @@ interface CaeTreeTableRow<T> {
       justify-content: center;
       inline-size: var(--cae-space-4);
       block-size: var(--cae-space-4);
+      min-inline-size: var(--cae-target-min);
+      min-block-size: var(--cae-target-min);
       flex: none;
     }
     .cae-tree-table__toggle {

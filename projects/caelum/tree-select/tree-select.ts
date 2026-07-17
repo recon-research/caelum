@@ -460,8 +460,11 @@ let nextUniqueId = 0;
       padding-inline: var(--cae-space-1);
       border-radius: var(--cae-radius-sm);
     }
+    /* Leaf-row toggle compensator — must track the toggle floor (row padding-inline + --cae-target-min +
+       gap), NOT --cae-space-5: the toggle is a density-invariant 24px (#456), so space-5 (16px at compact)
+       would misalign leaf labels/checkboxes from their expandable siblings. */
     .cae-tree-select__row--leaf {
-      padding-inline-start: var(--cae-space-5);
+      padding-inline-start: calc(var(--cae-space-1) + var(--cae-target-min) + var(--cae-space-1));
     }
     .cae-tree-select__row--selected {
       color: var(--cae-color-primary);
@@ -491,6 +494,12 @@ let nextUniqueId = 0;
       justify-content: center;
       inline-size: var(--cae-space-4);
       block-size: var(--cae-space-4);
+      /* Floor the (borderless) toggle's hit target to the density-INVARIANT --cae-target-min (24px) so it
+         holds WCAG 2.5.8 in every density arm — --cae-space-4 tightens to 12px under [data-density=compact].
+         The button is transparent, so this grows only the tap area; the chevron glyph stays centered and
+         unchanged (interactive-hit-target floor convention). */
+      min-inline-size: var(--cae-target-min);
+      min-block-size: var(--cae-target-min);
       padding: 0;
       border: 0;
       background: none;

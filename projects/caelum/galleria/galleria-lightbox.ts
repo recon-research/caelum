@@ -172,6 +172,10 @@ export interface CaeGalleriaLightboxData {
       justify-content: center;
       inline-size: var(--cae-space-5);
       block-size: var(--cae-space-5);
+      /* Floor the hit target to the density-INVARIANT --cae-target-min (24px) so it holds WCAG 2.5.8
+         under [data-density=compact], where --cae-space-5 tightens to 16px (interactive-hit-target floor). */
+      min-inline-size: var(--cae-target-min);
+      min-block-size: var(--cae-target-min);
       padding: 0;
       border: 1px solid var(--cae-color-border);
       border-radius: var(--cae-radius-full);
