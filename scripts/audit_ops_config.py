@@ -43,8 +43,14 @@ preflight.{sh,ps1} "ops-config audit" stage (the map below includes it).
 import argparse
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
+# Windows cp1252 stdout guard (#296): gate output carries non-ASCII
+# (em-dashes, section signs, file text); a cp1252-strict console mojibakes
+# or crashes an otherwise-green run. Uniform across every gate script.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 # The canonical preflight-stage -> ci.yml-step map. Single-homed: when you add,
 # rename, or drop a gate, this dict is the third file you must touch (after the
@@ -362,6 +368,30 @@ def check_interpreter_spelling(root, problems):
                     )
 
 
+# Hooks exposing a --selftest corpus (exit nonzero on mismatch). #297: the
+# banner's silent-no-banner failure mode is invisible without asserting which
+# banner each real downstream Status shape produces -- run the corpus here so
+# every preflight/CI pass re-proves the detection logic.
+SELFTEST_HOOKS = (".claude/hooks/session_start_banner.py",)
+
+
+def check_hook_selftests(root, problems):
+    for rel in SELFTEST_HOOKS:
+        path = root / rel
+        if not path.is_file():
+            problems.append(f"selftest hook missing: {path} (SELFTEST_HOOKS)")
+            continue
+        try:
+            r = subprocess.run([sys.executable, str(path), "--selftest"],
+                               capture_output=True, text=True, encoding="utf-8",
+                               errors="replace", timeout=30)
+            if r.returncode != 0:
+                fails = "; ".join(l for l in r.stdout.splitlines() if l.startswith("FAIL"))[:300]
+                problems.append(f"hook selftest failed -> {path}: {fails or r.stderr.strip()[:200]}")
+        except Exception as e:
+            problems.append(f"hook selftest could not run -> {path}: {e}")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--root", default=".", help="repo root to audit (default: cwd)")
@@ -408,6 +438,7 @@ def main():
             check_if_mirror(ci_path, problems)
             check_settings(settings_path, root, problems)
     check_interpreter_spelling(root, problems)
+    check_hook_selftests(root, problems)
 
     if problems:
         print()

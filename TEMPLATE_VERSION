@@ -4,6 +4,38 @@
 # template from `sha` to its HEAD to know what changed — without this stamp, every
 # template update is hand archaeology.
 #
+# NOTE (2026-07-17, #518): sync d04440a→79fdfbe (8 commits). REFLUX-HEAVY — most
+# upstream commits fix intakes Caelum itself filed (pyxis#287/#288/#289, all CLOSED),
+# and Caelum's PR #507 (a7823dd) had independently fixed the SAME encoding + banner
+# defects locally (its comments cite #503/#489). This sync CONVERGES Caelum's local
+# form to pyxis's canonical #296/#297/#299 so future syncs stay clean.
+# WHOLESALE (16 machinery files): inject_rule_reminders (#290 AskUserQuestion elicitation
+# matcher); session_start_banner (#297 classify()+--selftest corpus — SUPERSEDES Caelum's
+# equivalent #507 inline regex fix; identical regex, adds the corpus the new gate runs);
+# research_topic SKILL (#313 worker-contract steps 3-5); update_from_template SKILL (#294/#295
+# 4th/5th mirrored-constant note); understand_intent SKILL (NEW, #290); decision.md (#290
+# consequence framing); metrics.py (#296 encoding + #295 CHECKPOINT_PREFIXES=("checkpoint/",));
+# slice_telemetry + _audit_research + _audit_refs + _gen_sections + audit_docs + audit_repo_links
+# + audit_staleness + _audit_links (#296 stdout-guard convergence); _audit_routing (#293 count-
+# anchor tolerates markdown markers). BY HAND (structural divergence — Caelum bits kept):
+# audit_ops_config.py (+import subprocess, +cp1252 guard, +SELFTEST_HOOKS/check_hook_selftests
+# #297; KEPT Caelum STAGE_MAP + PREFLIGHT_SHELLS + run_if_node/Invoke-StageIfNode stage regex
+# #15); preflight.sh + preflight.ps1 (#299 python3 sentinel inserted; KEPT Caelum run_if_node/
+# test_ci bodies). CATALOG: understand_intent registered — README 31→32, MANIFEST skills[],
+# on-disk dir; routing audit 32==32. CONTENT: PROJECT_CONVENTIONS #296 encoding-discipline
+# bullet; AUTOMATION inject_rule_reminders AskUserQuestion row. SETTINGS: AskUserQuestion hook
+# matcher + condensed $comment substance (mechanical, #242); allow/deny UNTOUCHED.
+# #485 RESOLVED by this sync: Caelum's checkpoint branches already adhere to checkpoint/<date>
+# (drift corrected — #517/#515/#513/#508/#505/#487), so CHECKPOINT_PREFIXES=("checkpoint/",)
+# makes the receipts tripwire LIVE; old docs/checkpoint-* PRs self-heal out of the 40-PR window.
+# DEVIATIONS — not taken: (1) research/notes/intent-elicitation.md + agent-project-systems.md
+# — pyxis-DOMAIN (agent-process research, not Caelum's Angular research domain); understand_intent's
+# grounding citation dangles as a code-span (no audit break) → followup #519 to reconcile. (2)
+# research/MANIFEST.json routing for those notes — not taken (notes not imported). (3) settings.json
+# bare-`python` slice_telemetry grant twins (#314, D-210 dual-spelling) — GRANT, SURFACED to owner
+# not applied; Caelum invokes via python3 (already granted) so the bare twin is likely unneeded.
+# No upstream FINDING this sync — Caelum's prior reports (pyxis#287/#288/#289) closed as these fixes.
+#
 # NOTE (2026-07-16, #484): sync 5e8dbc0→d04440a (4 commits). Taken WHOLESALE (all five
 # byte-identical to baseline, ZERO Caelum machinery deviations): inject_rule_reminders.py
 # v2 (#275 first-push -u/--set-upstream re-key, prefix-independent — was inert on non-slice/
@@ -84,7 +116,7 @@
 # re-evaluate at that milestone. Also not taken: pyxis-domain content
 # (research/banked/register-game-engine, EXP-03/04/05, docs/METRICS numbers).
 source: https://github.com/recon-research/pyxis (upstream identified + first synced 2026-07-08, template-sync #245)
-sha: d04440a7d9c6e1e09731aea0c035d06434e505fe (template sync 5e8dbc0→d04440a, #484; synced 2026-07-16)
+sha: 79fdfbe69d4acea904048cd204e58275b7c043f2 (template sync d04440a→79fdfbe, #518; synced 2026-07-17)
 baseline: 276a2d6 (reconstructed — the copy-day HEAD; the original copy recorded no sha, see #245)
 copied: 2026-06-25
-last_update: 2026-07-16
+last_update: 2026-07-17

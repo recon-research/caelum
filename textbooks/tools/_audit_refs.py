@@ -1,8 +1,10 @@
 import re, glob, os, json, sys
-os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # cwd-independent: data lives beside tools/
-# Windows: cp1252 piped stdout would crash on the report's `§` notation (#503).
+# Windows cp1252 stdout guard (#296): gate output carries non-ASCII
+# (em-dashes, section signs, file text); a cp1252-strict console mojibakes
+# or crashes an otherwise-green run. Uniform across every gate script.
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # cwd-independent: data lives beside tools/
 M = json.load(open("MANIFEST.json", encoding="utf-8"))
 # #70: per-book maturity. A citation into a book that is not yet `covered`
 # asserts authority hollow headings don't have (scaffolds are indexed by

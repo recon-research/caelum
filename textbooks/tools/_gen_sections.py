@@ -1,4 +1,9 @@
-import re, json, os
+import re, json, os, sys
+# Windows cp1252 stdout guard (#296): gate output carries non-ASCII
+# (em-dashes, section signs, file text); a cp1252-strict console mojibakes
+# or crashes an otherwise-green run. Uniform across every gate script.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # cwd-independent: data lives beside tools/
 M = json.load(open("MANIFEST.json", encoding="utf-8"))
 by_num = {b["number"]: b for b in M["books"]}
@@ -29,6 +34,5 @@ for num in sorted(by_num):
         if sid is None: continue
         secs.append({"id": sid, "title": clean, "line": i, "level": len(m.group(1))})
     out["books"][str(num)] = {"path": b["path"], "title": b["title"], "section_count": len(secs), "sections": secs}
-# newline pinned: without it Windows writes CRLF and every preflight dirties the tree (#503)
 json.dump(out, open("SECTIONS.json", "w", encoding="utf-8", newline="\n"), indent=1, ensure_ascii=False)
 print(f"Wrote SECTIONS.json: {len(out['books'])} books, {sum(b['section_count'] for b in out['books'].values())} sections")

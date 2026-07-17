@@ -34,6 +34,26 @@ for arg in "$@"; do
     esac
 done
 
+# --- python3 sentinel (#299, intake #289) — shell-level, python-free, FIRST.
+# Every gate below AND every .claude/ hook (guards, telemetry, session banner)
+# plus the statusline runs through python3 — and hooks are fail-open by design,
+# so a dead interpreter removes the guard rails SILENTLY. The banner can't
+# self-report (it is python); preflight is the loud sentinel. Fresh Windows
+# boxes resolve python3 to the dead Microsoft Store alias stub; real installs
+# ship python.exe but no python3.exe (hit live downstream).
+if ! python3 -c 'print("ok")' >/dev/null 2>&1; then
+    echo "FAIL  python3 sentinel — 'python3' is missing or not executable here."
+    echo "  Every gate below and every .claude/ hook depends on it, and hooks are"
+    echo "  fail-open: without it the guards, telemetry, and banner die SILENTLY."
+    echo "  Remedy (Windows): real installs ship python.exe but no python3.exe —"
+    echo "    copy or mklink python.exe -> python3.exe beside it (precedes the"
+    echo "    WindowsApps stub on PATH), and disable the Store 'App execution"
+    echo "    alias' for python3. Store Python ships python3.exe already."
+    echo "  Remedy (Debian/Ubuntu): sudo apt install python3."
+    echo "PREFLIGHT: FAIL — do not push"
+    exit 1
+fi
+
 FAILED=0
 SKIPPED=0
 stage() {

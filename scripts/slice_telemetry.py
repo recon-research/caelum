@@ -39,6 +39,11 @@
 # Single-implementation Python (D-210: `python3` spelling), stdlib only,
 # cwd-independent -- same conventions as metrics.py.
 import json, subprocess, sys, os, datetime, re, socket
+# Windows cp1252 stdout guard (#296): gate output carries non-ASCII
+# (em-dashes, section signs, file text); a cp1252-strict console mojibakes
+# or crashes an otherwise-green run. Uniform across every gate script.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # repo root
 LOCAL = os.path.join(".claude", "metrics")
@@ -53,10 +58,8 @@ def out(msg):
 def gh_json(args):
     """Run a gh command; parsed JSON or None on ANY failure (fail-soft)."""
     try:
-        # encoding pinned: Windows text=True defaults to cp1252, which mangles the
-        # claim comment's `·` (CLAIM_RE never matches) and raises on emoji bytes (#503)
-        r = subprocess.run(["gh"] + args, capture_output=True, text=True,
-                           encoding="utf-8", errors="replace", timeout=90)
+        r = subprocess.run(["gh"] + args, capture_output=True, text=True, timeout=90,
+                           encoding="utf-8", errors="replace")
     except Exception:
         return None
     if r.returncode != 0:
@@ -193,8 +196,8 @@ def cmd_receipt(pr, issue, dry_run):
         return
     try:
         r = subprocess.run(["gh", "pr", "comment", str(pr), "--body", line],
-                           capture_output=True, text=True,
-                           encoding="utf-8", errors="replace", timeout=90)
+                           capture_output=True, text=True, timeout=90,
+                           encoding="utf-8", errors="replace")
         posted = r.returncode == 0
     except Exception:
         posted = False

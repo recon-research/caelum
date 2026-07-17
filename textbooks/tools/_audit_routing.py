@@ -1,4 +1,9 @@
-import json, re, os, glob
+import json, re, os, glob, sys
+# Windows cp1252 stdout guard (#296): gate output carries non-ASCII
+# (em-dashes, section signs, file text); a cp1252-strict console mojibakes
+# or crashes an otherwise-green run. Uniform across every gate script.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # cwd-independent: data lives beside tools/
 M = json.load(open("MANIFEST.json", encoding="utf-8"))
 EV = json.load(open("ROUTING_EVAL.json", encoding="utf-8"))
@@ -115,10 +120,17 @@ if sk_disk:
     # the original "This template's" literal forced awkward wording on every
     # downstream (one forked the regex, re-patching it each sync). Any subject
     # works: "This template's / This project's / <Name>'s N skills total ...".
+    # #293 (intakes #283/#285, both hit at adoption): markdown markers may split
+    # the raw text ("41 skills** total") -- strip *_` before matching, so bold/
+    # emphasis placement can't break the anchor. Interposed PROSE (a parenthetical
+    # between "skills" and "total") stays a reword: tolerating prose would
+    # dissolve the anchor; the FAIL text names that case so the miss diagnoses
+    # itself.
     rp = "../.claude/skills/README.md"
-    rm = re.search(r"(\d+) skills total", open(rp, encoding="utf-8").read()) if os.path.exists(rp) else None
+    rm = (re.search(r"(\d+) skills total", re.sub(r"[*_`]+", "", open(rp, encoding="utf-8").read()))
+          if os.path.exists(rp) else None)
     if not rm:
-        sk_fails.append(f"README prose count phrase missing (\"<N> skills total\") -- keep that anchor, the count is audit-asserted (#261/#274) -> {rp}")
+        sk_fails.append(f"README prose count phrase missing (\"<N> skills total\") -- keep those three tokens adjacent: markdown markers are tolerated, but prose between them (e.g. \"N skills (...) total\") breaks the anchor -- reorder to \"N skills total (...)\" (#261/#274/#293) -> {rp}")
     elif int(rm.group(1)) != len(sk_disk):
         sk_fails.append(f"README prose says {rm.group(1)} skills but {len(sk_disk)} are on disk -- update the prose (and re-measure its token figure) -> {rp}")
 for x in sk_fails: print("  SKILLS", x)

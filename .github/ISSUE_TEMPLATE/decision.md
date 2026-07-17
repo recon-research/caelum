@@ -11,6 +11,8 @@ labels: decision
 
 ## Options
 
+<trade-offs stated as end-state consequences — what the owner's week looks like after this ships (support burden, recurring cost, legal exposure) — not implementation attributes; options genuinely distinguishable. Where options are close, a consequence grid: rows = the questions the owner would ask about living with it (`understand_intent` step 4; research/notes/intent-elicitation.md)>
+
 1. **<option A — the recommended default, listed first>** — <trade-off>; grounding: <Book NN §X / DECISION_TREES Dn / research note or RR-NN>
 2. **<option B>** — <trade-off>; grounding: <…>
 3. <option C, if real>

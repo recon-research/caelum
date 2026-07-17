@@ -42,8 +42,23 @@
 # Single-implementation Python (like the audits/hooks) -- runs on both shells;
 # no .ps1 twin. Stdlib only. cwd-independent.
 import json, subprocess, sys, os, datetime, statistics, glob
+# Windows cp1252 stdout guard (#296): gate output carries non-ASCII
+# (em-dashes, section signs, file text); a cp1252-strict console mojibakes
+# or crashes an otherwise-green run. Uniform across every gate script.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # repo root
+
+# PROJECT-MIRRORED CONSTANT (#295, intake #286 -- same class as the hook EXEMPT
+# list / PREFLIGHT_SHELLS / REF_EXEMPT; update_from_template step 3 names it):
+# the branch prefixes whose merges are receipt-less BY DESIGN (#269's tripwire
+# exemption). This must match *your* checkpoint-branch convention -- Caelum's
+# had drifted to docs/checkpoint-* and the exemption its own field data
+# motivated matched zero PRs, silently. A files-based (doc-only) classifier was
+# rejected: genuine docs: slices DO receipt (#264), so it would silently exempt
+# real slices -- the same false-negative trade #269 rejected for title prefixes.
+CHECKPOINT_PREFIXES = ("checkpoint/",)
 
 WINDOW = 90
 if "--window-days" in sys.argv:
@@ -68,9 +83,8 @@ cutoff = today - datetime.timedelta(days=WINDOW)
 def gh_json(args):
     """Run a gh command; return parsed JSON, or None on ANY failure (fail-soft)."""
     try:
-        # encoding pinned: cp1252 default on Windows nulls whole gh calls on emoji bytes (#503)
-        r = subprocess.run(["gh"] + args, capture_output=True, text=True,
-                           encoding="utf-8", errors="replace", timeout=90)
+        r = subprocess.run(["gh"] + args, capture_output=True, text=True, timeout=90,
+                           encoding="utf-8", errors="replace")
     except Exception:
         return None
     if r.returncode != 0:
@@ -210,8 +224,9 @@ for p in sorted(recent, key=lambda p: p.get("mergedAt") or ""):
                    # by design -- classify by BRANCH, not title prefix: titles are
                    # free-form per repo, and real docs:/ops: slices do receipt
                    # (#269, intake #268 -- 5 of Caelum's 6 tripwire flags were
-                   # checkpoint PRs drowning the one genuine miss).
-                   "expects_receipt": not (p.get("headRefName") or "").startswith("checkpoint/")})
+                   # checkpoint PRs drowning the one genuine miss). Prefix set is
+                   # the project-mirrored CHECKPOINT_PREFIXES constant (#295).
+                   "expects_receipt": not (p.get("headRefName") or "").startswith(CHECKPOINT_PREFIXES)})
 
 
 def med(vals, nd=1):
@@ -324,8 +339,7 @@ def doc_growth():
         r = subprocess.run(["git", "log", "--since", cutoff.isoformat(),
                             "--numstat", "--format=", "--", "*.md",
                             ":!textbooks", ":!docs/METRICS.md"],
-                           capture_output=True, text=True,
-                           encoding="utf-8", errors="replace", timeout=60)
+                           capture_output=True, text=True, timeout=60, encoding="utf-8", errors="replace")
         if r.returncode != 0:
             return []
     except Exception:
@@ -536,9 +550,6 @@ The few metrics that each change a decision when they cross a threshold -- not a
 {slice_md}{local_md}"""
 
 if PRINT_ONLY:
-    # body carries Δ/→/sparklines; cp1252-strict piped stdout would crash on Windows (#503)
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.stdout.write(body)
 else:
     with open("docs/METRICS.md", "w", encoding="utf-8", newline="\n") as f:

@@ -39,6 +39,11 @@ import re
 import subprocess
 import sys
 from datetime import datetime, timezone
+# Windows cp1252 stdout guard (#296): gate output carries non-ASCII
+# (em-dashes, section signs, file text); a cp1252-strict console mojibakes
+# or crashes an otherwise-green run. Uniform across every gate script.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 # cwd-independent: the script lives in scripts/, the repo root is its parent.
 os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
