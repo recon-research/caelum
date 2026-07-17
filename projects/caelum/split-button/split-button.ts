@@ -87,9 +87,11 @@ import { CaeMenu, CaeMenuTrigger, type CaeMenuItem } from 'caelum/menu';
     .cae-split-button__toggle {
       border-start-start-radius: 0;
       border-end-start-radius: 0;
-      /* Icon-only: drop the wide text min-width and use tight padding for just the chevron. The
-         component's view-encapsulation attribute out-specifies Material's own min-width rule. */
-      min-width: 0;
+      /* Icon-only: replace Material's wide text min-width (64px) with the density-INVARIANT --cae-target-min
+         (24px) so the chevron toggle stays a tight square-ish button yet can never clamp below the WCAG 2.5.8
+         (AA) 24px minimum. Same physical property as Material's rule (clean cascade); the component's
+         view-encapsulation attribute out-specifies it. Height is Material's own button height (≥24px). (#456) */
+      min-width: var(--cae-target-min);
       padding-inline: var(--cae-space-3);
       /* Tuck the toggle 1px onto the primary so the halves read as one joined control: for bordered
          variants (outlined/text) the two adjacent outlines collapse into a single seam rather than

@@ -195,13 +195,17 @@ function estimateStrength(password: string): number {
       display: block;
     }
 
-    /* Compact, transparent icon button — token-styled (no Material ripple/theme); ≥24px WCAG 2.5.8 target. */
+    /* Compact, transparent icon button — token-styled (no Material ripple/theme). space-6 is 32px but
+       falls to exactly 24px at [data-density=compact], so the density-INVARIANT --cae-target-min floor
+       enforces the WCAG 2.5.8 (AA) 24px minimum unconditionally rather than relying on that coincidence (#456). */
     .cae-password__toggle {
       display: inline-flex;
       align-items: center;
       justify-content: center;
       inline-size: var(--cae-space-6);
       block-size: var(--cae-space-6);
+      min-inline-size: var(--cae-target-min);
+      min-block-size: var(--cae-target-min);
       padding: 0;
       border: 0;
       border-radius: var(--cae-radius-full);

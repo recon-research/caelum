@@ -388,6 +388,14 @@ export class CaeFileUploadFileDef {
     .cae-file-upload__button {
       display: inline-flex;
       align-items: center;
+      /* Floor the block axis to the density-INVARIANT --cae-target-min (24px): this text-shaped <label>'s
+         height otherwise rides on text metrics + padding (space-2) and only incidentally clears the WCAG
+         2.5.8 (AA) 24px minimum at the default font/density. Only min-block-size — a square min-inline-size
+         is wrong for a text button (width comes from the label text). box-sizing:border-box so the floor is
+         the border-box height: Caelum ships no reset, so a bare consumer defaults to content-box, where the
+         floor would otherwise stack on top of the padding and overshoot. (#456) */
+      box-sizing: border-box;
+      min-block-size: var(--cae-target-min);
       padding: var(--cae-space-2) var(--cae-space-4);
       border-radius: var(--cae-radius-full);
       background: var(--cae-color-primary);
@@ -473,10 +481,15 @@ export class CaeFileUploadFileDef {
       background: color-mix(in srgb, var(--cae-color-primary) 16%, transparent);
     }
 
+    /* Native <button> text actions (Cancel/Retry/Remove; the Upload button) carry the same WCAG 2.5.8 floor
+       as __button — applied to every file-upload text button, not just one, for a consistent sweep. A native
+       button centres its own content, so min-block-size + box-sizing:border-box suffice (no flex needed). (#456) */
     .cae-file-upload__action,
     .cae-file-upload__upload {
       font: inherit;
       cursor: pointer;
+      box-sizing: border-box;
+      min-block-size: var(--cae-target-min);
       border: 1px solid var(--cae-color-border);
       border-radius: var(--cae-radius-full);
       padding: var(--cae-space-1) var(--cae-space-3);
