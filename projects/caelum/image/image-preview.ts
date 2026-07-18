@@ -1,3 +1,4 @@
+import { hasModifierKey } from '@angular/cdk/keycodes';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { CAE_DIALOG_DATA, injectCaeDialogRef } from 'caelum/dialog';
 
@@ -419,6 +420,9 @@ export class CaeImagePreview {
    * pan path). `Escape` is Material's dismissal (untouched here).
    */
   protected onKeydown(event: KeyboardEvent): void {
+    // A chord the widget doesn't implement belongs to the browser: Alt+Arrow is Back/Forward,
+    // Ctrl+Home/End jump the document, Ctrl+0/± is zoom. Consuming them steals a global affordance (#581).
+    if (hasModifierKey(event)) return;
     switch (event.key) {
       case '+':
       case '=':

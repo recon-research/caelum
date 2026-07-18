@@ -1,3 +1,4 @@
+import { hasModifierKey } from '@angular/cdk/keycodes';
 import {
   afterRenderEffect,
   ChangeDetectionStrategy,
@@ -973,6 +974,8 @@ export class CaeOrderList<T = unknown> {
       default:
         return;
     }
+    // Shift is ours (range-extend, below); Alt/Ctrl/Meta stay the browser's — Ctrl+Home/End, Cmd+Arrow (#581).
+    if (hasModifierKey(event, 'altKey', 'ctrlKey', 'metaKey')) return;
     event.preventDefault();
     // Shift + a navigation key extends the range from the anchor (or this origin row) to the target.
     if (event.shiftKey) this.selectRange(target, index);

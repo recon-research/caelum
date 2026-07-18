@@ -329,6 +329,20 @@ describe('CaeSplitter', () => {
     expect(ev.defaultPrevented).toBe(false);
   });
 
+  it('leaves Alt+Arrow to the browser (#581)', async () => {
+    await render();
+    const ev = new KeyboardEvent('keydown', {
+      key: 'ArrowRight',
+      altKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    dividers()[0].dispatchEvent(ev);
+    fixture.detectChanges();
+    expect(valueNow(0)).toBe('30'); // unchanged
+    expect(ev.defaultPrevented).toBe(false);
+  });
+
   // --- Keyboard resize (vertical) ---
 
   it('uses Up/Down as the axis for a vertical layout', async () => {

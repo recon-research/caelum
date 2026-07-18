@@ -1,4 +1,5 @@
 import { Directionality } from '@angular/cdk/bidi';
+import { hasModifierKey } from '@angular/cdk/keycodes';
 import { NgTemplateOutlet, isPlatformBrowser } from '@angular/common';
 import {
   afterRenderEffect,
@@ -1052,6 +1053,9 @@ export class CaeGalleria {
    * *against* the key's direction, since it follows the new active item. Self-heals in one press.
    */
   private arrowTarget(event: KeyboardEvent): number | null {
+    // A chord the widget doesn't implement belongs to the browser: Alt+Arrow is Back/Forward and
+    // Ctrl+Home/End jumps the document. Consuming them steals a global affordance (#581).
+    if (hasModifierKey(event)) return null;
     const last = this.count() - 1;
     // Keep: blocks a `% 0` → NaN write into activeIndex if a keydown lands after items() empties but
     // before the strip re-stamps. Structurally unreachable through the @for, but cheap insurance.

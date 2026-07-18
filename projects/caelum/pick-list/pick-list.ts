@@ -20,6 +20,7 @@ import {
 import { NgTemplateOutlet } from '@angular/common';
 import { CdkDrag, CdkDragDrop, CdkDropList, moveItemInArray } from '@angular/cdk/drag-drop';
 import { Directionality } from '@angular/cdk/bidi';
+import { hasModifierKey } from '@angular/cdk/keycodes';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 
 /** Per-instance id source for the aria-describedby instructions (SSR/hydration-stable, unlike random). */
@@ -1062,6 +1063,8 @@ export class CaePickList<T = unknown> {
       default:
         return;
     }
+    // Shift is ours (range-extend, below); Alt/Ctrl/Meta stay the browser's — Ctrl+Home/End, Cmd+Arrow (#581).
+    if (hasModifierKey(event, 'altKey', 'ctrlKey', 'metaKey')) return;
     event.preventDefault();
     // Shift + a navigation key extends the range from the anchor (or this origin row) to the target.
     if (event.shiftKey) this.selectRange(side, target, index);

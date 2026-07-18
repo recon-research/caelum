@@ -219,6 +219,20 @@ describe('CaeImageCompare', () => {
     expect(ev.defaultPrevented).toBe(false);
   });
 
+  it('leaves Alt+Arrow to the browser (#581)', async () => {
+    await render();
+    const ev = new KeyboardEvent('keydown', {
+      key: 'ArrowRight',
+      altKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    divider().dispatchEvent(ev);
+    fixture.detectChanges();
+    expect(valueNow()).toBe('50'); // unchanged
+    expect(ev.defaultPrevented).toBe(false);
+  });
+
   it('normalizes an out-of-range two-way write back into [0, 100]', async () => {
     await render({ value: 150 });
     expect(valueNow()).toBe('100');

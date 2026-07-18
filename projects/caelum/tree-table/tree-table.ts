@@ -1,3 +1,4 @@
+import { hasModifierKey } from '@angular/cdk/keycodes';
 import { NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
@@ -567,6 +568,7 @@ export class CaeTreeTable<T = Record<string, unknown>> implements OnInit {
    * currentTarget` is true exactly when the row (the roving tab stop) holds focus.
    */
   protected onRowKeydown(event: KeyboardEvent, i: number): void {
+    if (hasModifierKey(event)) return; // Alt+Arrow=Back, Ctrl+Home/End=document, Ctrl+0/±=zoom (#581)
     if (event.target !== event.currentTarget) return;
     const rows = this.visibleRows();
     const row = rows[i];

@@ -258,6 +258,19 @@ describe('CaeTreeTable', () => {
       const ev = key(rows()[0], 'ArrowDown');
       expect(ev.defaultPrevented).toBe(true);
     });
+
+    it('leaves Alt+Arrow to the browser (#581)', () => {
+      rows()[0].focus();
+      const ev = new KeyboardEvent('keydown', {
+        key: 'ArrowDown',
+        altKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
+      rows()[0].dispatchEvent(ev);
+      expect(document.activeElement).toBe(rows()[0]); // focus did not move
+      expect(ev.defaultPrevented).toBe(false);
+    });
   });
 
   describe('expansion via the chevron (pointer path)', () => {

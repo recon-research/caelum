@@ -1,3 +1,4 @@
+import { hasModifierKey } from '@angular/cdk/keycodes';
 import {
   booleanAttribute,
   ChangeDetectionStrategy,
@@ -308,6 +309,7 @@ export class CaeInputOtp implements ControlValueAccessor, OnInit {
    * keys `preventDefault` so this component solely owns focus movement and delete-back.
    */
   protected onKeydown(index: number, event: KeyboardEvent): void {
+    if (hasModifierKey(event)) return; // Alt+Arrow=Back, Ctrl+Home/End=document, Ctrl+0/±=zoom (#581)
     switch (event.key) {
       case 'Backspace':
         event.preventDefault();

@@ -1,3 +1,4 @@
+import { hasModifierKey } from '@angular/cdk/keycodes';
 import { NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
@@ -287,6 +288,9 @@ export class CaeGalleriaLightbox {
    * passes no dialog `direction` — so its arrows don't yet mirror. Making it RTL-aware is #466 (part of #288).
    */
   protected onKeydown(event: KeyboardEvent): void {
+    // A chord the widget doesn't implement belongs to the browser: Alt+Arrow is Back/Forward,
+    // Ctrl+Home/End jump the document, Ctrl+0/± is zoom. Consuming them steals a global affordance (#581).
+    if (hasModifierKey(event)) return;
     // TODO(#466): flip Left/Right (and re-aim the chevrons) under RTL, to match the inline strip — needs the
     // lightbox dialog opened with direction:rtl so its layout mirrors first. Kept LTR-only until then.
     switch (event.key) {

@@ -324,6 +324,20 @@ describe('CaeCarousel', () => {
     expect(carousel.page()).toBe(0);
   });
 
+  it('leaves Alt+Arrow to the browser (#581)', () => {
+    document.body.appendChild(fixture.nativeElement);
+    indicators()[0].focus();
+    const ev = new KeyboardEvent('keydown', {
+      key: 'ArrowRight',
+      altKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    indicators()[0].dispatchEvent(ev);
+    expect(carousel.page()).toBe(0); // did not advance
+    expect(ev.defaultPrevented).toBe(false);
+  });
+
   it('sets aria-live on the track (polite while idle so a page change is announced)', () => {
     const track = one('.cae-carousel__track')!;
     expect(track.getAttribute('aria-live')).toBe('polite');

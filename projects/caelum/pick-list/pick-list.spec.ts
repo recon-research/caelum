@@ -644,6 +644,23 @@ describe('CaePickList', () => {
     expect(document.activeElement).toBe(optionsIn(src())[2]);
   });
 
+  // Shift+ArrowDown range-extend is covered above ('...range-extends the selection...') — not duplicated.
+  it('leaves Ctrl+Home to the browser (document-top, #581)', () => {
+    render({ source: ROWS(), target: [] });
+    optionsIn(src())[2].focus();
+    const ev = new KeyboardEvent('keydown', {
+      key: 'Home',
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    optionsIn(src())[2].dispatchEvent(ev);
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(optionsIn(src())[2]); // focus did not jump to the first row
+    expect(host.sourceSel()).toEqual([]); // no selection change
+    expect(ev.defaultPrevented).toBe(false);
+  });
+
   it('Escape clears the whole selection of that list (keyboard parity with pointer)', () => {
     render({ source: ROWS(), target: [] });
     optionsIn(src())[0].focus();

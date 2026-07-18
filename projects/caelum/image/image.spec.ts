@@ -283,6 +283,26 @@ describe('CaeImage', () => {
     expect(previewStatus()!.textContent!.trim()).toBe('Zoom 100%');
   });
 
+  it('leaves Ctrl+0 to the browser (zoom reset, #581)', async () => {
+    await render();
+    component.openPreview();
+    await settle();
+    btn('Zoom in')!.click();
+    await settle();
+    expect(previewStatus()!.textContent!.trim()).toBe('Zoom 150%');
+    const host = preview()!;
+    const ev = new KeyboardEvent('keydown', {
+      key: '0',
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    host.dispatchEvent(ev);
+    await settle();
+    expect(previewStatus()!.textContent!.trim()).toBe('Zoom 150%'); // not reset
+    expect(ev.defaultPrevented).toBe(false);
+  });
+
   it('keyboard: arrow keys pan the image (the accessible pan path — pan is not drag-only)', async () => {
     await render();
     component.openPreview();

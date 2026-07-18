@@ -836,6 +836,23 @@ describe('CaeOrderList', () => {
     expect(document.activeElement).toBe(options()[2]);
   });
 
+  // Shift+ArrowDown range-extend is covered above ('...range-extends the selection...') — not duplicated.
+  it('leaves Ctrl+Home to the browser (document-top, #581)', () => {
+    render();
+    options()[2].focus();
+    const ev = new KeyboardEvent('keydown', {
+      key: 'Home',
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    options()[2].dispatchEvent(ev);
+    fixture.detectChanges();
+    expect(document.activeElement).toBe(options()[2]); // focus did not jump to the first row
+    expect(host.selection()).toEqual([]); // no selection change
+    expect(ev.defaultPrevented).toBe(false);
+  });
+
   it('keeps the range anchor stable across a reorder (anchor is the item, not a stale index)', () => {
     const four: Row[] = [
       { id: 'a', name: 'Alpha' },
