@@ -285,6 +285,22 @@ export class App {
   }
 
   /**
+   * The set's opt-in `[textEntry]` tag field (#201): Enter or comma commits the typed text as an
+   * `(added)` request, and — exactly like removal — the **consumer** owns the append. Note the dedupe:
+   * `[items]` must stay unique (identity is the `@for` track key), and a tag field is precisely where a
+   * user re-types an existing value, so the guard is the consumer's job. Announced through the same
+   * polite region the removal path uses.
+   */
+  protected addTag(tag: string): void {
+    if (this.tags().some((t) => t.toLowerCase() === tag.toLowerCase())) {
+      this.tagMessage.set(`${tag} is already a tag.`);
+      return;
+    }
+    this.tags.update((list) => [...list, tag]);
+    this.tagMessage.set(`Added ${tag}. ${this.tags().length} tags.`);
+  }
+
+  /**
    * A small standalone reactive form for the deferred "Workspace capacity" card (#109) — a single
    * cae-slider (seats) + a RANGE cae-slider (budget, a [min, max] pair, the mode-dependent value
    * seam). Kept OUT of the eager create-workspace wizard and rendered in an `@defer (on idle)` block

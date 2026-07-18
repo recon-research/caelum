@@ -712,4 +712,347 @@ describe('CaeChipSet', () => {
       expect(document.activeElement).toBe(f.componentInstance.statusRef()!.nativeElement); // not stranded on <body>
     });
   });
+
+  describe('[textEntry] tag field (#201)', () => {
+    @Component({
+      imports: [CaeChipSet],
+      template: `
+        <cae-chip-set
+          [items]="items()"
+          [textEntry]="textEntry"
+          [textEntryLabel]="textEntryLabel"
+          [addOnBlur]="addOnBlur"
+          [emptyFocusTarget]="statusRef()"
+          (removed)="onRemoved($event)"
+          (added)="onAdded($event)"
+        />
+        <p #status tabindex="-1">status</p>
+      `,
+    })
+    class TextEntryHost {
+      items = signal<readonly string[]>(['solo']);
+      textEntry = true;
+      textEntryLabel = 'Add a tag';
+      addOnBlur = false;
+      added: string[] = [];
+      readonly statusRef = viewChild<ElementRef<HTMLElement>>('status');
+      onAdded(v: string): void {
+        this.added.push(v);
+        this.items.update((l) => [...l, v]);
+      }
+      onRemoved(e: CaeChipRemoveEvent<string>): void {
+        this.items.update((l) => l.filter((t) => t !== e.item));
+      }
+    }
+
+    async function makeEntry(
+      setup: (h: TextEntryHost) => void = () => {},
+    ): Promise<ComponentFixture<TextEntryHost>> {
+      await TestBed.configureTestingModule({ imports: [TextEntryHost] }).compileComponents();
+      const f = TestBed.createComponent(TextEntryHost);
+      setup(f.componentInstance);
+      el = f.nativeElement as HTMLElement;
+      document.body.appendChild(el);
+      f.detectChanges();
+      await f.whenStable();
+      return f;
+    }
+
+    const field = (f: ComponentFixture<unknown>): HTMLInputElement | null =>
+      (f.nativeElement as HTMLElement).querySelector('.cae-chip-set__input');
+
+    /** Type `value` and press a separator key (ENTER 13 / COMMA 188 — Material reads `keyCode`). */
+    function commit(f: ComponentFixture<unknown>, value: string, keyCode = 13): void {
+      const inp = field(f)!;
+      inp.value = value;
+      const ev = new KeyboardEvent('keydown', { bubbles: true });
+      Object.defineProperty(ev, 'keyCode', { get: () => keyCode });
+      inp.dispatchEvent(ev);
+    }
+
+    it('renders no input unless [textEntry] is set (opt-in)', async () => {
+      // The default set stays a pure display/removal list — the field is additive, never implicit.
+      const f = await makeEntry((h) => (h.textEntry = false));
+      expect(field(f)).toBeNull();
+    });
+
+    it('commits trimmed text on Enter as an (added) request and clears the field', async () => {
+      const f = await makeEntry();
+      commit(f, '  delta  ');
+      await settle(f);
+      expect(f.componentInstance.added).toEqual(['delta']); // trimmed, not '  delta  '
+      expect(field(f)!.value).toBe(''); // field cleared for the next tag
+      expect(rows(f).length).toBe(2); // the host appended it -> a second chip rendered
+    });
+
+    it('commits on comma too (the p-chips separator)', async () => {
+      const f = await makeEntry();
+      commit(f, 'epsilon', 188); // COMMA
+      await settle(f);
+      expect(f.componentInstance.added).toEqual(['epsilon']);
+    });
+
+    it('swallows a blank/whitespace-only entry but still clears the field', async () => {
+      // An empty chip would render with no accessible name; the clear stops stray spaces lingering.
+      const f = await makeEntry();
+      commit(f, '   ');
+      await settle(f);
+      expect(f.componentInstance.added).toEqual([]);
+      expect(field(f)!.value).toBe('');
+      expect(rows(f).length).toBe(1); // unchanged
+    });
+
+    it('leaves focus in the input when the last chip is removed (no strand, no redirect) (#201)', async () => {
+      // The empty-set landing spot with [textEntry] on. Verified against Material 22: MatChipGrid lands focus
+      // on its registered input when the last chip goes — which is what makes skipping [emptyFocusTarget] safe
+      // rather than a regression; the no-strand guarantee this component exists for still holds, via the input.
+      // NOTE this test does NOT prove the guard: on a SYNC removal Material's own focus move lands after the
+      // redirect and overwrites it either way. The async test below is the one with teeth.
+      const f = await makeEntry();
+      const soloRemove = removeBtn(rows(f)[0])!;
+      soloRemove.focus();
+      expect(grid(f).contains(document.activeElement)).toBe(true); // focus held in the set at removal
+      soloRemove.click(); // remove the last chip -> the set empties
+      await settle(f);
+      expect(rows(f).length).toBe(0);
+      expect(document.activeElement).toBe(field(f));
+      expect(document.activeElement).not.toBe(f.componentInstance.statusRef()!.nativeElement);
+    });
+
+    it('does NOT steal focus out of the input when an ASYNC drop empties the set (WCAG 3.2.5) (#201)', async () => {
+      // The teeth for the [textEntry] early-return in focusEmptyTargetIfOurs. The input lives INSIDE the host,
+      // so the ownsFocus gate reads "still ours" and would wave the redirect straight through. Async is what
+      // makes the steal observable: the drop lands in a later task, by which time the user has moved to the
+      // input to type the next tag and Material has settled (the destroyed chip wasn't focused, so Material has
+      // no reason to move focus again and cannot mask a steal, unlike the synchronous case above).
+      @Component({
+        imports: [CaeChipSet],
+        template: `
+          <cae-chip-set
+            [items]="items()"
+            textEntry
+            textEntryLabel="Add a tag"
+            [emptyFocusTarget]="statusRef()"
+            (removed)="onRemoved($event)"
+          />
+          <p #status tabindex="-1">status</p>
+        `,
+      })
+      class AsyncEntryHost {
+        items = signal<readonly string[]>(['solo']);
+        readonly statusRef = viewChild<ElementRef<HTMLElement>>('status');
+        pendingDrop: (() => void) | null = null;
+        onRemoved(e: CaeChipRemoveEvent<string>): void {
+          // Captured, not applied — the deterministic stand-in for a confirm dialog / http.delete().
+          this.pendingDrop = () => this.items.update((l) => l.filter((t) => t !== e.item));
+        }
+      }
+      await TestBed.configureTestingModule({ imports: [AsyncEntryHost] }).compileComponents();
+      const f = TestBed.createComponent(AsyncEntryHost);
+      el = f.nativeElement as HTMLElement;
+      document.body.appendChild(el);
+      f.detectChanges();
+      await f.whenStable();
+
+      const soloRemove = removeBtn(rows(f)[0])!;
+      soloRemove.focus();
+      soloRemove.click(); // request only — the chip is still rendered, the drop is pending
+      await settle(f);
+      expect(rows(f).length).toBe(1);
+
+      const inp = field(f)!;
+      inp.focus(); // the user moves to the field to type the next tag while the delete is in flight
+      expect(document.activeElement).toBe(inp);
+
+      f.componentInstance.pendingDrop!(); // the async drop finally lands -> the set empties
+      await settle(f);
+      expect(rows(f).length).toBe(0);
+      // Focus must still be in the field the user is typing in — NOT yanked to the bound target.
+      expect(document.activeElement).toBe(inp);
+      expect(document.activeElement).not.toBe(f.componentInstance.statusRef()!.nativeElement);
+    });
+
+    it('lands focus in the input when only DISABLED chips remain (no strand) (#201)', async () => {
+      // The other no-focusable-chip shape: chips remain but none is focusable, so Material's key manager has
+      // no in-set target. Without [textEntry] this is the case [emptyFocusTarget] exists for. With it, the
+      // guard skips that redirect — so this test proves the skip does not strand: verified against Material
+      // 22, MatChipGrid focuses its registered input when no ELIGIBLE chip remains, not merely when empty.
+      interface Item {
+        id: number;
+        name: string;
+        off?: boolean;
+      }
+      @Component({
+        imports: [CaeChipSet],
+        template: `
+          <cae-chip-set
+            [items]="items()"
+            [label]="labelFn"
+            [chipDisabled]="disabledFn"
+            textEntry
+            textEntryLabel="Add a tag"
+            [emptyFocusTarget]="statusRef()"
+            (removed)="onRemoved($event)"
+          />
+          <p #status tabindex="-1">status</p>
+        `,
+      })
+      class DisabledRemainderEntryHost {
+        items = signal<readonly Item[]>([
+          { id: 1, name: 'open' },
+          { id: 2, name: 'off', off: true },
+        ]);
+        labelFn = (t: Item): string => t.name;
+        disabledFn = (t: Item): boolean => !!t.off;
+        readonly statusRef = viewChild<ElementRef<HTMLElement>>('status');
+        onRemoved(e: CaeChipRemoveEvent<Item>): void {
+          this.items.update((l) => l.filter((x) => x !== e.item));
+        }
+      }
+      await TestBed.configureTestingModule({
+        imports: [DisabledRemainderEntryHost],
+      }).compileComponents();
+      const f = TestBed.createComponent(DisabledRemainderEntryHost);
+      el = f.nativeElement as HTMLElement;
+      document.body.appendChild(el);
+      f.detectChanges();
+      await f.whenStable();
+      const openRemove = removeBtn(rows(f)[0])!;
+      openRemove.focus();
+      openRemove.click(); // remove the only ENABLED chip — a disabled chip remains, so the set is NOT empty
+      await settle(f);
+      expect(rows(f).length).toBe(1);
+      expect(document.activeElement).toBe(field(f)); // the input, not <body> and not the bound target
+      expect(document.activeElement).not.toBe(document.body);
+    });
+
+    it('redirects to [emptyFocusTarget] when TWO OR MORE disabled chips remain (#201)', async () => {
+      // The arity that Material does NOT rescue. Traced in MatChipSet._redirectDestroyedChipFocus
+      // (Material 22): it calls grid.focus() — which forwards to the registered input — when NO chips
+      // remain, and when exactly ONE remains and is disabled. With two or more disabled chips left it calls
+      // _keyManager.setPreviousItemActive() instead, whose skip-predicate loop walks off the end and focuses
+      // nothing. So the [textEntry] skip must NOT apply here, or the keyboard user lands on <body> — the
+      // exact strand this component exists to prevent (WCAG 2.4.3).
+      interface Item {
+        id: number;
+        name: string;
+        off?: boolean;
+      }
+      @Component({
+        imports: [CaeChipSet],
+        template: `
+          <cae-chip-set
+            [items]="items()"
+            [label]="labelFn"
+            [chipDisabled]="disabledFn"
+            textEntry
+            textEntryLabel="Add a tag"
+            [emptyFocusTarget]="statusRef()"
+            (removed)="onRemoved($event)"
+          />
+          <p #status tabindex="-1">status</p>
+        `,
+      })
+      class TwoDisabledHost {
+        items = signal<readonly Item[]>([
+          { id: 1, name: 'open' },
+          { id: 2, name: 'off1', off: true },
+          { id: 3, name: 'off2', off: true },
+        ]);
+        labelFn = (t: Item): string => t.name;
+        disabledFn = (t: Item): boolean => !!t.off;
+        readonly statusRef = viewChild<ElementRef<HTMLElement>>('status');
+        onRemoved(e: CaeChipRemoveEvent<Item>): void {
+          this.items.update((l) => l.filter((x) => x !== e.item));
+        }
+      }
+      await TestBed.configureTestingModule({ imports: [TwoDisabledHost] }).compileComponents();
+      const f = TestBed.createComponent(TwoDisabledHost);
+      el = f.nativeElement as HTMLElement;
+      document.body.appendChild(el);
+      f.detectChanges();
+      await f.whenStable();
+      const openRemove = removeBtn(rows(f)[0])!;
+      openRemove.focus();
+      openRemove.click(); // remove the only enabled chip — TWO disabled chips remain
+      await settle(f);
+      expect(rows(f).length).toBe(2);
+      expect(document.activeElement).not.toBe(document.body); // must not strand
+      expect(document.activeElement).toBe(f.componentInstance.statusRef()!.nativeElement);
+    });
+
+    it('names the input from [textEntryLabel] (the set ariaLabel names the grid, not the field)', async () => {
+      const f = await makeEntry();
+      expect(field(f)!.getAttribute('aria-label')).toBe('Add a tag');
+    });
+
+    it('does NOT commit pending text on blur by default', async () => {
+      // The default must not mint a chip the user never asked for; the text simply stays in the field.
+      const f = await makeEntry();
+      field(f)!.value = 'ghost';
+      field(f)!.dispatchEvent(new Event('blur'));
+      await settle(f);
+      expect(f.componentInstance.added).toEqual([]);
+    });
+
+    it('commits pending text on blur when [addOnBlur] is set', async () => {
+      const f = await makeEntry((h) => (h.addOnBlur = true));
+      field(f)!.value = 'zeta';
+      field(f)!.dispatchEvent(new Event('blur'));
+      await settle(f);
+      expect(f.componentInstance.added).toEqual(['zeta']);
+      expect(field(f)!.value).toBe('');
+    });
+
+    it('commits only ONCE when an (added) handler blurs the field (re-entrancy guard)', async () => {
+      // onTokenEnd clears BEFORE emitting. Otherwise a consumer whose handler moves focus re-enters through
+      // Material's unconditional blur emit while the field still holds the text — two chips from one Enter,
+      // which for string items is a thrown duplicate.
+      const f = await makeEntry((h) => {
+        h.addOnBlur = true;
+        const original = h.onAdded.bind(h);
+        h.onAdded = (v: string): void => {
+          original(v);
+          field(f)!.dispatchEvent(new Event('blur')); // handler moves focus away
+        };
+      });
+      commit(f, 'once');
+      await settle(f);
+      expect(f.componentInstance.added).toEqual(['once']); // exactly one, not ['once','once']
+    });
+
+    it('warns in dev when [textEntry] has no accessible name', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      await makeEntry((h) => {
+        h.textEntryLabel = '';
+      });
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('[textEntry] is on but the input has'),
+      );
+      warn.mockRestore();
+    });
+
+    it('does NOT warn when [textEntry] is named (the negative arm)', async () => {
+      // Without this, a warn made unconditional by a bad edit would still pass the positive test above.
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      await makeEntry();
+      expect(warn).not.toHaveBeenCalled();
+      warn.mockRestore();
+    });
+
+    it('warns in dev when an added value duplicates an existing chip (the NG0955 trap)', async () => {
+      // validateConfig only runs at init, so it cannot catch a duplicate a tag field creates at runtime.
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      // Record without appending — appending really would raise NG0955, which is the point of the warning.
+      const f = await makeEntry((h) => {
+        h.onAdded = (v: string): void => {
+          h.added.push(v);
+        };
+      });
+      commit(f, 'solo'); // 'solo' is already in [items]
+      await settle(f);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('duplicates an existing chip'));
+      warn.mockRestore();
+    });
+  });
 });

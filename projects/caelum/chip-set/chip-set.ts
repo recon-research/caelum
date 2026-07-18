@@ -1,6 +1,7 @@
 import {
   afterNextRender,
   afterRenderEffect,
+  booleanAttribute,
   ChangeDetectionStrategy,
   Component,
   ElementRef,
@@ -11,7 +12,14 @@ import {
   OnInit,
   output,
 } from '@angular/core';
-import { MatChipGrid, MatChipRemove, MatChipRow } from '@angular/material/chips';
+import {
+  MatChipGrid,
+  MatChipInput,
+  type MatChipInputEvent,
+  MatChipRemove,
+  MatChipRow,
+} from '@angular/material/chips';
+import { COMMA, ENTER } from '@angular/cdk/keycodes';
 
 /** Payload of {@link CaeChipSet.removed} — the item whose remove affordance was activated, and its index. */
 export interface CaeChipRemoveEvent<T> {
@@ -29,8 +37,9 @@ export interface CaeChipRemoveEvent<T> {
  * leaves no in-set target; bind {@link emptyFocusTarget} to place focus on the now-empty set (e.g. a
  * status region) — else the consumer manages it, as the Forge demo did (#202). Maps to a removable chip
  * **list** (`p-chip` rows) with **per-item `[chipRemovable]`/`[chipDisabled]`** accessors (#201) for mixed
- * lists of removable, locked, and disabled chips; a text-entry tag field (`p-chips` over an input) and a
- * selectable listbox remain deferred follow-ups.
+ * lists of removable, locked, and disabled chips, and an opt-in **text-entry tag field** ({@link textEntry},
+ * `p-chips` parity, #201) that turns typed text into {@link added} requests. A selectable listbox
+ * (`mat-chip-listbox`) remains a deferred follow-up — it is a `role=listbox` mode switch, not an addition.
  *
  * **Why `mat-chip-grid`/`mat-chip-row` (not `mat-chip-set`/`mat-chip`).** Material's roving
  * `FocusKeyManager` and focus-redirect both live in the base `MatChipSet`, but the redirect calls
@@ -63,9 +72,10 @@ export interface CaeChipRemoveEvent<T> {
 @Component({
   selector: 'cae-chip-set',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MatChipGrid, MatChipRow, MatChipRemove],
+  imports: [MatChipGrid, MatChipRow, MatChipRemove, MatChipInput],
   template: `
     <mat-chip-grid
+      #grid
       [attr.aria-label]="ariaLabel() || null"
       [attr.aria-labelledby]="ariaLabelledby() || null"
     >
@@ -91,8 +101,45 @@ export interface CaeChipRemoveEvent<T> {
         </mat-chip-row>
       }
     </mat-chip-grid>
+    @if (textEntry()) {
+      <input
+        class="cae-chip-set__input"
+        [matChipInputFor]="grid"
+        [matChipInputAddOnBlur]="addOnBlur()"
+        [matChipInputSeparatorKeyCodes]="separatorKeyCodes"
+        [attr.aria-label]="textEntryLabel() || null"
+        [placeholder]="textEntryPlaceholder()"
+        (matChipInputTokenEnd)="onTokenEnd($event)"
+      />
+    }
   `,
   styles: `
+    /* The field is used bare (no mat-form-field wrapper, #201), so it carries its own minimal box: borderless
+       and transparent, inheriting the host's type. Sizing is deliberately NOT restated here — Material already
+       ships it for this exact adjacent arrangement (input.mat-mdc-chip-input { flex: 1 0 150px }).
+       Known: mat-chip-grid is a block-level flex box, so the field currently renders on its OWN LINE beneath
+       the chips rather than inline with them (the p-chips visual). Fixing that needs a host flex container and
+       a real browser to verify — #552, not guessed at here.
+       It must carry its OWN focus ring: with no surrounding form field there is nothing else to indicate
+       focus, and a borderless input whose UA outline was suppressed would be invisible to a keyboard user
+       (WCAG 2.4.7). The interactive floor uses the density-invariant token, per PATTERNS.md §10. */
+    .cae-chip-set__input {
+      box-sizing: border-box;
+      border: 0;
+      background: transparent;
+      color: var(--cae-color-on-surface);
+      font: inherit;
+      padding-block: var(--cae-space-2);
+      padding-inline: var(--cae-space-2);
+      min-block-size: var(--cae-target-min);
+    }
+    .cae-chip-set__input:focus-visible {
+      outline: 2px solid var(--cae-color-primary);
+      outline-offset: 2px;
+    }
+    .cae-chip-set__input::placeholder {
+      color: var(--cae-color-on-surface-variant);
+    }
     .cae-chip-set__remove-glyph {
       inline-size: 1em;
       block-size: 1em;
@@ -186,11 +233,69 @@ export class CaeChipSet<T = string> implements OnInit {
   readonly emptyFocusTarget = input<HTMLElement | ElementRef<HTMLElement> | null | undefined>(null);
 
   /**
+   * Opt into the **text-entry tag field** (`p-chips` parity, #201): renders a bare `<input>` after the chips
+   * that turns typed text into new-chip requests on **Enter** or **comma** (and on blur with {@link addOnBlur}).
+   * Off by default — the set stays a pure display/removal list.
+   *
+   * The input is a sibling of the `role=grid`, wired to it by Material, so the two share one composite widget:
+   * the grid's roving arrow keys are untouched, and Backspace in an empty input steps back into the chips
+   * (unless the last chip is `[chipDisabled]` — Material's step-back doesn't skip to the previous enabled one).
+   * Give it an accessible name with {@link textEntryLabel}.
+   *
+   * **With text entry on the input is normally the empty-set focus landing spot**, so {@link emptyFocusTarget}
+   * is skipped there (redirecting would steal focus from the field the user is typing in, WCAG 3.2.5). That
+   * skip is *narrow*, matching where Material actually lands focus: with **two or more disabled chips** left it
+   * lands nothing, so the redirect still runs (a blanket skip stranded the user on `<body>`).
+   *
+   * Known residuals, all `[textEntry]`-only: a **disabled first chip** makes the chips keyboard-unreachable and
+   * bounces Shift+Tab (#550); an **async** drop that lands after the user has moved away can let *Material*
+   * pull focus into the field (#551 — the one steal this component cannot gate, since the landing decision is
+   * Material's); the field renders **below** the chips rather than inline (#552); rejected-add text loss, IME
+   * commits, and runtime toggling (#553). The form-control shape is an open decision (#549).
+   */
+  readonly textEntry = input(false, { transform: booleanAttribute });
+
+  /**
+   * Accessible name for the {@link textEntry} input (e.g. `"Add a tag"`). The chips' own `role=grid` name
+   * ({@link ariaLabel}) does **not** name the input — it is a separate control — so set this whenever text
+   * entry is on; a dev-mode warning fires if both this and {@link textEntryPlaceholder} are missing.
+   */
+  readonly textEntryLabel = input('');
+
+  /** Visible placeholder for the {@link textEntry} input. A placeholder is *not* a substitute for a label. */
+  readonly textEntryPlaceholder = input('');
+
+  /**
+   * Whether blurring the {@link textEntry} input commits its pending text. Defaults to `false` (Material's
+   * default) so a click elsewhere can't mint a chip the user didn't intend; the text stays in the field.
+   */
+  readonly addOnBlur = input(false, { transform: booleanAttribute });
+
+  /**
    * Fires when a chip's remove affordance is activated (× click, Enter/Space, or Backspace/Delete on the
    * focused chip). Removal is a **request**: the consumer owns it — drop `event.item` from `[items]`, which
    * destroys the chip and lets the set redirect focus to the adjacent chip.
    */
   readonly removed = output<CaeChipRemoveEvent<T>>();
+
+  /**
+   * Fires when {@link textEntry} text is committed (Enter, comma, or blur with {@link addOnBlur}) — the
+   * **trimmed** typed string; blank/whitespace-only entries are swallowed and never emitted. Like
+   * {@link removed}, addition is a **request**: the consumer appends to `[items]`. The payload is the raw
+   * `string` (not `T`) because only the consumer knows how to build an item — for an object `T`, map it:
+   * `(added)="tags.set([...tags(), { id: uid(), name: $event }])"`.
+   *
+   * **Dedupe before appending.** `[items]` values must be unique (identity is the `@for` track key and the
+   * focus-redirect key), and a tag field is exactly where a user re-types an existing value. Appending a
+   * duplicate raises the framework's own **NG0955** — *not* the friendly error `validateConfig` throws, which
+   * runs once at init and so can never see a runtime duplicate; a dev-mode warning fires here instead. The set
+   * cannot dedupe for you: for an object `T`, two items may legitimately share a label while being distinct.
+   * Guard on your own key, e.g. `if (!tags().some((t) => t.name === $event))`.
+   */
+  readonly added = output<string>();
+
+  /** Keys that commit typed text: Enter (Material's default) + comma (the `p-chips` convention). */
+  protected readonly separatorKeyCodes: readonly number[] = [ENTER, COMMA];
 
   constructor() {
     // Drive the empty-set focus redirect off {@link items} actually reaching no-enabled-chip — NOT a
@@ -228,6 +333,22 @@ export class CaeChipSet<T = string> implements OnInit {
    * and the synchronous-cascade one-shot ({@link redirectAfterSyncCascade}).
    */
   private focusEmptyTargetIfOurs(): void {
+    // With [textEntry], skip the redirect ONLY where Material will itself land focus in the input — else it
+    // would STEAL focus out of the field the user is typing in (WCAG 3.2.5). This must be checked before the
+    // ownsFocus gate below, not folded into it: the input lives inside the host, so `host.contains(active)`
+    // reads as "still ours" and would wave the steal straight through (#201).
+    //
+    // The condition mirrors Material 22's MatChipSet._redirectDestroyedChipFocus exactly, because a blanket
+    // skip is a STRAND: it calls grid.focus() — which forwards to the registered input — only when no chips
+    // remain, or when exactly ONE remains and it is disabled. With two or more disabled chips left it calls
+    // _keyManager.setPreviousItemActive() instead, whose skip-predicate loop walks off the end and focuses
+    // nothing at all, dropping the user on <body> (WCAG 2.4.3 — the defect this component exists to prevent).
+    // Every caller reaches here only when no ENABLED chip remains, so "1 left and disabled" is the whole of
+    // the one-chip case. Teeth: the two-disabled-chips spec.
+    const left = this.items();
+    const materialWillFocusInput =
+      left.length === 0 || (left.length === 1 && this.isDisabled(left[0]));
+    if (this.textEntry() && materialWillFocusInput) return;
     const active = document.activeElement;
     const ownsFocus =
       active === null || active === document.body || this.host.nativeElement.contains(active);
@@ -302,6 +423,31 @@ export class CaeChipSet<T = string> implements OnInit {
     this.focusEmptyTargetIfOurs();
   }
 
+  /**
+   * {@link textEntry} commit handler. Emits the **trimmed** text as an {@link added} request and clears the
+   * field. A blank/whitespace-only entry is swallowed (it would mint an unnamed empty chip) but still clears.
+   */
+  protected onTokenEnd(event: MatChipInputEvent): void {
+    const value = event.value.trim();
+    // Clear BEFORE emitting, not after. Material's blur path calls _emitChipEnd() unconditionally, so with
+    // [addOnBlur] a consumer whose (added) handler moves focus re-enters this method synchronously — and if
+    // the field still held the text, the same entry would commit twice (two chips from one Enter, which for
+    // string items is a *thrown* duplicate). Clearing first makes any re-entrant emit see '' and fall into
+    // the blank guard below.
+    event.chipInput.clear();
+    if (!value) return;
+    // Dev-only: the friendly duplicate error in validateConfig runs ONCE at ngOnInit, so it cannot see a
+    // duplicate introduced at runtime — which is the only way a tag field ever makes one. Without this nudge
+    // a consumer who skips the dedupe gets the raw framework NG0955 the validator exists to prevent. Sound
+    // for the default string T; for object items a shared label may be legitimate, hence a warn, not a throw.
+    if (isDevMode() && this.items().some((i) => this.label()(i) === value)) {
+      console.warn(
+        `cae-chip-set: (added) "${value}" duplicates an existing chip's label. [items] must stay unique — dedupe before appending, or Angular will throw NG0955 when the duplicate renders.`,
+      );
+    }
+    this.added.emit(value);
+  }
+
   /** The remove button's accessible name: the {@link removeAriaLabel} override, else `"Remove <label>"`. */
   protected removeAriaLabelFor(item: T): string {
     return this.removeAriaLabel()?.(item) ?? `Remove ${this.label()(item)}`;
@@ -348,6 +494,13 @@ export class CaeChipSet<T = string> implements OnInit {
     if (items.some((item) => this.label()(item) === '[object Object]')) {
       console.warn(
         'cae-chip-set: an item renders as "[object Object]" — provide a [label] accessor for object items, e.g. [label]="(t) => t.name".',
+      );
+    }
+    // A [textEntry] input with neither a label nor a placeholder ships an unnamed text field: a screen reader
+    // announces bare "edit text". The set's own [ariaLabel] names the role=grid, NOT the input beside it (#201).
+    if (this.textEntry() && !this.textEntryLabel()) {
+      console.warn(
+        'cae-chip-set: [textEntry] is on but the input has no accessible name — set [textEntryLabel] (e.g. textEntryLabel="Add a tag"). The set\'s [ariaLabel] names the chip grid, not the input, and a [textEntryPlaceholder] is not a substitute: it is only a last-resort accessible name and it disappears as soon as the user types.',
       );
     }
   }
