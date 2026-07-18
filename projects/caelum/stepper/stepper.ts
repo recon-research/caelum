@@ -15,6 +15,17 @@ import type { AbstractControl } from '@angular/forms';
 import { MatStepper, MatStepperModule } from '@angular/material/stepper';
 
 /**
+ * Clamp a consumer step index into `[0, last]` (same shape as carousel's `clampPage` / galleria's
+ * `clampIndex`). Truncate FIRST, collapse only `NaN` — an up-front `Number.isFinite` gate would
+ * send `Infinity` to step 0 while a merely huge `1e21` landed on the last. Why it must exist at
+ * all: #592 + stepper.spec.ts.
+ */
+const clampStepIndex = (v: number, last: number): number => {
+  const n = Math.trunc(v);
+  return Math.max(0, Math.min(Number.isNaN(n) ? 0 : n, last));
+};
+
+/**
  * `cae-step` — a single step inside a `cae-stepper`. Like `cae-tab`, its projected content
  * is captured as a `TemplateRef` (via an internal `<ng-template>`) so `cae-stepper` can
  * stamp it into a Material `mat-step`. Content-projection + a plain-text `label`; no logic.
@@ -129,9 +140,24 @@ export class CaeStepper {
       const stepper = this.matStepper();
       if (!stepper) return;
       untracked(() => {
-        stepper.selectedIndex = requested;
+        // The step COUNT is read untracked on purpose: taking it as a dependency would re-assert
+        // the declared index on any structural step-list change, yanking a user off a header they
+        // had clicked under a one-way `[selectedIndex]` (measured — it is not theoretical).
+        const last = this.steps().length - 1;
+        // With no steps yet, CDK has no ContentChildren to validate against and simply STORES the
+        // index (its setter's `else` branch), clamping it itself at content-init — so pass the
+        // request through untouched and let a pending index survive until the steps arrive.
+        // Clamping against a count of zero here would silently collapse it to 0. (#592)
+        const before = stepper.selectedIndex;
+        stepper.selectedIndex = last < 0 ? requested : clampStepIndex(requested, last);
         const actual = stepper.selectedIndex;
-        if (actual !== requested) this.selectedIndexChange.emit(actual);
+        // Compare against what the CONSUMER asked for, not the clamped value — a clamped index and
+        // a refused move both need the parent's signal snapped back to what is on screen. The
+        // `actual === before` half matters: when CDK DID move it already emitted through the
+        // template's (selectedIndexChange) forward, so emitting again double-fires a clamped
+        // request (measured: [2, 2]). Only reconcile when CDK stayed put and the consumer's value
+        // still disagrees — a refused linear move, or a clamped / ill-typed request.
+        if (actual !== requested && actual === before) this.selectedIndexChange.emit(actual);
       });
     });
   }

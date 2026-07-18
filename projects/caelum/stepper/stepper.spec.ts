@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, ErrorHandler, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 
@@ -140,4 +140,159 @@ describe('CaeStepper (linear)', () => {
   });
 
   const el = (): HTMLElement => fixture.nativeElement as HTMLElement;
+});
+
+// #592 — `[selectedIndex]` is a bare `input(0)` with no transform, and this wrapper assigns it
+// straight into CDK's setter from inside an `effect`. That setter THROWS on any index failing
+// `index > -1 && index < steps.length` — NaN, negatives, and out-of-range alike — so an unguarded
+// value doesn't degrade the stepper, it takes down change detection. The realistic trigger isn't
+// exotic: restoring a persisted index after a conditional step list shrank.
+@Component({
+  imports: [CaeStepper, CaeStep],
+  template: `
+    <cae-stepper
+      ariaLabel="Setup"
+      [selectedIndex]="idx()"
+      (selectedIndexChange)="seen.push($event)"
+    >
+      @for (s of steps(); track s) {
+        <cae-step [label]="s"
+          ><p class="body">{{ s }}</p></cae-step
+        >
+      }
+    </cae-stepper>
+  `,
+})
+class BoundsHost {
+  readonly idx = signal(0);
+  readonly steps = signal(['One', 'Two', 'Three']);
+  readonly seen: number[] = [];
+}
+
+describe('CaeStepper (index bounds, #592)', () => {
+  let fixture: ComponentFixture<BoundsHost>;
+  let host: BoundsHost;
+
+  // Today the assignment happens in a plain `effect`, so an out-of-bounds throw propagates out of
+  // detectChanges and these tests fail on the throw itself. The ErrorHandler capture is deliberate
+  // insurance rather than dead weight: if the assignment is ever moved past render to fix #597,
+  // the throw becomes a REPORTED error instead of a propagated one — and asserting rendered state
+  // alone would then have no teeth, because a swallowed failure leaves the stepper on exactly the
+  // step a successful clamp would. Verified: with the clamp removed, these fail either way.
+  let errors: string[];
+
+  beforeEach(async () => {
+    errors = [];
+    await TestBed.configureTestingModule({
+      imports: [BoundsHost],
+      providers: [
+        {
+          provide: ErrorHandler,
+          useValue: {
+            handleError: (e: unknown) => errors.push(String((e as Error)?.message ?? e)),
+          },
+        },
+      ],
+    }).compileComponents();
+    fixture = TestBed.createComponent(BoundsHost);
+    host = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+  });
+
+  const outOfBounds = (): string[] => errors.filter((e) => e.includes('out-of-bounds'));
+
+  const settle = async (): Promise<void> => {
+    fixture.detectChanges();
+    await fixture.whenStable();
+  };
+  const selectedHeader = (): number =>
+    Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('mat-step-header'),
+    ).findIndex((h) => h.getAttribute('aria-selected') === 'true');
+
+  // Each of these throws `cdkStepper: Cannot assign out-of-bounds value to selectedIndex` without
+  // the clamp — an unhandled error inside change detection, not a wrong-looking step.
+  it('does not crash change detection on an out-of-range index, and reports the real one', async () => {
+    host.idx.set(99);
+    await settle();
+    expect(outOfBounds()).toEqual([]);
+    expect(selectedHeader()).toBe(2); // clamped to the last step
+    // Exact array, not toContain: a loose assertion hid a duplicate emit here ([2, 2]).
+    expect(host.seen).toEqual([2]);
+  });
+
+  it('does not crash change detection on a negative index', async () => {
+    host.idx.set(-1);
+    await settle();
+    expect(outOfBounds()).toEqual([]);
+    expect(selectedHeader()).toBe(0);
+    // CDK doesn't move (already on 0), so the wrapper's reconciliation tells the consumer once
+    // that their -1 resolved to 0 — same single snap-back as the NaN case, never a duplicate.
+    expect(host.seen).toEqual([0]);
+  });
+
+  it('does not crash change detection on a NaN index, and never emits one', async () => {
+    host.idx.set(NaN);
+    await settle();
+    expect(outOfBounds()).toEqual([]);
+    expect(selectedHeader()).toBe(0);
+    // The emit-back compares against the CONSUMER's value, so a NaN request snaps the parent to
+    // the real index exactly once — and never emits a NaN.
+    expect(host.seen).toEqual([0]);
+  });
+
+  it('truncates a fractional index instead of indexing the step array at a fraction', async () => {
+    host.idx.set(1.5);
+    await settle();
+    expect(selectedHeader()).toBe(1);
+    expect(host.seen).toEqual([1]);
+  });
+
+  // The motivating case named at the top of this describe: a persisted index restored against a
+  // step list that has since shrunk. Distinct from the static out-of-range test — CDK's own
+  // steps.changes handler decrements by exactly one, so it can leave an index out of range against
+  // the NEW list until the wrapper re-clamps.
+  it('survives the step list shrinking under a now-out-of-range index', async () => {
+    host.idx.set(2);
+    await settle();
+    expect(selectedHeader()).toBe(2);
+    host.steps.set(['One']); // index 2 no longer exists
+    await settle();
+    // What THIS slice guarantees: no crash. CDK's own steps.changes handler decrements the index by
+    // exactly one (2 -> 1) regardless of the new length, so against a 1-step list it lands out of
+    // range and NO header is selected. That orphan-index state is pre-existing — verified against
+    // main, where this same assertion fails identically — and the wrapper can't currently re-clamp
+    // it without taking `steps()` as a dependency, which reintroduces the yank below. See #598.
+    expect(outOfBounds()).toEqual([]);
+    expect(selectedHeader()).toBe(-1); // documents the residual; tighten to 0 when #598 lands
+  });
+
+  // Locks the reason `steps()` is read UNTRACKED. Taking it as a dependency re-asserts the declared
+  // index whenever the step list changes structurally — which silently threw a user off a step they
+  // had navigated to themselves (measured during this slice: click step 3, add a step, snapped back
+  // to step 1). Both review lenses reached this independently. One-way binding is the exposed case;
+  // a two-way binding hides it because the parent's signal tracks the user's move.
+  it('does not yank a user off their step when the step list changes (one-way binding)', async () => {
+    const headers = (): HTMLElement[] =>
+      Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('mat-step-header'));
+    headers()[2].click(); // user navigates to step 3 themselves; host.idx stays 0
+    await settle();
+    expect(selectedHeader()).toBe(2);
+
+    host.steps.set(['One', 'Two', 'Three', 'Four']); // structural change, unrelated to navigation
+    await settle();
+    expect(selectedHeader()).toBe(2); // still where the user left it
+  });
+
+  it('keeps a pending index when the step list arrives late (async step list)', async () => {
+    host.steps.set([]);
+    host.idx.set(2);
+    await settle();
+    // With zero steps CDK would reject even 0, so the wrapper must not assign at all. Once the
+    // steps arrive the effect re-runs and the index clamps into the real range.
+    host.steps.set(['One', 'Two']);
+    await settle();
+    expect(selectedHeader()).toBe(1);
+  });
 });
