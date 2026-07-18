@@ -94,7 +94,7 @@ export class CaeSplitterPanel {
  * that **Enter** on a divider collapses its leading (primary) pane to its `minSize` (a true 0 for the default),
  * and Enter again restores it to its pre-collapse size. **Double-click** a divider to reset its pair to the
  * seeded split; **`[gutterSize]`** sets the divider thickness in px; coarse pointers get an invisible touch
- * hit-slop (#325). Remaining deferred parity extras: a pointer collapse affordance + programmatic
+ * **hit-slop** sized to `--cae-target-min` (#325, #456). Remaining deferred parity extras: a pointer collapse affordance + programmatic
  * `[collapsed]` model → #399; **px** min/max sizes → #418.
  */
 @Component({
@@ -172,23 +172,43 @@ export class CaeSplitterPanel {
       /* Touch-drag the divider resizes; it must not scroll the page. */
       touch-action: none;
       user-select: none;
+      /* Divider thickness, single-homed: the [gutterSize] px override (via the host custom property), else
+         the token. The hit-slop derives from this, so the two can never drift apart. */
+      --_cae-splitter-thickness: var(--cae-splitter-gutter-size, var(--cae-space-2));
+      /* Half the shortfall to the interactive floor, per side. Negative ⇒ the slop expands outward; if a
+         [gutterSize] already meets the floor it goes positive, which is inert (the ::before shrinks inside
+         the gutter, and the gutter itself is the target either way). */
+      --_cae-splitter-slop: calc((var(--_cae-splitter-thickness) - var(--cae-target-min)) / 2);
     }
-    /* Divider thickness: the [gutterSize] px override (via the host custom property), else the token. */
     :host(.cae-splitter--horizontal) .cae-splitter__gutter {
-      inline-size: var(--cae-splitter-gutter-size, var(--cae-space-2));
+      inline-size: var(--_cae-splitter-thickness);
       cursor: col-resize;
     }
     :host(.cae-splitter--vertical) .cae-splitter__gutter {
-      block-size: var(--cae-splitter-gutter-size, var(--cae-space-2));
+      block-size: var(--_cae-splitter-thickness);
       cursor: row-resize;
     }
-    /* Touch hit-slop (#325): coarse pointers get a larger invisible grab area along the divider's
-       cross-axis, without changing the visible gutter thickness. The ::before is part of the gutter, so
-       a press on the slop targets the gutter's own pointer handlers; logical insets keep it RTL-safe.
-       The slop is invisible, so on a coarse pointer it claims taps on panel content within --cae-space-2
-       of a divider; over a pane narrower than 2×--cae-space-2 two dividers' slops overlap and the later
-       one wins the tap (both are resize handles, and such a pane is degenerate). Mouse users are spared —
-       the whole rule is gated on pointer: coarse. */
+    /* Touch hit-slop (#325; density-corrected in #456). A coarse pointer gets a larger invisible grab area
+       along the divider's cross-axis, sized so the target reaches --cae-target-min without changing the
+       visible thickness — a thin resize affordance can't take a 24px *visible* floor without wrecking the
+       pane layout. The ::before belongs to the gutter, so a press on the slop targets the gutter's own
+       pointer handlers.
+
+       What #456 fixed: the extension is now derived from the density-INVARIANT token instead of a fixed
+       --cae-space-2. That scale shrinks under [data-density=compact], where the original slop measured
+       6 + 2×6 = 18px — short of the very floor it existed to hold.
+
+       What #456 deliberately did NOT do: ungate this for fine pointers. Doing so reads as the stricter
+       choice and is a net regression — .cae-splitter__panel sets overflow:auto, so each pane's native
+       scrollbar sits flush against the divider and ~9px of a ~15px scrollbar would silently become a drag
+       handle; and a pane collapsed to minSize:0 ([collapsible]) puts two dividers side by side, where the
+       later one's slop swallows the earlier one's visible body (#544). Coarse pointers have neither problem
+       (overlay scrollbars) and are where a thin target actually fails a user. A bare divider on a fine
+       pointer is covered by 2.5.8's Spacing exception, since pane content is not itself a target.
+       Rationale + the general recipe: docs/PATTERNS.md §10.
+
+       Residual on coarse: within (24px − thickness)/2 of a divider the slop claims presses on pane content;
+       and a positioned descendant in the *following* pane out-paints the trailing half (#545). */
     @media (pointer: coarse) {
       .cae-splitter__gutter::before {
         content: '';
@@ -196,11 +216,11 @@ export class CaeSplitterPanel {
       }
       :host(.cae-splitter--horizontal) .cae-splitter__gutter::before {
         inset-block: 0;
-        inset-inline: calc(-1 * var(--cae-space-2));
+        inset-inline: var(--_cae-splitter-slop);
       }
       :host(.cae-splitter--vertical) .cae-splitter__gutter::before {
         inset-inline: 0;
-        inset-block: calc(-1 * var(--cae-space-2));
+        inset-block: var(--_cae-splitter-slop);
       }
     }
     /* A token-styled grip: a short bar along the divider, drawn from a token colour — no icon font. */

@@ -144,6 +144,11 @@ const clamp = (v: number, min: number, max: number): number =>
       align-items: center;
       justify-content: center;
     }
+    /* NOT a hit-target gap, despite being a drag-shaped affordance (audited in #456): the pointer target
+       is the whole __track (press-anywhere jump + drag, #318) — this handle is aria-hidden decoration with
+       no handlers of its own, so WCAG 2.5.8 is measured against the track. Do not "floor" it: a
+       min-inline-size here would override the flex automatic minimum and silently resize it (#546, which
+       also tracks the fact that it does not render at the size these declarations imply). PATTERNS.md §10. */
     .cae-image-compare__handle {
       display: inline-flex;
       align-items: center;
