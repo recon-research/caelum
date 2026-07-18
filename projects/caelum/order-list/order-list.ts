@@ -450,8 +450,21 @@ export class CaeOrderListHeaderDef {
       flex: 1 1 auto;
       min-width: 0;
     }
+    /* Floor the grab target to the density-INVARIANT --cae-target-min (WCAG 2.5.8, #456): the grip is a
+       bare glyph, so its box is the ~14px line box and it tracks the *type* scale, not the target token.
+       Unlike the splitter divider this grip sits in normal flow, so it can take a *visible* floor, which is
+       strictly better than an invisible slop here — nothing can be claimed from the row content beside it.
+       It widens the grip column and floors the row to 24px + padding (~36px → 40px), confined to opt-in
+       [dragHandle] mode. inline-flex re-centres the glyph; border-box because Caelum ships no reset (a bare
+       consumer defaults to content-box). PATTERNS.md §10. */
     .cae-order-list__handle {
       flex: none;
+      box-sizing: border-box;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-inline-size: var(--cae-target-min);
+      min-block-size: var(--cae-target-min);
       cursor: grab;
       color: var(--cae-color-on-surface);
       opacity: 0.6;
