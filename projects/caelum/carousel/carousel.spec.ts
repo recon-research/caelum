@@ -231,6 +231,89 @@ describe('CaeCarousel', () => {
     expect(tabbable[0]).toBe(indicators()[0]);
   });
 
+  // #580 — [(page)] is a plain model(0) and model() takes no `transform`, so a consumer can write any
+  // number into it. NaN (a parseInt on empty input, an undefined async field) and fractions (a computed
+  // ratio) both survive a bare min/max clamp, and neither is `===` any indicator index — so every
+  // `i === clampedPage()` goes false at once and the group is left with ZERO tab stops: the carousel is
+  // keyboard-unreachable before a key is pressed (WCAG 2.1.1), which a functional nav test sails past.
+  // `.set()` is the same signal a `[(page)]` binding writes.
+  it('normalises a NaN page instead of emptying the tab order', async () => {
+    // Seed a NON-zero page first: starting from the default 0 and asserting 0 cannot distinguish
+    // "the bad value was healed" from "the bad value was silently ignored" — both leave page 0.
+    carousel.page.set(3);
+    await sync();
+    carousel.page.set(NaN);
+    await sync();
+    const tabbable = indicators().filter((b) => b.getAttribute('tabindex') === '0');
+    expect(tabbable).toHaveLength(1);
+    expect(tabbable[0]).toBe(indicators()[0]);
+    expect(activePage()).toBe(0);
+    // and the model is healed rather than leaving NaN latched in the consumer's binding
+    expect(carousel.page()).toBe(0);
+  });
+
+  it('truncates a fractional page instead of emptying the tab order', async () => {
+    carousel.page.set(2.5);
+    await sync();
+    const tabbable = indicators().filter((b) => b.getAttribute('tabindex') === '0');
+    expect(tabbable).toHaveLength(1);
+    expect(tabbable[0]).toBe(indicators()[2]);
+    expect(activePage()).toBe(2);
+    expect(carousel.page()).toBe(2);
+  });
+
+  it('never emits a non-finite page to the consumer when goTo() is handed a NaN', async () => {
+    const emitted: number[] = [];
+    carousel.page.subscribe((p: number) => emitted.push(p));
+    carousel.goTo(2);
+    await sync();
+    carousel.goTo(NaN);
+    await sync();
+    // Asserting page() alone here would have NO teeth: the reconcile effect launders a NaN write back
+    // to 0 before the assertion runs, so the test passes with the goTo guard deleted. What the guard
+    // actually prevents is the spurious pageChange(NaN) the consumer observes in between.
+    expect(emitted.every(Number.isFinite)).toBe(true);
+    expect(carousel.page()).toBe(0);
+  });
+
+  // The index guard clamps against `totalPages() - 1` — but that BOUND is itself derived from two
+  // un-coerced consumer numbers, and `Math.max(1, NaN)` is NaN. A NaN window size therefore poisons the
+  // bound, which no amount of index clamping can rescue, and the failure is strictly worse than #580's:
+  // the control bar renders not at all and EVERY slide goes inert + aria-hidden, so the carousel leaves
+  // the tab order and the a11y tree together. `responsiveOptions` overrides reach the same path
+  // completely uncoerced (a plain interface, no numberAttribute).
+  it('survives a NaN [numVisible] — the clamp bound, not just the clamped value', async () => {
+    await setInput({ numVisible: NaN });
+    expect(Number.isNaN(carousel.page())).toBe(false);
+    expect(indicators().length).toBeGreaterThan(0);
+    expect(visibleSlides().length).toBeGreaterThan(0);
+    expect(nextBtn()).not.toBeNull();
+  });
+
+  it('survives a NaN [numScroll] (the other half of the poisoned bound)', async () => {
+    await setInput({ numScroll: NaN });
+    expect(Number.isNaN(carousel.page())).toBe(false);
+    expect(indicators().length).toBeGreaterThan(0);
+    expect(visibleSlides().length).toBeGreaterThan(0);
+  });
+
+  // ±Infinity must keep clamping to the ends exactly as it did before #580 — this is what separates
+  // "truncate, then reject only NaN" from an up-front `Number.isFinite` gate, which would send
+  // +Infinity to page 0 while a merely huge 1e21 still landed on the last page. Nothing else pins it.
+  it('still clamps +/-Infinity and huge finite values to the ends', async () => {
+    carousel.page.set(Infinity);
+    await sync();
+    expect(carousel.page()).toBe(4); // 5 items, numVisible 1 -> pages 0..4
+
+    carousel.page.set(1e21);
+    await sync();
+    expect(carousel.page()).toBe(4);
+
+    carousel.page.set(-Infinity);
+    await sync();
+    expect(carousel.page()).toBe(0);
+  });
+
   it('navigates indicators with Arrow/Home/End and moves focus + page', () => {
     document.body.appendChild(fixture.nativeElement);
     indicators()[0].focus();

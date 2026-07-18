@@ -37,6 +37,26 @@ export interface CaeCarouselResponsiveOption {
 }
 
 /**
+ * Clamp a consumer number to an in-range integer page. Truncate FIRST, collapse only `NaN` — an
+ * up-front `Number.isFinite` gate would send `Infinity` to page 0 while `1e21` landed on the last.
+ * Rationale (a NaN page = zero tab stops, WCAG 2.1.1): #580 + carousel.spec.ts.
+ */
+const clampPage = (v: number, max: number): number => {
+  const n = Math.trunc(v);
+  return Math.max(0, Math.min(Number.isNaN(n) ? 0 : n, max));
+};
+
+/**
+ * Floor a consumer window size (`numVisible`/`numScroll`, incl. uncoerced `responsiveOptions`) to a
+ * positive integer. `Math.max(1, NaN)` is `NaN`, which poisons `totalPages()` — the clamp BOUND, which
+ * {@link clampPage} cannot rescue. Rationale: #580 + carousel.spec.ts.
+ */
+const positiveCount = (v: number): number => {
+  const n = Math.floor(v);
+  return Number.isNaN(n) ? 1 : Math.max(1, n);
+};
+
+/**
  * `cae-carousel` — a content-agnostic rotating carousel (`reference/COMPARISON.md`: `p-carousel` →
  * `cae-carousel`). The first member of the ★ media family (Book 11 §3.4). Built from scratch on a signal
  * index model (Book 11 §4 — *"the active slide is a signal"*) rather than a foreign carousel library
@@ -545,7 +565,7 @@ export class CaeCarousel<T = unknown> {
 
   /** {@link numVisible} — the {@link activeOption} override or the base input — floored to a positive integer. */
   private readonly visibleCount = computed(() =>
-    Math.max(1, Math.floor(this.activeOption()?.numVisible ?? this.numVisible())),
+    positiveCount(this.activeOption()?.numVisible ?? this.numVisible()),
   );
   /**
    * {@link numScroll} — the {@link activeOption} override or the base input — floored to a positive integer,
@@ -554,7 +574,7 @@ export class CaeCarousel<T = unknown> {
    */
   private readonly scrollCount = computed(() =>
     Math.min(
-      Math.max(1, Math.floor(this.activeOption()?.numScroll ?? this.numScroll())),
+      positiveCount(this.activeOption()?.numScroll ?? this.numScroll()),
       this.visibleCount(),
     ),
   );
@@ -568,9 +588,7 @@ export class CaeCarousel<T = unknown> {
   });
 
   /** The active page clamped into `[0, totalPages - 1]` — the render source of truth (the model may lag). */
-  protected readonly clampedPage = computed(() =>
-    Math.max(0, Math.min(this.page(), this.totalPages() - 1)),
-  );
+  protected readonly clampedPage = computed(() => clampPage(this.page(), this.totalPages() - 1));
 
   /** First item index of the current window, clamped to the end so the last window is always full. */
   private readonly windowStart = computed(() => {
@@ -707,7 +725,7 @@ export class CaeCarousel<T = unknown> {
 
   /** Go to page `p` (clamped). Sets the model (emitting `pageChange`) only when it actually changes. */
   goTo(p: number): void {
-    const target = Math.max(0, Math.min(p, this.totalPages() - 1));
+    const target = clampPage(p, this.totalPages() - 1);
     if (target !== this.page()) this.page.set(target);
   }
 
