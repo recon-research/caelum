@@ -1054,5 +1054,291 @@ describe('CaeChipSet', () => {
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('duplicates an existing chip'));
       warn.mockRestore();
     });
+
+    describe('a disabled FIRST chip (#550)', () => {
+      interface Item {
+        id: number;
+        name: string;
+        off?: boolean;
+      }
+      @Component({
+        imports: [CaeChipSet],
+        template: `
+          <cae-chip-set
+            [items]="items()"
+            [label]="labelFn"
+            [chipDisabled]="disabledFn"
+            [textEntry]="textEntry"
+            [ariaLabel]="ariaLabel()"
+            textEntryLabel="Add a tag"
+          />
+        `,
+      })
+      class DisabledFirstHost {
+        ariaLabel = signal('Tags');
+        items = signal<readonly Item[]>([
+          { id: 1, name: 'locked', off: true },
+          { id: 2, name: 'open' },
+        ]);
+        labelFn = (t: Item): string => t.name;
+        // A predicate over plain mutable data — exactly what [chipDisabled]'s contract permits, and the shape
+        // that a memoized gridTabIndex would fail to track (the fn reference never changes when `locked` does).
+        locked = new Set<number>();
+        disabledFn = (t: Item): boolean => !!t.off || this.locked.has(t.id);
+        textEntry = true;
+      }
+
+      async function makeDisabledFirst(
+        setup: (h: DisabledFirstHost) => void = () => {},
+      ): Promise<ComponentFixture<DisabledFirstHost>> {
+        await TestBed.configureTestingModule({ imports: [DisabledFirstHost] }).compileComponents();
+        const f = TestBed.createComponent(DisabledFirstHost);
+        setup(f.componentInstance);
+        el = f.nativeElement as HTMLElement;
+        document.body.appendChild(el);
+        f.detectChanges();
+        await f.whenStable();
+        return f;
+      }
+
+      it('drops the grid out of the tab order so Shift+Tab cannot bounce (WCAG 2.1.2)', async () => {
+        // Material 22's MatChipGrid.focus() forwards to the registered input whenever `_chips.first.disabled`
+        // — it treats "first chip disabled" as "nothing to focus" rather than looking past it. The grid host is
+        // nonetheless a tab stop whenever it has ANY chips (the host binding is
+        // `(disabled || (_chips && _chips.length === 0)) ? -1 : tabIndex`, and Caelum never sets the grid's
+        // `disabled`), and it carries a `(focus)` listener calling that same focus().
+        //
+        // So with [textEntry] + a disabled first chip the grid becomes a one-way valve: Shift+Tab out of the
+        // input moves to the grid host, whose focus handler forwards straight back to the input. The user
+        // cannot navigate BACKWARD past the component at all — a keyboard trap (WCAG 2.1.2, Level A).
+        // Material's own escape hatch (MatChipSet._allowFocusEscape, which zeroes the tabindex on TAB) cannot
+        // fire: it hangs off the GRID's keydown host listener, and the input is a DOM SIBLING of the grid, so
+        // keystrokes in the input never reach it.
+        const f = await makeDisabledFirst();
+        expect(grid(f).getAttribute('tabindex')).toBe('-1');
+      });
+
+      it('keeps the grid a tab stop when the first chip is ENABLED (the negative arm)', async () => {
+        // The narrow gate: with a focusable first chip Material's focus() takes its normal branch and lands on
+        // a chip, so the grid must stay reachable. Without this arm a blanket tabindex=-1 would still pass the
+        // test above while silently making the chips unreachable in every other configuration.
+        const f = await makeDisabledFirst((h) => {
+          h.items = signal<readonly Item[]>([
+            { id: 1, name: 'open' },
+            { id: 2, name: 'locked', off: true },
+          ]);
+        });
+        expect(grid(f).getAttribute('tabindex')).toBe('0');
+      });
+
+      it('keeps the grid a tab stop without [textEntry] (the no-input arm)', async () => {
+        // With no registered input Material's forwarding branch returns early and is inert, so the grid is
+        // still the only way in and must keep its tab stop even behind a disabled first chip.
+        const f = await makeDisabledFirst((h) => (h.textEntry = false));
+        expect(grid(f).getAttribute('tabindex')).toBe('0');
+      });
+
+      it('TRACKS a runtime change of the first chip rather than latching its initial value', async () => {
+        // The three arms above are all static, set up before the first render. This one is why gridTabIndex is
+        // a plain method and not a computed(): [chipDisabled] is documented as a plain predicate, so it may
+        // close over ordinary mutable data that no signal tracks.
+        //
+        // Mutating that data alone changes nothing — the set is OnPush, so nothing re-renders. The divergence
+        // needs the component dirtied by something INDEPENDENT of items()/chipDisabled(), which is what the
+        // [ariaLabel] change below stands in for (any other input, or a parent's OnPush push, does the same).
+        // At that point the chip's `[disabled]="isDisabled(item)"` method binding re-evaluates and the chip
+        // renders disabled — while a memoized gridTabIndex, whose only deps are items() and chipDisabled(),
+        // would hold its stale 0 and silently restore the #550 trap.
+        const f = await makeDisabledFirst((h) => {
+          h.items = signal<readonly Item[]>([
+            { id: 1, name: 'open' },
+            { id: 2, name: 'other' },
+          ]);
+        });
+        expect(grid(f).getAttribute('tabindex')).toBe('0');
+        // Lock the first chip by mutating the data the predicate closes over. Neither [items] nor the
+        // [chipDisabled] function REFERENCE changes — so a computed() would see no dependency change and hold
+        // its stale 0, while the chip beside it re-renders disabled.
+        f.componentInstance.locked.add(1);
+        f.componentInstance.ariaLabel.set('Tags (updated)'); // an unrelated input change dirties the set
+        await settle(f);
+        expect(rows(f)[0].classList.contains('mat-mdc-chip-disabled')).toBe(true); // the chip followed it
+        expect(grid(f).getAttribute('tabindex')).toBe('-1'); // ...and so must the grid's tab stop
+      });
+    });
+
+    it('does NOT let an async drop pull focus INTO the field after the user has left (#551)', async () => {
+      // The mirror image of the steal the [textEntry] guard prevents, and the one case this component cannot
+      // simply decline to act on: the steal is MATERIAL's, not ours. When the set empties, MatChipGrid.focus()
+      // queues `Promise.resolve().then(() => _chipInput.focus())` — unconditionally, with no check that focus
+      // is still inside the widget. It is reached even though the destroyed chip was NOT focused, because
+      // MatChipSet._trackDestroyedFocusedChip also fires on `_hadFocusOnRemove` (captured back at remove()
+      // time) while its key manager still points at the removed chip's action.
+      //
+      // So: request a removal from the chip, walk away to an unrelated field, and let the drop land late. The
+      // user's keystrokes would be yanked into the tag field mid-sentence (WCAG 3.2.5).
+      @Component({
+        imports: [CaeChipSet],
+        template: `
+          <cae-chip-set
+            [items]="items()"
+            textEntry
+            textEntryLabel="Add a tag"
+            (removed)="onRemoved($event)"
+          />
+          <input #elsewhere class="elsewhere" />
+        `,
+      })
+      class WalkAwayHost {
+        items = signal<readonly string[]>(['solo']);
+        readonly elsewhereRef = viewChild<ElementRef<HTMLInputElement>>('elsewhere');
+        pendingDrop: (() => void) | null = null;
+        onRemoved(e: CaeChipRemoveEvent<string>): void {
+          // Captured, not applied — the deterministic stand-in for http.delete().subscribe(drop).
+          this.pendingDrop = () => this.items.update((l) => l.filter((t) => t !== e.item));
+        }
+      }
+      await TestBed.configureTestingModule({ imports: [WalkAwayHost] }).compileComponents();
+      const f = TestBed.createComponent(WalkAwayHost);
+      el = f.nativeElement as HTMLElement;
+      document.body.appendChild(el);
+      f.detectChanges();
+      await f.whenStable();
+
+      const soloRemove = removeBtn(rows(f)[0])!;
+      soloRemove.focus();
+      soloRemove.click(); // request only — the chip is still rendered, the drop is in flight
+      await settle(f);
+      expect(rows(f).length).toBe(1);
+
+      const elsewhere = f.componentInstance.elsewhereRef()!.nativeElement;
+      elsewhere.focus(); // the user gives up waiting and moves to an unrelated field OUTSIDE the set
+      elsewhere.value = 'typing something else';
+      expect(document.activeElement).toBe(elsewhere);
+
+      // settle()'s await drains the whole microtask queue, so Material's queued input.focus() AND the restore
+      // queued behind it have both run by the time it returns. The ordering is what the assertion proves: had
+      // the restore run FIRST, host.contains(elsewhere) would be false, it would bail, and Material would land
+      // on the field — so a passing assertion is evidence the restore is genuinely behind Material's grab.
+      f.componentInstance.pendingDrop!(); // the drop finally lands -> the set empties
+      await settle(f);
+      expect(rows(f).length).toBe(0);
+      // Focus must still be where the user put it — NOT dragged into the now-empty set's tag field.
+      expect(document.activeElement).toBe(elsewhere);
+      expect(document.activeElement).not.toBe(field(f));
+    });
+
+    it('undoes the grab for an async CASCADE emptying, which arms no redirect marker (#551)', async () => {
+      // The shape that gating the undo on pendingEmptyRemoval would miss. Removing 'a' from ['a','b'] is NOT
+      // last-enabled, so onRemoved takes the afterNextRender one-shot; that fires while the async drop is still
+      // in flight, sees 'a' present, and correctly leaves NO marker. The handler then drops 'a' AND 'b'
+      // together in a later task (a parent->children cascade, the #448 shape). Material still grabs — it keyed
+      // off _hadFocusOnRemove back at remove() time — so the undo must not be reachable only via the marker.
+      @Component({
+        imports: [CaeChipSet],
+        template: `
+          <cae-chip-set
+            [items]="items()"
+            textEntry
+            textEntryLabel="Add a tag"
+            (removed)="onRemoved()"
+          />
+          <input #elsewhere class="elsewhere" />
+        `,
+      })
+      class CascadeHost {
+        items = signal<readonly string[]>(['a', 'b']);
+        readonly elsewhereRef = viewChild<ElementRef<HTMLInputElement>>('elsewhere');
+        pendingDrop: (() => void) | null = null;
+        onRemoved(): void {
+          this.pendingDrop = () => this.items.set([]); // drops the removed item AND its sibling
+        }
+      }
+      await TestBed.configureTestingModule({ imports: [CascadeHost] }).compileComponents();
+      const f = TestBed.createComponent(CascadeHost);
+      el = f.nativeElement as HTMLElement;
+      document.body.appendChild(el);
+      f.detectChanges();
+      await f.whenStable();
+
+      const aRemove = removeBtn(rows(f)[0])!;
+      aRemove.focus();
+      aRemove.click();
+      await settle(f);
+      expect(rows(f).length).toBe(2); // nothing dropped yet — the one-shot has already fired and armed nothing
+
+      const elsewhere = f.componentInstance.elsewhereRef()!.nativeElement;
+      elsewhere.focus();
+
+      f.componentInstance.pendingDrop!(); // the cascade lands: both chips go at once
+      await settle(f);
+      expect(rows(f).length).toBe(0);
+      expect(document.activeElement).toBe(elsewhere);
+    });
+
+    it('leaves focus alone when Material does NOT grab (the no-grab arm)', async () => {
+      // With TWO disabled chips remaining Material takes setPreviousItemActive(), which focuses nothing — so
+      // there is no grab to undo. This arity does NOT take the [textEntry] early-return (that would be the
+      // strand #201 fixed), so it falls through to the emptyFocusTarget redirect and is stopped only by the
+      // ownsFocus gate. [emptyFocusTarget] is therefore bound deliberately: without it the redirect would be a
+      // silent no-op and this test could not tell a working gate from a missing one. Focus must stay put —
+      // neither dragged into the field by a spurious restore, nor pushed to the status region by the redirect.
+      interface Item {
+        id: number;
+        name: string;
+        off?: boolean;
+      }
+      @Component({
+        imports: [CaeChipSet],
+        template: `
+          <cae-chip-set
+            [items]="items()"
+            [label]="labelFn"
+            [chipDisabled]="disabledFn"
+            textEntry
+            textEntryLabel="Add a tag"
+            [emptyFocusTarget]="statusRef()"
+            (removed)="onRemoved($event)"
+          />
+          <input #elsewhere class="elsewhere" />
+          <p #status tabindex="-1">status</p>
+        `,
+      })
+      class NoGrabHost {
+        readonly statusRef = viewChild<ElementRef<HTMLElement>>('status');
+        items = signal<readonly Item[]>([
+          { id: 1, name: 'open' },
+          { id: 2, name: 'off1', off: true },
+          { id: 3, name: 'off2', off: true },
+        ]);
+        labelFn = (t: Item): string => t.name;
+        disabledFn = (t: Item): boolean => !!t.off;
+        readonly elsewhereRef = viewChild<ElementRef<HTMLInputElement>>('elsewhere');
+        pendingDrop: (() => void) | null = null;
+        onRemoved(e: CaeChipRemoveEvent<Item>): void {
+          this.pendingDrop = () => this.items.update((l) => l.filter((x) => x !== e.item));
+        }
+      }
+      await TestBed.configureTestingModule({ imports: [NoGrabHost] }).compileComponents();
+      const f = TestBed.createComponent(NoGrabHost);
+      el = f.nativeElement as HTMLElement;
+      document.body.appendChild(el);
+      f.detectChanges();
+      await f.whenStable();
+
+      const openRemove = removeBtn(rows(f)[0])!;
+      openRemove.focus();
+      openRemove.click();
+      await settle(f);
+
+      const elsewhere = f.componentInstance.elsewhereRef()!.nativeElement;
+      elsewhere.focus();
+
+      f.componentInstance.pendingDrop!(); // only the enabled chip goes; two disabled chips remain
+      await settle(f);
+      expect(rows(f).length).toBe(2);
+      expect(document.activeElement).toBe(elsewhere); // untouched — nothing grabbed, nothing restored
+      expect(document.activeElement).not.toBe(f.componentInstance.statusRef()!.nativeElement);
+    });
   });
 });

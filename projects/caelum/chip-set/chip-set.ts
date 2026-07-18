@@ -76,6 +76,7 @@ export interface CaeChipRemoveEvent<T> {
   template: `
     <mat-chip-grid
       #grid
+      [tabIndex]="gridTabIndex()"
       [attr.aria-label]="ariaLabel() || null"
       [attr.aria-labelledby]="ariaLabelledby() || null"
     >
@@ -223,7 +224,10 @@ export class CaeChipSet<T = string> implements OnInit {
    * to the consumer: (a) an **async cascade** — the handler drops *untracked* sibling items in a later task,
    * genuinely indistinguishable from a coincident programmatic clear once deferred; and (b) **concurrent**
    * overlapping async removals — distinguishable in principle (every departed item was removal-tracked, unlike a
-   * clear) but deferred on the added state a departure-diff would cost (#448).
+   * clear) but deferred on the added state a departure-diff would cost (#448). Separately, when an async drop
+   * leaves a **sibling** chip standing, Material's own redirect into that sibling is likewise unconditional —
+   * so it can pull a user who has since moved away back into the set (#556); only the empty-set form of that
+   * grab is undone today.
    *
    * If the target is itself a live region being updated (as Forge's count is) its text may be announced a
    * second time when focus lands — a plain heading/container avoids that. Accepts a raw `HTMLElement` (a
@@ -247,11 +251,13 @@ export class CaeChipSet<T = string> implements OnInit {
    * skip is *narrow*, matching where Material actually lands focus: with **two or more disabled chips** left it
    * lands nothing, so the redirect still runs (a blanket skip stranded the user on `<body>`).
    *
-   * Known residuals, all `[textEntry]`-only: a **disabled first chip** makes the chips keyboard-unreachable and
-   * bounces Shift+Tab (#550); an **async** drop that lands after the user has moved away can let *Material*
-   * pull focus into the field (#551 — the one steal this component cannot gate, since the landing decision is
-   * Material's); the field renders **below** the chips rather than inline (#552); rejected-add text loss, IME
-   * commits, and runtime toggling (#553). The form-control shape is an open decision (#549).
+   * A drop landing after the user has moved on cannot drag them back into the field — Material's grab is
+   * unconditional, so it is undone (#551). Behind a **disabled first chip** the grid leaves the tab order so
+   * Shift+Tab can escape (#550); the chips themselves are then reachable only by Backspace from the empty
+   * field, and **not at all** when the last chip is disabled too (Material's step-back targets the last chip
+   * without skipping disabled ones) — the open half of #550. Further residuals, all `[textEntry]`-only: the
+   * field renders **below** the chips rather than inline (#552); rejected-add text loss, IME commits, and
+   * runtime toggling (#553). Form-control shape: open decision #549.
    */
   readonly textEntry = input(false, { transform: booleanAttribute });
 
@@ -297,6 +303,24 @@ export class CaeChipSet<T = string> implements OnInit {
   /** Keys that commit typed text: Enter (Material's default) + comma (the `p-chips` convention). */
   protected readonly separatorKeyCodes: readonly number[] = [ENTER, COMMA];
 
+  /**
+   * Tab-order position of the chip grid — normally `0` (the single tab stop leading into the roving chip
+   * navigation), but `-1` when {@link textEntry} is on **and the first chip is disabled**, where Material
+   * turns the grid into a one-way valve that forwards every arrival to the input: Shift+Tab out of the field
+   * can then never get past the component, a keyboard trap (WCAG 2.1.2, Level A). Leaving the tab order costs
+   * no reachability — behind a disabled first chip the grid already forwarded every arrival. Full trace and
+   * the arity arms live in `chip-set.spec.ts` (#550).
+   *
+   * A plain method, not a `computed()` — it must re-evaluate on the same cadence as the template's
+   * `[disabled]="isDisabled(item)"`, or a {@link chipDisabled} predicate over non-signal data leaves the grid
+   * tabbable beside a chip that renders disabled, silently restoring the trap. Pinned by the `TRACKS a runtime
+   * change` spec; O(1), so there is nothing to memoize anyway.
+   */
+  protected gridTabIndex(): number {
+    const items = this.items();
+    return this.textEntry() && items.length > 0 && this.isDisabled(items[0]) ? -1 : 0;
+  }
+
   constructor() {
     // Drive the empty-set focus redirect off {@link items} actually reaching no-enabled-chip — NOT a
     // request-time afterNextRender — so an ASYNC drop (a confirm dialog, or `(removed)=>http.delete()
@@ -313,6 +337,13 @@ export class CaeChipSet<T = string> implements OnInit {
     //     clean causal expiry signal, so it is an accepted residual (#448).
     afterRenderEffect(() => {
       const items = this.items();
+      // Undoing Material's focus grab (#551) is deliberately NOT gated on the marker below: Material grabs
+      // whenever the set reaches no-enabled-chip, regardless of whose removal caused it, so anything that
+      // empties the set without arming the marker — an async CASCADE most of all (a handler that drops the
+      // removed item AND its siblings in a later task, which takes onRemoved's not-last branch and leaves no
+      // marker) — would otherwise still drag a departed user back into the field. Safe to run unconditionally:
+      // it self-gates on the grab having actually landed inside this host.
+      this.undoMaterialGrabIfUserHasLeft(items);
       const pending = this.pendingEmptyRemoval;
       if (!pending) return;
       if (items.includes(pending.item)) return; // async drop hasn't landed yet — keep waiting
@@ -334,21 +365,12 @@ export class CaeChipSet<T = string> implements OnInit {
    */
   private focusEmptyTargetIfOurs(): void {
     // With [textEntry], skip the redirect ONLY where Material will itself land focus in the input — else it
-    // would STEAL focus out of the field the user is typing in (WCAG 3.2.5). This must be checked before the
-    // ownsFocus gate below, not folded into it: the input lives inside the host, so `host.contains(active)`
-    // reads as "still ours" and would wave the steal straight through (#201).
-    //
-    // The condition mirrors Material 22's MatChipSet._redirectDestroyedChipFocus exactly, because a blanket
-    // skip is a STRAND: it calls grid.focus() — which forwards to the registered input — only when no chips
-    // remain, or when exactly ONE remains and it is disabled. With two or more disabled chips left it calls
-    // _keyManager.setPreviousItemActive() instead, whose skip-predicate loop walks off the end and focuses
-    // nothing at all, dropping the user on <body> (WCAG 2.4.3 — the defect this component exists to prevent).
-    // Every caller reaches here only when no ENABLED chip remains, so "1 left and disabled" is the whole of
-    // the one-chip case. Teeth: the two-disabled-chips spec.
+    // would STEAL focus out of the field the user is typing in (WCAG 3.2.5). Checked before the ownsFocus gate
+    // below, not folded into it: the input lives inside the host, so `host.contains(active)` reads as "still
+    // ours" and would wave the steal straight through (#201). A blanket skip would instead STRAND the ≥2
+    // -disabled arity — see {@link materialWillFocusInput}. Teeth: the two-disabled-chips spec.
     const left = this.items();
-    const materialWillFocusInput =
-      left.length === 0 || (left.length === 1 && this.isDisabled(left[0]));
-    if (this.textEntry() && materialWillFocusInput) return;
+    if (this.textEntry() && this.materialWillFocusInput(left)) return;
     const active = document.activeElement;
     const ownsFocus =
       active === null || active === document.body || this.host.nativeElement.contains(active);
@@ -368,6 +390,44 @@ export class CaeChipSet<T = string> implements OnInit {
         'cae-chip-set: [emptyFocusTarget] did not receive focus after the set emptied — the element is likely not focusable (a non-interactive target needs tabindex="-1") or is detached from the DOM.',
       );
     }
+  }
+
+  /**
+   * Whether Material will pull focus into the {@link textEntry} field once `left` is all that remains. Mirrors
+   * Material 22's `MatChipSet._redirectDestroyedChipFocus`: it calls `grid.focus()` — which forwards to the
+   * registered input — only when **no** chips remain, or when exactly **one** remains and it is disabled. With
+   * two or more disabled chips left it calls `_keyManager.setPreviousItemActive()` instead, whose skip-predicate
+   * walks off the end and focuses nothing at all, dropping the user on `<body>` (WCAG 2.4.3 — the very defect
+   * this component exists to prevent), so that arity must NOT be treated as "Material has it covered".
+   */
+  private materialWillFocusInput(left: readonly T[]): boolean {
+    return left.length === 0 || (left.length === 1 && this.isDisabled(left[0]));
+  }
+
+  /**
+   * Put focus back where the user left it when Material pulls it into the {@link textEntry} field after the set
+   * empties behind their back (#551) — the one steal this component cannot prevent by declining to act, since
+   * `MatChipGrid.focus()` schedules `_chipInput.focus()` unconditionally, never checking that focus is still in
+   * the widget. Runs from the post-render hook of the tick that queued that microtask, so the restore is
+   * deterministically *behind* it in the FIFO queue — no timer, no polling, no race.
+   *
+   * Conservative: it re-focuses only when the grab actually landed **inside this host**, and never chases a
+   * `heldBy` that has left the DOM (focusing a detached node is a silent no-op that would strand the user on
+   * `<body>` — worse than Material's field, which is at least real). Not silent, though: the field genuinely
+   * takes focus first, so a screen reader announces it before the restored element. Harmless with
+   * {@link addOnBlur}, whose blur-commit finds the field already empty and swallows it.
+   */
+  private undoMaterialGrabIfUserHasLeft(items: readonly T[]): void {
+    if (!this.textEntry() || !this.materialWillFocusInput(items)) return;
+    const heldBy = document.activeElement;
+    // Only a focus that is genuinely elsewhere is worth restoring: <body>/null means nothing was strandable,
+    // and a focus already inside the host is the normal case Material's landing is CORRECT for.
+    if (!(heldBy instanceof HTMLElement) || this.host.nativeElement.contains(heldBy)) return;
+    queueMicrotask(() => {
+      if (!heldBy.isConnected) return;
+      if (!this.host.nativeElement.contains(document.activeElement)) return; // no grab happened — leave it
+      heldBy.focus({ preventScroll: true });
+    });
   }
 
   /**
