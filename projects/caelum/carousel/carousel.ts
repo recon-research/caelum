@@ -5,6 +5,7 @@ import {
   Component,
   ElementRef,
   PLATFORM_ID,
+  booleanAttribute,
   computed,
   contentChild,
   effect,
@@ -82,20 +83,19 @@ export interface CaeCarouselResponsiveOption {
  * (default) is unchanged. #276.
  *
  * **v1 scope** (#273): fixed horizontal window, circular, autoplay (+pause/stop/reduced-motion), prev/next,
- * indicators, keyboard, full ARIA, content projection. Follow-ups (#276): touch/CDK-drag swipe-to-advance
- * (buttons + arrows already give the full keyboard path, §3.5 gate 1, so swipe is an enhancement, not a
- * parity gap), a seamless circular loop (clone edge items for an uninterrupted wrap — the index-wrap
- * {@link circular} is complete, but the transform jumps at the boundary), and focus restoration when a
- * focused slide is removed from the window (see the focus note below). Vertical mode ships with a horizontal
+ * indicators, keyboard, full ARIA, content projection. Follow-ups (#276): a seamless circular loop (clone
+ * edge items for an uninterrupted wrap — the index-wrap {@link circular} is complete, but the transform
+ * jumps at the boundary), and focus restoration when a focused slide is removed from the window (#559, see
+ * the focus note below). Vertical mode ships with a horizontal
  * control bar (up/down chevrons); stacking the nav buttons prev-above/next-below for full `p-carousel`
  * layout parity is #445.
  *
- * **Focus note (M4, #276).** Autoplay pauses on focus, and indicator/button paging moves focus off the
+ * **Focus note (M4, #559).** Autoplay pauses on focus, and indicator/button paging moves focus off the
  * slide first, so those paths are safe. But a window shift that leaves a focused slide behind — a consumer
- * writing `[(page)]` or changing `numVisible`/`value`, **or an end-user resize crossing a
- * {@link responsiveOptions} breakpoint** — while keyboard focus is *inside* a slide's content makes that
- * slide `inert` and drops DOM focus to `<body>`; restoring it is a real-browser follow-up (the same hazard
- * cae-tree-table documents at #263).
+ * writing `[(page)]` or changing `numVisible`/`value`, an end-user resize crossing a
+ * {@link responsiveOptions} breakpoint, **or a {@link swipe} away from a slide the user had focused** —
+ * while keyboard focus is *inside* a slide's content makes that slide `inert` and drops DOM focus to
+ * `<body>`; restoring it across all of those paths at once is a real-browser follow-up (#559).
  *
  * @typeParam T - the item shape (one element of {@link value}).
  */
@@ -118,7 +118,14 @@ export interface CaeCarouselResponsiveOption {
     '(focusout)': '_focused.set(false)',
   },
   template: `
-    <div class="cae-carousel__viewport" [style.--cae-carousel-viewport-block-size]="vpBlockSize()">
+    <div
+      class="cae-carousel__viewport"
+      [style.--cae-carousel-viewport-block-size]="vpBlockSize()"
+      [style.touch-action]="touchAction()"
+      (pointerdown)="onSwipeStart($event)"
+      (pointerup)="onSwipeEnd($event)"
+      (pointercancel)="onSwipeCancel($event)"
+    >
       <!-- The track holds EVERY item; only the current window is non-inert. aria-live is polite when idle
            (a page change announces the revealed slides) and off while autoplaying (no rotation spam). -->
       <div
@@ -431,7 +438,18 @@ export class CaeCarousel<T = unknown> {
    */
   readonly responsiveOptions = input<readonly CaeCarouselResponsiveOption[]>([]);
   /** Whether prev/next wrap past the ends (and autoplay loops). Default false. */
-  readonly circular = input(false);
+  readonly circular = input(false, { transform: booleanAttribute });
+  /**
+   * Whether a **touch/pen swipe** across the viewport changes page. Swiping is `p-carousel` behaviour; the
+   * opt-out is ours. On by default. A committed swipe stops autoplay, as the pause button does. Mouse drags
+   * are ignored — on a pointer device press-and-move is text selection.
+   *
+   * While on, the viewport claims its movement axis via `touch-action` (`pan-y pinch-zoom` horizontal,
+   * `pan-x pinch-zoom` vertical), so the perpendicular scroll and both zoom gestures survive. Turn it
+   * **off** if a slide has its own scrollable region on the carousel's axis: `touch-action` intersects down
+   * the ancestor chain, so a consumer cannot win the axis back from their own element. #276.
+   */
+  readonly swipe = input(true, { transform: booleanAttribute });
   /** Autoplay timer in ms; `0` (default) disables autoplay. See the class doc for the WCAG 2.2.2 behaviour. */
   readonly autoplayInterval = input(0);
   /**
@@ -440,9 +458,9 @@ export class CaeCarousel<T = unknown> {
    */
   readonly ariaLabel = input('');
   /** Whether to render the indicator dots (only shown when there is more than one page). Default true. */
-  readonly showIndicators = input(true);
+  readonly showIndicators = input(true, { transform: booleanAttribute });
   /** Whether to render the prev/next buttons (only shown when there is more than one page). Default true. */
-  readonly showNavigators = input(true);
+  readonly showNavigators = input(true, { transform: booleanAttribute });
   /** Accessible label for the previous-slide button. */
   readonly prevAriaLabel = input('Previous slide');
   /** Accessible label for the next-slide button. */
@@ -762,6 +780,70 @@ export class CaeCarousel<T = unknown> {
    */
   private focusIndicator(i: number): void {
     this.indicatorBtns()[i]?.nativeElement.focus();
+  }
+
+  /**
+   * `touch-action` while {@link swipe} is on; `null` when off (see that input). `pinch-zoom` is listed
+   * explicitly because a bare `pan-*` value revokes it, and `touch-action` intersects down the ancestor
+   * chain — omitting it would strip zoom from every projected slide.
+   */
+  protected readonly touchAction = computed<string | null>(() =>
+    !this.swipe() ? null : this.isVertical() ? 'pan-x pinch-zoom' : 'pan-y pinch-zoom',
+  );
+
+  /**
+   * Where the in-flight swipe began, keyed by `pointerId` so a second finger neither hijacks the slot nor
+   * resolves it — unkeyed, a pinch reads as a page-length drag.
+   */
+  private swipeOrigin: { readonly x: number; readonly y: number; readonly id: number } | null =
+    null;
+
+  /**
+   * Minimum travel before a swipe counts as a page change — below it the gesture is a tap or an incidental
+   * drag, most importantly a tap on interactive slide content.
+   */
+  private static readonly SWIPE_THRESHOLD_PX = 50;
+
+  /** Begin tracking a touch/pen swipe. */
+  protected onSwipeStart(event: PointerEvent): void {
+    // defaultPrevented: a nested pointer-drag control (cae-splitter, cae-image-compare) already claimed this
+    // gesture — those set `touch-action: none`, so no pointercancel ever arrives to disarm us.
+    if (!this.swipe() || event.pointerType === 'mouse' || event.defaultPrevented) return;
+    if (this.swipeOrigin) return; // a gesture is already in flight — ignore additional fingers
+    this.swipeOrigin = { x: event.clientX, y: event.clientY, id: event.pointerId };
+    // Capture so the up event still arrives if the finger leaves the viewport mid-gesture (a swipe that
+    // starts near the edge routinely does). Optional-called: jsdom implements PointerEvent but not capture.
+    (event.currentTarget as Element | null)?.setPointerCapture?.(event.pointerId);
+  }
+
+  /** Resolve a swipe: past the threshold along the movement axis, advance or retreat one page. */
+  protected onSwipeEnd(event: PointerEvent): void {
+    const origin = this.swipeOrigin;
+    if (!origin || event.pointerId !== origin.id) return;
+    this.swipeOrigin = null;
+    if (!this.swipe()) return; // toggled off mid-gesture; the axis claim is already released
+    const delta = this.isVertical() ? event.clientY - origin.y : event.clientX - origin.x;
+    const cross = this.isVertical() ? event.clientX - origin.x : event.clientY - origin.y;
+    // Cross-axis dominance: a diagonal flick is a scroll attempt. The browser normally claims it and fires
+    // pointercancel, but not when the page has nothing to scroll.
+    if (Math.abs(delta) < CaeCarousel.SWIPE_THRESHOLD_PX || Math.abs(cross) > Math.abs(delta))
+      return;
+    // Content follows the finger, so dragging toward the axis start reveals the NEXT page. RTL mirrors the
+    // inline axis only — see trackTransform, which renders translateX(+offset%) in RTL; the block axis is
+    // direction-independent. This is the OPPOSITE of the indicator arrows, which move a cursor TOWARD the
+    // target rather than dragging content away from it.
+    const forward = this.isVertical() || !this.isRtl() ? delta < 0 : delta > 0;
+    if (forward) this.next();
+    else this.prev();
+    // A committed swipe is a deliberate take-over, so it stops autoplay exactly as the pause button does
+    // (p-carousel behaves the same). Touch fires neither mouseenter nor focusin, so without this the timer
+    // keeps running and can outrun the gesture — and aria-live stays 'off', silencing the page change.
+    this.autoplayOn.set(false);
+  }
+
+  /** Abandon the gesture when the pointer stream is interrupted (a system gesture, a cancelled touch). */
+  protected onSwipeCancel(event: PointerEvent): void {
+    if (this.swipeOrigin?.id === event.pointerId) this.swipeOrigin = null;
   }
 
   /** Whether the OS requests reduced motion (SSR/jsdom-safe: no `matchMedia` → treated as no preference). */
