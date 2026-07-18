@@ -13,6 +13,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { Directionality } from '@angular/cdk/bidi';
+import { hasModifierKey } from '@angular/cdk/keycodes';
 
 /** PageUp/PageDown coarse step, in percentage points (arrow keys use the finer `step` input). */
 const PAGE_STEP = 10;
@@ -347,6 +348,7 @@ export class CaeImageCompare implements OnInit {
    * invert under RTL — the vertical (block) reveal axis and its Right/Left mirror are direction-independent.
    */
   protected onKeydown(event: KeyboardEvent): void {
+    if (hasModifierKey(event)) return; // Alt+Arrow=Back, Ctrl+Home/End=document, Ctrl+0/±=zoom (#581)
     const s = this.step();
     const rtl = this.isRtl();
     const vertical = this.layout() === 'vertical';

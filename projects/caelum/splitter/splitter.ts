@@ -18,6 +18,7 @@ import {
 } from '@angular/core';
 import { isPlatformBrowser, NgTemplateOutlet } from '@angular/common';
 import { Directionality } from '@angular/cdk/bidi';
+import { hasModifierKey } from '@angular/cdk/keycodes';
 
 /** PageUp/PageDown coarse step, in percentage points (arrow keys use the finer `step` input). */
 const PAGE_STEP = 10;
@@ -610,6 +611,7 @@ export class CaeSplitter {
 
   /** The accessible resize path (Book 11 §3.5 #1). Axis is per-layout; horizontal arrows invert under RTL. */
   protected onKeydown(event: KeyboardEvent, i: number): void {
+    if (hasModifierKey(event)) return; // Alt+Arrow=Back, Ctrl+Home/End=document, Ctrl+0/±=zoom (#581)
     // Enter toggles collapse/restore of the leading pane — but ONLY when opted in. Left inert by default, so
     // the default splitter's keyboard behaviour is byte-for-byte unchanged (WAI-ARIA APG optional behaviour).
     if (event.key === 'Enter') {

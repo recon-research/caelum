@@ -31,7 +31,7 @@
     "caelum-scroll-panel": 6144,
     "caelum-breadcrumb": 5120,
     "caelum-order-list": 18432,
-    "caelum-pick-list": 18432,
+    "caelum-pick-list": 21504,
     "caelum-tree-select": 20480,
     "caelum-switch": 3712,
     "caelum-toggle-button": 3456,

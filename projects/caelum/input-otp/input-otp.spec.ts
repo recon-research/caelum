@@ -134,6 +134,27 @@ describe('CaeInputOtp', () => {
     expect(c0.value).toBe('1');
   });
 
+  it('leaves Ctrl+Backspace to the browser (word-delete, #581)', () => {
+    component.writeValue('12');
+    fixture.detectChanges();
+    let latest: string | undefined;
+    component.registerOnChange((v) => (latest = v));
+    const [c0, c1] = cells();
+    c1.focus();
+    const ev = new KeyboardEvent('keydown', {
+      key: 'Backspace',
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    c1.dispatchEvent(ev);
+    fixture.detectChanges();
+    expect(c1.value).toBe('2'); // unchanged — not cleared
+    expect(c0.value).toBe('1'); // and no retreat
+    expect(latest).toBeUndefined(); // no emit
+    expect(ev.defaultPrevented).toBe(false);
+  });
+
   it('Backspace on an empty cell retreats and clears the previous cell', () => {
     component.writeValue('12');
     fixture.detectChanges();

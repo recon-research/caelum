@@ -1,4 +1,5 @@
 import { Directionality } from '@angular/cdk/bidi';
+import { hasModifierKey } from '@angular/cdk/keycodes';
 import { NgTemplateOutlet, isPlatformBrowser } from '@angular/common';
 import {
   ChangeDetectionStrategy,
@@ -742,6 +743,9 @@ export class CaeCarousel<T = unknown> {
    * ±1 steps wrap under {@link circular}, matching the nav buttons; Home/End are absolute and never wrap.
    */
   protected onIndicatorKeydown(event: KeyboardEvent): void {
+    // A chord the widget doesn't implement belongs to the browser: Alt+Arrow is Back/Forward,
+    // Ctrl+Home/End jump the document, Ctrl+0/± is zoom. Consuming them steals a global affordance (#581).
+    if (hasModifierKey(event)) return;
     // Relative moves step from the ACTIVE page, never from the pressed dot's index. The two normally
     // agree (the active dot is the only tab stop), but a page change that doesn't move focus leaves the
     // focused dot stale — a consumer `[(page)]` write is the durable route (a swipe usually blurs to

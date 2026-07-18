@@ -179,6 +179,21 @@ describe('CaeGalleria', () => {
     expect(document.activeElement).toBe(tabs()[2]);
   });
 
+  it('leaves Alt+Arrow to the browser (#581)', async () => {
+    await render();
+    tabs()[0].focus();
+    const ev = new KeyboardEvent('keydown', {
+      key: 'ArrowRight',
+      altKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    tabs()[0].dispatchEvent(ev);
+    await settle();
+    expect(component.activeIndex()).toBe(0); // did not advance
+    expect(ev.defaultPrevented).toBe(false);
+  });
+
   it('prev/next navigators move the view and go aria-disabled at the ends (non-circular)', async () => {
     await render();
     expect(navPrev()!.getAttribute('aria-disabled')).toBe('true'); // at start
@@ -965,6 +980,23 @@ describe('CaeGalleria', () => {
       lightbox()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
       await settle();
       expect(counter()!.textContent!.trim()).toBe('Image 2 of 3');
+      TestBed.inject(MatDialog).closeAll();
+    });
+
+    it('leaves Alt+Arrow to the browser (#581)', async () => {
+      await render({ activeIndex: 0 });
+      component.openFullscreen();
+      await settle();
+      const ev = new KeyboardEvent('keydown', {
+        key: 'ArrowRight',
+        altKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
+      lightbox()!.dispatchEvent(ev);
+      await settle();
+      expect(counter()!.textContent!.trim()).toBe('Image 1 of 3'); // did not advance
+      expect(ev.defaultPrevented).toBe(false);
       TestBed.inject(MatDialog).closeAll();
     });
 
