@@ -63,6 +63,16 @@ export interface CaeGalleriaResponsiveOption {
   numVisible: number;
 }
 
+/**
+ * Clamp a consumer number to an in-range integer index. Truncate FIRST, collapse only `NaN` — an
+ * up-front `Number.isFinite` gate would send `Infinity` to index 0 while `1e21` landed on the last.
+ * Rationale (a NaN index = zero tab stops on BOTH strips, WCAG 2.1.1): #580 + galleria.spec.ts.
+ */
+const clampIndex = (v: number, max: number): number => {
+  const n = Math.trunc(v);
+  return Math.max(0, Math.min(Number.isNaN(n) ? 0 : n, max));
+};
+
 /** Monotonic id source so a page can hold many galleries without id collisions (no `Math.random`). */
 let nextUniqueId = 0;
 
@@ -793,7 +803,7 @@ export class CaeGalleria {
   protected readonly count = computed(() => this.items().length);
   /** The active index clamped into range — the render source of truth (the model may lag/over-set). */
   protected readonly clampedIndex = computed(() =>
-    Math.max(0, Math.min(this.activeIndex(), this.count() - 1)),
+    clampIndex(this.activeIndex(), this.count() - 1),
   );
   protected readonly activeItem = computed(() => this.items()[this.clampedIndex()] ?? null);
   protected readonly atStart = computed(() => this.clampedIndex() === 0);
@@ -1014,7 +1024,7 @@ export class CaeGalleria {
 
   /** Go to image `i` (clamped). Sets the model (emitting `activeIndexChange`) only on a real change. */
   goTo(i: number): void {
-    const target = Math.max(0, Math.min(i, this.count() - 1));
+    const target = clampIndex(i, this.count() - 1);
     if (target !== this.activeIndex()) this.activeIndex.set(target);
   }
 

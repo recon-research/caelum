@@ -318,6 +318,63 @@ describe('CaeGalleria', () => {
       expect(d[0].getAttribute('aria-label')).toBe('Alpha (1 of 3)');
     });
 
+    // #580 — [(activeIndex)] is a plain model(0) and model() takes no `transform`, so a consumer can bind
+    // any number. NaN (a parseInt on empty input, an undefined async field) and fractions (a computed
+    // ratio) both survive a bare min/max clamp, and neither is `===` any row index — so every
+    // `i === clampedIndex()` goes false at once, across BOTH roving strips, and the gallery is left with
+    // zero tab stops: keyboard-unreachable before a key is pressed (WCAG 2.1.1). Asserted on the
+    // thumbnails and the dots together, since one clamp feeds both.
+    it('normalises a NaN [(activeIndex)] instead of emptying both tab orders', async () => {
+      // Seeded NON-zero: rendering straight to NaN and asserting 0 could not tell "healed" from
+      // "silently ignored" — both land on 0. Starting at 2 makes the heal directional and visible.
+      await render({ showIndicators: true, activeIndex: 2 });
+      fixture.componentRef.setInput('activeIndex', NaN);
+      await settle();
+      expect(tabs().map((b) => b.tabIndex)).toEqual([0, -1, -1]);
+      expect(dots().filter((d) => d.getAttribute('tabindex') === '0')).toHaveLength(1);
+      // and the model is healed rather than leaving NaN latched in the consumer's binding
+      expect(component.activeIndex()).toBe(0);
+    });
+
+    it('truncates a fractional [(activeIndex)] instead of emptying both tab orders', async () => {
+      await render({ showIndicators: true, activeIndex: 1.5 });
+      expect(tabs().map((b) => b.tabIndex)).toEqual([-1, 0, -1]);
+      expect(dots().filter((d) => d.getAttribute('tabindex') === '0')).toHaveLength(1);
+      expect(component.activeIndex()).toBe(1);
+    });
+
+    it('never emits a non-finite index to the consumer when goTo() is handed a NaN', async () => {
+      await render({ showIndicators: true });
+      const emitted: number[] = [];
+      component.activeIndex.subscribe((i: number) => emitted.push(i));
+      component.goTo(2);
+      await settle();
+      component.goTo(NaN);
+      await settle();
+      // Asserting activeIndex() alone would have NO teeth: the reconcile effect launders a NaN write
+      // back to 0 before the assertion runs, so it passes with the goTo guard deleted. The guard's
+      // real job is preventing the spurious activeIndexChange(NaN) the consumer sees in between.
+      expect(emitted.every(Number.isFinite)).toBe(true);
+      expect(component.activeIndex()).toBe(0);
+    });
+
+    // ±Infinity must keep clamping to the ends exactly as it did before #580. This is what separates
+    // "truncate, then reject only NaN" from an up-front `Number.isFinite` gate — the latter sends
+    // +Infinity to index 0 while a merely huge 1e21 still lands on the last image, which is both a
+    // silent behaviour change and self-inconsistent. Nothing else in the suite pins this down.
+    it('still clamps +/-Infinity and huge finite values to the ends', async () => {
+      await render({ activeIndex: Infinity });
+      expect(component.activeIndex()).toBe(2);
+      expect(tabs().map((b) => b.tabIndex)).toEqual([-1, -1, 0]);
+
+      await render({ activeIndex: 1e21 });
+      expect(component.activeIndex()).toBe(2);
+
+      await render({ activeIndex: -Infinity });
+      expect(component.activeIndex()).toBe(0);
+      expect(tabs().map((b) => b.tabIndex)).toEqual([0, -1, -1]);
+    });
+
     it('clicking a dot navigates to that image', async () => {
       await render({ showIndicators: true });
       dots()[2].click();
