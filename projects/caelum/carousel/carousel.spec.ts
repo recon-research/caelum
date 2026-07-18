@@ -296,6 +296,34 @@ describe('CaeCarousel', () => {
     expect(document.activeElement).toBe(indicators()[0]);
   });
 
+  it('indicator arrows wrap under [circular], matching the nav buttons (#573)', async () => {
+    document.body.appendChild(fixture.nativeElement);
+    await setInput({ circular: true });
+    indicators()[0].focus();
+
+    key(indicators()[0], 'End');
+    expect(carousel.page()).toBe(4); // the last page
+
+    key(indicators()[4], 'ArrowRight');
+    // Before #573 this clamped, so a keyboard user dead-ended on a carousel where the nav button,
+    // autoplay and touch swipe all wrap — an operable-parity gap between input modalities.
+    expect(carousel.page()).toBe(0);
+    expect(document.activeElement).toBe(indicators()[0]);
+
+    key(indicators()[0], 'ArrowLeft');
+    expect(carousel.page()).toBe(4); // and backwards past the start
+
+    // Home/End are destinations, not steps: no wrap even here. The implementation leans on their targets
+    // already being in range rather than on a branch, so pin BOTH ends — End alone only covers the
+    // positive-overshoot side, and it's Home (target 0) the modulo would silently send to the last page
+    // if the target ever went negative.
+    key(indicators()[4], 'End');
+    expect(carousel.page()).toBe(4);
+
+    key(indicators()[4], 'Home');
+    expect(carousel.page()).toBe(0);
+  });
+
   it('sets aria-live on the track (polite while idle so a page change is announced)', () => {
     const track = one('.cae-carousel__track')!;
     expect(track.getAttribute('aria-live')).toBe('polite');

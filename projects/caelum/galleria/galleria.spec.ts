@@ -150,6 +150,35 @@ describe('CaeGalleria', () => {
     expect(component.activeIndex()).toBe(0);
   });
 
+  it('thumbnail tablist arrows also wrap under [circular] (#573)', async () => {
+    // The dots and the strip share arrowTarget(), so this is the same logic — but the strip is a
+    // role="tablist" (APG Tabs, where wrap is the explicit optional variant) and the dots are a plain
+    // role="group". Pin the tablist contract directly so a future re-split of the handlers can't drop it.
+    await render({ circular: true, activeIndex: 2 });
+    tabs()[2].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    await settle();
+    expect(component.activeIndex()).toBe(0);
+    expect(document.activeElement).toBe(tabs()[0]);
+  });
+
+  it('thumbnail arrows step from the ACTIVE image, not the pressed thumb (#572)', async () => {
+    await render();
+    tabs()[0].focus();
+    // A consumer [(activeIndex)] write moves the selection without moving focus, so the focused thumb (0)
+    // and the active thumb (1) diverge. That divergence is the whole bug.
+    fixture.componentRef.setInput('activeIndex', 1);
+    await settle();
+    expect(document.activeElement).toBe(tabs()[0]);
+    expect(component.activeIndex()).toBe(1);
+
+    tabs()[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    await settle();
+    // Pre-fix the target came from the PRESSED index (0 + 1 = 1) — already the active image, so goTo
+    // no-oped and the keypress was silently swallowed. Asserting focus too kills a page-only fix.
+    expect(component.activeIndex()).toBe(2);
+    expect(document.activeElement).toBe(tabs()[2]);
+  });
+
   it('prev/next navigators move the view and go aria-disabled at the ends (non-circular)', async () => {
     await render();
     expect(navPrev()!.getAttribute('aria-disabled')).toBe('true'); // at start
@@ -319,6 +348,42 @@ describe('CaeGalleria', () => {
     it('roving keyboard: Home and End jump to the first and last dot', async () => {
       await render({ showIndicators: true, activeIndex: 1 });
       dots()[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+      await settle();
+      expect(component.activeIndex()).toBe(2);
+      dots()[2].dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+      await settle();
+      expect(component.activeIndex()).toBe(0);
+    });
+
+    it('indicator arrows step from the ACTIVE dot, not the pressed one (#572)', async () => {
+      await render({ showIndicators: true });
+      dots()[0].focus();
+      fixture.componentRef.setInput('activeIndex', 1); // consumer write; focus stays on the stale dot 0
+      await settle();
+      expect(document.activeElement).toBe(dots()[0]);
+
+      dots()[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+      await settle();
+      expect(component.activeIndex()).toBe(2); // pre-fix: 0 + 1 = 1, an unmoved no-op
+      expect(document.activeElement).toBe(dots()[2]);
+    });
+
+    it('arrows wrap under [circular], matching the nav buttons; Home/End stay absolute (#573)', async () => {
+      await render({ showIndicators: true, circular: true, activeIndex: 2 });
+      dots()[2].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+      await settle();
+      expect(component.activeIndex()).toBe(0); // wrapped past the end, as navNext() already did
+      expect(document.activeElement).toBe(dots()[0]);
+
+      dots()[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+      await settle();
+      expect(component.activeIndex()).toBe(2); // and backwards past the start
+
+      // Home/End are destinations, not steps: they must not wrap even here. The implementation relies on
+      // their targets already being in range rather than on a branch, so pin BOTH ends — End alone only
+      // covers the positive-overshoot side, and it's Home (target 0) the modulo would silently send to
+      // the last item if the target ever went negative.
+      dots()[2].dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
       await settle();
       expect(component.activeIndex()).toBe(2);
       dots()[2].dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
