@@ -252,6 +252,50 @@ describe('CaeCarousel', () => {
     expect(carousel.page()).toBe(0);
   });
 
+  // #560 — the relative arrow cases step from clampedPage(), not the pressed dot's index. The two only
+  // diverge when the page moves without focus following it (a swipe, or a consumer [(page)] write), so
+  // every test above — which drives from the active dot — passes under either rule and can't catch this.
+  it('steps arrows from the ACTIVE page, not the focused dot (#560)', async () => {
+    document.body.appendChild(fixture.nativeElement);
+    indicators()[0].focus();
+
+    carousel.page.set(1); // external page change; focus stays on the now-stale dot 0
+    await sync();
+    expect(document.activeElement).toBe(indicators()[0]);
+    expect(activePage()).toBe(1);
+
+    key(indicators()[0], 'ArrowRight');
+
+    // Old rule: target = pressed 0 + 1 = 1 → goTo(1) no-ops on the current page → the press is
+    // swallowed and focus lands on dot 1, so the user must press twice to advance once.
+    expect(carousel.page()).toBe(2);
+    expect(document.activeElement).toBe(indicators()[2]);
+    expect(activePage()).toBe(2); // render tracks the model — the assertions above aren't taking it on faith
+  });
+
+  it('re-syncs focus to the active dot when an arrow clamps at a bound (#560)', async () => {
+    document.body.appendChild(fixture.nativeElement);
+
+    // Reach the stale-focus state the way a user actually can: keyboard to the last page (focus
+    // follows), THEN an external write moves the page back. Seeding it by focusing a tabindex="-1"
+    // dot directly would test a state no route produces — clicking a dot calls goTo() and syncs it.
+    indicators()[0].focus();
+    key(indicators()[0], 'End');
+    expect(carousel.page()).toBe(4);
+
+    carousel.page.set(0); // external change; focus stays stranded on dot 4
+    await sync();
+    expect(document.activeElement).toBe(indicators()[4]);
+    expect(activePage()).toBe(0);
+
+    key(indicators()[4], 'ArrowLeft'); // from = 0 → target -1 → clamped to 0
+
+    expect(carousel.page()).toBe(0);
+    // goTo no-ops, but focus must still come home to the real tab stop: dot 0 holds tabindex 0 and
+    // dot 4 holds -1, so leaving focus on 4 keeps the user on an element Tab order excludes.
+    expect(document.activeElement).toBe(indicators()[0]);
+  });
+
   it('sets aria-live on the track (polite while idle so a page change is announced)', () => {
     const track = one('.cae-carousel__track')!;
     expect(track.getAttribute('aria-live')).toBe('polite');

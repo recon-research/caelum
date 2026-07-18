@@ -186,7 +186,7 @@ export interface CaeCarouselResponsiveOption {
                 [attr.aria-current]="i === clampedPage() ? 'true' : null"
                 [tabindex]="i === clampedPage() ? 0 : -1"
                 (click)="goTo(i)"
-                (keydown)="onIndicatorKeydown($event, i)"
+                (keydown)="onIndicatorKeydown($event)"
               ></button>
             }
           </div>
@@ -737,25 +737,34 @@ export class CaeCarousel<T = unknown> {
 
   /**
    * The indicator group's roving-tabindex keyboard model: Left/Up → previous page, Right/Down → next page,
-   * Home/End → first/last, each moving focus to (and selecting) the target dot. Selection follows focus,
-   * which is why the active dot is the single tab stop.
+   * Home/End → first/last, each moving focus to (and selecting) the target dot. Focus and selection move
+   * together, both anchored on the active page, which is why the active dot is the single tab stop.
    */
-  protected onIndicatorKeydown(event: KeyboardEvent, i: number): void {
+  protected onIndicatorKeydown(event: KeyboardEvent): void {
+    // Relative moves step from the ACTIVE page, never from the pressed dot's index. The two normally
+    // agree (the active dot is the only tab stop), but a page change that doesn't move focus leaves the
+    // focused dot stale — a consumer `[(page)]` write is the durable route (a swipe usually blurs to
+    // <body> first in Chrome/Safari). Stepping from the stale index then resolves onto the already-current
+    // page, so `goTo` no-ops and the press is silently swallowed (#560).
+    // Residual (#571): while stale, the page advances correctly but focus can jump *against* the key's
+    // direction, since it lands on the new active dot. Self-heals in one press; the root fix is to stop
+    // the divergence persisting at all.
+    const from = this.clampedPage();
     let target: number;
     switch (event.key) {
       // Left/Right follow VISUAL order — flipped in RTL so ArrowLeft goes to the later page (which sits to
       // the physical left). Up/Down are the block axis and stay direction-independent (RTL is inline-only).
       case 'ArrowRight':
-        target = this.isRtl() ? i - 1 : i + 1;
+        target = this.isRtl() ? from - 1 : from + 1;
         break;
       case 'ArrowDown':
-        target = i + 1;
+        target = from + 1;
         break;
       case 'ArrowLeft':
-        target = this.isRtl() ? i + 1 : i - 1;
+        target = this.isRtl() ? from + 1 : from - 1;
         break;
       case 'ArrowUp':
-        target = i - 1;
+        target = from - 1;
         break;
       case 'Home':
         target = 0;
