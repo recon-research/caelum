@@ -437,7 +437,7 @@ export class CaeCarousel<T = unknown> {
    * aren't rebuilt on every change-detection. #276.
    */
   readonly responsiveOptions = input<readonly CaeCarouselResponsiveOption[]>([]);
-  /** Whether prev/next wrap past the ends (and autoplay loops). Default false. */
+  /** Wrap past the ends — prev/next, swipe, and the indicator arrow keys alike (autoplay loops regardless). Default false. */
   readonly circular = input(false, { transform: booleanAttribute });
   /**
    * Whether a **touch/pen swipe** across the viewport changes page. Swiping is `p-carousel` behaviour; the
@@ -738,7 +738,8 @@ export class CaeCarousel<T = unknown> {
   /**
    * The indicator group's roving-tabindex keyboard model: Left/Up → previous page, Right/Down → next page,
    * Home/End → first/last, each moving focus to (and selecting) the target dot. Focus and selection move
-   * together, both anchored on the active page, which is why the active dot is the single tab stop.
+   * together, both anchored on the active page, which is why the active dot is the single tab stop. The
+   * ±1 steps wrap under {@link circular}, matching the nav buttons; Home/End are absolute and never wrap.
    */
   protected onIndicatorKeydown(event: KeyboardEvent): void {
     // Relative moves step from the ACTIVE page, never from the pressed dot's index. The two normally
@@ -749,6 +750,7 @@ export class CaeCarousel<T = unknown> {
     // Residual (#571): while stale, the page advances correctly but focus can jump *against* the key's
     // direction, since it lands on the new active dot. Self-heals in one press; the root fix is to stop
     // the divergence persisting at all.
+    const last = this.totalPages() - 1;
     const from = this.clampedPage();
     let target: number;
     switch (event.key) {
@@ -770,15 +772,21 @@ export class CaeCarousel<T = unknown> {
         target = 0;
         break;
       case 'End':
-        target = this.totalPages() - 1;
+        target = last;
         break;
       default:
         return;
     }
     event.preventDefault();
-    const clamped = Math.max(0, Math.min(target, this.totalPages() - 1));
-    this.goTo(clamped);
-    this.focusIndicator(clamped);
+    // [circular] already wraps next()/prev() — the nav buttons, autoplay and swipe. Wrapping here stops the
+    // keyboard being the one modality that dead-ends on a carousel configured to loop (#573). Needs no
+    // absolute-vs-relative branch: every target above is within one step of the range, so the wrap is the
+    // identity for Home/End. A multi-step key (PageUp/Down) would break that and must clamp instead.
+    const resolved = this.circular()
+      ? (target + last + 1) % (last + 1)
+      : Math.max(0, Math.min(target, last));
+    this.goTo(resolved);
+    this.focusIndicator(resolved);
   }
 
   /**

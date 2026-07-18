@@ -204,7 +204,7 @@ let nextUniqueId = 0;
                     [attr.aria-label]="thumbLabel(item, i)"
                     [tabindex]="i === clampedIndex() ? 0 : -1"
                     (click)="select(i)"
-                    (keydown)="onThumbKeydown($event, i)"
+                    (keydown)="onThumbKeydown($event)"
                   >
                     @if (thumbnailTemplate(); as tpl) {
                       <ng-container
@@ -270,7 +270,7 @@ let nextUniqueId = 0;
                 [attr.aria-current]="i === clampedIndex() ? 'true' : null"
                 [tabindex]="i === clampedIndex() ? 0 : -1"
                 (click)="goTo(i)"
-                (keydown)="onIndicatorKeydown($event, i)"
+                (keydown)="onIndicatorKeydown($event)"
               ></button>
             }
           </div>
@@ -631,7 +631,7 @@ export class CaeGalleria {
   readonly items = input<readonly CaeGalleriaItem[]>([]);
   /** The currently-viewed image index — two-way; shared with the lightbox so fullscreen nav syncs back. */
   readonly activeIndex = model(0);
-  /** Wrap prev/next past the ends (default off). */
+  /** Wrap past the ends — the prev/next navigators and the thumbnail/indicator arrow keys alike (default off). */
   readonly circular = input(false, { transform: booleanAttribute });
   /** Show the thumbnail strip (default on). Hidden anyway for a single image. */
   readonly showThumbnails = input(true, { transform: booleanAttribute });
@@ -1037,42 +1037,66 @@ export class CaeGalleria {
   }
 
   /**
-   * The thumbnail tablist's roving-tabindex keyboard model: Left/Right step through the strip in VISUAL
-   * order (flipped under RTL, since the strip lays out right-to-left), Up/Down are the direction-independent
-   * block axis, Home/End → first/last — each moving focus to (and selecting) the target thumb. Selection
-   * follows focus, which is why the active thumb is the single tab stop.
+   * The roving-tabindex keyboard model shared by the thumbnail strip and the indicator dots: Left/Right step
+   * in VISUAL order (flipped under RTL, since the strip lays out right-to-left), Up/Down are the
+   * direction-independent block axis, Home/End → first/last. Returns the index to land on, or `null` when
+   * the key isn't ours (the caller then leaves the event alone). Focus and selection move together, both
+   * anchored on the active item, which is why the active thumb/dot is the single tab stop. The ±1 steps
+   * wrap under {@link circular}, matching the nav buttons; Home/End are absolute and never wrap.
+   *
+   * Relative moves step from the ACTIVE index, never from the pressed element's `@for` index. The two
+   * normally agree, but an index change that doesn't move focus — a consumer `[(activeIndex)]` write —
+   * leaves the focused element stale. Stepping from the stale index then resolves onto the already-current
+   * item, so `goTo` no-ops and the press is silently swallowed (#572, mirroring the carousel's #560).
+   * Residual carried across from #571: while stale, the index advances correctly but focus can land
+   * *against* the key's direction, since it follows the new active item. Self-heals in one press.
    */
-  protected onThumbKeydown(event: KeyboardEvent, i: number): void {
+  private arrowTarget(event: KeyboardEvent): number | null {
+    const last = this.count() - 1;
+    // Keep: blocks a `% 0` → NaN write into activeIndex if a keydown lands after items() empties but
+    // before the strip re-stamps. Structurally unreachable through the @for, but cheap insurance.
+    if (last < 0) return null;
+    const from = this.clampedIndex();
     let target: number;
     switch (event.key) {
-      // Left/Right follow VISUAL order — flipped under RTL so ArrowRight steps to the thumb physically to the
+      // Left/Right follow VISUAL order — flipped under RTL so ArrowRight steps to the item physically to the
       // right (the lower index in an RTL strip). Up/Down are the block axis and stay direction-independent
       // (RTL is inline-only). Mirrors cae-carousel's indicator keymap (#276).
       case 'ArrowRight':
-        target = this.isRtl() ? i - 1 : i + 1;
+        target = this.isRtl() ? from - 1 : from + 1;
         break;
       case 'ArrowDown':
-        target = i + 1;
+        target = from + 1;
         break;
       case 'ArrowLeft':
-        target = this.isRtl() ? i + 1 : i - 1;
+        target = this.isRtl() ? from + 1 : from - 1;
         break;
       case 'ArrowUp':
-        target = i - 1;
+        target = from - 1;
         break;
       case 'Home':
         target = 0;
         break;
       case 'End':
-        target = this.count() - 1;
+        target = last;
         break;
       default:
-        return;
+        return null;
     }
+    // [circular] already wraps next()/prev(); wrapping here stops the keyboard being the one modality that
+    // dead-ends on a gallery configured to loop (#573). Needs no absolute-vs-relative branch: every target
+    // above is within one step of the range, so the wrap is the identity for Home/End. A multi-step key
+    // (PageUp/Down) would break that and must clamp instead.
+    return this.circular() ? (target + last + 1) % (last + 1) : Math.max(0, Math.min(target, last));
+  }
+
+  /** Thumbnail strip keyboard nav — the keymap and its rationale live on {@link arrowTarget}. */
+  protected onThumbKeydown(event: KeyboardEvent): void {
+    const target = this.arrowTarget(event);
+    if (target === null) return;
     event.preventDefault();
-    const clamped = Math.max(0, Math.min(target, this.count() - 1));
-    this.goTo(clamped);
-    this.focusThumb(clamped);
+    this.goTo(target);
+    this.focusThumb(target);
   }
 
   /** Move focus to thumb `i` (the new roving tab stop) and scroll it into the visible strip. */
@@ -1123,41 +1147,13 @@ export class CaeGalleria {
     return `${this.items()[i]?.alt || 'Image'} (${i + 1} of ${this.count()})`;
   }
 
-  /**
-   * The indicator group's roving-tabindex keyboard model, mirroring the thumbnail strip: Left/Right step in
-   * VISUAL order (flipped under RTL), Up/Down are the direction-independent block axis, Home/End → first/last
-   * — each moving focus to (and selecting) the target dot.
-   */
-  protected onIndicatorKeydown(event: KeyboardEvent, i: number): void {
-    let target: number;
-    switch (event.key) {
-      // Left/Right follow VISUAL order (flipped under RTL); Up/Down are the block axis, direction-independent
-      // (RTL is inline-only) — same keymap as the thumbnail strip and cae-carousel (#276).
-      case 'ArrowRight':
-        target = this.isRtl() ? i - 1 : i + 1;
-        break;
-      case 'ArrowDown':
-        target = i + 1;
-        break;
-      case 'ArrowLeft':
-        target = this.isRtl() ? i + 1 : i - 1;
-        break;
-      case 'ArrowUp':
-        target = i - 1;
-        break;
-      case 'Home':
-        target = 0;
-        break;
-      case 'End':
-        target = this.count() - 1;
-        break;
-      default:
-        return;
-    }
+  /** Indicator dot keyboard nav — the same keymap as the thumbnail strip, from {@link arrowTarget}. */
+  protected onIndicatorKeydown(event: KeyboardEvent): void {
+    const target = this.arrowTarget(event);
+    if (target === null) return;
     event.preventDefault();
-    const clamped = Math.max(0, Math.min(target, this.count() - 1));
-    this.goTo(clamped);
-    this.focusIndicator(clamped);
+    this.goTo(target);
+    this.focusIndicator(target);
   }
 
   /** Move focus to indicator dot `i` (the new roving tab stop). Uses the instance-scoped {@link indicatorBtns}. */
