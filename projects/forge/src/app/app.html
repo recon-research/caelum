@@ -1027,20 +1027,25 @@
       </cae-accordion>
     }
 
-    <!-- cae-chip-set (#84): a managed removable-tag list. The set redirects focus to a sibling chip on
-         removal (while one remains), so — unlike the standalone cae-chip (#83) — the app no longer
-         hand-rolls a focus-move effect. For the EMPTY case it binds the set's first-class
-         [emptyFocusTarget] (#202) to the status region below, so focus lands there when the LAST tag is
-         removed by the user — no consumer focus code at all. Deferred (#85): below the fold, so MatChips
-         splits into a lazy chunk. -->
+    <!-- cae-chip-set (#84): a managed removable-tag list, and since #201 a full tag FIELD — [textEntry]
+         turns typed text into (added) requests on Enter/comma, which the app appends (owning the dedupe,
+         since [items] must stay unique). The set redirects focus to a sibling chip on removal (while one
+         remains), so — unlike the standalone cae-chip (#83) — the app hand-rolls no focus-move effect.
+         For the EMPTY case the input is now the landing spot (redirecting would steal focus out of the
+         field being typed in); [emptyFocusTarget] (#202) stays bound for the remainder the input can't
+         cover. Deferred (#85): below the fold, so MatChips splits into a lazy chunk. -->
     @defer (on idle) {
       <div class="forge-tags">
         <span class="forge-tags__label" id="tags-label">Workspace tags</span>
         <cae-chip-set
           [items]="tags()"
           ariaLabelledby="tags-label"
+          textEntry
+          textEntryLabel="Add a tag"
+          textEntryPlaceholder="Add a tag…"
           [emptyFocusTarget]="tagsStatus"
           (removed)="removeTag($event.item)"
+          (added)="addTag($event)"
         />
         <!-- Persistent polite live region + the set's empty-case focus target: announces the remaining
              count and (via [emptyFocusTarget]) catches focus when the set empties. -->

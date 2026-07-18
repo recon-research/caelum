@@ -953,7 +953,7 @@ describe('App', () => {
     expect(status.textContent).toContain('2 tags remaining');
   });
 
-  it('moves focus to the tag status region when the LAST tag is removed (#84 empty-case, #202)', async () => {
+  it('moves focus to the tag INPUT when the LAST tag is removed (#201 text-entry empty-case)', async () => {
     const fixture = TestBed.createComponent(App);
     const el = fixture.nativeElement as HTMLElement;
     document.body.appendChild(el); // focus assertions need a connected host
@@ -970,9 +970,15 @@ describe('App', () => {
       }
       await new Promise((r) => setTimeout(r)); // let the set's afterNextRender empty-focus move fire
       const status = el.querySelector('.forge-tags__status') as HTMLElement;
-      // The set can't retain focus on an emptied collection, so its [emptyFocusTarget] hook (#202) lands
-      // focus on the status region — no consumer focus code (the old removeTag guard was deleted).
-      expect(document.activeElement).toBe(status);
+      // Since #201 this row is a tag FIELD, so the empty case lands in the input rather than on
+      // [emptyFocusTarget]: with [textEntry] the field IS the natural landing spot, and redirecting to the
+      // status region would steal focus out of the control the user types in (WCAG 3.2.5). The binding stays
+      // for the case the input can't cover (a disabled-only remainder), and either way focus is never
+      // stranded on <body> — which is the guarantee this row exists to demonstrate. #202's status-region
+      // path stays covered by the caelum unit specs.
+      const tagInput = el.querySelector('.forge-tags .cae-chip-set__input') as HTMLElement;
+      expect(document.activeElement).toBe(tagInput);
+      expect(document.activeElement).not.toBe(document.body);
       expect(status.textContent).toContain('0 tags remaining');
     } finally {
       if (el.parentNode) el.parentNode.removeChild(el);
