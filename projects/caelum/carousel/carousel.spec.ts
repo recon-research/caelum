@@ -774,3 +774,281 @@ describe('CaeCarousel vertical (#276)', () => {
     expect(transform()).toBe('translateY(-100%)');
   });
 });
+
+// ---- Touch swipe-to-advance (#276) ----
+
+// Its own host so `swipe` and `orientation` can both be varied, wrapped in a REAL CDK Dir so the RTL arm
+// exercises a born-rtl read rather than a seeded fake (#364, as the RTL/vertical hosts above do).
+@Component({
+  selector: 'cae-carousel-swipe-host',
+  imports: [CaeCarousel, CaeCarouselItem, Dir],
+  template: `
+    <div [dir]="direction()">
+      <cae-carousel
+        [value]="items()"
+        [numVisible]="1"
+        [swipe]="swipe()"
+        [orientation]="orientation()"
+        [autoplayInterval]="autoplay()"
+        ariaLabel="Swipe carousel"
+      >
+        <ng-template caeCarouselItem let-item>{{ item }}</ng-template>
+      </cae-carousel>
+    </div>
+  `,
+})
+class CarouselSwipeHost {
+  readonly direction = signal<Direction>('ltr');
+  readonly orientation = signal<'horizontal' | 'vertical'>('horizontal');
+  readonly swipe = signal(true);
+  readonly autoplay = signal(0); // 0 = off; tests that need it use an interval long enough never to fire
+  readonly items = signal<string[]>(['a', 'b', 'c', 'd', 'e', 'f']); // 6 items, numVisible 1 → 6 pages
+}
+
+describe('CaeCarousel swipe (#276)', () => {
+  let fixture: ComponentFixture<CarouselSwipeHost>;
+
+  async function mount(
+    setup: (h: CarouselSwipeHost) => void = () => {},
+  ): Promise<CaeCarousel<string>> {
+    await TestBed.configureTestingModule({ imports: [CarouselSwipeHost] }).compileComponents();
+    fixture = TestBed.createComponent(CarouselSwipeHost);
+    setup(fixture.componentInstance); // before first CD → born-rtl / born-vertical
+    document.body.appendChild(fixture.nativeElement);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    return fixture.debugElement.query(By.directive(CaeCarousel)).componentInstance;
+  }
+
+  afterEach(() => fixture.nativeElement.remove());
+
+  const viewport = (): HTMLElement =>
+    fixture.nativeElement.querySelector('.cae-carousel__viewport') as HTMLElement;
+  const page = (): number =>
+    Array.from(
+      fixture.nativeElement.querySelectorAll('.cae-carousel__indicator') as NodeListOf<HTMLElement>,
+    ).findIndex((b) => b.getAttribute('aria-current') === 'true');
+
+  /** Drag from (x,y) by (dx,dy) and release. `pointerType` 'mouse' exercises the text-selection carve-out. */
+  async function drag(
+    dx: number,
+    dy: number,
+    { pointerType = 'touch', release = true } = {},
+  ): Promise<void> {
+    const el = viewport();
+    const opts = { bubbles: true, cancelable: true, pointerType, pointerId: 1 };
+    el.dispatchEvent(new PointerEvent('pointerdown', { ...opts, clientX: 200, clientY: 200 }));
+    if (release) {
+      el.dispatchEvent(
+        new PointerEvent('pointerup', { ...opts, clientX: 200 + dx, clientY: 200 + dy }),
+      );
+    } else {
+      el.dispatchEvent(new PointerEvent('pointercancel', opts));
+    }
+    fixture.detectChanges();
+    await fixture.whenStable();
+  }
+
+  it('advances a page on a swipe toward the start of the inline axis', async () => {
+    // The content follows the finger, so dragging LEFT in LTR pulls the next page into view. Also pins the
+    // horizontal touch-action claim: the movement axis is denied, the perpendicular one and zoom survive.
+    await mount();
+    expect(page()).toBe(0);
+    expect(viewport().style.touchAction).toBe('pan-y pinch-zoom');
+    await drag(-80, 0);
+    expect(page()).toBe(1);
+  });
+
+  it('goes back a page on a swipe the other way', async () => {
+    const c = await mount();
+    c.goTo(2);
+    fixture.detectChanges();
+    await drag(80, 0);
+    expect(page()).toBe(1);
+  });
+
+  it('ignores travel below the threshold, so a tap on slide content is not a page change', async () => {
+    // The guard that keeps interactive slide content usable — a tap (and any incidental few-px drag) must
+    // leave the page alone. Without it every press inside a slide would flip the carousel.
+    await mount();
+    await drag(-40, 0); // under SWIPE_THRESHOLD_PX (50)
+    expect(page()).toBe(0);
+  });
+
+  it('ignores MOUSE drags so text selection still works', async () => {
+    // Deliberate carve-out, not an oversight: on a pointer device press-and-move selects text. Well past the
+    // threshold, and still no page change.
+    await mount();
+    await drag(-300, 0, { pointerType: 'mouse' });
+    expect(page()).toBe(0);
+  });
+
+  it('mirrors direction in RTL (inline axis follows visual order)', async () => {
+    // Follow-the-finger, NOT the arrow-key rule (arrows are the opposite — ArrowLeft advances in RTL).
+    // trackTransform renders translateX(+offset%) in RTL, so the next page sits to the LEFT and you drag
+    // RIGHT to pull it in; a leftward drag — which advances in LTR — therefore goes BACK here.
+    const c = await mount((h) => h.direction.set('rtl'));
+    c.goTo(2);
+    fixture.detectChanges();
+    await drag(-80, 0);
+    expect(page()).toBe(1);
+  });
+
+  it('uses the BLOCK axis when vertical, and does not mirror it in RTL', async () => {
+    // A vertical carousel moves on the block axis, which is direction-independent — so an upward swipe
+    // advances in both directions. Born-rtl via a real CDK Dir, so a mistaken isRtl() flip here would show.
+    const c = await mount((h) => {
+      h.orientation.set('vertical');
+      h.direction.set('rtl');
+    });
+    await drag(0, -80);
+    expect(page()).toBe(1);
+    // ...and a horizontal drag on a vertical carousel does nothing at all.
+    c.goTo(1);
+    fixture.detectChanges();
+    await drag(-300, 0);
+    expect(page()).toBe(1);
+  });
+
+  it('claims only the block axis via touch-action when vertical, and keeps pinch-zoom', async () => {
+    // The mirror of the horizontal claim asserted in the first test. `pinch-zoom` must be listed explicitly:
+    // a bare `pan-x` REVOKES pinch- and double-tap-zoom, and touch-action intersects down the ancestor
+    // chain, so that would strip zoom from projected slide content (a low-vision user pinching an image
+    // slide gets nothing). Separate `it` because mount() reconfigures the TestBed.
+    await mount((h) => h.orientation.set('vertical'));
+    expect(viewport().style.touchAction).toBe('pan-x pinch-zoom');
+  });
+
+  it('does nothing, and claims no axis, when [swipe] is off', async () => {
+    // The opt-out for slides with their own scrollable region on the carousel's axis — the touch-action
+    // claim must lift too, or the escape hatch would not actually give the axis back.
+    await mount((h) => h.swipe.set(false));
+    await drag(-300, 0);
+    expect(page()).toBe(0);
+    expect(viewport().style.touchAction).toBe('');
+  });
+
+  // Raw dispatch helpers for the gestures the `drag` shorthand cannot express (multi-finger, a nested
+  // control's preventDefault, a mid-gesture input change).
+  const opts = { bubbles: true, cancelable: true, pointerType: 'touch' } as const;
+  const down = (id: number, x: number, y = 200): PointerEvent =>
+    new PointerEvent('pointerdown', { ...opts, pointerId: id, clientX: x, clientY: y });
+  const up = (id: number, x: number, y = 200): PointerEvent =>
+    new PointerEvent('pointerup', { ...opts, pointerId: id, clientX: x, clientY: y });
+  const settle = async (): Promise<void> => {
+    fixture.detectChanges();
+    await fixture.whenStable();
+  };
+
+  it('ignores a second finger, so a pinch is not a page change', async () => {
+    // The slot is keyed by pointerId. Unkeyed, finger B's pointerdown overwrites the origin and finger A's
+    // release is measured against it — a stationary finger A yields delta 200-500 = -300, well past the
+    // threshold, so an attempted pinch-zoom on an image slide would page the carousel.
+    await mount();
+    const el = viewport();
+    el.dispatchEvent(down(1, 200));
+    el.dispatchEvent(down(2, 500));
+    el.dispatchEvent(up(1, 200)); // finger A lifts exactly where it landed
+    await settle();
+    expect(page()).toBe(0);
+  });
+
+  it('does not let a second finger resolve the first finger’s gesture', async () => {
+    // Isolates BOTH halves of the pointerId keying, which the test above cannot: it passes if either half
+    // survives. Here finger B travels far and releases. Drop the re-entrancy guard and B's origin replaces
+    // A's (500→100 = -400, commits); drop the id match and B's release resolves A's origin
+    // (200→100 = -100, commits). Only both together keep the page still.
+    await mount();
+    const el = viewport();
+    el.dispatchEvent(down(1, 200));
+    el.dispatchEvent(down(2, 500));
+    el.dispatchEvent(up(2, 100));
+    await settle();
+    expect(page()).toBe(0);
+  });
+
+  it('yields to a nested control that already claimed the gesture', async () => {
+    // cae-splitter / cae-image-compare / cae-image-preview preventDefault() on pointerdown AND set
+    // touch-action:none, so the browser never pans and never sends pointercancel to disarm us. Without the
+    // defaultPrevented check, dragging a splitter divider inside a slide resizes the pane AND pages.
+    await mount();
+    const slide = fixture.nativeElement.querySelector('.cae-carousel__item') as HTMLElement;
+    slide.addEventListener('pointerdown', (e) => e.preventDefault()); // stand-in for the nested control
+    slide.dispatchEvent(down(1, 200)); // bubbles to the viewport already default-prevented
+    viewport().dispatchEvent(up(1, 100)); // a 100px drag: well past the threshold
+    await settle();
+    expect(page()).toBe(0);
+  });
+
+  it('ignores a diagonal flick dominated by the cross axis', async () => {
+    // A scroll attempt, not a page change. The browser usually claims it and fires pointercancel — but not
+    // when the page has nothing to scroll, which is when this guard is the only thing standing.
+    await mount();
+    await drag(-55, -300); // past the threshold on X, but overwhelmingly a Y gesture
+    expect(page()).toBe(0);
+  });
+
+  it('does not commit when [swipe] is turned off mid-gesture', async () => {
+    // onSwipeStart armed under swipe=true; only onSwipeEnd's own guard can catch the flip. The axis claim
+    // has already been released by then, so committing would page against a viewport that no longer owns
+    // the gesture.
+    await mount();
+    viewport().dispatchEvent(down(1, 200));
+    fixture.componentInstance.swipe.set(false);
+    await settle();
+    viewport().dispatchEvent(up(1, 100));
+    await settle();
+    expect(page()).toBe(0);
+  });
+
+  it('stops autoplay on a committed swipe, and wakes the live region', async () => {
+    // A swipe fires neither mouseenter nor focusin, so the hover/focus pause never engages: the timer keeps
+    // running and can advance the page moments after the user's own gesture, landing them a page past where
+    // they aimed. The button paths are immune only by accident (clicking focuses, which pauses).
+    await mount((h) => h.autoplay.set(100_000)); // long enough that only the STATE is under test
+    const playBtn = (): HTMLElement =>
+      fixture.nativeElement.querySelector('.cae-carousel__play') as HTMLElement;
+    const track = (): HTMLElement =>
+      fixture.nativeElement.querySelector('.cae-carousel__track') as HTMLElement;
+    expect(playBtn().getAttribute('aria-label')).toBe('Pause autoplay');
+    expect(track().getAttribute('aria-live')).toBe('off'); // silent while rotating
+    await drag(-80, 0);
+    expect(page()).toBe(1);
+    expect(playBtn().getAttribute('aria-label')).toBe('Start autoplay');
+    // ...and with rotation stopped the region goes polite, so the revealed slide is announced.
+    expect(track().getAttribute('aria-live')).toBe('polite');
+  });
+
+  it('leaves autoplay running when the swipe does not commit', async () => {
+    // The stop belongs to a committed page change, not to every touch that lands on the viewport.
+    await mount((h) => h.autoplay.set(100_000));
+    await drag(-10, 0);
+    expect(page()).toBe(0);
+    expect(
+      (fixture.nativeElement.querySelector('.cae-carousel__play') as HTMLElement).getAttribute(
+        'aria-label',
+      ),
+    ).toBe('Pause autoplay');
+  });
+
+  it('abandons the gesture on pointercancel', async () => {
+    // A system gesture / interrupted touch must not leave the origin armed, or the NEXT unrelated release
+    // would be measured against a stale start point and flip the page.
+    await mount();
+    await drag(-300, 0, { release: false }); // cancelled, not released
+    expect(page()).toBe(0);
+    // A later release with no press of its own must be inert, not resolved against the abandoned origin.
+    viewport().dispatchEvent(
+      new PointerEvent('pointerup', {
+        bubbles: true,
+        pointerType: 'touch',
+        pointerId: 1,
+        clientX: -500,
+        clientY: 200,
+      }),
+    );
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(page()).toBe(0);
+  });
+});
