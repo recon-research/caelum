@@ -37,6 +37,21 @@
 import json, os, re, subprocess, sys
 from datetime import datetime, timezone
 
+# The docs a checkpoint owns, excluded from the staleness count below. This set is
+# the convention, not a guess: ship_pr step 7 writes CLAUDE.md + docs/ROADMAP.md in
+# the same breath as the merge, and prepare_compaction step 3 commits the refreshed
+# docs/METRICS.md ledger. Excluding only CLAUDE.md (the pre-#525 behaviour) made the
+# banner cry STALE after every correctly-executed checkpoint -- and an alarm that
+# fires on the good path trains the reader to wave it off, which is exactly how a
+# genuinely stale Status gets through. Add a path here only if the checkpoint itself
+# starts writing it; anything else landing is real work and SHOULD stale the stamp.
+# Accepted residual: a ROADMAP-only commit that is NOT a checkpoint (a plan_work
+# re-plan) now reads fresh, so a Status "Next:" line can drift from the ROADMAP it
+# caches without the banner saying so. Path-based exclusion can't tell the two apart,
+# and onboard step 3 reconciles docs against the tracker regardless -- a guard that
+# misses that case beats one that fires on every checkpoint and gets ignored.
+CHECKPOINT_DOCS = ["CLAUDE.md", "docs/ROADMAP.md", "docs/METRICS.md"]
+
 def log_event():
     try:
         data = json.loads(sys.stdin.buffer.read().decode("utf-8", "replace"))
@@ -124,11 +139,12 @@ def main():
         stamp_date, stamp_sha = kind[1], kind[2]
         head = run(["git", "rev-parse", "--short", "HEAD"])
         if head:
-            # Exclude commits that touch only CLAUDE.md: the post-merge Status-stamp
-            # checkpoint is by construction one commit past the sha it stamps and must
-            # not read as staleness forever. A commit touching CLAUDE.md plus anything
-            # else still counts (it modifies other paths).
-            behind = run(["git", "rev-list", "--count", f"{stamp_sha}..HEAD", "--", ".", ":!CLAUDE.md"])
+            # Exclude commits that touch only checkpoint-owned docs: the post-merge
+            # Status-stamp checkpoint is by construction at least one commit past the
+            # sha it stamps and must not read as staleness forever. A commit touching
+            # those docs plus anything else still counts (it modifies other paths).
+            behind = run(["git", "rev-list", "--count", f"{stamp_sha}..HEAD", "--", "."]
+                         + [f":!{p}" for p in CHECKPOINT_DOCS])
             if behind and behind != "0":
                 lines.append(f"[status-anchor] STALE: CLAUDE.md Status stamped {stamp_date} @ {stamp_sha}, "
                              f"but HEAD is {head} ({behind} non-checkpoint commit(s) later) -- reconcile Status first (onboard step 3).")
