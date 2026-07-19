@@ -1,9 +1,9 @@
 import {
+  afterRenderEffect,
   booleanAttribute,
   ChangeDetectionStrategy,
   Component,
   contentChildren,
-  effect,
   input,
   output,
   TemplateRef,
@@ -86,7 +86,7 @@ export class CaeStep {
       [linear]="linear()"
       [orientation]="orientation()"
       [aria-label]="ariaLabel() || null"
-      (selectedIndexChange)="selectedIndexChange.emit($event)"
+      (selectedIndexChange)="report($event)"
     >
       @for (step of steps(); track step) {
         <mat-step
@@ -109,14 +109,26 @@ export class CaeStep {
 export class CaeStepper {
   /** The declared steps, collected from projected `cae-step` children. */
   protected readonly steps = contentChildren(CaeStep);
-  /** Active step index. Two-way bindable via `[(selectedIndex)]`. */
+  /**
+   * Active step index. Two-way bindable via `[(selectedIndex)]`.
+   *
+   * Out-of-contract values are absorbed rather than thrown (CDK's own setter throws on all of
+   * them): out-of-range clamps to the last step, negative and `NaN` collapse to 0, a fraction
+   * truncates. With **no steps** the request is held pending and applied when they arrive.
+   *
+   * When the step LIST changes structurally, the stepper re-clamps **where the user currently is**
+   * rather than re-asserting this value — so a shrink that orphans the index repairs itself
+   * without throwing a user off a step they navigated to. That repair is reported through
+   * `selectedIndexChange`, so a two-way binding stays in step with what is rendered.
+   */
   readonly selectedIndex = input(0);
   /**
-   * Emits the active step index. Fires on a genuine change (header click or accepted move) AND,
-   * for `[(selectedIndex)]` correctness, re-emits the UNCHANGED current index when a linear move
-   * is refused — so a pure `(selectedIndexChange)` listener (e.g. analytics) may observe a
-   * reverted-index event on a refused advance; treat it as "this is the live index", not "the
-   * step changed".
+   * Emits the active step index. Fires on a genuine change (header click or accepted move); for
+   * `[(selectedIndex)]` correctness it also re-emits the UNCHANGED current index when a linear
+   * move is refused, and reports the new index when a structural step-list change forced an
+   * automatic repair — neither of which the consumer initiated. So a pure `(selectedIndexChange)`
+   * listener (e.g. analytics) may observe an event nobody asked for; treat every emission as
+   * "this is the live index", not "the user changed step".
    */
   readonly selectedIndexChange = output<number>();
   /** Require each step's `stepControl` to be valid before advancing past it. */
@@ -128,36 +140,67 @@ export class CaeStepper {
 
   private readonly matStepper = viewChild(MatStepper);
 
+  /** Last index reflected into CDK — distinguishes a new consumer request from a mere step-list
+   *  change. `null` re-arms. `Object.is` so a bound `NaN` counts as unchanged (#598). */
+  private lastRequested: number | null = null;
+  /** Last index the CONSUMER was told about, by either route — CDK's own output or the
+   *  reconciler's. Must count both, or a repair re-announces an index CDK already reported. */
+  private lastEmitted: number | null = null;
+
+  /** Single exit for `selectedIndexChange`, so `lastEmitted` sees every emission. */
+  protected report(index: number): void {
+    this.lastEmitted = index;
+    this.selectedIndexChange.emit(index);
+  }
+
   constructor() {
-    // Reflect the requested selectedIndex into Material, then reconcile. In linear mode Material
-    // REFUSES a move onto a step whose prerequisites aren't met (and emits nothing), which would
-    // leave a two-way `[(selectedIndex)]` ahead of the rendered step. Read the ACTUAL index back
-    // and, on a refusal (actual !== requested), emit it so the parent's signal snaps to reality.
-    // The imperative set is read/written `untracked` so the effect depends only on the input +
-    // the viewChild, not on Material's own index signal (which would fight user header clicks).
-    effect(() => {
+    // Reflects `selectedIndex` into Material and reconciles back: on a REFUSED linear move Material
+    // stays put and emits nothing, which would leave `[(selectedIndex)]` ahead of the rendered step.
+    //
+    // Runs after render because a plain `effect` sees CDK's PREVIOUS step list (measured on a 3->1
+    // shrink: our count 1, CDK's still 3), so assigning against our count throws out of change
+    // detection when the list grows and the index moves in one tick (#598). Render hooks don't run
+    // on the server, which this accepts for now — #602 carries that trade-off.
+    afterRenderEffect(() => {
       const requested = this.selectedIndex();
       const stepper = this.matStepper();
+      // Tracked: a structural change is exactly when an index falls out of range. `changed` guards it.
+      const count = this.steps().length;
       if (!stepper) return;
       untracked(() => {
-        // The step COUNT is read untracked on purpose: taking it as a dependency would re-assert
-        // the declared index on any structural step-list change, yanking a user off a header they
-        // had clicked under a one-way `[selectedIndex]` (measured — it is not theoretical).
-        const last = this.steps().length - 1;
-        // With no steps yet, CDK has no ContentChildren to validate against and simply STORES the
-        // index (its setter's `else` branch), clamping it itself at content-init — so pass the
-        // request through untouched and let a pending index survive until the steps arrive.
-        // Clamping against a count of zero here would silently collapse it to 0. (#592)
+        const last = count - 1;
+        // Zero steps: `_isValidIndex` rejects EVERY index including 0, so nothing is safe to
+        // assign. Skip and re-arm so a late-arriving list still gets the pending index (#597).
+        if (last < 0) {
+          this.lastRequested = null;
+          return;
+        }
+        const changed = !Object.is(requested, this.lastRequested);
+        this.lastRequested = requested;
         const before = stepper.selectedIndex;
-        stepper.selectedIndex = last < 0 ? requested : clampStepIndex(requested, last);
+        // CDK focuses the newly-selected header whenever focus is inside the stepper. On a REPAIR
+        // that is a focus steal — the consumer's data changed, not the user's intent (WCAG 3.2.5) —
+        // so remember where they were and put them back below if that element survived.
+        const held = document.activeElement as HTMLElement | null;
+        // When only the list moved, re-clamp where the user ACTUALLY is rather than re-asserting
+        // the declared index. One choice, both jobs: repairs an index a shrink orphaned (CDK
+        // decrements by exactly one regardless of the new length — #598) without yanking a user off
+        // a header they clicked. A valid index re-clamps to itself, so CDK no-ops on it.
+        stepper.selectedIndex = clampStepIndex(changed ? requested : before, last);
         const actual = stepper.selectedIndex;
-        // Compare against what the CONSUMER asked for, not the clamped value — a clamped index and
-        // a refused move both need the parent's signal snapped back to what is on screen. The
-        // `actual === before` half matters: when CDK DID move it already emitted through the
-        // template's (selectedIndexChange) forward, so emitting again double-fires a clamped
-        // request (measured: [2, 2]). Only reconcile when CDK stayed put and the consumer's value
-        // still disagrees — a refused linear move, or a clamped / ill-typed request.
-        if (actual !== requested && actual === before) this.selectedIndexChange.emit(actual);
+        if (!changed && held?.isConnected && document.activeElement !== held) held.focus();
+        // Compare against the CONSUMER's value, not the clamped one. `actual === before` matters:
+        // when CDK DID move it already emitted through the template forward, so emitting again
+        // double-fires (measured: [2, 2]). A repair must still report itself — CDK's shrink handler
+        // writes its index signal DIRECTLY and emits nothing, so without this a shrink-by-one
+        // leaves `[(selectedIndex)]` silently ahead of the rendered step. Deduped on the repair
+        // path only, so one repair reports once; a new consumer request always re-reports.
+        // `changed ||` matters on its own: a consumer re-requesting an index CDK keeps refusing
+        // (linear, invalid prerequisite) must be told every time, even though the reported value
+        // hasn't moved — otherwise their signal sits on the refused step. The dedupe applies only
+        // to the repair path, where nothing new was asked for.
+        if (actual !== requested && actual === before && (changed || actual !== this.lastEmitted))
+          this.report(actual);
       });
     });
   }
