@@ -237,6 +237,34 @@ class TwoWayHost {
   readonly seen: number[] = [];
 }
 
+// Outer stepper whose step bodies each contain a nested cae-stepper. VERTICAL, because that is
+// the arrangement where Material interleaves header/body pairs and a positional header lookup can
+// land on an inner stepper's header (#604).
+@Component({
+  imports: [CaeStepper, CaeStep],
+  template: `
+    <cae-stepper
+      class="outer"
+      orientation="vertical"
+      [selectedIndex]="idx()"
+      (selectedIndexChange)="idx.set($event)"
+    >
+      @for (s of steps(); track s) {
+        <cae-step [label]="s">
+          <cae-stepper orientation="vertical">
+            <cae-step label="Inner A"><p>a</p></cae-step>
+            <cae-step label="Inner B"><p>b</p></cae-step>
+          </cae-stepper>
+        </cae-step>
+      }
+    </cae-stepper>
+  `,
+})
+class NestedHost {
+  readonly idx = signal(0);
+  readonly steps = signal(['One', 'Two', 'Three', 'Four']);
+}
+
 describe('CaeStepper (index bounds, #592)', () => {
   let fixture: ComponentFixture<BoundsHost>;
   let host: BoundsHost;
@@ -490,6 +518,197 @@ describe('CaeStepper (index bounds, #592)', () => {
     expect(headers().indexOf(document.activeElement as HTMLElement)).toBe(0); // not stolen
     const rendered = headers().findIndex((h) => h.getAttribute('aria-selected') === 'true');
     expect(rendered).toBe(1); // ...and the repair still happened
+  });
+
+  // The converse of the steal test above (#604). When the header the user was actually ON is
+  // destroyed by the list change, the browser parks focus on <body> and neither CDK nor Material
+  // moves it: `_updateSelectedItemIndex` only focuses via `setActiveItem` when `_containsFocus()`
+  // is true, and by then focus has already left the stepper. WCAG 2.4.3 — the next Tab restarts
+  // from the top of the document.
+  it('restores focus to the live step when the focused header is destroyed', async () => {
+    const f = TestBed.createComponent(TwoWayHost);
+    const twoWay = f.componentInstance;
+    document.body.appendChild(f.nativeElement);
+    f.detectChanges();
+    await f.whenStable();
+
+    const headers = (): HTMLElement[] =>
+      Array.from((f.nativeElement as HTMLElement).querySelectorAll('mat-step-header'));
+    headers()[3].focus(); // user is ON the last header
+    expect(headers().indexOf(document.activeElement as HTMLElement)).toBe(0 + 3);
+
+    twoWay.steps.set(['One', 'Two']); // destroys the header holding focus
+    f.detectChanges();
+    await f.whenStable();
+
+    // Pinned, not just "some header": a loose assertion cannot tell a correct restore from an
+    // arbitrary survivor. Selection stays 0 here, so header 0 is CDK's tab stop.
+    expect(document.activeElement).not.toBe(document.body);
+    expect(headers().indexOf(document.activeElement as HTMLElement)).toBe(0);
+  });
+
+  // The restore must not fire when something else legitimately holds focus. A user who tabbed out
+  // of the stepper before the list changed keeps their place — the remembered header is destroyed,
+  // but nothing was stranded, so moving focus back would be a 3.2.5 steal in the opposite
+  // direction. `activeElement === body` is what separates "nothing has focus" from "someone does".
+  it('does not pull focus back from another widget when the remembered header is destroyed', async () => {
+    const f = TestBed.createComponent(TwoWayHost);
+    const twoWay = f.componentInstance;
+    document.body.appendChild(f.nativeElement);
+    const outside = document.createElement('button');
+    document.body.appendChild(outside);
+    f.detectChanges();
+    await f.whenStable();
+
+    const headers = (): HTMLElement[] =>
+      Array.from((f.nativeElement as HTMLElement).querySelectorAll('mat-step-header'));
+    headers()[3].focus(); // user was in the stepper…
+    outside.focus(); // …then tabbed away to something else entirely
+
+    twoWay.steps.set(['One', 'Two']); // destroys the header they had been on
+    f.detectChanges();
+    await f.whenStable();
+
+    expect(document.activeElement).toBe(outside); // still theirs
+    outside.remove();
+  });
+
+  // The other half of `isConnected`: a user who deliberately parked focus (blurred to the page)
+  // must not be pulled back into the stepper by an unrelated list change. A parked element is
+  // still CONNECTED, whereas a destroyed one is not — `activeElement === body` is true in both
+  // cases, so it cannot tell them apart on its own.
+  it('does not grab focus when the user parked it and the list merely changes', async () => {
+    const f = TestBed.createComponent(TwoWayHost);
+    const twoWay = f.componentInstance;
+    document.body.appendChild(f.nativeElement);
+    f.detectChanges();
+    await f.whenStable();
+
+    const headers = (): HTMLElement[] =>
+      Array.from((f.nativeElement as HTMLElement).querySelectorAll('mat-step-header'));
+    headers()[0].focus();
+    (document.activeElement as HTMLElement).blur(); // deliberate park; header 0 still exists
+    expect(document.activeElement).toBe(document.body);
+
+    twoWay.steps.set(['One', 'Two', 'Three', 'Four', 'Five']); // grow — nothing destroyed
+    f.detectChanges();
+    await f.whenStable();
+
+    expect(document.activeElement).toBe(document.body); // stayed parked
+  });
+
+  // A nested cae-stepper's headers live in the OUTER host's subtree (measured: 12 matches for a
+  // 4-step outer stepper), so a positional lookup has to be scoped to our own mat-stepper. This is
+  // VERTICAL on purpose: horizontal emits every outer header before any body, which makes a bare
+  // lookup accidentally correct, while vertical interleaves header/body pairs and exposes it.
+  it('restores focus to its OWN header, not a nested stepper’s (vertical)', async () => {
+    const f = TestBed.createComponent(NestedHost);
+    const nested = f.componentInstance;
+    document.body.appendChild(f.nativeElement);
+    f.detectChanges();
+    await f.whenStable();
+
+    const outerHost = (f.nativeElement as HTMLElement).querySelector('.outer') as HTMLElement;
+    const ownStepper = outerHost.querySelector('mat-stepper');
+    const ownHeaders = (): HTMLElement[] =>
+      Array.from(outerHost.querySelectorAll<HTMLElement>('mat-step-header')).filter(
+        (h) => h.closest('mat-stepper') === ownStepper,
+      );
+
+    // The restore target must be index >= 1, or the lookup lands on our header 0 either way and
+    // the scoping has nothing to prove: DOM order here is outer0, inner0a, inner0b, outer1, …
+    // so an UNSCOPED headers[2] is an inner stepper's header, while a scoped one is outer step 3.
+    nested.idx.set(2);
+    f.detectChanges();
+    await f.whenStable();
+    expect(ownHeaders().indexOf(document.activeElement as HTMLElement)).toBe(-1);
+
+    ownHeaders()[3].focus(); // user on the outer stepper's last header
+    nested.steps.set(['One', 'Two', 'Three']); // destroys it; selection 2 stays valid
+    f.detectChanges();
+    await f.whenStable();
+
+    const active = document.activeElement as HTMLElement;
+    expect(active).not.toBe(document.body);
+    // The focused header must be one of OURS, not an inner stepper's.
+    expect(ownHeaders()).toContain(active);
+    expect(ownHeaders().indexOf(active)).toBe(2);
+  });
+
+  // The safety property of the restore, and the reason it targets `tabindex="0"` rather than the
+  // selected index. Arrow keys move CDK's FocusKeyManager WITHOUT changing selection, so arrowing
+  // to the last header and then shrinking destroys the key manager's active item while leaving the
+  // selection valid — a no-op repair. CDK never re-syncs (`_itemsChanged` only remaps when the
+  // active item survives), and `_onKeydown` does `selectedIndex = activeItemIndex`, so handing the
+  // user any header there makes Enter re-throw the out-of-bounds error #592 exists to prevent
+  // (measured before this guard: `oob: 1`). No header carries `tabindex="0"` in that state, so the
+  // restore finds nothing and declines. The residual strand is #611.
+  it('declines to restore into a desynced key manager rather than arming an Enter crash', async () => {
+    const f = TestBed.createComponent(TwoWayHost);
+    const twoWay = f.componentInstance;
+    document.body.appendChild(f.nativeElement);
+    f.detectChanges();
+    await f.whenStable();
+
+    const headers = (): HTMLElement[] =>
+      Array.from((f.nativeElement as HTMLElement).querySelectorAll('mat-step-header'));
+    headers()[0].focus();
+    for (let i = 0; i < 3; i++) {
+      // ArrowRight: CDK reads keyCode, not key.
+      document.activeElement?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'ArrowRight', keyCode: 39, bubbles: true }),
+      );
+      f.detectChanges();
+      await f.whenStable();
+    }
+    expect(headers().indexOf(document.activeElement as HTMLElement)).toBe(3);
+
+    twoWay.steps.set(['One', 'Two']); // destroys the key manager's active header; selection 0 holds
+    f.detectChanges();
+    await f.whenStable();
+    expect(headers().every((h) => h.getAttribute('tabindex') === '-1')).toBe(true); // desynced (#611)
+    expect(headers().indexOf(document.activeElement as HTMLElement)).toBe(-1); // declined
+
+    document.activeElement?.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true }),
+    );
+    f.detectChanges();
+    await f.whenStable();
+    expect(outOfBounds()).toEqual([]); // the crash stays unreachable
+  });
+
+  // The marker is single-slot: once the element it points at is detached, it is spent whether or
+  // not the restore fired. Leaving it armed lets a LATER, unrelated change yank focus into the
+  // stepper long after the destruction — the user tabbed away, clicked the page background, and
+  // then a poll refreshed the steps. That is a WCAG 3.2.5 steal with no user action at all.
+  it('does not yank focus in on a later change after declining an earlier restore', async () => {
+    const f = TestBed.createComponent(TwoWayHost);
+    const twoWay = f.componentInstance;
+    document.body.appendChild(f.nativeElement);
+    const outside = document.createElement('button');
+    document.body.appendChild(outside);
+    f.detectChanges();
+    await f.whenStable();
+
+    const headers = (): HTMLElement[] =>
+      Array.from((f.nativeElement as HTMLElement).querySelectorAll('mat-step-header'));
+    headers()[3].focus();
+    outside.focus(); // tabbed away…
+
+    twoWay.steps.set(['One', 'Two']); // …destroys the remembered header; restore declines
+    f.detectChanges();
+    await f.whenStable();
+    expect(document.activeElement).toBe(outside);
+
+    outside.blur(); // user clicks the page background
+    expect(document.activeElement).toBe(document.body);
+
+    twoWay.steps.set(['One', 'Two', 'Three']); // an unrelated later change
+    f.detectChanges();
+    await f.whenStable();
+
+    expect(document.activeElement).toBe(document.body); // stepper did NOT grab focus
+    outside.remove();
   });
 
   it('keeps a pending index when the step list arrives late (async step list)', async () => {

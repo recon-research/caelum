@@ -4,6 +4,8 @@ import {
   ChangeDetectionStrategy,
   Component,
   contentChildren,
+  ElementRef,
+  inject,
   input,
   output,
   TemplateRef,
@@ -67,19 +69,16 @@ export class CaeStep {
  * shown/hidden by selection) — a lazy step body is a later enhancement if needed.
  *
  * **Linear (validity-gated) stepping (#40).** Set `[linear]` and give each `cae-step` a
- * `stepControl` (Book 05 §3.5): Material then refuses to advance PAST a step until its
- * `stepControl` is valid, disabling the unreachable headers. A subtlety this wrapper handles:
- * on a *refused* move Material silently leaves its index put and emits nothing, so a naive
- * `[(selectedIndex)]` would leave the parent's signal ahead of the rendered step. The stepper
- * drives Material imperatively and, after each attempted move, reads the ACTUAL index back and
- * emits it on a refusal — so the two-way binding never diverges from what's on screen. With
- * `linear` off, moves are gated only by each step's `editable` flag (default `true` = all moves
- * allowed); the same read-back reconciliation applies on the rare refused (`editable=false`)
- * backward move, so a two-way binding never diverges.
+ * `stepControl` (Book 05 §3.5): Material refuses to advance PAST a step until its `stepControl` is
+ * valid, disabling the unreachable headers. With `linear` off, moves are gated only by each step's
+ * `editable` flag. Either way a refused move leaves Material's index put and emits NOTHING, so the
+ * wrapper drives it imperatively and reads the actual index back — see `selectedIndexChange` for
+ * what that reports and `selectedIndex` for the full binding contract.
  */
 @Component({
   selector: 'cae-stepper',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: { '(focusin)': 'rememberFocus($event)' },
   imports: [MatStepperModule, NgTemplateOutlet],
   template: `
     <mat-stepper
@@ -139,6 +138,7 @@ export class CaeStepper {
   readonly ariaLabel = input('');
 
   private readonly matStepper = viewChild(MatStepper);
+  private readonly matStepperEl = viewChild(MatStepper, { read: ElementRef });
 
   /** Last index reflected into CDK — distinguishes a new consumer request from a mere step-list
    *  change. `null` re-arms. `Object.is` so a bound `NaN` counts as unchanged (#598). */
@@ -151,6 +151,44 @@ export class CaeStepper {
   protected report(index: number): void {
     this.lastEmitted = index;
     this.selectedIndexChange.emit(index);
+  }
+
+  private readonly el: ElementRef<HTMLElement> = inject(ElementRef);
+
+  /** ANY focused descendant (a step-body input as much as a header), captured on `focusin` rather
+   *  than read at reconcile time: by then a destroyed element has already lost focus, so
+   *  `activeElement` can no longer tell removal from a deliberate park (#604). The restore always
+   *  targets a header, so a user in a destroyed step's field is moved to the step header. */
+  private focusedEl: HTMLElement | null = null;
+
+  protected rememberFocus(event: FocusEvent): void {
+    this.focusedEl = event.target as HTMLElement | null;
+  }
+
+  /**
+   * WCAG 2.4.3: destroying the element the user was on parks focus on `<body>` and CDK won't move
+   * it. `isConnected` separates DESTROYED from a deliberate park; the `<body>` check means we never
+   * take focus from whatever holds it.
+   *
+   * Targets the header CDK nominates as its tab stop (`tabindex="0"` = the key manager's active
+   * item), NOT a positional index — after a no-op repair the key manager can still point at a
+   * destroyed header, and handing focus to one it disagrees with makes Enter re-throw CDK's
+   * out-of-bounds error (measured). No tab stop then exists, so this declines instead: #611.
+   * Scoped to our own mat-stepper — a nested cae-stepper's headers are in this subtree too, which
+   * a vertical layout's interleaved header/body order would otherwise expose. Recipe: PATTERNS.
+   */
+  private restoreFocusIfDestroyed(): void {
+    const lost = this.focusedEl;
+    if (!lost || lost.isConnected) return;
+    this.focusedEl = null; // single-slot marker: a detached one is spent, armed or not
+    const doc = this.el.nativeElement.ownerDocument;
+    const active = doc.activeElement;
+    if (active && active !== doc.body) return;
+    const own = this.matStepperEl()?.nativeElement;
+    const tabStop = Array.from(
+      this.el.nativeElement.querySelectorAll<HTMLElement>('mat-step-header[tabindex="0"]'),
+    ).find((h) => h.closest('mat-stepper') === own);
+    tabStop?.focus();
   }
 
   constructor() {
@@ -172,7 +210,10 @@ export class CaeStepper {
         // Zero steps: `_isValidIndex` rejects EVERY index including 0, so nothing is safe to
         // assign. Skip and re-arm so a late-arriving list still gets the pending index (#597).
         if (last < 0) {
+          // No header to move to, so a destroyed marker is dropped rather than acted on — leaving
+          // it armed lets an unrelated later change yank focus into the stepper (#611).
           this.lastRequested = null;
+          this.focusedEl = null;
           return;
         }
         const changed = !Object.is(requested, this.lastRequested);
@@ -181,14 +222,15 @@ export class CaeStepper {
         // CDK focuses the newly-selected header whenever focus is inside the stepper. On a REPAIR
         // that is a focus steal — the consumer's data changed, not the user's intent (WCAG 3.2.5) —
         // so remember where they were and put them back below if that element survived.
-        const held = document.activeElement as HTMLElement | null;
+        const doc = this.el.nativeElement.ownerDocument;
+        const held = doc.activeElement as HTMLElement | null;
         // When only the list moved, re-clamp where the user ACTUALLY is rather than re-asserting
         // the declared index. One choice, both jobs: repairs an index a shrink orphaned (CDK
         // decrements by exactly one regardless of the new length — #598) without yanking a user off
         // a header they clicked. A valid index re-clamps to itself, so CDK no-ops on it.
         stepper.selectedIndex = clampStepIndex(changed ? requested : before, last);
         const actual = stepper.selectedIndex;
-        if (!changed && held?.isConnected && document.activeElement !== held) held.focus();
+        if (!changed && held?.isConnected && doc.activeElement !== held) held.focus();
         // Compare against the CONSUMER's value, not the clamped one. `actual === before` matters:
         // when CDK DID move it already emitted through the template forward, so emitting again
         // double-fires (measured: [2, 2]). A repair must still report itself — CDK's shrink handler
@@ -201,6 +243,7 @@ export class CaeStepper {
         // to the repair path, where nothing new was asked for.
         if (actual !== requested && actual === before && (changed || actual !== this.lastEmitted))
           this.report(actual);
+        this.restoreFocusIfDestroyed();
       });
     });
   }
