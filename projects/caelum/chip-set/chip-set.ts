@@ -11,6 +11,7 @@ import {
   isDevMode,
   OnInit,
   output,
+  viewChild,
 } from '@angular/core';
 import {
   MatChipGrid,
@@ -73,6 +74,9 @@ export interface CaeChipRemoveEvent<T> {
   selector: 'cae-chip-set',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [MatChipGrid, MatChipRow, MatChipRemove, MatChipInput],
+  // Witnesses the focus arrival that Material's SYNCHRONOUS sibling redirect produces, which is gone by the
+  // time any post-render hook could read document.activeElement (#556 — see {@link onFocusIn}).
+  host: { '(focusin)': 'onFocusIn($event)' },
   template: `
     <mat-chip-grid
       #grid
@@ -165,6 +169,46 @@ export class CaeChipSet<T = string> implements OnInit {
    */
   private pendingEmptyRemoval: { readonly item: T } | null = null;
 
+  /**
+   * A focus-holding removal that left an enabled sibling behind and whose drop hasn't landed yet — the
+   * counterpart to {@link pendingEmptyRemoval} for the NOT-last branch (#556). Armed in {@link onRemoved},
+   * consumed by {@link restoreAfterSiblingGrab} on the render where the item actually departs. Same accepted
+   * residual as the empty marker (#448): a *cancelled* removal leaves it armed, so a later items change that
+   * coincides with an external focus arrival could restore once — bounded by the witness gates below, and
+   * there is no clean causal expiry signal.
+   *
+   * Second residual, shared with {@link pendingEmptyRemoval} and inherent to the identity contract on
+   * {@link items} (values are the `@for` track key): departure is tested with `includes`, so an immutable
+   * **refetch** that replaces every item with a fresh instance while the drop is in flight reads as "the item
+   * departed", consuming the marker early and leaving the real grab unguarded. Object items on a polling data
+   * source are the realistic shape. Not fixed here — a value-keyed alternative would need an item-identity
+   * API this component deliberately doesn't have (#618).
+   */
+  private pendingSiblingRemoval: { readonly item: T } | null = null;
+
+  /**
+   * Where focus was immediately before Material pulled it into the set during the CURRENT items change — the
+   * `relatedTarget` of the arrival, captured by {@link onFocusIn}. Cleared at the end of every effect run, so
+   * it can only ever bind to the flush it was captured in.
+   */
+  private grabWitness: HTMLElement | null = null;
+
+  /**
+   * The `items` array as of the last completed post-render effect run. Compared by identity in
+   * {@link onFocusIn} to tell "an items change is mid-flight" (a programmatic grab) from "the set is settled"
+   * (the user's own Tab back in). Sound because a signal input only fires on a NEW reference.
+   */
+  private renderedItems: readonly T[] = [];
+
+  /**
+   * The chip grid element. The steal always lands *in here*, so this — not the host — is what "focus was
+   * already in the set" means: with {@link textEntry} the input is a separate composite control inside the
+   * same host, and a grab that drags the user out of the field they are typing in is every bit the WCAG 3.2.5
+   * steal that one out of an external field is. Testing against the host would classify it as an internal
+   * move and silently drop it (#556).
+   */
+  private readonly gridEl = viewChild.required('grid', { read: ElementRef<HTMLElement> });
+
   /** The chips to render, in order. Values must be **unique** (they are the `@for` track key). */
   readonly items = input.required<readonly T[]>();
 
@@ -252,7 +296,9 @@ export class CaeChipSet<T = string> implements OnInit {
    * lands nothing, so the redirect still runs (a blanket skip stranded the user on `<body>`).
    *
    * A drop landing after the user has moved on cannot drag them back into the field — Material's grab is
-   * unconditional, so it is undone (#551). Behind a **disabled first chip** the grid leaves the tab order so
+   * unconditional, so it is undone (#551) — nor pull them **out** of it into a chip, the mirror case, which is
+   * why the witness in {@link onFocusIn} is scoped to the grid rather than the host (#556). Both directions are
+   * covered. Behind a **disabled first chip** the grid leaves the tab order so
    * Shift+Tab can escape (#550); the chips themselves are then reachable only by Backspace from the empty
    * field, and **not at all** when the last chip is disabled too (Material's step-back targets the last chip
    * without skipping disabled ones) — the open half of #550. Further residuals, all `[textEntry]`-only: the
@@ -344,16 +390,91 @@ export class CaeChipSet<T = string> implements OnInit {
       // marker) — would otherwise still drag a departed user back into the field. Safe to run unconditionally:
       // it self-gates on the grab having actually landed inside this host.
       this.undoMaterialGrabIfUserHasLeft(items);
-      const pending = this.pendingEmptyRemoval;
-      if (!pending) return;
-      if (items.includes(pending.item)) return; // async drop hasn't landed yet — keep waiting
-      this.pendingEmptyRemoval = null; // resolved either way — consume the marker
-      // An ENABLED chip remains → Material's FocusKeyManager redirected focus to it; nothing to do. A
-      // disabled-only remainder is NOT skippable (the grid can't focus it), so fall through and land on
-      // emptyFocusTarget exactly like the fully-empty case (#201).
-      if (items.some((x) => !this.isDisabled(x))) return;
-      this.focusEmptyTargetIfOurs();
+      this.restoreAfterSiblingGrab(items);
+      this.resolveEmptyRedirect(items);
+      // Bookkeeping LAST, and outside every early return above: the witness must bind only to the flush it was
+      // captured in, and renderedItems is the "is a change mid-flight" baseline onFocusIn compares against.
+      this.renderedItems = items;
+      this.grabWitness = null;
     });
+  }
+
+  /**
+   * The last-enabled-chip redirect, resolved once {@link items} actually reaches no-enabled-chip (the marker is
+   * armed in {@link onRemoved}). Split out of the effect body so its early returns can't skip the effect's
+   * end-of-run bookkeeping.
+   */
+  private resolveEmptyRedirect(items: readonly T[]): void {
+    const pending = this.pendingEmptyRemoval;
+    if (!pending) return;
+    if (items.includes(pending.item)) return; // async drop hasn't landed yet — keep waiting
+    this.pendingEmptyRemoval = null; // resolved either way — consume the marker
+    // An ENABLED chip remains → Material's FocusKeyManager redirected focus to it; nothing to do. A
+    // disabled-only remainder is NOT skippable (the grid can't focus it), so fall through and land on
+    // emptyFocusTarget exactly like the fully-empty case (#201).
+    if (items.some((x) => !this.isDisabled(x))) return;
+    this.focusEmptyTargetIfOurs();
+  }
+
+  /**
+   * Capture the focus arrival produced by Material's sibling redirect (#556). `MatChipSet` destroys the removed
+   * chip and calls `chipToFocus.focus()` **synchronously**, inside the chips-changed subscription — so unlike
+   * the empty-set grab (queued in a microtask, undone by {@link undoMaterialGrabIfUserHasLeft}), it has already
+   * happened by the time any post-render hook runs, and `document.activeElement` no longer remembers where the
+   * user was. The browser does: it hands us the departed element as the arrival's `relatedTarget`.
+   *
+   * The discriminator between that grab and a user Tabbing back into the set is whether an items change is
+   * **mid-flight** — the consumer's drop has written the signal but this render's effect hasn't run yet. A
+   * user's own move can only happen with the set settled (`items() === renderedItems`), because the grab is
+   * synchronous JS inside the flush and nothing can interleave with it.
+   */
+  protected onFocusIn(event: FocusEvent): void {
+    if (!this.pendingSiblingRemoval) return; // no focus-holding removal in flight → nothing to undo
+    const from = event.relatedTarget;
+    // <body> means focus was already stranded (the removed chip took it down with it) — Material's landing is
+    // an improvement on that, never something to "restore". Engines disagree on which of `null` / `<body>` they
+    // report here, so both arms are rejected. The `<body>` arm is deliberately NOT unit-pinned: jsdom only ever
+    // produces `null`, and `document.body.focus()` is a silent no-op there (verified) while it genuinely BLURS
+    // in a browser — so a jsdom test of it passes with or without this guard and would be a false witness.
+    // Real-browser check tracked in #617 (with the #405 pointer-remove variants).
+    if (!(from instanceof HTMLElement) || from === document.body) return;
+    if (this.gridEl().nativeElement.contains(from)) return; // already in the set — a roving move, not a steal
+    // Settled set ⇒ the user's own move, not a grab. Sound because `items` is a signal INPUT: it does not
+    // update when the consumer writes the parent signal, only when change detection propagates the binding.
+    // So the window where it differs from the last rendered value lies INSIDE the synchronous flush, after
+    // the binding update and before this render's effect — where no user-driven focus event can interleave.
+    // (Both adversarial lenses read this as a wall-clock gap a click could land in, and filed a steal against
+    // it; the `witnesses no grab when the user clicks in during the drop's scheduling gap` spec drives exactly
+    // that sequence and stays green. It fails if this line goes.)
+    if (this.items() === this.renderedItems) return;
+    this.grabWitness = from;
+  }
+
+  /**
+   * Put focus back where the user left it when Material's SYNCHRONOUS sibling redirect fires after an async
+   * drop lands (#556) — the not-last mirror of {@link undoMaterialGrabIfUserHasLeft}. Normally that redirect is
+   * the whole point of a managed chip set; it is wrong only when the removal was async and focus has since
+   * legitimately left, which is a WCAG 3.2.5 steal out of whatever the user moved on to.
+   *
+   * Conservative in the same way as the empty-set restore: it acts only on a removal that held focus when it
+   * was requested, only on the render where that item actually departs, only when a same-flush arrival from
+   * outside was witnessed, and only when the grab really did land inside this host. A witness that has left
+   * the DOM is dropped rather than chased (focusing a detached node silently strands the user on `<body>`).
+   */
+  private restoreAfterSiblingGrab(items: readonly T[]): void {
+    const pending = this.pendingSiblingRemoval;
+    if (!pending) return;
+    if (items.includes(pending.item)) return; // the async drop hasn't landed — keep waiting
+    this.pendingSiblingRemoval = null; // the item departed — consume the marker either way
+    const heldBy = this.grabWitness;
+    // A witness exists only because a focusin landed in the grid during THIS flush — which is already the
+    // proof that the grab happened, so no "did focus land inside the host" re-check is needed. One was
+    // written and then removed: no mutation could falsify it (both review lenses flagged it), and it is worse
+    // than redundant — if a cascade destroys the grabbed chip later in the same flush, focus falls to <body>
+    // and such a check would block the restore that would rescue it. Not chasing a witness that has left the
+    // DOM is kept, though: focusing a detached node is a silent no-op.
+    if (!heldBy || !heldBy.isConnected) return;
+    heldBy.focus({ preventScroll: true });
   }
 
   /**
@@ -466,6 +587,11 @@ export class CaeChipSet<T = string> implements OnInit {
       // is still present → no-op, leaving no stale marker). Async / concurrent emptyings stay the consumer
       // fallback (scope + why on {@link emptyFocusTarget}).
       afterNextRender(() => this.redirectAfterSyncCascade(item), { injector: this.injector });
+      // ...and, for the async case the one-shot deliberately declines, arm the sibling marker: when the drop
+      // lands later, Material redirects into a surviving sibling synchronously and unconditionally, which is a
+      // steal if the user has moved on by then (#556). Harmless on the synchronous path — the item is gone by
+      // the first effect run, and the witness gates find nothing to restore.
+      this.pendingSiblingRemoval = { item };
     }
   }
 
