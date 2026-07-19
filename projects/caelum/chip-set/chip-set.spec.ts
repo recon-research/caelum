@@ -450,6 +450,195 @@ describe('CaeChipSet', () => {
     expect(grid(f).contains(document.activeElement)).toBe(true); // grid kept focus on a sibling
   });
 
+  it('does NOT steal focus into a SIBLING chip when an ASYNC drop lands after the user has left (#556)', async () => {
+    // The sibling-chip half of the async-drop steal (#551 fixed the empty-set half). Material's
+    // _redirectDestroyedChipFocus is SYNCHRONOUS and unconditional: when the drop finally lands it focuses a
+    // surviving sibling whether or not the user is still here. Every ownership gate this component has hangs
+    // off the empty-set paths, so nothing intercepts it (WCAG 3.2.5).
+    const f = await makeAsyncTarget();
+    f.componentInstance.items.set(['a', 'b', 'c']);
+    await settle(f);
+    const aRemove = removeBtn(rows(f)[0])!;
+    aRemove.focus();
+    aRemove.click(); // request only; two enabled siblings remain → the NOT-last branch, no empty marker
+    await settle(f);
+    expect(rows(f).length).toBe(3); // the drop is genuinely still in flight
+    const extBtn = f.componentInstance.extRef()!.nativeElement;
+    extBtn.focus(); // the user gives up waiting and moves to an unrelated field
+    expect(document.activeElement).toBe(extBtn);
+    f.componentInstance.pendingDrop!(); // the async drop lands → Material redirects into chip 'b'
+    await settle(f);
+    expect(rows(f).length).toBe(2);
+    expect(document.activeElement).toBe(extBtn); // must stay where the user left it
+  });
+
+  it('does NOT drag the user back out when they RETURN to the set before the async drop lands (#556)', async () => {
+    // The discriminator behind the #556 restore: an arrival from outside is Material's grab only while an items
+    // change is mid-flight. A user who Tabs back in during the async gap arrives with the set SETTLED, so their
+    // return must not be witnessed — otherwise the drop landing would yank them back out to where they came
+    // from, inverting the fix into the very steal it prevents. FAILS if onFocusIn drops its settled-set gate.
+    const f = await makeAsyncTarget();
+    f.componentInstance.items.set(['a', 'b', 'c']);
+    await settle(f);
+    const aRemove = removeBtn(rows(f)[0])!;
+    aRemove.focus();
+    aRemove.click(); // async removal request, two enabled siblings remain
+    await settle(f);
+    const extBtn = f.componentInstance.extRef()!.nativeElement;
+    extBtn.focus(); // the user steps away...
+    (rows(f)[1].querySelector('.mat-mdc-chip-action') as HTMLElement).focus(); // ...then comes back on their own
+    expect(grid(f).contains(document.activeElement)).toBe(true);
+    f.componentInstance.pendingDrop!(); // the drop lands while they are legitimately inside the set
+    await settle(f);
+    expect(rows(f).length).toBe(2);
+    expect(document.activeElement).not.toBe(extBtn); // not dragged back out
+    expect(grid(f).contains(document.activeElement)).toBe(true); // left in the set, where they chose to be
+  });
+
+  it('still redirects to a sibling when an async drop lands while the user WAITED in the set (#556)', async () => {
+    // The desirable half of Material's sibling redirect — the reason a managed chip set exists — must survive
+    // the #556 restore: a user who waits in the set is LEFT on the sibling Material picks.
+    // What this does NOT pin is the <body> arm of onFocusIn's witness guard. jsdom reports relatedTarget as
+    // `null` here (measured), and `document.body.focus()` is a silent no-op there while it genuinely blurs in
+    // a browser — so that arm passes with or without the guard and is unpinnable in jsdom. A test asserting
+    // otherwise was written, proven vacuous by mutation, and deleted; see chip-set.ts › onFocusIn and #617.
+    const f = await makeAsyncTarget();
+    f.componentInstance.items.set(['a', 'b', 'c']);
+    await settle(f);
+    const aRemove = removeBtn(rows(f)[0])!;
+    aRemove.focus();
+    aRemove.click(); // async removal request — the user waits, focus stays in the set
+    await settle(f);
+    f.componentInstance.pendingDrop!(); // the drop lands with the user still here
+    await settle(f);
+    expect(rows(f).length).toBe(2);
+    expect(document.activeElement).not.toBe(document.body); // not stranded
+    expect(grid(f).contains(document.activeElement)).toBe(true); // Material's redirect kept the user in the set
+  });
+
+  it('keeps waiting across an UNRELATED items change while the async drop is in flight (#556)', async () => {
+    // The marker must be consumed on the render where the removed item actually DEPARTS, not on the first
+    // items change that happens to come along. A list that mutates for its own reasons mid-drop (a poll, a
+    // collaborator's insert) would otherwise disarm the guard early and leave the real grab — which lands
+    // later — unprotected. FAILS if restoreAfterSiblingGrab drops its still-present check.
+    const f = await makeAsyncTarget();
+    f.componentInstance.items.set(['a', 'b', 'c']);
+    await settle(f);
+    const aRemove = removeBtn(rows(f)[0])!;
+    aRemove.focus();
+    aRemove.click(); // async removal request for 'a' → marker armed
+    await settle(f);
+    f.componentInstance.items.update((l) => [...l, 'd']); // unrelated insert; 'a' is still present
+    await settle(f);
+    expect(rows(f).length).toBe(4);
+    const extBtn = f.componentInstance.extRef()!.nativeElement;
+    extBtn.focus(); // the user leaves while the drop is still pending
+    f.componentInstance.pendingDrop!(); // now 'a' finally departs → Material grabs a sibling
+    await settle(f);
+    expect(rows(f).length).toBe(3);
+    expect(document.activeElement).toBe(extBtn); // the marker survived the unrelated change and still guarded
+  });
+
+  it('does not reuse a witness from an EARLIER removal on a later one (#556)', async () => {
+    // The witness binds to the flush it was captured in — the subtlest part of the design. Removal 1 restores
+    // the user to an outside button; removal 2 is a normal stay-put remove whose redirect is CORRECT. If the
+    // witness outlived its flush, removal 2 would "restore" to removal 1's button and throw the user out of
+    // the set on a removal they never left. FAILS if the effect stops clearing grabWitness each run.
+    const f = await makeAsyncTarget();
+    f.componentInstance.items.set(['a', 'b', 'c']);
+    await settle(f);
+    const extBtn = f.componentInstance.extRef()!.nativeElement;
+    // Removal 1: the user leaves, the drop lands, the #556 restore fires and puts them back on extBtn.
+    removeBtn(rows(f)[0])!.focus();
+    removeBtn(rows(f)[0])!.click();
+    await settle(f);
+    extBtn.focus();
+    f.componentInstance.pendingDrop!();
+    await settle(f);
+    expect(document.activeElement).toBe(extBtn); // restore fired — a witness existed this flush
+
+    // Removal 2: the user is in the set and STAYS. Material's redirect is right; nothing to undo.
+    removeBtn(rows(f)[0])!.focus();
+    removeBtn(rows(f)[0])!.click();
+    await settle(f);
+    f.componentInstance.pendingDrop!();
+    await settle(f);
+    expect(rows(f).length).toBe(1);
+    expect(document.activeElement).not.toBe(extBtn); // not thrown out by removal 1's stale witness
+    expect(grid(f).contains(document.activeElement)).toBe(true);
+  });
+
+  it('[textEntry]: an async drop must not yank the user out of the FIELD into a chip (#556)', async () => {
+    // Found by adversarial review of this slice. With [textEntry] the input is a separate composite control
+    // inside the same host, so a witness test scoped to the HOST reads "grab pulled the user out of the field
+    // into a chip" as an internal move and drops it — leaving the steal (WCAG 3.2.5) unremediated on the one
+    // surface where the user is most likely to be mid-task, typing. Scoping the test to the GRID fixes it.
+    // With [addOnBlur] it compounds: the field's blur commits half-typed text as a chip.
+    @Component({
+      imports: [CaeChipSet],
+      template: `
+        <cae-chip-set
+          [items]="items()"
+          textEntry
+          textEntryLabel="Add"
+          (removed)="onRemoved($event)"
+        />
+      `,
+    })
+    class EntryAsyncHost {
+      items = signal<readonly string[]>(['a', 'b', 'c']);
+      pendingDrop: (() => void) | null = null;
+      onRemoved(e: CaeChipRemoveEvent<string>): void {
+        this.pendingDrop = () => this.items.update((l) => l.filter((t) => t !== e.item));
+      }
+    }
+    await TestBed.configureTestingModule({ imports: [EntryAsyncHost] }).compileComponents();
+    const f = TestBed.createComponent(EntryAsyncHost);
+    el = f.nativeElement as HTMLElement;
+    document.body.appendChild(el);
+    f.detectChanges();
+    await f.whenStable();
+    const aRemove = removeBtn(rows(f)[0])!;
+    aRemove.focus();
+    aRemove.click();
+    await settle(f);
+    const inp = (f.nativeElement as HTMLElement).querySelector(
+      '.cae-chip-set__input',
+    ) as HTMLInputElement;
+    inp.focus(); // user moves into the text field and starts typing
+    expect(document.activeElement).toBe(inp);
+    f.componentInstance.pendingDrop!();
+    await settle(f);
+    expect(document.activeElement).toBe(inp); // must stay in the field
+  });
+
+  it("witnesses no grab when the user clicks in during the drop's scheduling gap (#556)", async () => {
+    // Both adversarial lenses filed a steal here: they read `items() === renderedItems` as a WALL-CLOCK gap
+    // between the consumer writing the signal and the flush, which a real click could land inside. It is not
+    // one. `items` is a signal INPUT, so it does not update when the parent writes — only when change
+    // detection propagates the binding. The window where it differs from the last rendered value therefore
+    // lies INSIDE the synchronous flush, where no user-driven focus event can interleave.
+    // This drives their exact sequence: an external control that flushes the pending drop from its own
+    // focusout handler, so the write lands before the user's focusin. Verified to have teeth — removing the
+    // settled-set gate makes it fail.
+    const f = await makeAsyncTarget();
+    f.componentInstance.items.set(['a', 'b', 'c']);
+    await settle(f);
+    const aRemove = removeBtn(rows(f)[0])!;
+    aRemove.focus();
+    aRemove.click(); // async removal, marker armed
+    await settle(f);
+    const extBtn = f.componentInstance.extRef()!.nativeElement;
+    // The external element flushes the pending drop as focus LEAVES it — so the items write lands
+    // before the user's own focusin, inside the mid-flight window.
+    extBtn.addEventListener('focusout', () => f.componentInstance.pendingDrop!());
+    extBtn.focus();
+    const bAction = rows(f)[1].querySelector('.mat-mdc-chip-action') as HTMLElement;
+    bAction.focus(); // the user deliberately clicks chip b
+    await settle(f);
+    expect(document.activeElement).not.toBe(extBtn); // must not be thrown back out
+  });
+
   it('dev-warns when [emptyFocusTarget] is non-focusable and does not receive focus (#206)', async () => {
     // The DX guard: a target missing tabindex="-1" (or detached) makes .focus() a silent no-op, dropping
     // the keyboard user to <body> — same as no redirect, but hidden. Here the target is a plain <p> (not
