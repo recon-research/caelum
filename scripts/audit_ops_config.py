@@ -70,6 +70,7 @@ PREFLIGHT_TO_CI = {
     "repo-docs links": "Repo-docs link audit (root/docs/.claude/_intake)",
     "staleness audit (warn-only)": "Staleness audit (content drift, warn-only)",
     "todo hygiene (vs origin/main)": "No naked TODO/FIXME in added lines",
+    "commit-msg semantics (vs origin/main)": "Commit-message semantics",
 }
 
 # Named ci.yml steps with deliberately no preflight stage. Everything else

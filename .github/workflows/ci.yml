@@ -265,6 +265,20 @@ jobs:
           fi
           echo "No naked TODOs."
 
+      # Commit-message semantics (#591): GitHub's closing-keyword parser has no
+      # notion of negation, so "Filed, not fixed: #580" CLOSES #580 — which is
+      # how #580 sat closed-as-completed with the bug live on main (710a0a7).
+      # Mirrored by the `commit-msg semantics` stage in scripts/preflight.{sh,ps1}.
+      # The PR title/body are scanned here too (GitHub honours the keywords in
+      # both) and flow through env vars, never interpolated — untrusted input.
+      - name: Commit-message semantics
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          git fetch origin "${{ github.base_ref || 'main' }}" --quiet || true
+          python3 scripts/check_commit_msgs.py "origin/${{ github.base_ref || 'main' }}..HEAD"
+
       # Ticket-first enforcement (#75, PROJECT_CONVENTIONS.md > Tracker & Hygiene):
       # a PR's title OR body must carry a #NN issue reference ("closes #NN", "refs
       # #NN", "Addresses #NN", "Provisional on #NN" all qualify). The `no-ticket`

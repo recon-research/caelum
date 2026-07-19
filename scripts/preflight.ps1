@@ -193,6 +193,13 @@ Invoke-Stage 'todo hygiene (vs origin/main)' {
     }
 }
 
+# Commit-message semantics (#591) - a closing keyword under a negation ("not
+# fixed: #580") closes the ticket it documents as deferred. Pre-push is the only
+# moment it is still fixable: undoing it on main would need a rewrite, which the
+# merge policy forbids. Mirrors ci.yml's "Commit-message semantics" step, which
+# additionally passes the PR title/body through the environment.
+Invoke-Stage 'commit-msg semantics (vs origin/main)' { python3 scripts/check_commit_msgs.py }
+
 # Slice telemetry (fail-open, #255): total gate duration -> the local ledger
 # (.claude/metrics/preflight_times.jsonl); metrics.py trends it as the
 # suite-growth lens. Never blocks: any failure here is swallowed.
