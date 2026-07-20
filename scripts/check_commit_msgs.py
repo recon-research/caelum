@@ -30,7 +30,9 @@ that also fires on the correct path trains you to skim it (#525/#570/#566).
 Preferred deferral phrasing, which this gate accepts:
     Deferred: #580, #581            Filed, out of scope here: #580
     Refs #580 (not fixed here)      Follow-ups: #580, #581
-Keep intentional closes on their own line at the end: `Closes #572.`
+An intentional close needs no special placement: a keyword inside its own
+parenthetical is exempt, which is this repo's usual subject shape --
+`fix: ... by step identity, not index (closes #608)` (#627).
 
 Catches append (fail-open) to .claude/metrics/guard_hits.jsonl per the guard
 discipline (#253).
@@ -75,9 +77,44 @@ NEGATION_PHRASES = ("out of scope", "yet to be")
 # keyword must be adjacent too. A wider window reaches into a neighbouring
 # clause and invents breaches: at 4, this fired on `require it not per-leg
 # names (closes #32)` -- a deliberate close whose "not" belongs to the subject.
+#
+# History bounds the false-positive rate only for shapes ALREADY WRITTEN: this
+# window measured clean across 334 commits and then fired on the very next
+# natural subject it met (`..., not index (closes #608)` -- #627). Both misses
+# were the same shape, a negation in the prose against a close in a trailing
+# parenthetical, which is why the fix was a scope boundary (`_negation_scope`)
+# rather than yet another window tweak.
 WINDOW = 2
 
 TOKEN = re.compile(r"[A-Za-z']+")
+
+# Innermost parentheticals, content captured. Used to bound a negation's reach
+# (see `_negation_scope`); nesting is not a real commit-message shape, so the
+# no-inner-parens character class is deliberate rather than a limitation.
+PAREN = re.compile(r"\(([^()]*)\)")
+
+
+def _negation_scope(sentence: str, start: int) -> str:
+    """The text a negation may bind to this keyword FROM.
+
+    A parenthetical is grammatically detached from the prose around it, so a
+    negation outside one cannot govern a keyword inside it. That is what makes
+    this repo's usual subject shape safe --
+
+        fix: reconcile cae-stepper by step identity, not index (closes #608)
+
+    where `not` negates *index*, not the close (#627). Sentence- and even
+    clause-splitting both fail here: split on the comma and the negation is
+    still in the same fragment as the keyword (measured). The parenthetical is
+    the boundary that actually matches the grammar.
+
+    A negation INSIDE the same parenthetical still binds, so `(not fixed: #580)`
+    -- a deferral written parenthetically -- is caught exactly as before.
+    """
+    for p in PAREN.finditer(sentence):
+        if p.start(1) <= start < p.end(1):
+            return sentence[p.start(1) : start]
+    return sentence[:start]
 
 
 def negated_closes(text: str) -> list[str]:
@@ -88,7 +125,7 @@ def negated_closes(text: str) -> list[str]:
     # is how a guard earns its false positives.
     for sentence in re.split(r"(?<=[.!?;])\s+|\n", text):
         for m in re.finditer(KEYWORD, sentence, re.IGNORECASE):
-            before = sentence[: m.start()]
+            before = _negation_scope(sentence, m.start())
             lowered = before.lower()
             if any(p in lowered for p in NEGATION_PHRASES):
                 hits.append(sentence.strip())
@@ -97,6 +134,37 @@ def negated_closes(text: str) -> list[str]:
             if any(t in NEGATION_WORDS for t in tokens[-WINDOW:]):
                 hits.append(sentence.strip())
     return hits
+
+
+# Pinned behaviour, checked on every run (see `selftest`). Both historical
+# miscalibrations of this detector are here as cases: the breach it exists to
+# catch, and the house subject shape it wrongly caught. In-band rather than a
+# separate test file because the failure mode being guarded against is a guard
+# that goes SILENTLY PERMISSIVE -- the same shape as the #580 bug itself -- and
+# a check that only runs when someone remembers to run it does not cover that.
+SELFTEST: tuple[tuple[str, bool], ...] = (
+    # The #580 breach, verbatim from 710a0a7. Must always fire.
+    ("Filed, not fixed: #580", True),
+    # The #627 false positive: negated prose, close in a trailing parenthetical.
+    ("fix: reconcile by step identity, not index (closes #608)", False),
+    # ...but a deferral written INSIDE the parenthetical still binds.
+    ("Rewrote the reconciler (not fixed: #580)", True),
+    # The phrasings this gate's own docstring recommends must stay accepted.
+    ("Refs #580 (not fixed here)", False),
+    ("fix: clamp the index (closes #592)", False),
+    # Phrase carriers and the colon binding GitHub actually honours.
+    ("Out of scope here, fixes #77", True),
+    ("Deferred, resolves #99", True),
+)
+
+
+def selftest() -> list[str]:
+    """Return a description of each pinned case the detector now gets wrong."""
+    return [
+        f"{'expected a hit' if want else 'expected NO hit'}: {text!r}"
+        for text, want in SELFTEST
+        if bool(negated_closes(text)) is not want
+    ]
 
 
 def commits_in_range(rev_range: str) -> list[tuple[str, str]]:
@@ -123,6 +191,19 @@ def commits_in_range(rev_range: str) -> list[tuple[str, str]]:
 
 def main() -> int:
     rev_range = sys.argv[1] if len(sys.argv) > 1 else "origin/main..HEAD"
+
+    # Before judging anyone else's messages, prove the detector still works.
+    broken = selftest()
+    if broken:
+        for case in broken:
+            print(f"selftest: {case}")
+        print(
+            "::error::The negated-close detector fails its own pinned cases, so "
+            "its verdict on this range means nothing. Fix the detector (#591, "
+            "#627) -- do NOT relax the cases to make this pass."
+        )
+        return 1
+
     violations: list[tuple[str, str]] = []
 
     for sha, message in commits_in_range(rev_range):
@@ -141,8 +222,10 @@ def main() -> int:
         print(
             "::error::A closing keyword sits under a negation -- GitHub ignores "
             "the negation and will CLOSE the ticket you are deferring (#591, the "
-            "#580 breach). Rephrase as 'Deferred: #NN' / 'Refs #NN (not fixed "
-            "here)', and keep intentional closes on their own trailing line."
+            "#580 breach). Rephrase the DEFERRAL -- 'Deferred: #NN', 'Refs #NN "
+            "(not fixed here)' -- rather than moving the close: an intentional "
+            "'(closes #NN)' inside its own parenthetical is already exempt, so "
+            "what fired here binds the ref straight out of negated prose (#627)."
         )
         try:
             mdir = ROOT / ".claude" / "metrics"
