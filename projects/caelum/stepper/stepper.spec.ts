@@ -4,6 +4,23 @@ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angula
 
 import { CaeStep, CaeStepper } from './stepper';
 
+/** Index of the header Material marks selected — the real selection signal, and the one assistive
+ *  tech reads. Step BODIES stamp eagerly, so their presence in the DOM says nothing about which
+ *  step is showing; two assertions here used to test exactly that and passed before any navigation
+ *  at all (#632). Reach for this rather than querying a step's content. */
+const selectedHeaderIn = (root: HTMLElement): number =>
+  Array.from(root.querySelectorAll('mat-step-header')).findIndex(
+    (h) => h.getAttribute('aria-selected') === 'true',
+  );
+
+/** Label of the selected step — the companion to `selectedHeaderIn` when an index alone cannot
+ *  distinguish the steps (a removal ahead of the selection shifts indices without changing them). */
+const selectedLabelIn = (root: HTMLElement): string | null =>
+  Array.from(root.querySelectorAll('mat-step-header'))
+    .find((h) => h.getAttribute('aria-selected') === 'true')
+    ?.querySelector('.mat-step-text-label')
+    ?.textContent?.trim() ?? null;
+
 @Component({
   imports: [CaeStepper, CaeStep, ReactiveFormsModule],
   template: `
@@ -70,12 +87,19 @@ describe('CaeStepper', () => {
   });
 
   it('drives selection through the two-way selectedIndex seam', async () => {
+    expect(selectedHeader()).toBe(0);
     host.index = 1;
     fixture.detectChanges();
     await fixture.whenStable();
-    // The second step body is rendered (steps stamp eagerly) and now the selected one.
-    expect(el().querySelector('.panel-2')?.textContent).toContain('Second step body');
+    // Every step body stamps eagerly, so `.panel-2` is in the DOM from the start and its presence
+    // proves nothing about selection — this assertion used to be exactly that, and passed before
+    // any navigation at all (#632). The header's aria-selected is the real signal, and the one
+    // assistive tech reads.
+    expect(selectedHeader()).toBe(1);
+    expect(selectedLabelIn(el())).toBe('Details');
   });
+
+  const selectedHeader = (): number => selectedHeaderIn(el());
 });
 
 @Component({
@@ -215,7 +239,9 @@ describe('CaeStepper (linear)', () => {
     host.index = 1;
     await settle();
     expect(host.index).toBe(1);
-    expect(el().querySelector('.two')).toBeTruthy();
+    // `.two` is the step-1 input, which stamps eagerly — asserting its presence passed whether or
+    // not the move was accepted, so it carried no weight next to `host.index` (#632).
+    expect(selectedHeaderIn(el())).toBe(1);
   });
 
   const el = (): HTMLElement => fixture.nativeElement as HTMLElement;
@@ -361,18 +387,11 @@ describe('CaeStepper (index bounds, #592)', () => {
     fixture.detectChanges();
     await fixture.whenStable();
   };
-  const selectedHeader = (): number =>
-    Array.from(
-      (fixture.nativeElement as HTMLElement).querySelectorAll('mat-step-header'),
-    ).findIndex((h) => h.getAttribute('aria-selected') === 'true');
+  const selectedHeader = (): number => selectedHeaderIn(fixture.nativeElement as HTMLElement);
 
   // #608 needs to assert WHICH step is showing, not which index — the whole bug is that the index
   // is preserved while the step under it changes, so an index-only assertion cannot see it.
-  const selectedLabel = (): string | null =>
-    Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('mat-step-header'))
-      .find((h) => h.getAttribute('aria-selected') === 'true')
-      ?.querySelector('.mat-step-text-label')
-      ?.textContent?.trim() ?? null;
+  const selectedLabel = (): string | null => selectedLabelIn(fixture.nativeElement as HTMLElement);
 
   // Each of these throws `cdkStepper: Cannot assign out-of-bounds value to selectedIndex` without
   // the clamp — an unhandled error inside change detection, not a wrong-looking step.
@@ -935,11 +954,7 @@ describe('CaeStepper (identity repair refused by CDK — #605 residual)', () => 
 
     const headers = (): HTMLElement[] =>
       Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('mat-step-header'));
-    const label = (): string | null =>
-      headers()
-        .find((h) => h.getAttribute('aria-selected') === 'true')
-        ?.querySelector('.mat-step-text-label')
-        ?.textContent?.trim() ?? null;
+    const label = (): string | null => selectedLabelIn(fixture.nativeElement as HTMLElement);
 
     headers()[3].click(); // user navigates to the non-editable 'Four'
     fixture.detectChanges();
