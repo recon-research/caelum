@@ -200,14 +200,21 @@ export class CaeStepper {
    * it. `isConnected` separates DESTROYED from a deliberate park; the `<body>` check means we never
    * take focus from whatever holds it.
    *
-   * Targets the header CDK nominates as its tab stop (`tabindex="0"` = the key manager's active
-   * item), NOT a positional index — after a no-op repair the key manager can still point at a
-   * destroyed header, and handing focus to one it disagrees with makes Enter re-throw CDK's
-   * out-of-bounds error (measured). No tab stop then exists, so this declines instead: #611.
+   * Targets the header CDK nominates as its tab stop, never an index of our own choosing — handing
+   * focus to a header the key manager disagrees with makes Enter re-throw CDK's out-of-bounds error
+   * (measured). `tabStop` is that index, read straight from the key manager and already re-synced by
+   * `resyncKeyManager`, so it is in range by construction.
+   *
+   * `null` means the key manager was unreachable (the D-623 feature-detect declined), and this falls
+   * back to the pre-#611 behaviour: look for a rendered `tabindex="0"` and decline when there is
+   * none. Reading the index rather than the DOM is what makes the fix land in the same pass — the
+   * `[tabIndex]` binding does not re-render until the next one, so a DOM lookup here would still
+   * find nothing and strand the user (measured).
+   *
    * Scoped to our own mat-stepper — a nested cae-stepper's headers are in this subtree too, which
    * a vertical layout's interleaved header/body order would otherwise expose. Recipe: PATTERNS.
    */
-  private restoreFocusIfDestroyed(): void {
+  private restoreFocusIfDestroyed(tabStop: number | null): void {
     const lost = this.focusedEl;
     if (!lost || lost.isConnected) return;
     this.focusedEl = null; // single-slot marker: a detached one is spent, armed or not
@@ -215,10 +222,82 @@ export class CaeStepper {
     const active = doc.activeElement;
     if (active && active !== doc.body) return;
     const own = this.matStepperEl()?.nativeElement;
-    const tabStop = Array.from(
-      this.el.nativeElement.querySelectorAll<HTMLElement>('mat-step-header[tabindex="0"]'),
-    ).find((h) => h.closest('mat-stepper') === own);
-    tabStop?.focus();
+    const ownHeaders = Array.from(
+      this.el.nativeElement.querySelectorAll<HTMLElement>('mat-step-header'),
+    ).filter((h) => h.closest('mat-stepper') === own);
+    const target =
+      tabStop === null
+        ? ownHeaders.find((h) => h.getAttribute('tabindex') === '0')
+        : ownHeaders[tabStop];
+    target?.focus();
+  }
+
+  /**
+   * Re-point CDK's `FocusKeyManager` when a structural change has left it dangling (#611).
+   *
+   * `ListKeyManager._itemsChanged` only re-maps `_activeItemIndex` when the active item SURVIVES,
+   * so arrowing to a header (which moves the key manager without changing selection) and then
+   * shrinking the list past it leaves the index stale. Material binds
+   * `[tabIndex]="_getFocusIndex() === step.index() ? 0 : -1"` and `_getFocusIndex()` returns
+   * `_keyManager.activeItemIndex` — so nothing matches, EVERY header renders `tabindex="-1"`, and
+   * the stepper drops out of the Tab order (WCAG 2.1.1, measured). It also arms a crash:
+   * `_onKeydown` assigns `selectedIndex = activeItemIndex` on Enter/Space, which throws CDK's
+   * out-of-bounds error against the shorter list.
+   *
+   * `updateActiveItem`, never `setActiveItem`: this repairs a TAB STOP, it does not navigate, so it
+   * must not move focus. CDK itself picks between the two on `_containsFocus()` inside
+   * `_updateSelectedItemIndex` — that branch belongs to a real selection change, not to this. Focus
+   * is then handled where it belongs, by `restoreFocusIfDestroyed` below, which can finally find a
+   * `tabindex="0"` header instead of declining.
+   *
+   * D-623 guard 1 of 3: feature-detected, so a CDK rename degrades to the pre-fix behaviour rather
+   * than throwing. Guard 2 (a test pinning the private's shape, so a bump fails in CI and not in a
+   * user's keyboard) lives in `stepper.spec.ts`; guard 3 is the upstream report, drafted on #639.
+   */
+  private resyncKeyManager(stepper: MatStepper, last: number, selected: number): number | null {
+    const mgr = (
+      stepper as unknown as {
+        _keyManager?: { activeItemIndex: number | null; updateActiveItem?: (i: number) => void };
+      }
+    )._keyManager;
+    if (typeof mgr?.updateActiveItem !== 'function') return null;
+    const active = mgr.activeItemIndex;
+    // Only repair a DANGLING index. An in-range one is the user's own arrow position and moving it
+    // would silently relocate their tab stop.
+    if (active !== null && active >= 0 && active <= last) return active;
+    mgr.updateActiveItem(selected);
+    return selected;
+  }
+
+  /**
+   * Force a repair CDK refused, but ONLY when the repair is a re-index rather than a move (#605).
+   *
+   * CDK gates every assignment on
+   * `!_anyControlsInvalidOrPending(index) && (index >= selectedIndex || steps[index].editable)`
+   * — and that clause is NOT limited to linear steppers. An identity repair is by nature a BACKWARD
+   * assignment, so a user sitting on an `[editable]="false"` step is refused in silence and left
+   * looking at a step they never chose (confirmed repro, #605).
+   *
+   * Bypassing that gate is sound here precisely because nothing moved: the step under the user is
+   * the same `CaeStep` object, only its INDEX shifted when the list changed ahead of it. CDK is
+   * being asked "may the user return to this step?" when they never left it — a question the gate
+   * exists to answer for navigation, and a category error for re-indexing. A genuine consumer
+   * request to move backward is NOT forced: the caller gates this on an unchanged input plus a
+   * resolved identity, so the `[linear]` refusal contract (#40) is untouched.
+   *
+   * `_updateSelectedItemIndex` is the right seam: it emits `selectionChange` + `selectedIndexChange`
+   * and updates the key manager exactly as an accepted assignment would, so the repair is reported
+   * through the normal path rather than mutating state behind the consumer's back. It skips
+   * `_isValidIndex`, so the caller must pass an already-clamped index — it does.
+   *
+   * Returns whether the force was applied, so the caller can re-read the index. Same D-623 guards.
+   */
+  private forceSelectedIndex(stepper: MatStepper, index: number): boolean {
+    const update = (stepper as unknown as { _updateSelectedItemIndex?: (i: number) => void })
+      ._updateSelectedItemIndex;
+    if (typeof update !== 'function') return false;
+    update.call(stepper, index);
+    return true;
   }
 
   constructor() {
@@ -263,11 +342,6 @@ export class CaeStepper {
         // from the step itself covers both shapes at once. `-1` means that step was the one removed,
         // which is the ordinary shrink the positional clamp repairs (CDK decrements by exactly one
         // regardless of the new length — #598). A valid index re-clamps to itself, so CDK no-ops.
-        // RESIDUAL: the repair is a BACKWARD assignment, which CDK gates on
-        // `index >= selectedIndex || steps[index].editable` — not just for linear steppers. So a
-        // user sitting on an `[editable]="false"` step cannot be followed, and CDK refuses in
-        // silence. Confirmed by repro, pinned by a test, tracked as #605; no public seam reaches
-        // past the gate. Editable (the default) is the common case and is fully repaired.
         // An UNMET request outranks identity: the consumer asked for a step that did not exist yet,
         // and nothing has since moved the selection off where the clamp put it, so the ask still
         // stands and the list just grew into it (#606). Once anything re-keys `selectedStep` — a
@@ -277,9 +351,20 @@ export class CaeStepper {
         const byIdentity = this.selectedStep ? this.steps().indexOf(this.selectedStep) : -1;
         const settled = byIdentity >= 0 ? byIdentity : before;
         const target = changed ? requested : (unmet ?? settled);
-        stepper.selectedIndex = clampStepIndex(target, last);
-        const actual = stepper.selectedIndex;
+        const aimed = clampStepIndex(target, last);
+        stepper.selectedIndex = aimed;
+        let actual = stepper.selectedIndex;
+        // CDK REFUSED the assignment. Force it only when this was a re-index rather than a move:
+        // the input has not changed and the aim came from the step the user is already on, so the
+        // gate is being asked "may they return here?" about a step they never left (#605). A real
+        // consumer request that CDK refuses stays refused — that is the `[linear]` contract (#40).
+        if (actual !== aimed && !changed && byIdentity >= 0 && unmet === null) {
+          if (this.forceSelectedIndex(stepper, aimed)) actual = stepper.selectedIndex;
+        }
         if (!changed && held?.isConnected && doc.activeElement !== held) held.focus();
+        // Repair CDK's key manager BEFORE the focus restore below, which looks for the tab stop
+        // this may have just put back (#611).
+        const tabStop = this.resyncKeyManager(stepper, last, actual);
         // Compare against the CONSUMER's value, not the clamped one. `actual === before` matters:
         // when CDK DID move it already emitted through the template forward, so emitting again
         // double-fires (measured: [2, 2]). A repair must still report itself — CDK's shrink handler
@@ -310,7 +395,7 @@ export class CaeStepper {
         // render instead would silently extend this repair to INSERTION before an un-navigated
         // selection, i.e. prepending a step would move a consumer off their declared index. That
         // is a real question but not this one — #624.
-        this.restoreFocusIfDestroyed();
+        this.restoreFocusIfDestroyed(tabStop);
       });
     });
   }
