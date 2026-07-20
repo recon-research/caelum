@@ -146,10 +146,21 @@ export class CaeStepper {
   /** Last index the CONSUMER was told about, by either route — CDK's own output or the
    *  reconciler's. Must count both, or a repair re-announces an index CDK already reported. */
   private lastEmitted: number | null = null;
+  /** The STEP the user is on, not its index. An index only identifies a step while nothing is
+   *  removed ahead of it (#608); the template tracks by step, so identity survives a shift and the
+   *  reconciler can re-derive the index. `null` until a selection settles, and again if that step
+   *  is removed — which is the ordinary shrink the positional clamp already repairs. */
+  private selectedStep: CaeStep | null = null;
 
   /** Single exit for `selectedIndexChange`, so `lastEmitted` sees every emission. */
   protected report(index: number): void {
     this.lastEmitted = index;
+    // Every route into here — a user click on a header, CDK's own output, a reconciler repair —
+    // is a point where the selection is settled and the step list is current, which is the only
+    // safe moment to re-key the identity. The effect does NOT re-run on a user click (neither
+    // `selectedIndex` nor the step count moves), so without this the identity would go stale
+    // exactly when the user navigates by hand — the case #608 is about.
+    this.selectedStep = this.steps()[index] ?? null;
     this.selectedIndexChange.emit(index);
   }
 
@@ -224,11 +235,23 @@ export class CaeStepper {
         // so remember where they were and put them back below if that element survived.
         const doc = this.el.nativeElement.ownerDocument;
         const held = doc.activeElement as HTMLElement | null;
-        // When only the list moved, re-clamp where the user ACTUALLY is rather than re-asserting
-        // the declared index. One choice, both jobs: repairs an index a shrink orphaned (CDK
-        // decrements by exactly one regardless of the new length — #598) without yanking a user off
-        // a header they clicked. A valid index re-clamps to itself, so CDK no-ops on it.
-        stepper.selectedIndex = clampStepIndex(changed ? requested : before, last);
+        // When only the list moved, follow where the user ACTUALLY is rather than re-asserting the
+        // declared index — that is what stops a repair doubling as a yank back to the declared step.
+        // "Where they are" is the STEP, not its number: `before` names the right step only while
+        // nothing was removed ahead of it, and a leading removal shifts every later index down
+        // without ever putting one out of range, so neither CDK's decrement handler nor the clamp
+        // fires and the content silently changes underneath the user (#608). Re-deriving the index
+        // from the step itself covers both shapes at once. `-1` means that step was the one removed,
+        // which is the ordinary shrink the positional clamp repairs (CDK decrements by exactly one
+        // regardless of the new length — #598). A valid index re-clamps to itself, so CDK no-ops.
+        // RESIDUAL: the repair is a BACKWARD assignment, which CDK gates on
+        // `index >= selectedIndex || steps[index].editable` — not just for linear steppers. So a
+        // user sitting on an `[editable]="false"` step cannot be followed, and CDK refuses in
+        // silence. Confirmed by repro, pinned by a test, tracked as #605; no public seam reaches
+        // past the gate. Editable (the default) is the common case and is fully repaired.
+        const byIdentity = this.selectedStep ? this.steps().indexOf(this.selectedStep) : -1;
+        const target = changed ? requested : byIdentity >= 0 ? byIdentity : before;
+        stepper.selectedIndex = clampStepIndex(target, last);
         const actual = stepper.selectedIndex;
         if (!changed && held?.isConnected && doc.activeElement !== held) held.focus();
         // Compare against the CONSUMER's value, not the clamped one. `actual === before` matters:
@@ -243,6 +266,14 @@ export class CaeStepper {
         // to the repair path, where nothing new was asked for.
         if (actual !== requested && actual === before && (changed || actual !== this.lastEmitted))
           this.report(actual);
+        // Deliberately NOT re-keying identity here. Every route that SETTLES a selection emits and
+        // so goes through `report`; the only silent one is CDK's shrink handler, and a stale step
+        // from it can never match again (a removed CaeStep is destroyed, and a re-added label is a
+        // new instance), so `indexOf` returns -1 and the positional clamp below takes over — the
+        // pre-#608 behaviour, which is correct for that case. Seeding identity from the initial
+        // render instead would silently extend this repair to INSERTION before an un-navigated
+        // selection, i.e. prepending a step would move a consumer off their declared index. That
+        // is a real question but not this one — #624.
         this.restoreFocusIfDestroyed();
       });
     });
