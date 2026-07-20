@@ -15,7 +15,7 @@ The mechanics of landing work. Read the merge policy, branch naming, and PR titl
 3. **Commit** — stage explicitly (`git add <paths>`; check `git status` for strays). **This subject is the one that lands** on a single-commit slice — GitHub ignores the PR title unless the PR has ≥2 commits (conventions › Merge policy), so it cannot be fixed later at step 4. Never write an issue ref next to a negated closing keyword (`not fixed: #NN` **closes** #NN — #591; say `Deferred: #NN`); the `commit-msg semantics` gate enforces it. Multiline message via the **Bash tool** with a here-doc (PowerShell here-string quoting mangles git args):
    ```bash
    git commit -F - <<'EOF'
-   <type>: <imperative summary ≤ 72 chars> (closes #NN)
+   <type>: <imperative summary> (closes #NN)
 
    <what + why; cite Book NN §X / research note; name the gates run>
    EOF

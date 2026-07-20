@@ -37,6 +37,7 @@ Below, the **current** selector is listed with the historical alias noted. Verif
 | `p-select` (was `p-dropdown`) | `cae-select` | `MatSelect` | Direct | 09 |
 | `p-multiselect` | `cae-multi-select` | `MatSelect[multiple]` + filter + chip summary | Compose | 09 |
 | `p-autocomplete` | `cae-autocomplete` | `matAutocomplete` (v1 force-selection default, unlike `p-autocomplete`; free text → #120) | Direct | 09 |
+| `p-chips` **(REMOVED upstream in PrimeNG v20-rc)** | `cae-chip-set [textEntry]` for display; the **form/CVA** case → `cae-autocomplete [multiple]` free text (#120) | `MatChipGrid` + `matChipInputFor` | Compose | 09 |
 | `p-checkbox` | `cae-checkbox` | `MatCheckbox` | Direct | 07 |
 | `p-radiobutton` | `cae-radio` | `MatRadioButton` | Direct | 07 |
 | `p-toggleswitch` (was `p-inputswitch`) | `cae-switch` | `MatSlideToggle` | Direct | 07 |
