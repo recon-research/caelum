@@ -1,6 +1,8 @@
 import { Component, ErrorHandler, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { By } from '@angular/platform-browser';
+import { MatStepper } from '@angular/material/stepper';
 
 import { CaeStep, CaeStepper } from './stepper';
 
@@ -740,15 +742,20 @@ describe('CaeStepper (index bounds, #592)', () => {
     expect(ownHeaders().indexOf(active)).toBe(2);
   });
 
-  // The safety property of the restore, and the reason it targets `tabindex="0"` rather than the
-  // selected index. Arrow keys move CDK's FocusKeyManager WITHOUT changing selection, so arrowing
-  // to the last header and then shrinking destroys the key manager's active item while leaving the
-  // selection valid — a no-op repair. CDK never re-syncs (`_itemsChanged` only remaps when the
-  // active item survives), and `_onKeydown` does `selectedIndex = activeItemIndex`, so handing the
-  // user any header there makes Enter re-throw the out-of-bounds error #592 exists to prevent
-  // (measured before this guard: `oob: 1`). No header carries `tabindex="0"` in that state, so the
-  // restore finds nothing and declines. The residual strand is #611.
-  it('declines to restore into a desynced key manager rather than arming an Enter crash', async () => {
+  // #611, now FIXED — this test previously pinned the declined-restore workaround and is updated
+  // rather than deleted, per the note it carried.
+  //
+  // Arrow keys move CDK's FocusKeyManager WITHOUT changing selection, so arrowing to the last header
+  // and then shrinking destroys the key manager's active item while leaving the selection valid — a
+  // no-op repair, which is why nothing else notices. CDK never re-syncs (`_itemsChanged` only remaps
+  // when the active item survives), so `_getFocusIndex()` stayed stale and EVERY header rendered
+  // `tabindex="-1"`: the stepper left the Tab order entirely (WCAG 2.1.1), and `_onKeydown`'s
+  // `selectedIndex = activeItemIndex` armed the out-of-bounds crash #592 exists to prevent
+  // (measured then: all headers `-1`, `oob: 1`).
+  //
+  // The reconciler now re-points the key manager (D-623 guarded private reach), which restores the
+  // tab stop, disarms the crash, and lets the #604 focus restore succeed instead of declining.
+  it('re-points a desynced key manager so the stepper keeps its tab stop (#611)', async () => {
     const f = TestBed.createComponent(TwoWayHost);
     const twoWay = f.componentInstance;
     document.body.appendChild(f.nativeElement);
@@ -771,15 +778,21 @@ describe('CaeStepper (index bounds, #592)', () => {
     twoWay.steps.set(['One', 'Two']); // destroys the key manager's active header; selection 0 holds
     f.detectChanges();
     await f.whenStable();
-    expect(headers().every((h) => h.getAttribute('tabindex') === '-1')).toBe(true); // desynced (#611)
-    expect(headers().indexOf(document.activeElement as HTMLElement)).toBe(-1); // declined
+
+    // WCAG 2.1.1: exactly one tab stop, and it is the selected step.
+    const tabStops = headers().filter((h) => h.getAttribute('tabindex') === '0');
+    expect(tabStops.length).toBe(1);
+    expect(headers().indexOf(tabStops[0])).toBe(0);
+    // …and the restore no longer has to decline: focus landed on a real header.
+    expect(headers()).toContain(document.activeElement as HTMLElement);
 
     document.activeElement?.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true }),
     );
     f.detectChanges();
     await f.whenStable();
-    expect(outOfBounds()).toEqual([]); // the crash stays unreachable
+    expect(outOfBounds()).toEqual([]); // Enter is answerable now, not merely unreachable
+    expect(twoWay.idx()).toBe(0); // and it selected a real step rather than throwing
   });
 
   // The marker is single-slot: once the element it points at is detached, it is spent whether or
@@ -936,16 +949,22 @@ describe('CaeStepper (index bounds, #592)', () => {
   });
 });
 
-// The BOUNDARY of the #608 fix, pinned deliberately. CDK gates every backward assignment on
-// `index >= selectedIndex || steps[index].editable` (cdk/fesm2022/stepper.mjs:411) and that clause
-// is NOT limited to linear steppers — so when the step the user sits on is `[editable]="false"`,
-// the identity repair is refused and #608's symptom survives. There is no public seam that reaches
-// past the gate (`_updateSelectedItemIndex` is private), so this asserts what CDK actually does
-// rather than what we want. It is the CONFIRMED repro for #605, which was filed as plausible and
-// unverified — and confirms it is reachable without `linear`, which that ticket did not expect.
-// If #605 is ever fixed this test SHOULD fail; update it then, do not delete it.
-describe('CaeStepper (identity repair refused by CDK — #605 residual)', () => {
-  it('cannot follow the user’s step when that step is [editable]="false"', async () => {
+// #605, now FIXED — this was the pinned BOUNDARY of the #608 fix and is updated rather than
+// deleted, per the note it carried.
+//
+// CDK gates every backward assignment on `index >= selectedIndex || steps[index].editable`
+// (cdk/fesm2022/stepper.mjs:411), and that clause is NOT limited to linear steppers — so when the
+// step the user sits on is `[editable]="false"`, the identity repair was refused in silence and
+// #608's symptom survived: the user was left on 'Six' having chosen 'Four', with nothing emitted.
+//
+// The reconciler now forces the refused repair through `_updateSelectedItemIndex` (D-623 guarded
+// private reach), but ONLY when the input has not changed and the aim came from the step the user
+// is already on. That distinction is the justification: nothing moved, only the index shifted when
+// the list changed ahead of it, so the gate is being asked "may they return here?" about a step
+// they never left. A genuine consumer request backward is still refused — locked by the linear
+// suite above (#40), and by the companion test below.
+describe('CaeStepper (identity repair onto a non-editable step — #605)', () => {
+  it('follows the user’s step even when that step is [editable]="false"', async () => {
     await TestBed.configureTestingModule({ imports: [NonEditableHost] }).compileComponents();
     const fixture = TestBed.createComponent(NonEditableHost);
     const host = fixture.componentInstance;
@@ -965,9 +984,106 @@ describe('CaeStepper (identity repair refused by CDK — #605 residual)', () => 
     fixture.detectChanges();
     await fixture.whenStable();
 
-    // Wanted: 'Four'. Actual: CDK refuses the backward move to index 1 and stays on 3 — and emits
-    // nothing, so the consumer is not even told the content changed underneath them (#605).
+    // The user chose 'Four' and is still on 'Four', now at index 1 — and the move is REPORTED, so a
+    // two-way binding cannot sit silently on an index that no longer names their step.
+    expect(label()).toBe('Four');
+    expect(host.seen).toEqual([3, 1]);
+  });
+
+  // The counterweight, and the reason the force is gated on `!changed && byIdentity >= 0`. A real
+  // consumer request backward onto a non-editable step is NOT a re-index and must stay refused —
+  // otherwise the force would quietly defeat `[editable]="false"` for everyone, which is the whole
+  // point of the flag. Without that gate this fails while the test above passes.
+  it('still refuses a CONSUMER move backward onto a non-editable step (#605 gate)', async () => {
+    await TestBed.configureTestingModule({ imports: [NonEditableHost] }).compileComponents();
+    const fixture = TestBed.createComponent(NonEditableHost);
+    const host = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const label = (): string | null => selectedLabelIn(fixture.nativeElement as HTMLElement);
+
+    host.idx.set(3); // onto 'Four', the non-editable step — forward, so CDK accepts
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(label()).toBe('Four');
+
+    host.idx.set(5); // forward again, off it
+    fixture.detectChanges();
+    await fixture.whenStable();
     expect(label()).toBe('Six');
-    expect(host.seen).toEqual([3]);
+
+    host.idx.set(3); // now BACKWARD onto the non-editable step: a move, not a re-index
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(label()).toBe('Six'); // refused, as [editable]="false" asks
+  });
+});
+
+// D-623 guard 2 of 3: the shape pin.
+//
+// #611 and #605 are fixed by reaching into two CDK privates, because the public seams are closed
+// exactly in the cases that need them (`set selectedIndex` gates on `this.selectedIndex !== index`,
+// and on `steps[index].editable`). D-623 permits that, but only feature-detected (guard 1, in
+// stepper.ts) and pinned by this test — so a CDK bump that renames either one fails HERE, loudly, in
+// CI, rather than silently in a user's keyboard.
+//
+// If this fails after a CDK upgrade: the fixes above have degraded to their pre-fix behaviour, which
+// means a WCAG 2.1.1 tab-order regression and a silently-wrong selected step. Re-point the reach at
+// whatever CDK renamed them to — do NOT relax this test, and do NOT delete the feature-detect.
+describe('CaeStepper (CDK private shape pin — D-623)', () => {
+  it('still finds the CDK internals the #611 / #605 fixes depend on', async () => {
+    await TestBed.configureTestingModule({ imports: [StepperHost] }).compileComponents();
+    const f = TestBed.createComponent(StepperHost);
+    f.detectChanges();
+    await f.whenStable();
+
+    const cdk = f.debugElement.query(By.directive(MatStepper)).componentInstance as unknown as {
+      _keyManager?: { activeItemIndex: number | null; updateActiveItem?: unknown };
+      _updateSelectedItemIndex?: unknown;
+    };
+
+    // #611 reads `activeItemIndex` and calls `updateActiveItem` to repair a dangling tab stop.
+    expect(cdk._keyManager, 'CDK renamed _keyManager — #611 has degraded').toBeTruthy();
+    expect(typeof cdk._keyManager?.updateActiveItem).toBe('function');
+    expect(cdk._keyManager?.activeItemIndex).toBe(0);
+    // #605 calls `_updateSelectedItemIndex` to force a repair the public setter's gate refuses.
+    expect(typeof cdk._updateSelectedItemIndex, 'CDK renamed _updateSelectedItemIndex').toBe(
+      'function',
+    );
+  });
+
+  // D-623 guard 1's liveness: the feature-detect must DEGRADE, not throw. A CDK that no longer
+  // exposes these must leave a working stepper with the pre-fix behaviour — a silently-worse
+  // stepper is bad, a crashing one is unacceptable.
+  //
+  // Driven against the two accessors directly, with stub steppers, rather than by deleting the
+  // privates off a live MatStepper. That first draft looked more realistic and was strictly worse:
+  // CDK calls `_updateSelectedItemIndex` itself (from `reset()` and the public setter), so nulling
+  // it broke CDK rather than simulating a rename, and surfaced as an UNHANDLED error after the test
+  // had already reported green — vitest still printed `1382 passed` while exiting 1. A real rename
+  // renames every call site at once, which is exactly what a missing property on a stub models.
+  it('degrades instead of throwing when the CDK privates are renamed', async () => {
+    await TestBed.configureTestingModule({ imports: [StepperHost] }).compileComponents();
+    const f = TestBed.createComponent(StepperHost);
+    f.detectChanges();
+    await f.whenStable();
+
+    const cae = f.debugElement.query(By.directive(CaeStepper)).componentInstance as unknown as {
+      resyncKeyManager(s: unknown, last: number, selected: number): number | null;
+      forceSelectedIndex(s: unknown, index: number): boolean;
+    };
+
+    // Both privates renamed away entirely.
+    expect(cae.resyncKeyManager({}, 1, 0)).toBeNull();
+    expect(cae.forceSelectedIndex({}, 0)).toBe(false);
+
+    // The key manager survives but its method is renamed — the half-match a `!= null` check misses.
+    expect(cae.resyncKeyManager({ _keyManager: { activeItemIndex: 9 } }, 1, 0)).toBeNull();
+
+    // `null` is the signal the focus restore falls back on, so the stepper still works — degraded to
+    // the pre-#611 behaviour (declines rather than strands) instead of crashing.
+    expect(() => cae.resyncKeyManager({}, 1, 0)).not.toThrow();
+    expect(() => cae.forceSelectedIndex({}, 0)).not.toThrow();
   });
 });
