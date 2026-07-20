@@ -113,7 +113,10 @@ export class CaeStepper {
    *
    * Out-of-contract values are absorbed rather than thrown (CDK's own setter throws on all of
    * them): out-of-range clamps to the last step, negative and `NaN` collapse to 0, a fraction
-   * truncates. With **no steps** the request is held pending and applied when they arrive.
+   * truncates. A request the list is too SHORT to satisfy — including when there are no steps at
+   * all — is held pending and applied once the steps arrive, so an async list still lands on the
+   * requested step. Navigating in the meantime cancels the pending request: an explicit move is a
+   * later intent than a declared index the list could not honour.
    *
    * When the step LIST changes structurally, the stepper re-clamps **where the user currently is**
    * rather than re-asserting this value — so a shrink that orphans the index repairs itself
@@ -151,6 +154,15 @@ export class CaeStepper {
    *  reconciler can re-derive the index. `null` until a selection settles, and again if that step
    *  is removed — which is the ordinary shrink the positional clamp already repairs. */
   private selectedStep: CaeStep | null = null;
+  /** A request the step list was too SHORT to satisfy, held with the step the clamp landed on
+   *  instead. `lastRequested` records what was ASKED, not whether it was met, so without this a
+   *  clamped index is never re-applied once it becomes valid (#606). Re-applying it
+   *  unconditionally is not the fix — that re-asserts the declared index on every later structural
+   *  change, the yank #598 locked out. The landing step is what tells "never satisfied" apart from
+   *  "the user has moved on": while the selection still sits where the clamp put it nobody has
+   *  overridden the request, and the moment anything re-keys `selectedStep` it is stale. Only a
+   *  finite OVERSHOOT latches — negative, `NaN` and `Infinity` cannot become valid by growing. */
+  private pending: { index: number; landedOn: CaeStep | null } | null = null;
 
   /** Single exit for `selectedIndexChange`, so `lastEmitted` sees every emission. */
   protected report(index: number): void {
@@ -249,8 +261,15 @@ export class CaeStepper {
         // user sitting on an `[editable]="false"` step cannot be followed, and CDK refuses in
         // silence. Confirmed by repro, pinned by a test, tracked as #605; no public seam reaches
         // past the gate. Editable (the default) is the common case and is fully repaired.
+        // An UNMET request outranks identity: the consumer asked for a step that did not exist yet,
+        // and nothing has since moved the selection off where the clamp put it, so the ask still
+        // stands and the list just grew into it (#606). Once anything re-keys `selectedStep` — a
+        // header click, an accepted move, an earlier repair — the ask is stale and identity wins.
+        const armed = this.pending;
+        const unmet = armed && armed.landedOn === this.selectedStep ? armed.index : null;
         const byIdentity = this.selectedStep ? this.steps().indexOf(this.selectedStep) : -1;
-        const target = changed ? requested : byIdentity >= 0 ? byIdentity : before;
+        const settled = byIdentity >= 0 ? byIdentity : before;
+        const target = changed ? requested : (unmet ?? settled);
         stepper.selectedIndex = clampStepIndex(target, last);
         const actual = stepper.selectedIndex;
         if (!changed && held?.isConnected && doc.activeElement !== held) held.focus();
@@ -266,6 +285,16 @@ export class CaeStepper {
         // to the repair path, where nothing new was asked for.
         if (actual !== requested && actual === before && (changed || actual !== this.lastEmitted))
           this.report(actual);
+        // Re-arm AFTER the reports above, so `landedOn` reads the identity the selection actually
+        // settled on rather than one this run is about to overwrite. Only an aim taken from the
+        // consumer's request can latch: re-arming from a request we did NOT aim at would revive a
+        // stale declared index and reintroduce the #598 yank. `Number.isFinite` keeps the
+        // never-satisfiable values out — they clamp identically forever, so latching them would
+        // only pin the user to a bound instead of following their step.
+        this.pending =
+          (changed || unmet !== null) && Number.isFinite(target) && Math.trunc(target) > last
+            ? { index: target, landedOn: this.selectedStep }
+            : null;
         // Deliberately NOT re-keying identity here. Every route that SETTLES a selection emits and
         // so goes through `report`; the only silent one is CDK's shrink handler, and a stale step
         // from it can never match again (a removed CaeStep is destroyed, and a re-added label is a
