@@ -131,6 +131,13 @@ export class CaeStepper {
    * automatic repair — neither of which the consumer initiated. So a pure `(selectedIndexChange)`
    * listener (e.g. analytics) may observe an event nobody asked for; treat every emission as
    * "this is the live index", not "the user changed step".
+   *
+   * **Bind a signal.** The snap-back above can only answer a request the component actually
+   * RECEIVES. Re-requesting a refused step from a plain mutable property does not reach it: the
+   * first refusal reports back and drives the property to the live index, and the identical second
+   * write leaves nothing for Angular to observe — no signal, no dirty view, so the binding is never
+   * re-evaluated and the reconciler never runs. The consumer's property then sits on a step that is
+   * not shown. Measured, and unfixable from inside a component that is never invoked (#607).
    */
   readonly selectedIndexChange = output<number>();
   /** Require each step's `stepControl` to be valid before advancing past it. */

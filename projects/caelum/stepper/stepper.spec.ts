@@ -177,6 +177,39 @@ describe('CaeStepper (linear)', () => {
     expect(sig.seen).toEqual([0, 0]);
   });
 
+  // The BOUNDARY of the snap-back contract, pinned deliberately (#607) — the counterpart to the
+  // signal-backed test above, on the same refusal.
+  //
+  // Measured cause, which corrects the one #607 was filed with. It is NOT that the input round-trips
+  // 1 -> 0 -> 1 and is deduped: instrumenting both the binding expression and the reconciler shows
+  // the expression is evaluated exactly three times (0, 1, 0) — all during the FIRST attempt, which
+  // settles the input back to 0 — and then never again. The second `host.index = 1` is a plain
+  // property write in a zoneless app: nothing marks the view dirty, so Angular never re-evaluates
+  // the binding and never pushes the value. `markForCheck()` before `detectChanges()` does not
+  // change it either (measured).
+  //
+  // So the request never reaches the component, and no emit rule can report a value it was never
+  // given — the reconciler does not run at all. This is a host-side change-detection contract, not
+  // a stepper defect; the supported shape is the signal-backed host above. Asserting what Angular
+  // actually does, not what we want. If a future Angular pushes the second write this SHOULD fail;
+  // update it then, do not delete it.
+  it('cannot report a repeated refused request to a plain-property host (#607)', async () => {
+    host.index = 1; // step 0 is required and empty → refused
+    await settle();
+    expect(host.index).toBe(0); // first attempt: refused AND reported
+
+    host.index = 1; // asked again, with no signal and nothing marking the view dirty
+    await settle();
+    expect(host.index).toBe(1); // never re-pushed, so never re-reported
+    // Step bodies stamp eagerly, so presence in the DOM says nothing about selection — the header's
+    // aria-selected is the real signal. The consumer's property now sits on a step that is NOT
+    // shown, which is the whole cost of the boundary.
+    const selected = Array.from(el().querySelectorAll('mat-step-header')).findIndex(
+      (h) => h.getAttribute('aria-selected') === 'true',
+    );
+    expect(selected).toBe(0);
+  });
+
   it('advances once the step control is valid', async () => {
     host.one.setValue('filled'); // step 0 now valid
     host.index = 1;
