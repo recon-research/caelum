@@ -777,6 +777,111 @@ describe('CaeStepper (index bounds, #592)', () => {
     expect(outOfBounds()).toEqual([]);
     expect(selectedHeader()).toBe(1);
   });
+
+  // #606: `lastRequested` records what was ASKED, not whether it was MET, so a request the list was
+  // too short to satisfy was consumed by the clamp and never re-applied — the growth that made it
+  // valid found `Object.is(5, 5)` and followed the current step instead. The list never passes
+  // through empty here, which is what separates this from the async-list test above: that one is
+  // re-armed by the zero-step branch, this one had no re-arm at all.
+  it('applies a clamped index once the step list grows into it (#606)', async () => {
+    host.steps.set(['One']);
+    host.idx.set(5);
+    await settle();
+    expect(outOfBounds()).toEqual([]);
+    expect(selectedHeader()).toBe(0); // clamped: there is no step 5 yet
+
+    host.steps.set(['One', 'Two', 'Three', 'Four', 'Five', 'Six']);
+    await settle();
+    expect(outOfBounds()).toEqual([]);
+    expect(selectedHeader()).toBe(5); // the ask stood, and the list grew into it
+    expect(selectedLabel()).toBe('Six');
+    expect(host.seen).toEqual([0, 5]); // the clamp, then the satisfied request
+  });
+
+  // A two-chunk async load, the shape the ticket calls out: the pending 5 is consumed by the
+  // 3-step chunk (clamped to 2) and must survive to be re-applied by the 6-step one. Chasing has
+  // to persist across an ARBITRARY number of partial satisfactions, not just re-arm once.
+  it('keeps chasing a clamped index across a chunked load (#606)', async () => {
+    host.steps.set([]);
+    host.idx.set(5);
+    await settle();
+    host.steps.set(['One', 'Two', 'Three']);
+    await settle();
+    expect(selectedHeader()).toBe(2); // still short — clamped again, still unmet
+
+    host.steps.set(['One', 'Two', 'Three', 'Four', 'Five', 'Six']);
+    await settle();
+    expect(outOfBounds()).toEqual([]);
+    expect(selectedHeader()).toBe(5);
+  });
+
+  // The counterweight, and the reason the ticket's obvious one-liner was NOT taken. Re-arming on
+  // every clamp re-asserts the declared index forever, so a consumer using `[selectedIndex]="99"`
+  // as "last step" yanks the user back on every later growth — exactly what #598 locked out. The
+  // landing step is the discriminator: while the selection sits where the clamp put it the request
+  // still stands, and the moment the user navigates it is stale. Without that guard this test fails
+  // and the one above passes, which is the whole difficulty of #606 in one pair.
+  it('drops a clamped index once the user navigates away from where it landed (#606)', async () => {
+    const headers = (): HTMLElement[] =>
+      Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('mat-step-header'));
+    host.steps.set(['One', 'Two', 'Three']);
+    host.idx.set(99); // "last step", clamped to 2
+    await settle();
+    expect(selectedHeader()).toBe(2);
+
+    headers()[0].click(); // the user has their own opinion now
+    await settle();
+    expect(selectedHeader()).toBe(0);
+
+    host.steps.set(['One', 'Two', 'Three', 'Four', 'Five', 'Six']);
+    await settle();
+    expect(outOfBounds()).toEqual([]);
+    expect(selectedHeader()).toBe(0); // NOT yanked to the new last step
+  });
+
+  // The other half of the arming condition: only an aim taken from the CONSUMER's request may
+  // latch. On a multi-step shrink that removes the selected step, CDK decrements its own index by
+  // exactly one regardless of the new length, so the fallback aim is itself out of range — and
+  // arming from that would hold CDK's stale position as if the consumer had asked for it, then
+  // teleport the user there when the list grew back. A filter collapsing and clearing is the
+  // ordinary shape. Without the `changed || unmet` guard this is the only failing test (measured).
+  it('does not latch CDK’s stale index when a shrink removes the selected step (#606)', async () => {
+    const headers = (): HTMLElement[] =>
+      Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('mat-step-header'));
+    const six = ['One', 'Two', 'Three', 'Four', 'Five', 'Six'];
+    host.steps.set(six);
+    await settle();
+    headers()[5].click(); // the user is on 'Six'; the bound index stays 0 (one-way)
+    await settle();
+    expect(selectedLabel()).toBe('Six');
+
+    host.steps.set(['One', 'Two']); // filter collapses the list; 'Six' is gone
+    await settle();
+    expect(selectedLabel()).toBe('Two'); // positional repair, the pre-existing behaviour
+
+    host.steps.set(six); // filter cleared
+    await settle();
+    expect(outOfBounds()).toEqual([]);
+    expect(selectedLabel()).toBe('Two'); // followed their step, not CDK's stale 4
+  });
+
+  // `Infinity` can never be SATISFIED — it clamps to the last step at every length — so it is not
+  // a pending request, just a permanently out-of-contract one, and it must not re-assert on a
+  // structural change. Same principle the NaN test above locks, and the reason the arming condition
+  // carries `Number.isFinite`. Deliberately no navigation here: once the user moves, the landing-step
+  // guard drops the request on its own and this would pass with or without the finite check — the
+  // mutant survives that version (measured). The teeth are in staying put.
+  it('does not latch a permanently-bound Infinity onto a growing step list (#606)', async () => {
+    host.idx.set(Infinity);
+    await settle();
+    expect(selectedHeader()).toBe(2); // 3 steps: clamped to the last
+
+    host.steps.set(['One', 'Two', 'Three', 'Four']);
+    await settle();
+    expect(outOfBounds()).toEqual([]);
+    expect(selectedHeader()).toBe(2); // followed their step, NOT dragged to the new last
+    expect(selectedLabel()).toBe('Three');
+  });
 });
 
 // The BOUNDARY of the #608 fix, pinned deliberately. CDK gates every backward assignment on
