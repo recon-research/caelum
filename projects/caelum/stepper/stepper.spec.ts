@@ -237,6 +237,28 @@ class TwoWayHost {
   readonly seen: number[] = [];
 }
 
+// A step list where the step the user sits on is marked NON-editable — ordinary wizard authoring
+// ("you can't come back to this one"). CDK gates every BACKWARD assignment on
+// `index >= selectedIndex || steps[index].editable`, and that clause is NOT limited to linear
+// steppers, so it applies to the identity repair too (#608 / #605).
+@Component({
+  imports: [CaeStepper, CaeStep],
+  template: `
+    <cae-stepper [selectedIndex]="idx()" (selectedIndexChange)="idx.set($event); seen.push($event)">
+      @for (s of steps(); track s) {
+        <cae-step [label]="s" [editable]="s !== 'Four'"
+          ><p>{{ s }}</p></cae-step
+        >
+      }
+    </cae-stepper>
+  `,
+})
+class NonEditableHost {
+  readonly idx = signal(0);
+  readonly steps = signal(['One', 'Two', 'Three', 'Four', 'Five', 'Six']);
+  readonly seen: number[] = [];
+}
+
 // Outer stepper whose step bodies each contain a nested cae-stepper. VERTICAL, because that is
 // the arrangement where Material interleaves header/body pairs and a positional header lookup can
 // land on an inner stepper's header (#604).
@@ -310,6 +332,14 @@ describe('CaeStepper (index bounds, #592)', () => {
     Array.from(
       (fixture.nativeElement as HTMLElement).querySelectorAll('mat-step-header'),
     ).findIndex((h) => h.getAttribute('aria-selected') === 'true');
+
+  // #608 needs to assert WHICH step is showing, not which index — the whole bug is that the index
+  // is preserved while the step under it changes, so an index-only assertion cannot see it.
+  const selectedLabel = (): string | null =>
+    Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('mat-step-header'))
+      .find((h) => h.getAttribute('aria-selected') === 'true')
+      ?.querySelector('.mat-step-text-label')
+      ?.textContent?.trim() ?? null;
 
   // Each of these throws `cdkStepper: Cannot assign out-of-bounds value to selectedIndex` without
   // the clamp — an unhandled error inside change detection, not a wrong-looking step.
@@ -386,6 +416,29 @@ describe('CaeStepper (index bounds, #592)', () => {
     await settle();
     expect(outOfBounds()).toEqual([]);
     expect(selectedHeader()).toBe(1); // clamped from where the USER was, not back to the declared 0
+  });
+
+  // #608: the shrink repair above is index-POSITIONAL, which is only equivalent to "the user's step"
+  // when the removal happens at or after their index. Remove steps BEFORE it and every surviving
+  // index shifts down, so preserving the number silently swaps the content underneath the user —
+  // and because the index never falls out of range, neither CDK's decrement handler nor the clamp
+  // fires, so nothing is emitted either. The template tracks by step identity, so the reconciler
+  // can re-derive the index from the step the user was actually on.
+  it('follows the user’s STEP when a removal before it shifts the indices (#608)', async () => {
+    host.steps.set(['One', 'Two', 'Three', 'Four', 'Five', 'Six']);
+    await settle();
+    const headers = (): HTMLElement[] =>
+      Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('mat-step-header'));
+    headers()[3].click(); // user navigates to 'Four'; host.idx stays 0
+    await settle();
+    expect(selectedLabel()).toBe('Four');
+
+    host.steps.set(['Three', 'Four', 'Five', 'Six']); // drop the two LEADING steps
+    await settle();
+    // Without the identity repair index 3 survives and now points at 'Six'.
+    expect(selectedLabel()).toBe('Four');
+    expect(selectedHeader()).toBe(1);
+    expect(outOfBounds()).toEqual([]);
   });
 
   // The other direction, and the most ordinary trigger of the three: a step list arriving from the
@@ -723,5 +776,45 @@ describe('CaeStepper (index bounds, #592)', () => {
     await settle();
     expect(outOfBounds()).toEqual([]);
     expect(selectedHeader()).toBe(1);
+  });
+});
+
+// The BOUNDARY of the #608 fix, pinned deliberately. CDK gates every backward assignment on
+// `index >= selectedIndex || steps[index].editable` (cdk/fesm2022/stepper.mjs:411) and that clause
+// is NOT limited to linear steppers — so when the step the user sits on is `[editable]="false"`,
+// the identity repair is refused and #608's symptom survives. There is no public seam that reaches
+// past the gate (`_updateSelectedItemIndex` is private), so this asserts what CDK actually does
+// rather than what we want. It is the CONFIRMED repro for #605, which was filed as plausible and
+// unverified — and confirms it is reachable without `linear`, which that ticket did not expect.
+// If #605 is ever fixed this test SHOULD fail; update it then, do not delete it.
+describe('CaeStepper (identity repair refused by CDK — #605 residual)', () => {
+  it('cannot follow the user’s step when that step is [editable]="false"', async () => {
+    await TestBed.configureTestingModule({ imports: [NonEditableHost] }).compileComponents();
+    const fixture = TestBed.createComponent(NonEditableHost);
+    const host = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const headers = (): HTMLElement[] =>
+      Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('mat-step-header'));
+    const label = (): string | null =>
+      headers()
+        .find((h) => h.getAttribute('aria-selected') === 'true')
+        ?.querySelector('.mat-step-text-label')
+        ?.textContent?.trim() ?? null;
+
+    headers()[3].click(); // user navigates to the non-editable 'Four'
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(label()).toBe('Four');
+
+    host.steps.set(['Three', 'Four', 'Five', 'Six']); // drop the two LEADING steps
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    // Wanted: 'Four'. Actual: CDK refuses the backward move to index 1 and stays on 3 — and emits
+    // nothing, so the consumer is not even told the content changed underneath them (#605).
+    expect(label()).toBe('Six');
+    expect(host.seen).toEqual([3]);
   });
 });
