@@ -1,6 +1,7 @@
 import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, vi } from 'vitest';
+import { CAE_ICON_GLYPHS } from 'caelum/icon';
 
 import { CaeBreadcrumb, CaeBreadcrumbItem, CaeBreadcrumbSelectEvent } from './breadcrumb';
 
@@ -333,5 +334,70 @@ describe('CaeBreadcrumb', () => {
       });
       expect(warn).not.toHaveBeenCalled();
     });
+  });
+});
+
+@Component({
+  imports: [CaeBreadcrumb],
+  template: `
+    <cae-breadcrumb [items]="items()" [iconTemplate]="useTpl() ? tpl : null" />
+    <ng-template #tpl let-item let-index="index">
+      <span class="custom-icon">{{ index }}:{{ item.label }}</span>
+    </ng-template>
+  `,
+})
+class IconHost {
+  readonly items = signal<readonly CaeBreadcrumbItem[]>([]);
+  readonly useTpl = signal(false);
+}
+
+describe('CaeBreadcrumb per-item icons (D-596)', () => {
+  let fixture: ComponentFixture<IconHost>;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({ imports: [IconHost] }).compileComponents();
+    fixture = TestBed.createComponent(IconHost);
+  });
+
+  function render(items: readonly CaeBreadcrumbItem[], useTpl = false): HTMLElement {
+    fixture.componentInstance.items.set(items);
+    fixture.componentInstance.useTpl.set(useTpl);
+    fixture.detectChanges();
+    return fixture.nativeElement as HTMLElement;
+  }
+
+  const glyphD = (scope: Element | null): string | null | undefined =>
+    scope?.querySelector('svg path')?.getAttribute('d');
+
+  it('renders the glyph INSIDE the link crumb, sharing its hit target', () => {
+    const el = render([{ label: 'Home', url: '/', icon: 'home' }, { label: 'Q3' }]);
+    // Inside the <a> — not a sibling — so an icon-carrying crumb's glyph is part of the
+    // link's clickable area and focus outline.
+    const link = el.querySelector('a.cae-breadcrumb__link');
+    expect(glyphD(link)).toBe(CAE_ICON_GLYPHS.home);
+    expect(link?.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
+    // The icon-less current crumb renders none.
+    expect(el.querySelector('.cae-breadcrumb__current svg')).toBeNull();
+  });
+
+  it('renders the glyph inside the current-page, command, and inert-text leaves too', () => {
+    const el = render([
+      { label: 'Act', command: true, icon: 'plus' },
+      { label: 'Off', url: '/x', disabled: true, icon: 'folder' },
+      { label: 'Q3', icon: 'file' },
+    ]);
+    expect(glyphD(el.querySelector('button.cae-breadcrumb__button'))).toBe(CAE_ICON_GLYPHS.plus);
+    expect(glyphD(el.querySelector('span.cae-breadcrumb__text'))).toBe(CAE_ICON_GLYPHS.folder);
+    expect(glyphD(el.querySelector('span.cae-breadcrumb__current'))).toBe(CAE_ICON_GLYPHS.file);
+  });
+
+  it('iconTemplate wins over item.icon, for every crumb (D-596)', () => {
+    const el = render([{ label: 'Home', url: '/', icon: 'home' }, { label: 'Q3' }], true);
+    const custom = Array.from(el.querySelectorAll('.custom-icon')).map((n) => n.textContent);
+    expect(custom).toEqual(['0:Home', '1:Q3']);
+    // The built-in glyph gives way even where item.icon is set.
+    expect(el.querySelector('svg')).toBeNull();
+    // Still stamped inside the interactive element, not beside it.
+    expect(el.querySelector('a.cae-breadcrumb__link .custom-icon')).not.toBeNull();
   });
 });
