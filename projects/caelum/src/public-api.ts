@@ -19,6 +19,9 @@
 // --- Shared types ---
 export * from 'caelum/shared';
 
+// --- Shared glyph registry + cae-icon renderer (D-596, #644) ---
+export * from 'caelum/icon';
+
 // --- Shared base for the mat-form-field controls (input/textarea/select/autocomplete/multi-select) (#46) ---
 export * from 'caelum/form-field';
 

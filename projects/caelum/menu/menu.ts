@@ -6,10 +6,13 @@ import {
   inject,
   input,
   output,
+  type TemplateRef,
   viewChild,
 } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import { MatMenu, MatMenuItem, MatMenuTrigger, type MatMenuPanel } from '@angular/material/menu';
 import type { CaeMenuPanelHost } from 'caelum/shared';
+import { CaeIcon, type CaeItemIconContext } from 'caelum/icon';
 
 /** A single item in a `cae-menu`. */
 export interface CaeMenuItem {
@@ -19,6 +22,15 @@ export interface CaeMenuItem {
   value?: string;
   /** Disable just this item. */
   disabled?: boolean;
+  /**
+   * Optional leading glyph, by built-in name (`caelum/icon` registry — D-596). Rendered
+   * decoratively (`aria-hidden`); the item's accessible name stays {@link label}. For a
+   * custom glyph, supply the component-level `iconTemplate` instead, which wins over this.
+   * Honoured where the icon slot is rendered: `cae-menu` itself and the menus embedded in
+   * `cae-split-button` / `cae-menubar`; `cae-context-menu` shares this interface but does
+   * not render icons yet (#645).
+   */
+  icon?: string;
 }
 
 /**
@@ -41,20 +53,42 @@ export interface CaeMenuItem {
 @Component({
   selector: 'cae-menu',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MatMenu, MatMenuItem],
+  imports: [MatMenu, MatMenuItem, NgTemplateOutlet, CaeIcon],
   template: `
     <mat-menu [xPosition]="xPosition()" [yPosition]="yPosition()">
       @for (item of items(); track $index) {
         <button mat-menu-item [disabled]="item.disabled ?? false" (click)="itemSelect.emit(item)">
+          @if (iconTemplate(); as tpl) {
+            <ng-container
+              [ngTemplateOutlet]="tpl"
+              [ngTemplateOutletContext]="iconContext(item, $index)"
+            />
+          } @else if (item.icon) {
+            <cae-icon class="cae-menu__icon" [name]="item.icon" />
+          }
           {{ item.label }}
         </button>
       }
     </mat-menu>
   `,
+  styles: `
+    .cae-menu__icon {
+      margin-inline-end: var(--cae-space-2);
+    }
+  `,
 })
 export class CaeMenu implements CaeMenuPanelHost {
   /** The menu items, as data. */
   readonly items = input<readonly CaeMenuItem[]>([]);
+  /**
+   * Consumer escape hatch for the per-item icon slot (D-596): an `ng-template` receiving
+   * `{ $implicit: item, index }` (`let-item`, `let-index="index"`), stamped once per item
+   * *instead of* the built-in `item.icon` glyph — the template wins whenever both are
+   * supplied, for every item, so one convention governs the whole menu. The template owns
+   * its own spacing and accessibility (keep glyphs decorative; the item's accessible name
+   * is its label).
+   */
+  readonly iconTemplate = input<TemplateRef<CaeItemIconContext<CaeMenuItem>> | null>(null);
   /** Horizontal alignment of the panel relative to its trigger. */
   readonly xPosition = input<'before' | 'after'>('after');
   /** Vertical alignment of the panel relative to its trigger. */
@@ -82,6 +116,11 @@ export class CaeMenu implements CaeMenuPanelHost {
    */
   getMenuPanel(): MatMenuPanel | undefined {
     return this.panel();
+  }
+
+  /** Context builder for {@link iconTemplate} (the carousel `itemContext` idiom). */
+  protected iconContext(item: CaeMenuItem, index: number): CaeItemIconContext<CaeMenuItem> {
+    return { $implicit: item, item, index };
   }
 }
 

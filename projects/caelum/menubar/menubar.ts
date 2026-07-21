@@ -22,8 +22,10 @@ import { CaeMenu, CaeMenuTrigger, type CaeMenuItem } from 'caelum/menu';
 
 /**
  * A top-level group in a {@link CaeMenubar} — a labelled trigger that opens a flat dropdown of
- * actions. `items` reuses `cae-menu`'s {@link CaeMenuItem}; nested/tiered submenus and rich items
- * (icons, router links, commands) are follow-ups (`cae-tiered-menu` / #150).
+ * actions. `items` reuses `cae-menu`'s {@link CaeMenuItem}, so per-item `icon` glyphs render in
+ * the dropdowns via the embedded `cae-menu` (D-596, #644); the `iconTemplate` forward (#645),
+ * nested/tiered submenus and other rich items (router links, commands) are follow-ups
+ * (`cae-tiered-menu` / #150).
  */
 export interface CaeMenubarItem {
   /** Visible label on the bar; also the trigger's accessible name. */
@@ -88,9 +90,10 @@ export class MenubarTriggerItem implements FocusableOption {
  * Enter/Space open it too via the native button. A group with no items is treated as disabled (no
  * dead-end empty menu). Name the bar with {@link ariaLabel}.
  *
- * **v1 scope** (#153): one level of dropdown (the common File▸/Edit▸ admin case). Follow-ups —
- * tiered/nested submenus (`cae-tiered-menu`), rich items (icons/router links/commands, #150),
- * responsive overflow collapse, RTL roving.
+ * **v1 scope** (#153): one level of dropdown (the common File▸/Edit▸ admin case). Per-item
+ * `icon` glyphs come free through the embedded `cae-menu` (D-596, #644). Follow-ups —
+ * the `iconTemplate` forward (#645), tiered/nested submenus (`cae-tiered-menu`), rich items
+ * (router links/commands, #150), responsive overflow collapse, RTL roving.
  *
  * Zoneless-compatible: `OnPush` + signal state (D-12).
  */

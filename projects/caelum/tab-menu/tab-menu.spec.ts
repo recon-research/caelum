@@ -1,6 +1,7 @@
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ENTER, SPACE } from '@angular/cdk/keycodes';
+import { CAE_ICON_GLYPHS } from 'caelum/icon';
 
 import { CaeTabMenu, type CaeTabMenuItem } from './tab-menu';
 
@@ -153,5 +154,60 @@ describe('CaeTabMenu', () => {
     fixture.componentRef.setInput('panelTabIndex', 0);
     await fixture.whenStable();
     expect(panel?.getAttribute('tabindex')).toBe('0');
+  });
+});
+
+@Component({
+  imports: [CaeTabMenu],
+  template: `
+    <cae-tab-menu [items]="items()" [iconTemplate]="useTpl() ? tpl : null" ariaLabel="Sections" />
+    <ng-template #tpl let-item let-index="index">
+      <span class="custom-icon">{{ index }}:{{ item.value }}</span>
+    </ng-template>
+  `,
+})
+class IconHost {
+  readonly items = signal<readonly CaeTabMenuItem[]>([
+    { label: 'Home', value: 'home', icon: 'home' },
+    { label: 'Files', value: 'files' },
+  ]);
+  readonly useTpl = signal(false);
+}
+
+describe('CaeTabMenu per-item icons (D-596)', () => {
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({ imports: [IconHost] }).compileComponents();
+  });
+
+  async function setup() {
+    const fixture = TestBed.createComponent(IconHost);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const links = () =>
+      Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('a[mat-tab-link]'),
+      );
+    return { fixture, links };
+  }
+
+  it('renders a registry glyph for item.icon inside that tab link, none without one', async () => {
+    const { links } = await setup();
+    const glyph = links()[0].querySelector('svg');
+    expect(glyph?.querySelector('path')?.getAttribute('d')).toBe(CAE_ICON_GLYPHS.home);
+    // Decorative: hidden from AT; the tab's accessible name stays EXACTLY its label
+    // (trimmed equality, not toContain — name pollution must fail, #632 discipline).
+    expect(glyph?.getAttribute('aria-hidden')).toBe('true');
+    expect(links()[0].textContent?.trim()).toBe('Home');
+    expect(links()[1].querySelector('svg')).toBeNull();
+  });
+
+  it('iconTemplate wins over item.icon, for every tab (D-596)', async () => {
+    const { fixture, links } = await setup();
+    fixture.componentInstance.useTpl.set(true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const custom = links().map((el) => el.querySelector('.custom-icon')?.textContent);
+    expect(custom).toEqual(['0:home', '1:files']);
+    expect(links()[0].querySelector('svg')).toBeNull();
   });
 });

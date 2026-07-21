@@ -1,8 +1,9 @@
-import { Component } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { MatMenuTrigger } from '@angular/material/menu';
+import { CAE_ICON_GLYPHS } from 'caelum/icon';
 
 import { CaeMenu, CaeMenuItem, CaeMenuTrigger } from './menu';
 
@@ -79,5 +80,75 @@ describe('CaeMenu', () => {
     fixture.detectChanges();
     await fixture.whenStable();
     expect(matTrigger().menuOpen).toBe(false);
+  });
+});
+
+@Component({
+  imports: [CaeMenu, CaeMenuTrigger],
+  template: `
+    <cae-menu #actions [items]="items()" [iconTemplate]="useTpl() ? tpl : null" />
+    <button type="button" [caeMenuTriggerFor]="actions">Actions</button>
+    <ng-template #tpl let-item let-index="index">
+      <span class="custom-icon">{{ index }}:{{ item.value }}</span>
+    </ng-template>
+  `,
+})
+class MenuIconHost {
+  readonly items = signal<readonly CaeMenuItem[]>([
+    { value: 'new', label: 'New', icon: 'plus' },
+    { value: 'find', label: 'Find' },
+  ]);
+  readonly useTpl = signal(false);
+}
+
+describe('CaeMenu per-item icons (D-596)', () => {
+  let fixture: ComponentFixture<MenuIconHost>;
+  let overlayContainer: OverlayContainer;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({ imports: [MenuIconHost] }).compileComponents();
+    fixture = TestBed.createComponent(MenuIconHost);
+    overlayContainer = TestBed.inject(OverlayContainer);
+    fixture.detectChanges();
+    await fixture.whenStable();
+  });
+
+  afterEach(() => overlayContainer?.ngOnDestroy());
+
+  const open = async (): Promise<void> => {
+    fixture.debugElement.query(By.directive(CaeMenuTrigger)).injector.get(CaeMenuTrigger).open();
+    fixture.detectChanges();
+    await fixture.whenStable();
+  };
+  const items = (): HTMLElement[] =>
+    Array.from(document.querySelectorAll<HTMLElement>('[mat-menu-item]'));
+
+  it('renders a registry glyph for item.icon inside that item, none without one', async () => {
+    await open();
+    const glyph = items()[0].querySelector('svg');
+    expect(glyph?.querySelector('path')?.getAttribute('d')).toBe(CAE_ICON_GLYPHS.plus);
+    // Decorative: hidden from AT; the item's accessible name stays EXACTLY its label —
+    // trimmed equality, not toContain, so any stray text the icon path ever contributes
+    // (a <title>, a stamped name) fails here instead of passing green (#632 discipline).
+    expect(glyph?.getAttribute('aria-hidden')).toBe('true');
+    expect(items()[0].textContent?.trim()).toBe('New');
+    expect(items()[1].querySelector('svg')).toBeNull();
+  });
+
+  it('iconTemplate wins over item.icon, for every item — and yields back when cleared (D-596)', async () => {
+    fixture.componentInstance.useTpl.set(true);
+    fixture.detectChanges();
+    await open();
+    // The template is stamped for each item with { $implicit: item, index } …
+    const custom = items().map((el) => el.querySelector('.custom-icon')?.textContent);
+    expect(custom).toEqual(['0:new', '1:find']);
+    // … and the built-in glyph gives way even where item.icon is set.
+    expect(items()[0].querySelector('svg')).toBeNull();
+    // Reverse flip: clearing the template restores the built-in glyph (not a one-way latch).
+    fixture.componentInstance.useTpl.set(false);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(items()[0].querySelector('.custom-icon')).toBeNull();
+    expect(items()[0].querySelector('svg path')?.getAttribute('d')).toBe(CAE_ICON_GLYPHS.plus);
   });
 });

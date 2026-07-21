@@ -24,12 +24,15 @@ import { CaeBreadcrumb, CaeBreadcrumbItem, CaeBreadcrumbSelectEvent } from 'cael
   styleUrl: './breadcrumb-demo.scss',
 })
 export class BreadcrumbDemo {
-  /** The home crumb — set once, pinned before the trail (p-breadcrumb's home item). */
-  protected readonly home: CaeBreadcrumbItem = { label: 'Home', url: '/' };
+  /**
+   * The home crumb — set once, pinned before the trail (p-breadcrumb's home item). Carries the
+   * built-in `home` glyph (`caelum/icon` registry, D-596/#644) rendered inside its link.
+   */
+  protected readonly home: CaeBreadcrumbItem = { label: 'Home', url: '/', icon: 'home' };
 
   /** A representative trail; the last entry ('Radios') is the current page and renders non-link. */
   protected readonly trail: readonly CaeBreadcrumbItem[] = [
-    { label: 'Components', url: '/components' },
+    { label: 'Components', url: '/components', icon: 'folder' },
     { label: 'Forms', url: '/components/forms' },
     { label: 'Radios' },
   ];

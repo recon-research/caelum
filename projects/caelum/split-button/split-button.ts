@@ -1,6 +1,14 @@
-import { booleanAttribute, ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import {
+  booleanAttribute,
+  ChangeDetectionStrategy,
+  Component,
+  input,
+  output,
+  type TemplateRef,
+} from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import type { CaeButtonVariant } from 'caelum/button';
+import { CaeIcon, type CaeIconName, type CaeItemIconContext } from 'caelum/icon';
 import { CaeMenu, CaeMenuTrigger, type CaeMenuItem } from 'caelum/menu';
 
 /**
@@ -28,16 +36,19 @@ import { CaeMenu, CaeMenuTrigger, type CaeMenuItem } from 'caelum/menu';
  * {@link model} is empty (no dead-end empty menu). Theming is free via the token bridge (D-04).
  *
  * **v1 scope** (#148): shared `variant`, a required `label`, an optional-submit primary, and a
- * data-driven menu. Follow-ups — button-side extras (primary `icon` / projected content, per-half
- * appearance, `disabledInteractive`, `(dropdownClick)`) **#149**; rich dropdown items (icons,
- * router links, commands) via `cae-menu` **#150**.
+ * data-driven menu. Icons follow the library convention (D-596, #644): a primary {@link icon}
+ * glyph before the label, per-item `model[].icon` glyphs rendered by the embedded `cae-menu`,
+ * and an {@link iconTemplate} escape hatch forwarded to it (wins over per-item glyphs).
+ * Remaining follow-ups — button-side extras (projected content, per-half appearance,
+ * `disabledInteractive`, `(dropdownClick)`) **#149**; router links / commands / nesting via
+ * `cae-menu` **#150**.
  *
  * Zoneless-compatible: `OnPush` + signal inputs (D-12).
  */
 @Component({
   selector: 'cae-split-button',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MatButtonModule, CaeMenu, CaeMenuTrigger],
+  imports: [MatButtonModule, CaeMenu, CaeMenuTrigger, CaeIcon],
   template: `
     <div class="cae-split-button" role="group" [attr.aria-label]="ariaLabel() || null">
       <button
@@ -47,6 +58,9 @@ import { CaeMenu, CaeMenuTrigger, type CaeMenuItem } from 'caelum/menu';
         [disabled]="disabled()"
         (click)="primaryClick.emit($event)"
       >
+        @if (icon(); as name) {
+          <cae-icon class="cae-split-button__icon" [name]="name" />
+        }
         {{ label() }}
       </button>
 
@@ -58,17 +72,18 @@ import { CaeMenu, CaeMenuTrigger, type CaeMenuItem } from 'caelum/menu';
         [attr.aria-label]="menuAriaLabel() || 'More actions'"
         [caeMenuTriggerFor]="menu"
       >
-        <svg
-          class="cae-split-button__chevron"
-          viewBox="0 0 24 24"
-          aria-hidden="true"
-          focusable="false"
-        >
-          <path d="M6 9 L12 15 L18 9" />
-        </svg>
+        <!-- The registry's chevron-down (D-596/#644) replaced the hand-drawn duplicate this
+             component carried since #148; aria-hidden on the host keeps the whole decorative
+             wrapper out of the a11y tree (the toggle is named by menuAriaLabel). -->
+        <cae-icon class="cae-split-button__chevron" name="chevron-down" aria-hidden="true" />
       </button>
 
-      <cae-menu #menu [items]="model()" (itemSelect)="itemSelect.emit($event)" />
+      <cae-menu
+        #menu
+        [items]="model()"
+        [iconTemplate]="iconTemplate()"
+        (itemSelect)="itemSelect.emit($event)"
+      />
     </div>
   `,
   styles: `
@@ -98,20 +113,27 @@ import { CaeMenu, CaeMenuTrigger, type CaeMenuItem } from 'caelum/menu';
          doubling; for filled they sit flush. The shared chevron marks the dropdown affordance. */
       margin-inline-start: -1px;
     }
+    .cae-split-button__icon {
+      margin-inline-end: var(--cae-space-2);
+    }
+    /* cae-icon draws at 1em of the local font-size; scale it to the 1.25em the toggle's
+       chevron has always used. */
     .cae-split-button__chevron {
-      inline-size: 1.25em;
-      block-size: 1.25em;
-      fill: none;
-      stroke: currentColor;
-      stroke-width: 2;
-      stroke-linecap: round;
-      stroke-linejoin: round;
+      font-size: 1.25em;
     }
   `,
 })
 export class CaeSplitButton {
   /** Primary (default-command) button text — **required**; it is the primary button's accessible name. */
   readonly label = input.required<string>();
+  /**
+   * Optional leading glyph for the **primary** button, by built-in name (`caelum/icon`
+   * registry — D-596; the #149 icon bullet). Rendered decoratively (`aria-hidden`) before
+   * {@link label}, which stays the accessible name. Dropdown items carry their own
+   * `model[].icon` instead. Typed to autocomplete the built-in names while accepting any
+   * `string` (validated at render by `cae-icon`, like `model[].icon`).
+   */
+  readonly icon = input<CaeIconName | (string & {}) | null>(null);
   /** Dropdown items, as data (reuses `cae-menu`'s {@link CaeMenuItem}). Empty disables the toggle. */
   readonly model = input<readonly CaeMenuItem[]>([]);
   /** Material button appearance, shared by both halves. Defaults to `filled` — the primary action. */
@@ -133,4 +155,11 @@ export class CaeSplitButton {
   readonly primaryClick = output<MouseEvent>();
   /** Emits the chosen item when a dropdown item is activated (delegated from `cae-menu`). */
   readonly itemSelect = output<CaeMenuItem>();
+  /**
+   * Consumer escape hatch for the dropdown's per-item icon slot, forwarded verbatim to the
+   * embedded `cae-menu` (D-596): an `ng-template` receiving `{ $implicit: item, index }`,
+   * stamped once per item *instead of* the built-in `model[].icon` glyphs — the template
+   * wins whenever both are supplied. See `CaeMenu.iconTemplate` for the full contract.
+   */
+  readonly iconTemplate = input<TemplateRef<CaeItemIconContext<CaeMenuItem>> | null>(null);
 }

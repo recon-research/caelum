@@ -420,9 +420,10 @@ export class App {
    * was added, for a crisp liveness readout.
    */
   protected readonly memberActions: readonly CaeMenuItem[] = [
-    { value: 'email', label: 'Invite by email' },
-    { value: 'csv', label: 'Import from CSV' },
-    { value: 'link', label: 'Create invite link' },
+    // Per-item `icon` glyphs (caelum/icon registry, D-596/#644) flow through the embedded cae-menu.
+    { value: 'email', label: 'Invite by email', icon: 'user' },
+    { value: 'csv', label: 'Import from CSV', icon: 'file' },
+    { value: 'link', label: 'Create invite link', icon: 'plus' },
   ];
   protected readonly lastMemberAction = signal('');
   /** Persistent live-region text (empty until the first add) so the announcement is reliable. */

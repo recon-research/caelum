@@ -6,7 +6,10 @@ import {
   input,
   isDevMode,
   output,
+  type TemplateRef,
 } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
+import { CaeIcon, type CaeItemIconContext } from 'caelum/icon';
 
 /**
  * One crumb in a `cae-breadcrumb` trail. A crumb is a labelled ancestor; when it carries a `url` it
@@ -40,6 +43,14 @@ export interface CaeBreadcrumbItem {
    * a dev-mode `console.warn` fires if any interactive crumb's label is empty (#384).
    */
   command?: boolean;
+  /**
+   * Optional leading glyph, by built-in name (`caelum/icon` registry — D-596). Rendered
+   * decoratively (`aria-hidden`) inside the crumb's own element — within the `<a>`/`<button>`
+   * for an interactive crumb, so it shares the hit target. The crumb's accessible name stays
+   * {@link label}. For a custom glyph, supply the component-level `iconTemplate` instead,
+   * which wins over this.
+   */
+  icon?: string;
 }
 
 /**
@@ -87,9 +98,10 @@ export interface CaeBreadcrumbSelectEvent {
  * trail (analytics, or in-app routing). A **url-less crumb marked `command`** renders as a real
  * `<button>` that fires the same event without navigating — the framework-free equivalent of
  * `p-breadcrumb`'s `MenuItem.command` (a control that acts, not navigates, is a button, not a link —
- * WAI-ARIA APG). Following the `cae-tab-menu` precedent, `routerLink`/`routerLinkActive` mode and
- * per-item icons remain deferred additive follow-ups (#333). Zoneless-compatible: `OnPush` + signal
- * inputs (Book 01 §3.2).
+ * WAI-ARIA APG). Per-item icons follow the library convention: `item.icon` names a built-in glyph,
+ * `[iconTemplate]` overrides it (D-596, #644). Following the `cae-tab-menu` precedent,
+ * `routerLink`/`routerLinkActive` mode remains a deferred additive follow-up (#333, D-595).
+ * Zoneless-compatible: `OnPush` + signal inputs (Book 01 §3.2).
  *
  * **Multiple breadcrumbs on one page** must each carry a distinct `[ariaLabel]` — two default
  * `"Breadcrumb"` names collide as non-unique landmarks (axe `landmark-unique`).
@@ -104,6 +116,7 @@ export interface CaeBreadcrumbSelectEvent {
 @Component({
   selector: 'cae-breadcrumb',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [NgTemplateOutlet, CaeIcon],
   host: {
     class: 'cae-breadcrumb',
   },
@@ -121,13 +134,22 @@ export interface CaeBreadcrumbSelectEvent {
                 <span class="cae-breadcrumb__sep" aria-hidden="true">{{ separator() }}</span>
               }
               @if (last) {
-                <span class="cae-breadcrumb__current" aria-current="page">{{ item.label }}</span>
+                <span class="cae-breadcrumb__current" aria-current="page">
+                  <ng-container
+                    [ngTemplateOutlet]="iconSlot"
+                    [ngTemplateOutletContext]="iconContext(item, $index)"
+                  />{{ item.label }}</span
+                >
               } @else if (item.url && !item.disabled) {
                 <a
                   class="cae-breadcrumb__link"
                   [href]="item.url"
                   (click)="itemSelect.emit({ item, originalEvent: $event })"
-                  >{{ item.label }}</a
+                >
+                  <ng-container
+                    [ngTemplateOutlet]="iconSlot"
+                    [ngTemplateOutletContext]="iconContext(item, $index)"
+                  />{{ item.label }}</a
                 >
               } @else if (item.command && !item.disabled) {
                 <button
@@ -135,13 +157,20 @@ export interface CaeBreadcrumbSelectEvent {
                   class="cae-breadcrumb__link cae-breadcrumb__button"
                   (click)="itemSelect.emit({ item, originalEvent: $event })"
                 >
-                  {{ item.label }}
+                  <ng-container
+                    [ngTemplateOutlet]="iconSlot"
+                    [ngTemplateOutletContext]="iconContext(item, $index)"
+                  />{{ item.label }}
                 </button>
               } @else {
                 <span
                   class="cae-breadcrumb__text"
                   [attr.aria-disabled]="item.disabled ? 'true' : null"
-                  >{{ item.label }}</span
+                >
+                  <ng-container
+                    [ngTemplateOutlet]="iconSlot"
+                    [ngTemplateOutletContext]="iconContext(item, $index)"
+                  />{{ item.label }}</span
                 >
               }
             </li>
@@ -149,6 +178,21 @@ export interface CaeBreadcrumbSelectEvent {
         </ol>
       </nav>
     }
+
+    <!-- The one icon slot, stamped inside each of the four crumb leaves (never beside them — an
+         interactive crumb's icon must share its <a>/<button> hit target). Consumer iconTemplate
+         wins over the built-in item.icon glyph (D-596); with neither, it renders nothing.
+         (additive-flanking-UI shared ng-template idiom.) -->
+    <ng-template #iconSlot let-item let-index="index">
+      @if (iconTemplate(); as tpl) {
+        <ng-container
+          [ngTemplateOutlet]="tpl"
+          [ngTemplateOutletContext]="iconContext(item, index)"
+        />
+      } @else if (item.icon) {
+        <cae-icon class="cae-breadcrumb__icon" [name]="item.icon" />
+      }
+    </ng-template>
   `,
   styles: `
     :host {
@@ -215,6 +259,10 @@ export interface CaeBreadcrumbSelectEvent {
     .cae-breadcrumb__current {
       color: var(--cae-color-on-surface);
     }
+    /* Tighter than the __sep gap: the icon belongs to its label, the separator divides crumbs. */
+    .cae-breadcrumb__icon {
+      margin-inline-end: var(--cae-space-1);
+    }
   `,
 })
 export class CaeBreadcrumb {
@@ -237,12 +285,29 @@ export class CaeBreadcrumb {
    * crumb never navigates. See {@link CaeBreadcrumbSelectEvent}.
    */
   readonly itemSelect = output<CaeBreadcrumbSelectEvent>();
+  /**
+   * Consumer escape hatch for the per-item icon slot (D-596): an `ng-template` receiving
+   * `{ $implicit: item, index }` (`let-item`, `let-index="index"`), stamped once per crumb —
+   * inside the crumb's own `<a>`/`<button>`/`<span>`, before the label — *instead of* the
+   * built-in `item.icon` glyph. The template wins whenever both are supplied, for every
+   * crumb, so one convention governs the whole trail. The template owns its own spacing and
+   * accessibility (keep glyphs decorative; a crumb's accessible name is its label).
+   */
+  readonly iconTemplate = input<TemplateRef<CaeItemIconContext<CaeBreadcrumbItem>> | null>(null);
 
   /** `[home]` (if any) pinned before `[items]` as one ordered trail; `$last` is the current page. */
   protected readonly crumbs = computed<readonly CaeBreadcrumbItem[]>(() => {
     const home = this.home();
     return home ? [home, ...this.items()] : this.items();
   });
+
+  /** Context builder for the icon slot / {@link iconTemplate} (the carousel `itemContext` idiom). */
+  protected iconContext(
+    item: CaeBreadcrumbItem,
+    index: number,
+  ): CaeItemIconContext<CaeBreadcrumbItem> {
+    return { $implicit: item, item, index };
+  }
 
   constructor() {
     // Dev-only DX guard (#384): an interactive crumb — a link (`url`) or a command button (`command`),

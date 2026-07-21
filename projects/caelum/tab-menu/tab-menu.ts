@@ -1,5 +1,14 @@
-import { ChangeDetectionStrategy, Component, input, model, output } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  input,
+  model,
+  output,
+  type TemplateRef,
+} from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import { MatTabsModule } from '@angular/material/tabs';
+import { CaeIcon, type CaeItemIconContext } from 'caelum/icon';
 
 /**
  * One item in a `cae-tab-menu` bar. Its `value` is the tab's identity — it is matched against
@@ -22,6 +31,12 @@ export interface CaeTabMenuItem<TValue = string> {
    * activated by click or keyboard.
    */
   disabled?: boolean;
+  /**
+   * Optional leading glyph, by built-in name (`caelum/icon` registry — D-596). Rendered
+   * decoratively (`aria-hidden`); the tab's accessible name stays {@link label}. For a
+   * custom glyph, supply the component-level `iconTemplate` instead, which wins over this.
+   */
+  icon?: string;
 }
 
 /**
@@ -61,14 +76,16 @@ export interface CaeTabMenuItem<TValue = string> {
  * stay focusable but cannot activate.
  *
  * v1 is the manual-`active` model (the consumer owns which tab is active) — first-class
- * `p-tabMenu` parity. Router-linked mode (`routerLink` + `routerLinkActive`-driven `active`) and
- * per-item icons are deferred additive follow-ups (#165). Theme comes free through the token
- * bridge. Zoneless-compatible: `OnPush` + signal state (provisional on #9; Book 01 §3.2).
+ * `p-tabMenu` parity. Per-item icons follow the library convention: `item.icon` names a
+ * built-in glyph, `[iconTemplate]` overrides it (D-596, #644). Router-linked mode
+ * (`routerLink` + `routerLinkActive`-driven `active`) is a deferred additive follow-up
+ * (#165, D-595). Theme comes free through the token bridge. Zoneless-compatible: `OnPush` +
+ * signal state (provisional on #9; Book 01 §3.2).
  */
 @Component({
   selector: 'cae-tab-menu',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MatTabsModule],
+  imports: [MatTabsModule, NgTemplateOutlet, CaeIcon],
   template: `
     <nav mat-tab-nav-bar [tabPanel]="tabPanel" [attr.aria-label]="ariaLabel() || null">
       @for (item of items(); track item.value) {
@@ -84,6 +101,14 @@ export interface CaeTabMenuItem<TValue = string> {
           [disabled]="item.disabled ?? false"
           (click)="select(item)"
         >
+          @if (iconTemplate(); as tpl) {
+            <ng-container
+              [ngTemplateOutlet]="tpl"
+              [ngTemplateOutletContext]="iconContext(item, $index)"
+            />
+          } @else if (item.icon) {
+            <cae-icon class="cae-tab-menu__icon" [name]="item.icon" />
+          }
           {{ item.label }}
         </a>
       }
@@ -95,6 +120,9 @@ export interface CaeTabMenuItem<TValue = string> {
   styles: `
     :host {
       display: block;
+    }
+    .cae-tab-menu__icon {
+      margin-inline-end: var(--cae-space-2);
     }
   `,
 })
@@ -121,11 +149,30 @@ export class CaeTabMenu<TValue = string> {
    * tabs — a disabled tab cannot be activated.
    */
   readonly itemSelect = output<CaeTabMenuItem<TValue>>();
+  /**
+   * Consumer escape hatch for the per-item icon slot (D-596): an `ng-template` receiving
+   * `{ $implicit: item, index }` (`let-item`, `let-index="index"`), stamped once per tab
+   * *instead of* the built-in `item.icon` glyph — the template wins whenever both are
+   * supplied, for every tab, so one convention governs the whole bar. The template owns its
+   * own spacing and accessibility (keep glyphs decorative; the tab's accessible name is its
+   * label).
+   */
+  readonly iconTemplate = input<TemplateRef<CaeItemIconContext<CaeTabMenuItem<TValue>>> | null>(
+    null,
+  );
 
   /** Activate a tab: no-op if disabled; otherwise set `activeValue` and emit `itemSelect`. */
   protected select(item: CaeTabMenuItem<TValue>): void {
     if (item.disabled) return;
     this.activeValue.set(item.value);
     this.itemSelect.emit(item);
+  }
+
+  /** Context builder for {@link iconTemplate} (the carousel `itemContext` idiom). */
+  protected iconContext(
+    item: CaeTabMenuItem<TValue>,
+    index: number,
+  ): CaeItemIconContext<CaeTabMenuItem<TValue>> {
+    return { $implicit: item, item, index };
   }
 }

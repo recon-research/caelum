@@ -1,7 +1,8 @@
-import { ComponentRef } from '@angular/core';
+import { Component, ComponentRef, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { OverlayContainer } from '@angular/cdk/overlay';
+import { CAE_ICON_GLYPHS } from 'caelum/icon';
 import { CaeMenuTrigger, type CaeMenuItem } from 'caelum/menu';
 
 import { CaeSplitButton } from './split-button';
@@ -147,5 +148,95 @@ describe('CaeSplitButton', () => {
     menuItems()[1].click();
     await flush();
     expect(selected?.value).toBe('draft');
+  });
+});
+
+@Component({
+  imports: [CaeSplitButton],
+  template: `
+    <cae-split-button
+      label="Save"
+      icon="plus"
+      [model]="model()"
+      [iconTemplate]="useTpl() ? tpl : null"
+    />
+    <ng-template #tpl let-item let-index="index">
+      <span class="custom-icon">{{ index }}:{{ item.value }}</span>
+    </ng-template>
+  `,
+})
+class IconHost {
+  readonly model = signal<readonly CaeMenuItem[]>([
+    { value: 'close', label: 'Save and close', icon: 'folder' },
+    { value: 'draft', label: 'Save as draft' },
+  ]);
+  readonly useTpl = signal(false);
+}
+
+describe('CaeSplitButton icons (D-596 / #149)', () => {
+  let overlayContainer: OverlayContainer;
+
+  afterEach(() => overlayContainer?.ngOnDestroy());
+
+  it('renders the primary icon glyph before the label, which stays the accessible name', async () => {
+    await TestBed.configureTestingModule({ imports: [CaeSplitButton] }).compileComponents();
+    overlayContainer = TestBed.inject(OverlayContainer);
+    const fixture = TestBed.createComponent(CaeSplitButton);
+    fixture.componentRef.setInput('label', 'Save');
+    fixture.componentRef.setInput('icon', 'plus');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const primary = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>(
+      '.cae-split-button__primary',
+    )!;
+    const glyph = primary.querySelector('svg');
+    expect(glyph?.querySelector('path')?.getAttribute('d')).toBe(CAE_ICON_GLYPHS.plus);
+    expect(glyph?.getAttribute('aria-hidden')).toBe('true');
+    // EXACTLY the label (trimmed equality, not toContain) — the glyph adds no name text.
+    expect(primary.textContent?.trim()).toBe('Save');
+    // Clearing the input removes the glyph (the chevron lives in the toggle, not here).
+    fixture.componentRef.setInput('icon', null);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(primary.querySelector('svg')).toBeNull();
+  });
+
+  it('renders model[].icon in the dropdown and forwards iconTemplate to the embedded cae-menu', async () => {
+    await TestBed.configureTestingModule({ imports: [IconHost] }).compileComponents();
+    overlayContainer = TestBed.inject(OverlayContainer);
+    const fixture = TestBed.createComponent(IconHost);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const open = async (): Promise<void> => {
+      fixture.debugElement.query(By.directive(CaeMenuTrigger)).injector.get(CaeMenuTrigger).open();
+      fixture.detectChanges();
+      await fixture.whenStable();
+    };
+    const menuItems = (): HTMLElement[] =>
+      Array.from(document.querySelectorAll<HTMLElement>('[mat-menu-item]'));
+
+    // Per-item glyphs flow through the embedded cae-menu with no split-button-side wiring …
+    await open();
+    expect(menuItems()[0].querySelector('svg path')?.getAttribute('d')).toBe(
+      CAE_ICON_GLYPHS.folder,
+    );
+    expect(menuItems()[1].querySelector('svg')).toBeNull();
+    fixture.debugElement.query(By.directive(CaeMenuTrigger)).injector.get(CaeMenuTrigger).close();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    // … while [iconTemplate] IS split-button wiring: forwarded verbatim, and it wins (D-596).
+    fixture.componentInstance.useTpl.set(true);
+    fixture.detectChanges();
+    await open();
+    const custom = menuItems().map((el) => el.querySelector('.custom-icon')?.textContent);
+    expect(custom).toEqual(['0:close', '1:draft']);
+    expect(menuItems()[0].querySelector('svg')).toBeNull();
+    // The template governs only the DROPDOWN's icon slot: the primary [icon] glyph survives.
+    const primary = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>(
+      '.cae-split-button__primary',
+    )!;
+    expect(primary.querySelector('svg path')?.getAttribute('d')).toBe(CAE_ICON_GLYPHS.plus);
+    expect(primary.querySelector('.custom-icon')).toBeNull();
   });
 });
