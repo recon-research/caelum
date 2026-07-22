@@ -526,15 +526,20 @@ export class App {
    * `cae-menu`/`cae-menubar`/`cae-split-button`. Right-clicking the target panel opens a data-driven
    * menu; selecting an action records it in {@link quickActionLog} and the live region, so the
    * context menu drives visible Forge state. `Archive` is a disabled item (the CDK menu roves to
-   * it and announces it, but it is not activatable).
+   * it and announces it, but it is not activatable). Per-item `icon` glyphs come from the shared
+   * D-596 convention, which `cae-context-menu` honours as of #645.
    * Deferred (#85/#142): `@angular/cdk/menu` is new to Forge, so `@defer (on idle)` keeps the CDK
    * menu family + this demo in their own lazy chunk off the initial bundle.
    */
   protected readonly quickActions: readonly CaeMenuItem[] = [
+    // Mixed on purpose (D-596, #645): `Refresh data` carries no `icon` and the disabled
+    // `Archive` does, so the live demo SHOWS both the no-glyph arm and a glyph on a
+    // non-activatable row. (The Forge suite never opens this panel — those two arms are
+    // pinned in `context-menu.spec.ts`; here the mix is for the eye.)
     { value: 'refresh', label: 'Refresh data' },
-    { value: 'duplicate', label: 'Duplicate view' },
-    { value: 'export', label: 'Export as CSV' },
-    { value: 'archive', label: 'Archive', disabled: true },
+    { value: 'duplicate', label: 'Duplicate view', icon: 'plus' },
+    { value: 'export', label: 'Export as CSV', icon: 'file' },
+    { value: 'archive', label: 'Archive', disabled: true, icon: 'folder' },
   ];
   protected readonly lastQuickAction = signal('');
   /** Recent quick actions, newest first, capped — a small visible history of context-menu picks. */

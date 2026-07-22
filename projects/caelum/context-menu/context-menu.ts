@@ -4,9 +4,12 @@ import {
   ViewEncapsulation,
   input,
   output,
+  type TemplateRef,
 } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import { CdkContextMenuTrigger, CdkMenu, CdkMenuItem } from '@angular/cdk/menu';
 import type { CaeMenuItem } from 'caelum/menu';
+import { CaeIcon, type CaeItemIconContext } from 'caelum/icon';
 
 /**
  * `cae-context-menu` — a right-click (context) menu wrapper over the CDK Menu family
@@ -25,7 +28,9 @@ import type { CaeMenuItem } from 'caelum/menu';
  * or a keyboard user can never reach it. This wrapper makes the projected target a focusable
  * region by default (`tabindex="0"` + a visible focus ring) whenever there are items, so keyboard
  * access works out of the box with no consumer plumbing. Items are data (`CaeMenuItem[]`, the same
- * shape as `cae-menu`), so the whole family shares one model. Wrap the right-clickable target as content:
+ * shape as `cae-menu`), so the whole family shares one model — including the D-596 icon convention:
+ * a per-item `icon` glyph, overridden for every item by an {@link CaeContextMenu.iconTemplate}.
+ * Wrap the right-clickable target as content:
  *
  * ```html
  * <cae-context-menu [items]="rowActions" (itemSelect)="run($event)">
@@ -47,7 +52,7 @@ import type { CaeMenuItem } from 'caelum/menu';
   selector: 'cae-context-menu',
   changeDetection: ChangeDetectionStrategy.OnPush,
   encapsulation: ViewEncapsulation.None,
-  imports: [CdkContextMenuTrigger, CdkMenu, CdkMenuItem],
+  imports: [CdkContextMenuTrigger, CdkMenu, CdkMenuItem, NgTemplateOutlet, CaeIcon],
   template: `
     <div
       class="cae-context-menu__target"
@@ -66,8 +71,17 @@ import type { CaeMenuItem } from 'caelum/menu';
             type="button"
             class="cae-context-menu__item"
             [cdkMenuItemDisabled]="item.disabled ?? false"
+            [cdkMenuitemTypeaheadLabel]="item.label"
             (cdkMenuItemTriggered)="itemSelect.emit(item)"
           >
+            @if (iconTemplate(); as tpl) {
+              <ng-container
+                [ngTemplateOutlet]="tpl"
+                [ngTemplateOutletContext]="iconContext(item, $index)"
+              />
+            } @else if (item.icon) {
+              <cae-icon class="cae-context-menu__icon" [name]="item.icon" />
+            }
             {{ item.label }}
           </button>
         }
@@ -106,7 +120,6 @@ import type { CaeMenuItem } from 'caelum/menu';
     .cae-context-menu__item {
       display: flex;
       align-items: center;
-      gap: var(--cae-space-2);
       inline-size: 100%;
       min-block-size: 2.25rem;
       padding-block: var(--cae-space-2);
@@ -117,6 +130,15 @@ import type { CaeMenuItem } from 'caelum/menu';
       font: inherit;
       text-align: start;
       cursor: pointer;
+    }
+
+    /* Spacing rides the built-in glyph, mirroring cae-menu's .cae-menu__icon exactly, rather
+       than a row-level gap: a gap would also space a consumer's iconTemplate here but not in
+       cae-menu, so one template bound to both would double-space in this panel. A consumer
+       template owns its spacing in BOTH components now. (The row carried a gap pre-#645, but
+       with the label as its only flex child it never rendered — dropping it changes nothing.) */
+    .cae-context-menu__icon {
+      margin-inline-end: var(--cae-space-2);
     }
 
     .cae-context-menu__item:hover:not(.cdk-menu-item-disabled) {
@@ -144,6 +166,26 @@ import type { CaeMenuItem } from 'caelum/menu';
 export class CaeContextMenu {
   /** The context-menu items, as data (shared `CaeMenuItem` shape). Empty disables the menu. */
   readonly items = input<readonly CaeMenuItem[]>([]);
+  /**
+   * Consumer escape hatch for the per-item icon slot (D-596): an `ng-template` receiving
+   * `{ $implicit: item, index }` (`let-item`, `let-index="index"`), stamped once per item
+   * *instead of* the built-in `item.icon` glyph — the template wins whenever both are
+   * supplied, for every item, so one convention governs the whole panel. The template owns its
+   * own spacing and accessibility, exactly as in `cae-menu`, so one template bound to both
+   * renders identically.
+   *
+   * Unlike `MatMenuItem` (which strips icon elements before deriving its typeahead label),
+   * `CdkMenuItem` reads the item's raw `textContent` — so a template stamping **text** would
+   * otherwise poison both typeahead and the accessible name. The item pins
+   * `cdkMenuitemTypeaheadLabel` to `item.label`, which makes that structurally impossible;
+   * keep glyphs decorative regardless, since the accessible name still reads the row.
+   */
+  readonly iconTemplate = input<TemplateRef<CaeItemIconContext<CaeMenuItem>> | null>(null);
   /** Emits the chosen item when a menu item is activated (click or keyboard). */
   readonly itemSelect = output<CaeMenuItem>();
+
+  /** Context builder for {@link iconTemplate} (the carousel `itemContext` idiom). */
+  protected iconContext(item: CaeMenuItem, index: number): CaeItemIconContext<CaeMenuItem> {
+    return { $implicit: item, item, index };
+  }
 }

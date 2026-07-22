@@ -1,9 +1,10 @@
-import { ComponentRef } from '@angular/core';
+import { Component, ComponentRef, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { DOWN_ARROW, END, HOME, LEFT_ARROW, RIGHT_ARROW } from '@angular/cdk/keycodes';
 import { CaeMenuTrigger, type CaeMenuItem } from 'caelum/menu';
+import { CAE_ICON_GLYPHS } from 'caelum/icon';
 
 import { CaeMenubar, type CaeMenubarItem } from './menubar';
 
@@ -177,5 +178,98 @@ describe('CaeMenubar', () => {
     await setup({ model: [] });
     expect(triggers().length).toBe(0);
     expect(el.querySelector('[role="menubar"]')).not.toBeNull();
+  });
+});
+
+@Component({
+  imports: [CaeMenubar],
+  template: `
+    <cae-menubar [model]="model" [iconTemplate]="useTpl() ? tpl : null" />
+    <ng-template #tpl let-item let-index="index">
+      <span class="custom-icon">{{ index }}:{{ item.value }}</span>
+    </ng-template>
+  `,
+})
+class MenubarIconHost {
+  readonly model: CaeMenubarItem[] = [
+    {
+      label: 'File',
+      items: [
+        { value: 'new', label: 'New', icon: 'plus' },
+        { value: 'open', label: 'Open' },
+      ],
+    },
+    { label: 'Edit', items: [{ value: 'cut', label: 'Cut', icon: 'file' }] },
+  ];
+  readonly useTpl = signal(false);
+}
+
+describe('CaeMenubar per-item icons (D-596, #645)', () => {
+  let fixture: ComponentFixture<MenubarIconHost>;
+  let overlayContainer: OverlayContainer;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({ imports: [MenubarIconHost] }).compileComponents();
+    fixture = TestBed.createComponent(MenubarIconHost);
+    overlayContainer = TestBed.inject(OverlayContainer);
+    fixture.detectChanges();
+    await fixture.whenStable();
+  });
+
+  afterEach(() => overlayContainer?.ngOnDestroy());
+
+  const triggerAt = (i: number): CaeMenuTrigger =>
+    fixture.debugElement.queryAll(By.directive(CaeMenuTrigger))[i].injector.get(CaeMenuTrigger);
+
+  // Open group `i` and return ITS dropdown items. A closed Material panel lingers in the overlay
+  // container, so a bare document-wide `[mat-menu-item]` query would mix in a sibling group's
+  // stale panel (and pass on the wrong panel's content). `aria-controls` on the open trigger
+  // names exactly the panel that trigger owns, which is the relationship under test.
+  const openGroupItems = async (i: number): Promise<HTMLElement[]> => {
+    triggerAt(i).open();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const btn = fixture.nativeElement.querySelectorAll('.cae-menubar__item')[i] as HTMLElement;
+    const panelId = btn.getAttribute('aria-controls');
+    expect(panelId, `group ${i} has no aria-controls — its trigger did not open`).toBeTruthy();
+    const panel = document.getElementById(panelId as string);
+    expect(panel, `group ${i} panel #${panelId} is not in the DOM`).toBeTruthy();
+    return Array.from((panel as HTMLElement).querySelectorAll<HTMLElement>('[mat-menu-item]'));
+  };
+
+  it('renders per-item icon glyphs in a group dropdown via the embedded cae-menu', async () => {
+    const items = await openGroupItems(0);
+    const glyph = items[0].querySelector('svg');
+    expect(glyph?.querySelector('path')?.getAttribute('d')).toBe(CAE_ICON_GLYPHS.plus);
+    // Decorative: the dropdown item's accessible name stays EXACTLY its label.
+    expect(glyph?.getAttribute('aria-hidden')).toBe('true');
+    expect(items[0].textContent?.trim()).toBe('New');
+    expect(items[1].querySelector('svg')).toBeNull();
+  });
+
+  it('forwards iconTemplate to EVERY group dropdown, not just the first (#645)', async () => {
+    fixture.componentInstance.useTpl.set(true);
+    fixture.detectChanges();
+
+    const file = await openGroupItems(0);
+    expect(file.map((el) => el.querySelector('.custom-icon')?.textContent)).toEqual([
+      '0:new',
+      '1:open',
+    ]);
+    expect(file[0].querySelector('svg')).toBeNull();
+
+    // The second group is the assertion that matters: a forward wired to only the first
+    // cae-menu (or dropped entirely) leaves this dropdown on its built-in glyph. Its index
+    // restarting at 0 also pins the documented per-group (not bar-wide running) count.
+    const edit = await openGroupItems(1);
+    expect(edit.map((el) => el.querySelector('.custom-icon')?.textContent)).toEqual(['0:cut']);
+    expect(edit[0].querySelector('svg')).toBeNull();
+
+    // Reverse flip: clearing the template restores the built-in glyph (not a one-way latch).
+    fixture.componentInstance.useTpl.set(false);
+    fixture.detectChanges();
+    const editAgain = await openGroupItems(1);
+    expect(editAgain[0].querySelector('.custom-icon')).toBeNull();
+    expect(editAgain[0].querySelector('svg path')?.getAttribute('d')).toBe(CAE_ICON_GLYPHS.file);
   });
 });

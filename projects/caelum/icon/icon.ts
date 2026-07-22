@@ -51,8 +51,9 @@ export const CAE_ICON_GLYPHS: Readonly<Record<CaeIconName, string>> = {
  * The template context every data-driven component's `iconTemplate` receives (D-596):
  * `$implicit` is the item being rendered (so `let-item` just works) and `index` is its
  * position in the rendered list — the `CaeCarouselItemContext` shape, kept uniform across
- * `cae-breadcrumb` / `cae-tab-menu` / `cae-menu` / `cae-split-button` so a consumer learns
- * it once. Type-only; it lives here because the icon-supply convention owns it.
+ * every data-driven component that exposes an `iconTemplate`, so a consumer learns it once
+ * (deliberately not enumerated: the list grew in #645 and would rot at the next component).
+ * Type-only; it lives here because the icon-supply convention owns it.
  */
 export interface CaeItemIconContext<TItem> {
   /** The item this icon slot belongs to (`let-item` binds this). */
