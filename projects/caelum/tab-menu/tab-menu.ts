@@ -8,7 +8,7 @@ import {
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { MatTabsModule } from '@angular/material/tabs';
-import { CaeIcon, type CaeItemIconContext } from 'caelum/icon';
+import { CaeIcon, caeItemIconContext, type CaeItemIconContext } from 'caelum/icon';
 
 /**
  * One item in a `cae-tab-menu` bar. Its `value` is the tab's identity — it is matched against
@@ -168,11 +168,6 @@ export class CaeTabMenu<TValue = string> {
     this.itemSelect.emit(item);
   }
 
-  /** Context builder for {@link iconTemplate} (the carousel `itemContext` idiom). */
-  protected iconContext(
-    item: CaeTabMenuItem<TValue>,
-    index: number,
-  ): CaeItemIconContext<CaeTabMenuItem<TValue>> {
-    return { $implicit: item, item, index };
-  }
+  /** Context builder for {@link iconTemplate} — the single-homed D-596 helper (#649). */
+  protected readonly iconContext = caeItemIconContext;
 }

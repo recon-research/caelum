@@ -9,7 +9,7 @@ import {
 import { NgTemplateOutlet } from '@angular/common';
 import { CdkContextMenuTrigger, CdkMenu, CdkMenuItem } from '@angular/cdk/menu';
 import type { CaeMenuItem } from 'caelum/menu';
-import { CaeIcon, type CaeItemIconContext } from 'caelum/icon';
+import { CaeIcon, caeItemIconContext, type CaeItemIconContext } from 'caelum/icon';
 
 /**
  * `cae-context-menu` — a right-click (context) menu wrapper over the CDK Menu family
@@ -184,8 +184,6 @@ export class CaeContextMenu {
   /** Emits the chosen item when a menu item is activated (click or keyboard). */
   readonly itemSelect = output<CaeMenuItem>();
 
-  /** Context builder for {@link iconTemplate} (the carousel `itemContext` idiom). */
-  protected iconContext(item: CaeMenuItem, index: number): CaeItemIconContext<CaeMenuItem> {
-    return { $implicit: item, item, index };
-  }
+  /** Context builder for {@link iconTemplate} — the single-homed D-596 helper (#649). */
+  protected readonly iconContext = caeItemIconContext;
 }
