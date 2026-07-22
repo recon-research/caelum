@@ -29,10 +29,14 @@
     "@angular/core": "^22.0.0 || ^23.0.0",
     "@angular/forms": "^22.0.0 || ^23.0.0",
     "@angular/material": "^22.0.0 || ^23.0.0",
+    "@angular/router": "^22.0.0 || ^23.0.0",
     "@tanstack/table-core": "^8.21.3"
   },
   "peerDependenciesMeta": {
     "@tanstack/table-core": {
+      "optional": true
+    },
+    "@angular/router": {
       "optional": true
     }
   },

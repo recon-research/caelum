@@ -109,8 +109,8 @@
       "license": "MIT",
       "origin": "US",
       "maintainer": "Angular team / Google LLC",
-      "shipped": "yes",
-      "note": "Forge app dep"
+      "shipped": "conditional",
+      "note": "Forge app dep AND an OPTIONAL peerDependency of the library (#333, D-595) — enters a consumer bundle only when they import caelum/breadcrumb-router; a router-free consumer never installs it. D-11 accepts Angular’s closure wholesale, so no separate sign-off."
     },
     "@angular/platform-browser": {
       "version": "22.0.4",
