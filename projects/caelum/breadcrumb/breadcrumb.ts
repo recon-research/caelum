@@ -9,7 +9,7 @@ import {
   type TemplateRef,
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
-import { CaeIcon, type CaeItemIconContext } from 'caelum/icon';
+import { CaeIcon, caeItemIconContext, type CaeItemIconContext } from 'caelum/icon';
 
 /**
  * One crumb in a `cae-breadcrumb` trail. A crumb is a labelled ancestor; when it carries a `url` it
@@ -301,13 +301,8 @@ export class CaeBreadcrumb {
     return home ? [home, ...this.items()] : this.items();
   });
 
-  /** Context builder for the icon slot / {@link iconTemplate} (the carousel `itemContext` idiom). */
-  protected iconContext(
-    item: CaeBreadcrumbItem,
-    index: number,
-  ): CaeItemIconContext<CaeBreadcrumbItem> {
-    return { $implicit: item, item, index };
-  }
+  /** Context builder for the icon slot / {@link iconTemplate} — the single-homed D-596 helper (#649). */
+  protected readonly iconContext = caeItemIconContext;
 
   constructor() {
     // Dev-only DX guard (#384): an interactive crumb — a link (`url`) or a command button (`command`),

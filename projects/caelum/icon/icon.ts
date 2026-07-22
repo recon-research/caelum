@@ -65,6 +65,19 @@ export interface CaeItemIconContext<TItem> {
 }
 
 /**
+ * The single home for the D-596 icon-slot context (issue #649). Every data-driven,
+ * icon-bearing component builds the same `{ $implicit, item, index }` from its own item and
+ * row index. Inlining that literal in each template would satisfy the runtime but silently
+ * drop the compile-time check that the emitted context matches the declared
+ * `TemplateRef<CaeItemIconContext<T>>` — Angular types `ngTemplateOutletContext` as
+ * `Object | null`, so this typed builder's return type is the only thing binding the two.
+ * Components wire it verbatim: `protected readonly iconContext = caeItemIconContext;`.
+ */
+export function caeItemIconContext<TItem>(item: TItem, index: number): CaeItemIconContext<TItem> {
+  return { $implicit: item, item, index };
+}
+
+/**
  * `cae-icon` — renders one named glyph from {@link CAE_ICON_GLYPHS} as inline SVG
  * (D-596). Decorative by contract: the SVG is `aria-hidden` and unfocusable, because in
  * every shipping use the accessible name is the neighbouring item label — an icon-only

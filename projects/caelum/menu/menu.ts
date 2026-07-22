@@ -12,7 +12,7 @@ import {
 import { NgTemplateOutlet } from '@angular/common';
 import { MatMenu, MatMenuItem, MatMenuTrigger, type MatMenuPanel } from '@angular/material/menu';
 import type { CaeMenuPanelHost } from 'caelum/shared';
-import { CaeIcon, type CaeItemIconContext } from 'caelum/icon';
+import { CaeIcon, caeItemIconContext, type CaeItemIconContext } from 'caelum/icon';
 
 /** A single item in a `cae-menu`. */
 export interface CaeMenuItem {
@@ -118,10 +118,8 @@ export class CaeMenu implements CaeMenuPanelHost {
     return this.panel();
   }
 
-  /** Context builder for {@link iconTemplate} (the carousel `itemContext` idiom). */
-  protected iconContext(item: CaeMenuItem, index: number): CaeItemIconContext<CaeMenuItem> {
-    return { $implicit: item, item, index };
-  }
+  /** Context builder for {@link iconTemplate} — the single-homed D-596 helper (#649). */
+  protected readonly iconContext = caeItemIconContext;
 }
 
 /**
