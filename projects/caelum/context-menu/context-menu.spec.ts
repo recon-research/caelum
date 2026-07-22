@@ -1,11 +1,12 @@
-import { Component } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { OverlayContainer } from '@angular/cdk/overlay';
-import { CdkContextMenuTrigger } from '@angular/cdk/menu';
+import { CdkContextMenuTrigger, CdkMenuItem } from '@angular/cdk/menu';
 
 import { CaeContextMenu } from './context-menu';
 import type { CaeMenuItem } from 'caelum/menu';
+import { CAE_ICON_GLYPHS } from 'caelum/icon';
 
 @Component({
   imports: [CaeContextMenu],
@@ -132,5 +133,104 @@ describe('CaeContextMenu', () => {
     ref.detectChanges();
     const t = ref.nativeElement.querySelector('.cae-context-menu__target') as HTMLElement;
     expect(t.getAttribute('tabindex')).toBe('-1');
+  });
+});
+
+@Component({
+  imports: [CaeContextMenu],
+  template: `
+    <cae-context-menu [items]="items()" [iconTemplate]="useTpl() ? tpl : null">
+      <div class="target-content">Right-click me</div>
+    </cae-context-menu>
+    <ng-template #tpl let-item let-index="index">
+      <span class="custom-icon">{{ index }}:{{ item.value }}</span>
+    </ng-template>
+  `,
+})
+class ContextIconHost {
+  readonly items = signal<readonly CaeMenuItem[]>([
+    { value: 'view', label: 'View', icon: 'search' },
+    { value: 'edit', label: 'Edit' },
+    { value: 'del', label: 'Delete', icon: 'folder', disabled: true },
+  ]);
+  readonly useTpl = signal(false);
+}
+
+describe('CaeContextMenu per-item icons (D-596, #645)', () => {
+  let fixture: ComponentFixture<ContextIconHost>;
+  let overlayContainer: OverlayContainer;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({ imports: [ContextIconHost] }).compileComponents();
+    fixture = TestBed.createComponent(ContextIconHost);
+    overlayContainer = TestBed.inject(OverlayContainer);
+    fixture.detectChanges();
+    await fixture.whenStable();
+  });
+
+  afterEach(() => overlayContainer?.ngOnDestroy());
+
+  const open = async (): Promise<void> => {
+    (fixture.nativeElement.querySelector('.cae-context-menu__target') as HTMLElement).dispatchEvent(
+      new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 20, clientY: 20 }),
+    );
+    fixture.detectChanges();
+    await fixture.whenStable();
+  };
+  const menuItems = (): HTMLElement[] =>
+    Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]'));
+
+  it('renders a registry glyph for item.icon inside that item, none without one', async () => {
+    await open();
+    const glyph = menuItems()[0].querySelector('svg');
+    expect(glyph?.querySelector('path')?.getAttribute('d')).toBe(CAE_ICON_GLYPHS.search);
+    // Decorative: hidden from AT, and the item's accessible name stays EXACTLY its label —
+    // trimmed equality, not toContain, so any stray text the icon ever contributes fails here.
+    expect(glyph?.getAttribute('aria-hidden')).toBe('true');
+    expect(menuItems()[0].textContent?.trim()).toBe('View');
+    expect(menuItems()[1].querySelector('svg')).toBeNull();
+  });
+
+  it('iconTemplate wins over item.icon, for every item — and yields back when cleared', async () => {
+    fixture.componentInstance.useTpl.set(true);
+    fixture.detectChanges();
+    await open();
+    // Stamped once per item with { $implicit: item, index } …
+    const custom = menuItems().map((el) => el.querySelector('.custom-icon')?.textContent);
+    expect(custom).toEqual(['0:view', '1:edit', '2:del']);
+    // … and the built-in glyph gives way even where item.icon is set.
+    expect(menuItems()[0].querySelector('svg')).toBeNull();
+    // Reverse flip: clearing the template restores the built-in glyph (not a one-way latch).
+    fixture.componentInstance.useTpl.set(false);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(menuItems()[0].querySelector('.custom-icon')).toBeNull();
+    expect(menuItems()[0].querySelector('svg path')?.getAttribute('d')).toBe(
+      CAE_ICON_GLYPHS.search,
+    );
+  });
+
+  it('renders a glyph on a DISABLED item (decoration is independent of activatability)', async () => {
+    await open();
+    const del = menuItems()[2];
+    expect(del.classList).toContain('cdk-menu-item-disabled');
+    expect(del.querySelector('svg path')?.getAttribute('d')).toBe(CAE_ICON_GLYPHS.folder);
+  });
+
+  it('pins the typeahead label to item.label, so a text-stamping iconTemplate cannot poison it', async () => {
+    fixture.componentInstance.useTpl.set(true);
+    fixture.detectChanges();
+    await open();
+    // CdkMenuItem derives typeahead from the element's RAW textContent — unlike MatMenuItem,
+    // which clones and strips icon elements first. So without cdkMenuitemTypeaheadLabel this
+    // host's "0:view" template text would prefix the label, and CDK's prefix-match typeahead
+    // (indexOf(input) === 0) would never jump to "View" on `V`. The item pins the label, so a
+    // consumer template can render anything without breaking keyboard navigation.
+    const labels = fixture.debugElement
+      .queryAll(By.directive(CdkMenuItem))
+      .map((d) => d.injector.get(CdkMenuItem).getLabel());
+    expect(labels).toEqual(['View', 'Edit', 'Delete']);
+    // The raw text really is polluted — proving the assertion above is load-bearing, not vacuous.
+    expect(menuItems()[0].textContent).toContain('0:view');
   });
 });

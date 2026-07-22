@@ -11,6 +11,7 @@ import {
   output,
   QueryList,
   signal,
+  type TemplateRef,
   ViewChildren,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -19,13 +20,13 @@ import { DOWN_ARROW, UP_ARROW } from '@angular/cdk/keycodes';
 import { MatButtonModule } from '@angular/material/button';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { CaeMenu, CaeMenuTrigger, type CaeMenuItem } from 'caelum/menu';
+import type { CaeItemIconContext } from 'caelum/icon';
 
 /**
  * A top-level group in a {@link CaeMenubar} — a labelled trigger that opens a flat dropdown of
- * actions. `items` reuses `cae-menu`'s {@link CaeMenuItem}, so per-item `icon` glyphs render in
- * the dropdowns via the embedded `cae-menu` (D-596, #644); the `iconTemplate` forward (#645),
- * nested/tiered submenus and other rich items (router links, commands) are follow-ups
- * (`cae-tiered-menu` / #150).
+ * actions. `items` reuses `cae-menu`'s {@link CaeMenuItem}; for per-item icons see
+ * {@link CaeMenubar.iconTemplate}. Nested/tiered submenus and other rich items (router links,
+ * commands) are follow-ups (`cae-tiered-menu` / #150).
  */
 export interface CaeMenubarItem {
   /** Visible label on the bar; also the trigger's accessible name. */
@@ -90,10 +91,9 @@ export class MenubarTriggerItem implements FocusableOption {
  * Enter/Space open it too via the native button. A group with no items is treated as disabled (no
  * dead-end empty menu). Name the bar with {@link ariaLabel}.
  *
- * **v1 scope** (#153): one level of dropdown (the common File▸/Edit▸ admin case). Per-item
- * `icon` glyphs come free through the embedded `cae-menu` (D-596, #644). Follow-ups —
- * the `iconTemplate` forward (#645), tiered/nested submenus (`cae-tiered-menu`), rich items
- * (router links/commands, #150), responsive overflow collapse, RTL roving.
+ * **v1 scope** (#153): one level of dropdown (the common File▸/Edit▸ admin case). Follow-ups —
+ * tiered/nested submenus (`cae-tiered-menu`), rich items (router links/commands, #150),
+ * responsive overflow collapse, RTL roving.
  *
  * Zoneless-compatible: `OnPush` + signal state (D-12).
  */
@@ -121,7 +121,12 @@ export class MenubarTriggerItem implements FocusableOption {
         >
           {{ group.label }}
         </button>
-        <cae-menu #groupMenu [items]="group.items" (itemSelect)="itemSelect.emit($event)" />
+        <cae-menu
+          #groupMenu
+          [items]="group.items"
+          [iconTemplate]="iconTemplate()"
+          (itemSelect)="itemSelect.emit($event)"
+        />
       }
     </mat-toolbar>
   `,
@@ -152,6 +157,15 @@ export class CaeMenubar implements AfterViewInit, OnDestroy {
   readonly model = input<readonly CaeMenubarItem[]>([]);
   /** Accessible name for the bar (`role="menubar"`). */
   readonly ariaLabel = input('');
+  /**
+   * Consumer escape hatch for the per-item icon slot (D-596), forwarded verbatim to **every**
+   * group's dropdown — one template governs the whole bar, matching how a single `icon` glyph
+   * convention spans it. An `ng-template` receiving `{ $implicit: item, index }` (`let-item`,
+   * `let-index="index"`), stamped per dropdown item *instead of* its built-in `item.icon`;
+   * `index` is the item's position within **its own group**, not a bar-wide running count.
+   * See `CaeMenu.iconTemplate` for the full contract.
+   */
+  readonly iconTemplate = input<TemplateRef<CaeItemIconContext<CaeMenuItem>> | null>(null);
   /** Emits the chosen dropdown item when one is activated (delegated from each `cae-menu`). */
   readonly itemSelect = output<CaeMenuItem>();
 

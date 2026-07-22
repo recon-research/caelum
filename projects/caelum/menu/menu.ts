@@ -26,9 +26,9 @@ export interface CaeMenuItem {
    * Optional leading glyph, by built-in name (`caelum/icon` registry — D-596). Rendered
    * decoratively (`aria-hidden`); the item's accessible name stays {@link label}. For a
    * custom glyph, supply the component-level `iconTemplate` instead, which wins over this.
-   * Honoured where the icon slot is rendered: `cae-menu` itself and the menus embedded in
-   * `cae-split-button` / `cae-menubar`; `cae-context-menu` shares this interface but does
-   * not render icons yet (#645).
+   * Honoured by every component that consumes this interface — `cae-menu` itself, the menus
+   * embedded in `cae-split-button` / `cae-menubar`, and `cae-context-menu` — so one item
+   * array renders the same icons wherever it is bound.
    */
   icon?: string;
 }
