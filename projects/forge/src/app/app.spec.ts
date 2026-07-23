@@ -326,19 +326,20 @@ describe('App', () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     const el = fixture.nativeElement as HTMLElement;
-    // Exactly thirty-six @defer blocks — the capacity sliders, modules listbox, timezone autocomplete,
+    // Exactly thirty-seven @defer blocks — the capacity sliders, modules listbox, timezone autocomplete,
     // skills multi-select, members table, tree-table, carousel, galleria, image, image-compare, splitter, scroll-panel, breadcrumb, order-list, pick-list, file-upload, tree-select, input-number, input-otp,
-    // password, input-mask, skeleton, avatar, timeline, cae-tag (the M3 display cluster #662), cae-rating (M3-exit #663), cae-popover + cae-confirm-popup (M3-exit #664), activity data-grid, orders server-grid, command bar, quick-actions context menu, workspace-sections tab menu,
+    // password, input-mask, skeleton, avatar, timeline, cae-tag (the M3 display cluster #662), cae-rating (M3-exit #663), cae-popover + cae-confirm-popup (M3-exit #664), cae-panel-menu (M3-exit #665), activity data-grid, orders server-grid, command bar, quick-actions context menu, workspace-sections tab menu,
     // structure tree, reference tabs, FAQ accordion, and tag row — each carrying a heavy Material module or
     // new CDK family (MatSlider/MatList/MatAutocomplete/MatSelect+MatChips/MatTable+MatSort+MatPaginator/CDK-VirtualScroll×2/
-    // MatToolbar+MatMenu/CDK-Menu/mat-tab-nav-bar/MatTree/CDK-Overlay+A11y×2/MatDialog×2/MatTabs/MatExpansion/MatChips) off
+    // MatToolbar+MatMenu/CDK-Menu/mat-tab-nav-bar/MatTree/CDK-Overlay+A11y×2/MatDialog×2/MatTabs/MatExpansion×2/MatChips) off
     // the initial bundle. This is the regression guard for the #85 bundle win: deleting an @defer wrapper
     // stays UNDER the 1mb budget error (so `ng build` wouldn't fail), but drops a block here → red test. (The
     // activity data-grid defers the whole app-activity-grid-demo — cdk-virtual-scroll AND
     // @tanstack/table-core (#171); the orders grid defers app-orders-grid-demo — the ServerGridAdapter
     // engine (#176) — each into its own lazy chunk, the #142 initial-budget guard. galleria and image both
-    // defer the MatDialog they pull in through cae-dialog; the popover demo defers the CDK Overlay it uses.)
-    expect((await fixture.getDeferBlocks()).length).toBe(36);
+    // defer the MatDialog they pull in through cae-dialog; the popover demo defers the CDK Overlay it uses;
+    // the panel-menu demo defers the composed cae-accordion / MatExpansion it uses.)
+    expect((await fixture.getDeferBlocks()).length).toBe(37);
     // The eager critical path (the create-workspace form) is present with NO defer block rendered...
     expect(el.querySelector('.forge-form-card')).not.toBeNull();
     // ...while the deferred demo sections are genuinely absent until rendered (proof they're lazy).
@@ -369,6 +370,7 @@ describe('App', () => {
     expect(el.querySelector('.forge-tag-card')).toBeNull();
     expect(el.querySelector('.forge-rating-card')).toBeNull();
     expect(el.querySelector('.forge-popover-card')).toBeNull();
+    expect(el.querySelector('.forge-panel-menu-card')).toBeNull();
     expect(el.querySelector('.forge-grid-card')).toBeNull();
     expect(el.querySelector('.forge-orders-card')).toBeNull();
     expect(el.querySelector('.forge-commands-card')).toBeNull();
@@ -406,6 +408,7 @@ describe('App', () => {
     expect(el.querySelector('.forge-tag-card')).not.toBeNull();
     expect(el.querySelector('.forge-rating-card')).not.toBeNull();
     expect(el.querySelector('.forge-popover-card')).not.toBeNull();
+    expect(el.querySelector('.forge-panel-menu-card')).not.toBeNull();
     expect(el.querySelector('.forge-grid-card')).not.toBeNull();
     expect(el.querySelector('.forge-commands-card')).not.toBeNull();
     expect(el.querySelector('.forge-contextmenu-card')).not.toBeNull();

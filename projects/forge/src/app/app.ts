@@ -99,6 +99,7 @@ import { TimelineDemo } from './timeline-demo';
 import { TagDemo } from './tag-demo';
 import { RatingDemo } from './rating-demo';
 import { PopoverDemo } from './popover-demo';
+import { PanelMenuDemo } from './panel-menu-demo';
 
 type ThemeMode = 'auto' | 'light' | 'dark';
 /** Layout density (#411). `comfortable` = the default arm; `compact` tightens both
@@ -188,6 +189,7 @@ const SWATCHES: ReadonlyArray<{ token: string; label: string }> = [
     TagDemo,
     RatingDemo,
     PopoverDemo,
+    PanelMenuDemo,
     CaeTextarea,
     CaeToggleButton,
     CaeTooltip,
