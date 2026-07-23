@@ -8,7 +8,8 @@ import { CaeCard } from 'caelum/card';
 // select the engine WITHOUT touching the component markup — that DI swap is the M2 isolation proof
 // (#171). Because this whole component is @defer'd from App, importing the TanStack factory keeps
 // `@tanstack/table-core` in this lazy chunk, off Forge's eager initial bundle.
-import { CaeDataGrid, CAE_GRID, tanStackGridAdapterFactory, type CaeColumn } from 'caelum/grid';
+import { CaeDataGrid, CAE_GRID, type CaeColumn } from 'caelum/grid';
+import { tanStackGridAdapterFactory } from 'caelum/grid-tanstack';
 
 /** A row of the "Activity log" data-grid demo — a plain typed model (the grid generic is unconstrained). */
 interface ActivityEvent {

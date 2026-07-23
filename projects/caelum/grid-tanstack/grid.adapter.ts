@@ -16,16 +16,20 @@ import {
   getPaginationRowModel,
   getSortedRowModel,
 } from '@tanstack/table-core';
-import { CAE_GRID, CaeGridAdapter, CaeGridAdapterFactory } from './grid-adapter';
-import { toCsvBlob } from './grid-csv';
-import { compareValues } from './grid-sort';
+import {
+  CAE_GRID,
+  CaeGridAdapter,
+  CaeGridAdapterFactory,
+  compareValues,
+  toCsvBlob,
+} from 'caelum/grid';
 import type {
   CaeColumn,
   CaeGridDataRequest,
   CaeGridExportFormat,
   CaeRow,
   CaeSort,
-} from './grid-types';
+} from 'caelum/grid';
 
 /**
  * `TanStackGridAdapter<T>` — the **headless-engine** implementation of the {@link CaeGridAdapter} port
@@ -35,10 +39,12 @@ import type {
  * every consumer see only the neutral port + `Cae*` value types, so switching engines is a provider
  * change and **nothing else** — that swap is the M2 isolation proof (D-03; Book 13 §3.2, Book 12 §3.2).
  *
- * **This is the one and only file in `caelum/grid` allowed to import `@tanstack/*`** — the ESLint
- * adapter fence (`eslint.config.js`, pinned to this exact path) fails any other file that does, and the
- * neutral port `grid-adapter.ts` (hyphen) stays engine-free. No vendor type escapes this module: the
- * public surface is entirely `CaeGridAdapter`/`Cae*`.
+ * **This is the one and only file allowed to import `@tanstack/*`** — the ESLint adapter fence
+ * (`eslint.config.js`, pinned to this exact path) fails any other file that does, and the neutral port
+ * `grid-adapter.ts` (hyphen, in `caelum/grid`) stays engine-free. It lives in its own barrel-exempt
+ * entry point `caelum/grid-tanstack` (D-652) so the optional `@tanstack` peer never leaks into a bare
+ * `import … from 'caelum'`. No vendor type escapes this module: the public surface is entirely
+ * `CaeGridAdapter`/`Cae*`.
  *
  * **The bridge.** table-core is an *imperative, memoized* store (`createTable` → `getRowModel()`), while
  * the port is *signal-first*. So this adapter keeps the grid state in signals and, inside the reactive

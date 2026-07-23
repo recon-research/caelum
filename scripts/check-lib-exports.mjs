@@ -11,6 +11,21 @@
 // Zero dependencies — Node builtins only (Book 18 §3.6). Runs inside `build:lib` after the
 // size gate, so CI (`static gates`→ heavy matrix) and preflight get it for free.
 //
+// Barrel membership is DERIVED, not listed (issue #652, D-595/D-652). An entry point that
+// STATICALLY imports an OPTIONAL peerDependency must never be re-exported by the primary
+// barrel: a bundler resolves the whole import graph at scan time (before tree-shaking), so one
+// barrel re-export drags that "optional" peer into every `import … from 'caelum'` and makes it
+// de-facto required — measured in #652 (`import { CaeButton } from 'caelum'` failed to build
+// with @tanstack absent). The pre-#652 guard kept a hand-maintained `BARREL_EXEMPT` allowlist,
+// which only checked the entries it LISTED — so a barrel-INCLUDED optional-peer importer passed
+// silently, which is exactly how `caelum/grid` slipped through from M2. This derives the truth
+// from two facts that ship in the package: (a) which peers are optional (package.json
+// `peerDependenciesMeta`), (b) which entry points import one (scan each emitted FESM), and
+// requires: importsOptionalPeer(name) ⟺ barrel-ABSENT(name). No exempt LIST to go stale — though
+// the optional-peer SET still comes from `peerDependenciesMeta`, so a peer imported but not declared
+// optional there escapes the scan (the check then demands the barrel re-export); that undeclared case
+// plus the transitive-via-exempt-sibling and comment-strip edges are tracked in #659.
+//
 // Usage: node scripts/check-lib-exports.mjs [distDir]   (default: dist/caelum)
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -51,63 +66,55 @@ const exportsMap = JSON.parse(readFileSync(distPkgPath, 'utf8')).exports || {};
 const barrel = readFileSync(barrelPath, 'utf8');
 const errors = [];
 
-// Entry points deliberately ABSENT from the barrel (guard: #333, D-595). Each one imports an
-// OPTIONAL peerDependency, so re-exporting it from the barrel would drag that peer into every
-// `import … from 'caelum'` and make "optional" a fiction — the exact opposite of what D-595
-// bought. The barrel-completeness rule below exists so a normal entry point can't be silently
-// dropped from `import from 'caelum'`; that rationale does not apply here, because these are
-// *meant* to be imported by their own path. The exemption is SELF-POLICING: each entry is
-// verified to (a) really declare its optional peer and (b) really be absent from the barrel, so
-// a stale or bogus exemption fails the gate instead of quietly widening it.
-// KNOWN INCOMPLETENESS (#652): this checks the entry points it LISTS, not the inverse — a
-// barrel-INCLUDED entry point that imports an optional peer still passes, and `caelum/grid`
-// does exactly that with `@tanstack/table-core` today (measured: a consumer without it cannot
-// even `import { CaeButton } from 'caelum'`). The durable form is derived, not listed — scan
-// each emitted FESM's specifiers and require any optional-peer importer to be barrel-absent —
-// and it lands with #652, because it cannot go green before grid is fixed.
-// Retire an entry when its component stops needing a router-free base entry point.
-const BARREL_EXEMPT = new Map([['breadcrumb-router', '@angular/router']]);
-
+// --- Optional peers: the source of truth for barrel exemption (see the header note). ---
 const libPkg = JSON.parse(readFileSync(join(libDir, 'package.json'), 'utf8'));
-for (const [name, peer] of BARREL_EXEMPT) {
-  if (!entryPoints.includes(name)) {
-    errors.push(
-      `BARREL_EXEMPT lists "${name}" but projects/caelum/${name}/ does not exist (stale)`,
-    );
-    continue;
-  }
-  // The peer must be BOTH declared and marked optional. `peerDependenciesMeta` alone is inert to
-  // npm: a meta entry with no matching `peerDependencies` range ships a package that declares no
-  // peer at all — no version guidance, no install warning, a silent runtime mismatch instead.
+const optionalPeers = Object.entries(libPkg.peerDependenciesMeta || {})
+  .filter(([, meta]) => meta && meta.optional === true)
+  .map(([peer]) => peer);
+
+// `peerDependenciesMeta` alone is inert to npm: a meta entry with no matching
+// `peerDependencies` range ships a package that declares no peer at all — no version guidance,
+// no install warning, a silent runtime mismatch instead. So every optional peer must ALSO carry
+// a range.
+for (const peer of optionalPeers) {
   if (!libPkg.peerDependencies?.[peer])
     errors.push(
-      `BARREL_EXEMPT "${name}" claims peer "${peer}", but projects/caelum/package.json has no peerDependencies range for it`,
-    );
-  if (libPkg.peerDependenciesMeta?.[peer]?.optional !== true)
-    errors.push(
-      `BARREL_EXEMPT "${name}" claims optional peer "${peer}", but projects/caelum/package.json does not declare it optional`,
-    );
-  // The (name → peer) pair must be a FACT, not a claim. Without this the key is free text: any
-  // entry point could be registered against some unrelated optional peer and quietly dropped out
-  // of the barrel — the precise footgun the completeness rule below exists to catch. Verified
-  // against the EMITTED bundle, so it reflects what actually ships.
-  const emitted = exportsMap[`./${name}`]?.default;
-  const fesm = emitted && join(distDir, emitted);
-  if (fesm && existsSync(fesm)) {
-    if (
-      !new RegExp(`from ['"]${peer.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(/[^'"]*)?['"]`).test(
-        readFileSync(fesm, 'utf8'),
-      )
-    )
-      errors.push(
-        `BARREL_EXEMPT "${name}" claims optional peer "${peer}", but ${emitted} does not import it — the exemption is unfounded`,
-      );
-  }
-  if (new RegExp(`from ['"]caelum/${name}['"]`).test(barrel))
-    errors.push(
-      `"${name}" is BARREL_EXEMPT (optional peer "${peer}") yet the barrel re-exports it — that makes the peer effectively required`,
+      `peerDependenciesMeta marks '${peer}' optional, but there is no peerDependencies range for it — npm would ship no peer at all (no version guidance, no install warning).`,
     );
 }
+
+// The optional peer an entry point's EMITTED FESM statically imports, or null. Scans the .mjs
+// (runtime imports only — a type-only import never reaches the FESM, and forces no bundler
+// resolution, so ignoring it is correct). A missing FESM is not fatal here (the exports-key
+// checks below own that failure); it simply imports nothing. Verified against what actually
+// ships, not the source.
+function importsOptionalPeer(name) {
+  const emitted = exportsMap[`./${name}`]?.default;
+  const fesm = emitted && join(distDir, emitted);
+  if (!fesm || !existsSync(fesm)) return null;
+  const src = readFileSync(fesm, 'utf8');
+  for (const peer of optionalPeers) {
+    // `(?:from|import)\s*` catches `import … from '<peer>'`, `export … from '<peer>'`, AND a bare
+    // side-effect `import '<peer>'` (all force scan-time resolution); tolerant of odd whitespace.
+    // A dynamic `import('<peer>')` is deliberately NOT matched — it is lazy, so it does not make the
+    // peer de-facto required. The subpath/closing-quote anchor prevents a substring match (#659: strip
+    // comments before scanning for full robustness).
+    const esc = peer.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`(?:from|import)\\s*['"]${esc}(/[^'"]*)?['"]`);
+    if (re.test(src)) return peer;
+  }
+  return null;
+}
+
+// Computed once — importsOptionalPeer reads a file, and we consult it in the loop AND the
+// summary. The regex requires the closing quote immediately after <name>, so `caelum/grid`
+// never matches a `caelum/grid-tanstack` re-export (or vice-versa).
+const peerOf = new Map(entryPoints.map((name) => [name, importsOptionalPeer(name)]));
+// `\s*` so a re-export re-added with odd whitespace (`from\t'…'`) cannot read as barrel-absent and
+// slip an optional-peer entry back into the barrel undetected; `name` is regex-escaped defensively
+// (kebab-case today, but a metachar would corrupt the test). #659 tracks stripping comments first.
+const inBarrel = (name) =>
+  new RegExp(`from\\s*['"]caelum/${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]`).test(barrel);
 
 // 2. The barrel primary entry point must exist and resolve.
 const dot = exportsMap['.'];
@@ -119,7 +126,8 @@ if (!dot || !dot.types || !dot.default) {
 }
 
 // 3. Each entry-point folder must have a matching exports key (types+default, files present)
-//    AND be re-exported by the barrel by package name.
+//    AND satisfy the barrel-membership rule: re-exported by the barrel UNLESS it imports an
+//    optional peer, in which case it must be barrel-ABSENT (else the peer stops being optional).
 for (const name of entryPoints) {
   const key = `./${name}`;
   const entry = exportsMap[key];
@@ -132,11 +140,14 @@ for (const name of entryPoints) {
       if (f && !existsSync(join(distDir, f)))
         errors.push(`"${key}" export points at a missing file: ${f}`);
   }
-  // The barrel must re-export it so `import … from 'caelum'` stays complete (additive split) —
-  // unless it is deliberately exempt because it pulls an optional peer (see BARREL_EXEMPT).
-  if (!BARREL_EXEMPT.has(name) && !new RegExp(`from ['"]caelum/${name}['"]`).test(barrel))
+  const peer = peerOf.get(name);
+  if (peer && inBarrel(name))
     errors.push(
-      `barrel src/public-api.ts does not re-export 'caelum/${name}' — a bare \`import from 'caelum'\` would drop it`,
+      `'caelum/${name}' imports the optional peer '${peer}' yet the barrel re-exports it — that drags '${peer}' into every \`import from 'caelum'\` and makes it de-facto required (#652). Drop the barrel re-export; consumers import 'caelum/${name}' directly.`,
+    );
+  if (!peer && !inBarrel(name))
+    errors.push(
+      `barrel src/public-api.ts does not re-export 'caelum/${name}' — a bare \`import from 'caelum'\` would drop it (it imports no optional peer, so it must ride the barrel).`,
     );
 }
 
@@ -148,17 +159,16 @@ for (const key of Object.keys(exportsMap)) {
     errors.push(`exports key "${key}" has no backing projects/caelum/${name}/ folder (stale?)`);
 }
 
+const exemptCount = [...peerOf.values()].filter(Boolean).length;
 console.log(
-  `library exports gate — ${entryPoints.length} secondary entry point(s) + barrel · dist/caelum/package.json vs folders + barrel`,
+  `library exports gate — ${entryPoints.length} secondary entry point(s) + barrel · dist/caelum/package.json vs folders + barrel · optional peer(s): ${optionalPeers.join(', ') || 'none'}`,
 );
 for (const name of entryPoints) {
-  const exempt = BARREL_EXEMPT.has(name);
-  const inBarrel = new RegExp(`from ['"]caelum/${name}['"]`).test(barrel);
-  // An exempt row must be barrel-ABSENT; short-circuiting on `exempt` alone would print OK for a
-  // row the error list below is failing on, and a summary that contradicts the errors trains you
-  // to skim it.
-  const ok = Boolean(exportsMap[`./${name}`]) && (exempt ? !inBarrel : inBarrel);
-  const note = exempt ? `  (barrel-exempt: optional peer ${BARREL_EXEMPT.get(name)})` : '';
+  const peer = peerOf.get(name);
+  // An optional-peer entry must be barrel-ABSENT; a normal one barrel-PRESENT. A summary that
+  // contradicts the error list below trains you to skim it, so it reads from the same rule.
+  const ok = Boolean(exportsMap[`./${name}`]) && (peer ? !inBarrel(name) : inBarrel(name));
+  const note = peer ? `  (barrel-exempt: imports optional peer ${peer})` : '';
   console.log(`  ${ok ? '\x1b[32mOK  \x1b[0m' : '\x1b[31mFAIL\x1b[0m'} caelum/${name}${note}`);
 }
 
@@ -168,5 +178,5 @@ if (errors.length) {
   process.exit(1);
 }
 console.log(
-  `\x1b[32mLIBRARY EXPORTS: GREEN — every entry point is in the exports map; all but ${BARREL_EXEMPT.size} optional-peer entry point(s) are re-exported by the barrel.\x1b[0m`,
+  `\x1b[32mLIBRARY EXPORTS: GREEN — every entry point is in the exports map; all but ${exemptCount} optional-peer entry point(s) are re-exported by the barrel.\x1b[0m`,
 );
