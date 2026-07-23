@@ -1,0 +1,27 @@
+// Tag demo (#662) — per-demo card styles, token-driven (D-04). Only structural literals remain
+// (display/flex/gap); the tags draw their own severity colour from the component's token mapping.
+
+.forge-tag-card {
+  display: block;
+}
+.forge-tag-card__title {
+  margin: 0 0 var(--cae-space-2);
+  color: var(--cae-color-on-surface);
+}
+.forge-tag-card__lead {
+  margin: 0 0 var(--cae-space-4);
+  color: var(--cae-color-on-surface-variant);
+}
+.forge-tag-card__lead code {
+  color: var(--cae-color-primary);
+}
+.forge-tag-subtitle {
+  margin: var(--cae-space-4) 0 var(--cae-space-3);
+  color: var(--cae-color-on-surface);
+}
+.forge-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--cae-space-2);
+}

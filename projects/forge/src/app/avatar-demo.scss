@@ -1,0 +1,27 @@
+// Avatar demo (#662) — per-demo card styles, token-driven (D-04). Only structural literals remain
+// (display/flex/gap); the avatars draw their own sizing/colour from the component.
+
+.forge-avatar-card {
+  display: block;
+}
+.forge-avatar-card__title {
+  margin: 0 0 var(--cae-space-2);
+  color: var(--cae-color-on-surface);
+}
+.forge-avatar-card__lead {
+  margin: 0 0 var(--cae-space-4);
+  color: var(--cae-color-on-surface-variant);
+}
+.forge-avatar-card__lead code {
+  color: var(--cae-color-primary);
+}
+.forge-avatar-subtitle {
+  margin: var(--cae-space-4) 0 var(--cae-space-3);
+  color: var(--cae-color-on-surface);
+}
+.forge-avatar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--cae-space-3);
+}

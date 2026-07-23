@@ -1,0 +1,31 @@
+<cae-card class="forge-timeline-card">
+  <h3 class="forge-timeline-card__title">Timeline</h3>
+  <p class="forge-timeline-card__lead">
+    A data-driven ordered list of events with a marker + connector rail. The date sits on the
+    opposite side of the rail via <code>caeTimelineOpposite</code>, the body via
+    <code>caeTimelineContent</code>, and a custom glyph replaces the default dot via
+    <code>caeTimelineMarker</code>. The rail is decorative; the sequence is conveyed by the
+    <code>&lt;ol&gt;</code>.
+  </p>
+
+  <cae-timeline [value]="milestones" align="left">
+    <ng-template caeTimelineOpposite let-m>
+      <span class="forge-timeline-date">{{ m.date }}</span>
+    </ng-template>
+    <ng-template caeTimelineMarker let-m>
+      <span class="forge-timeline-marker" aria-hidden="true">{{ m.title.charAt(0) }}</span>
+    </ng-template>
+    <ng-template caeTimelineContent let-m>
+      <strong class="forge-timeline-title">{{ m.title }}</strong>
+      <span class="forge-timeline-detail">{{ m.detail }}</span>
+    </ng-template>
+  </cae-timeline>
+
+  <h4 class="forge-timeline-subtitle">Alternate alignment</h4>
+  <cae-timeline [value]="milestones" align="alternate">
+    <ng-template caeTimelineContent let-m>
+      <strong class="forge-timeline-title">{{ m.title }}</strong>
+      <span class="forge-timeline-detail">{{ m.date }}</span>
+    </ng-template>
+  </cae-timeline>
+</cae-card>

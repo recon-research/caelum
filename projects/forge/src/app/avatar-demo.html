@@ -1,0 +1,30 @@
+<cae-card class="forge-avatar-card">
+  <h3 class="forge-avatar-card__title">Avatar</h3>
+  <p class="forge-avatar-card__lead">
+    Image, initials, or icon — circle or square, in three sizes. A dead image URL falls back to
+    initials rather than showing a broken image. A <code>cae-avatar-group</code> overlaps its
+    members and collapses everything past <code>[max]</code> into a "+N" indicator.
+  </p>
+
+  <h4 class="forge-avatar-subtitle">Variants</h4>
+  <div class="forge-avatar-row">
+    <cae-avatar label="AL" ariaLabel="Ada Lovelace" />
+    <cae-avatar icon="user" ariaLabel="Generic user" />
+    <cae-avatar shape="square" label="SQ" ariaLabel="Square avatar" />
+    <cae-avatar [image]="deadImage" label="FB" ariaLabel="Falls back to initials" />
+  </div>
+
+  <h4 class="forge-avatar-subtitle">Sizes</h4>
+  <div class="forge-avatar-row">
+    <cae-avatar size="normal" label="N" ariaLabel="Normal" />
+    <cae-avatar size="large" label="L" ariaLabel="Large" />
+    <cae-avatar size="xlarge" label="XL" ariaLabel="Extra large" />
+  </div>
+
+  <h4 class="forge-avatar-subtitle">Group (max 4)</h4>
+  <cae-avatar-group [max]="4" ariaLabel="Project team">
+    @for (m of team; track m) {
+      <cae-avatar [label]="m" [ariaLabel]="m" />
+    }
+  </cae-avatar-group>
+</cae-card>

@@ -93,6 +93,10 @@ import { InputNumberDemo } from './input-number-demo';
 import { InputOtpDemo } from './input-otp-demo';
 import { PasswordDemo } from './password-demo';
 import { InputMaskDemo } from './input-mask-demo';
+import { SkeletonDemo } from './skeleton-demo';
+import { AvatarDemo } from './avatar-demo';
+import { TimelineDemo } from './timeline-demo';
+import { TagDemo } from './tag-demo';
 
 type ThemeMode = 'auto' | 'light' | 'dark';
 /** Layout density (#411). `comfortable` = the default arm; `compact` tightens both
@@ -176,6 +180,10 @@ const SWATCHES: ReadonlyArray<{ token: string; label: string }> = [
     InputOtpDemo,
     PasswordDemo,
     InputMaskDemo,
+    SkeletonDemo,
+    AvatarDemo,
+    TimelineDemo,
+    TagDemo,
     CaeTextarea,
     CaeToggleButton,
     CaeTooltip,

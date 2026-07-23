@@ -801,6 +801,38 @@
       <app-input-mask-demo />
     }
 
+    <!-- cae-skeleton (#662, M3 display cluster) — a token-skinned loading placeholder (CSS shimmer/
+         pulse, dropped under prefers-reduced-motion); aria-hidden by default so the busy REGION, not
+         the skeleton, is what AT announces. Its own @defer'd component keeps it off the eager initial
+         bundle (#85/#142), like the other below-the-fold demos. -->
+    @defer (on idle) {
+      <app-skeleton-demo />
+    }
+
+    <!-- cae-avatar (#662, M3 display cluster) — image/initials/icon avatar (falls back to initials on
+         a dead image, no broken glyph) + a cae-avatar-group that overlaps members and collapses the
+         overflow past [max] into a "+N". Its own @defer'd component keeps it off the eager initial
+         bundle (#85/#142), like the other below-the-fold demos. -->
+    @defer (on idle) {
+      <app-avatar-demo />
+    }
+
+    <!-- cae-timeline (#662, M3 display cluster) — a data-driven <ol> event timeline with a marker +
+         connector rail, projected content/opposite/marker templates, and left/right/alternate +
+         vertical/horizontal layouts (RTL-safe via logical properties). Its own @defer'd component keeps
+         it off the eager initial bundle (#85/#142), like the other below-the-fold demos. -->
+    @defer (on idle) {
+      <app-timeline-demo />
+    }
+
+    <!-- cae-tag (#662, M3 display cluster) — a static status label composed over mat-chip (non-
+         interactive; severity colours from --cae-color-* tokens, info→primary), with the D-596 icon
+         convention. Its own @defer'd component keeps it off the eager initial bundle (#85/#142), like
+         the other below-the-fold demos. -->
+    @defer (on idle) {
+      <app-tag-demo />
+    }
+
     <!-- cae-data-grid (#170 interface, #171 TanStack engine — the M2 grid exit criterion). Unlike the
          cae-table above (a thin MatTable wrapper, great for a small roster), the grid renders its OWN
          virtualized DOM over thousands of rows and does all sort/paginate work behind the CaeGridAdapter
