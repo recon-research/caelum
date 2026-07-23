@@ -857,6 +857,13 @@
       <app-panel-menu-demo />
     }
 
+    <!-- cae-datepicker (#666, M3-exit set — stage 1: single · range · inline) — a value-bearing overlay
+         over Material's datepicker family behind one CVA whose value shape follows [selectionMode]. Its
+         own @defer'd component keeps the datepicker/calendar bytes off the eager initial bundle (#85). -->
+    @defer (on idle) {
+      <app-datepicker-demo />
+    }
+
     <!-- cae-data-grid (#170 interface, #171 TanStack engine — the M2 grid exit criterion). Unlike the
          cae-table above (a thin MatTable wrapper, great for a small roster), the grid renders its OWN
          virtualized DOM over thousands of rows and does all sort/paginate work behind the CaeGridAdapter

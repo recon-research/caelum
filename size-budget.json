@@ -67,6 +67,7 @@
     "caelum-toast": 448,
     "caelum-dialog": 896,
     "caelum-confirm": 3008,
+    "caelum-datepicker": 4224,
     "caelum-file-upload": 8320
   }
 }
