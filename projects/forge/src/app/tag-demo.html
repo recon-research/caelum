@@ -1,0 +1,23 @@
+<cae-card class="forge-tag-card">
+  <h3 class="forge-tag-card__title">Tag</h3>
+  <p class="forge-tag-card__lead">
+    A static status label composed over <code>mat-chip</code> — it labels, it doesn't act (no remove
+    or click affordance, unlike <code>cae-chip</code>). Severity colours read from the existing
+    <code>--cae-color-*</code> tokens (<code>info</code> maps to primary). A leading glyph uses the
+    D-596 <code>[icon]</code> convention.
+  </p>
+
+  <h4 class="forge-tag-subtitle">Severities</h4>
+  <div class="forge-tag-row">
+    @for (s of statuses; track s.label) {
+      <cae-tag [value]="s.label" [severity]="s.severity" [icon]="s.icon" />
+    }
+  </div>
+
+  <h4 class="forge-tag-subtitle">Rounded</h4>
+  <div class="forge-tag-row">
+    @for (s of statuses; track s.label) {
+      <cae-tag [value]="s.label" [severity]="s.severity" [rounded]="true" />
+    }
+  </div>
+</cae-card>

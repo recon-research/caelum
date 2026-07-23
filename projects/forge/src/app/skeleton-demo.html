@@ -1,0 +1,45 @@
+<cae-card class="forge-skeleton-card">
+  <h3 class="forge-skeleton-card__title">Skeleton</h3>
+  <p class="forge-skeleton-card__lead">
+    A token-skinned loading placeholder in the shape of the content that's arriving, so the layout
+    doesn't jump. Skeletons are <code>aria-hidden</code> — the busy <em>region</em> owns
+    <code>aria-busy</code>, which is what a screen reader announces. Toggle the busy state below.
+  </p>
+
+  <cae-button variant="outlined" type="button" (click)="toggle()">
+    {{ loading() ? 'Show content' : 'Simulate loading' }}
+  </cae-button>
+
+  <!-- A media object: avatar + two text lines. aria-busy names the transition for AT. -->
+  <div class="forge-skeleton-media" role="group" [attr.aria-busy]="loading()" aria-label="Profile">
+    @if (loading()) {
+      <cae-skeleton shape="circle" width="3rem" height="3rem" />
+      <div class="forge-skeleton-media__lines">
+        <cae-skeleton width="12rem" height="1rem" />
+        <cae-skeleton width="8rem" height="0.75rem" />
+      </div>
+    } @else {
+      <div class="forge-skeleton-avatar" aria-hidden="true">AL</div>
+      <div class="forge-skeleton-media__lines">
+        <strong>Ada Lovelace</strong>
+        <span class="forge-skeleton-muted">Principal engineer</span>
+      </div>
+    }
+  </div>
+
+  <h4 class="forge-skeleton-subtitle">Animations</h4>
+  <div class="forge-skeleton-anim">
+    <div class="forge-skeleton-anim__cell">
+      <cae-skeleton animation="shimmer" width="100%" height="2.5rem" />
+      <span class="forge-skeleton-muted">shimmer (default)</span>
+    </div>
+    <div class="forge-skeleton-anim__cell">
+      <cae-skeleton animation="pulse" width="100%" height="2.5rem" />
+      <span class="forge-skeleton-muted">pulse</span>
+    </div>
+    <div class="forge-skeleton-anim__cell">
+      <cae-skeleton animation="none" width="100%" height="2.5rem" />
+      <span class="forge-skeleton-muted">none</span>
+    </div>
+  </div>
+</cae-card>

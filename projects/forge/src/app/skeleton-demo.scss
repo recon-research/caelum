@@ -1,0 +1,62 @@
+// Skeleton demo (#662) — per-demo card styles, token-driven (D-04). Only structural literals remain
+// (display/flex/gap/sizes); every colour resolves to a `--cae-*` token.
+
+.forge-skeleton-card {
+  display: block;
+}
+.forge-skeleton-card__title {
+  margin: 0 0 var(--cae-space-2);
+  color: var(--cae-color-on-surface);
+}
+.forge-skeleton-card__lead {
+  margin: 0 0 var(--cae-space-4);
+  color: var(--cae-color-on-surface-variant);
+}
+.forge-skeleton-card__lead code {
+  color: var(--cae-color-primary);
+}
+.forge-skeleton-subtitle {
+  margin: var(--cae-space-5) 0 var(--cae-space-3);
+  color: var(--cae-color-on-surface);
+}
+
+.forge-skeleton-media {
+  display: flex;
+  align-items: center;
+  gap: var(--cae-space-3);
+  margin-block: var(--cae-space-4);
+  min-block-size: 3rem;
+}
+.forge-skeleton-media__lines {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cae-space-2);
+}
+.forge-skeleton-muted {
+  color: var(--cae-color-on-surface-variant);
+  font-size: var(--cae-text-sm);
+}
+
+// The "loaded" avatar stand-in (the demo's own box, not cae-avatar — that's the avatar card).
+.forge-skeleton-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 3rem;
+  block-size: 3rem;
+  border-radius: var(--cae-radius-full);
+  background-color: var(--cae-color-primary);
+  color: var(--cae-color-on-primary);
+  font-weight: var(--cae-weight-medium);
+}
+
+.forge-skeleton-anim {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--cae-space-4);
+}
+.forge-skeleton-anim__cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cae-space-2);
+}

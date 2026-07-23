@@ -116,6 +116,14 @@ export * from 'caelum/scroll-panel';
 // --- Navigation (M3): breadcrumb (#332 — semantic nav + <ol> + aria-current, CSS token separators, no overlay; p-breadcrumb parity) ---
 export * from 'caelum/breadcrumb';
 
+// --- Display cluster (M3, #662): skeleton, avatar (+ group), timeline, tag — token-skinned display
+// primitives with no overlay/focus/form-control machinery (Book 11 §3.1). Each imports no optional
+// peer, so all four ride the barrel (D-652). ---
+export * from 'caelum/skeleton';
+export * from 'caelum/avatar';
+export * from 'caelum/timeline';
+export * from 'caelum/tag';
+
 // --- Drag-drop cluster (M3): order-list (#336 — keyboard-operable drag-reorderable listbox over cdkDropList + LiveAnnouncer; p-orderList parity; first of OrderList/PickList/FileUpload) ---
 export * from 'caelum/order-list';
 

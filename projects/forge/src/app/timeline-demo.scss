@@ -1,0 +1,51 @@
+// Timeline demo (#662) — per-demo card styles, token-driven (D-04). Only structural literals remain
+// (display/flex/gap/sizes); every colour resolves to a `--cae-*` token. The rail (dot/connector) is
+// drawn by the component.
+
+.forge-timeline-card {
+  display: block;
+}
+.forge-timeline-card__title {
+  margin: 0 0 var(--cae-space-2);
+  color: var(--cae-color-on-surface);
+}
+.forge-timeline-card__lead {
+  margin: 0 0 var(--cae-space-4);
+  color: var(--cae-color-on-surface-variant);
+}
+.forge-timeline-card__lead code {
+  color: var(--cae-color-primary);
+}
+.forge-timeline-subtitle {
+  margin: var(--cae-space-5) 0 var(--cae-space-3);
+  color: var(--cae-color-on-surface);
+}
+
+.forge-timeline-date {
+  color: var(--cae-color-on-surface-variant);
+  font-size: var(--cae-text-sm);
+  white-space: nowrap;
+}
+.forge-timeline-title {
+  display: block;
+  color: var(--cae-color-on-surface);
+}
+.forge-timeline-detail {
+  display: block;
+  color: var(--cae-color-on-surface-variant);
+  font-size: var(--cae-text-sm);
+}
+
+// A custom marker glyph replacing the default dot: a small primary disc with an initial.
+.forge-timeline-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+  border-radius: var(--cae-radius-full);
+  background-color: var(--cae-color-primary);
+  color: var(--cae-color-on-primary);
+  font-size: var(--cae-text-sm);
+  font-weight: var(--cae-weight-medium);
+}
