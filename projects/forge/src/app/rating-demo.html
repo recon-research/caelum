@@ -1,0 +1,35 @@
+<cae-card class="forge-rating-card">
+  <h3 class="forge-rating-card__title">Rating</h3>
+  <p class="forge-rating-card__lead">
+    A keyboard-operable star rating that is a real form control — it binds through
+    <code>[formControl]</code> exactly like <code>cae-radio</code>. Arrow keys move and select,
+    <code>Home</code>/<code>End</code> jump to the ends, and the on/off star is a solid-vs-hollow
+    shape (not colour alone). On == amber via <code>--cae-color-warn</code>.
+  </p>
+
+  <h4 class="forge-rating-subtitle">Bound + required</h4>
+  <cae-rating
+    [formControl]="rating"
+    ariaLabel="Overall rating"
+    [allowCancel]="true"
+    [invalid]="rating.invalid && rating.touched"
+  />
+  <p class="forge-rating-status">
+    Value: <strong>{{ rating.value ?? '—' }}</strong>
+    @if (rating.invalid && rating.touched) {
+      <span class="forge-rating-error"> · a rating is required</span>
+    }
+  </p>
+
+  <h4 class="forge-rating-subtitle">Read-only</h4>
+  <cae-rating [ngModel]="4" [readonly]="true" ariaLabel="Average rating (read-only)" />
+
+  <h4 class="forge-rating-subtitle">Disabled</h4>
+  <cae-rating [ngModel]="3" [disabled]="true" ariaLabel="Rating (disabled)" />
+
+  <h4 class="forge-rating-subtitle">Custom icon template (D-596)</h4>
+  <cae-rating [ngModel]="2" ariaLabel="Rating with custom dots" [iconTemplate]="dot" />
+  <ng-template #dot let-star>
+    <span class="forge-rating-dot" [class.forge-rating-dot--on]="star.active"></span>
+  </ng-template>
+</cae-card>

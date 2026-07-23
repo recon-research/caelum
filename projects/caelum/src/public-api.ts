@@ -124,6 +124,11 @@ export * from 'caelum/avatar';
 export * from 'caelum/timeline';
 export * from 'caelum/tag';
 
+// --- Rating (M3-exit, #663): keyboard-operable star rating as a NG_VALUE_ACCESSOR form control
+// (the cae-radio selection-control family, #47). Depends on caelum/icon (first-party, not an
+// optional peer), so it rides the barrel per D-652.
+export * from 'caelum/rating';
+
 // --- Drag-drop cluster (M3): order-list (#336 — keyboard-operable drag-reorderable listbox over cdkDropList + LiveAnnouncer; p-orderList parity; first of OrderList/PickList/FileUpload) ---
 export * from 'caelum/order-list';
 
