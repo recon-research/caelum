@@ -37,6 +37,7 @@
     "caelum-timeline": 2240,
     "caelum-tag": 1792,
     "caelum-rating": 3520,
+    "caelum-popover": 2816,
     "caelum-order-list": 7808,
     "caelum-pick-list": 8960,
     "caelum-tree-select": 8896,
@@ -64,7 +65,7 @@
     "caelum-grid-tanstack": 1408,
     "caelum-toast": 448,
     "caelum-dialog": 896,
-    "caelum-confirm": 1408,
+    "caelum-confirm": 3008,
     "caelum-file-upload": 8320
   }
 }

@@ -98,6 +98,7 @@ import { AvatarDemo } from './avatar-demo';
 import { TimelineDemo } from './timeline-demo';
 import { TagDemo } from './tag-demo';
 import { RatingDemo } from './rating-demo';
+import { PopoverDemo } from './popover-demo';
 
 type ThemeMode = 'auto' | 'light' | 'dark';
 /** Layout density (#411). `comfortable` = the default arm; `compact` tightens both
@@ -186,6 +187,7 @@ const SWATCHES: ReadonlyArray<{ token: string; label: string }> = [
     TimelineDemo,
     TagDemo,
     RatingDemo,
+    PopoverDemo,
     CaeTextarea,
     CaeToggleButton,
     CaeTooltip,

@@ -1,0 +1,26 @@
+<cae-card class="forge-popover-card">
+  <h3 class="forge-popover-card__title">Popover &amp; confirm-popup</h3>
+  <p class="forge-popover-card__lead">
+    Two anchored overlays from the command-overlay family — positioned next to their trigger, not
+    the centered <code>cae-dialog</code>. Focus is trapped while open and returns to the trigger on
+    every close path, including outside-click.
+  </p>
+
+  <h4 class="forge-popover-subtitle">Popover</h4>
+  <button class="forge-popover-trigger" type="button" [caePopoverTriggerFor]="help">
+    Formatting help
+  </button>
+  <cae-popover #help="caePopover" ariaLabel="Formatting help">
+    <h4 class="forge-popover-panel__title">Markdown</h4>
+    <p class="forge-popover-panel__body">
+      Wrap text in <code>**bold**</code> or <code>_italics_</code>. Press <kbd>Esc</kbd> or click
+      outside to dismiss.
+    </p>
+  </cae-popover>
+
+  <h4 class="forge-popover-subtitle">Confirm-popup</h4>
+  <cae-button variant="filled" (click)="onDelete($event)">Delete item</cae-button>
+  <p class="forge-popover-status">
+    Last action: <strong>{{ lastResult() }}</strong>
+  </p>
+</cae-card>

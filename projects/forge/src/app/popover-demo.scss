@@ -1,0 +1,56 @@
+// Popover + confirm-popup demo (#664) — per-demo card styles, token-driven (D-04). The overlay panels
+// draw their own surface/elevation from the components' tokens; only the card + trigger chrome is here.
+
+.forge-popover-card {
+  display: block;
+}
+.forge-popover-card__title {
+  margin: 0 0 var(--cae-space-2);
+  color: var(--cae-color-on-surface);
+}
+.forge-popover-card__lead {
+  margin: 0 0 var(--cae-space-4);
+  color: var(--cae-color-on-surface-variant);
+}
+.forge-popover-card__lead code,
+.forge-popover-panel__body code {
+  color: var(--cae-color-primary);
+}
+.forge-popover-subtitle {
+  margin: var(--cae-space-4) 0 var(--cae-space-2);
+  color: var(--cae-color-on-surface);
+}
+
+// The popover trigger — a plain focusable button (so focus restores cleanly on close), styled from tokens.
+.forge-popover-trigger {
+  min-block-size: var(--cae-target-min);
+  padding: var(--cae-space-2) var(--cae-space-4);
+  border: 1px solid var(--cae-color-border);
+  border-radius: var(--cae-radius-md);
+  background: var(--cae-surface-base);
+  color: var(--cae-color-on-surface);
+  font: inherit;
+  cursor: pointer;
+}
+.forge-popover-trigger:hover {
+  border-color: var(--cae-color-primary);
+}
+.forge-popover-trigger:focus-visible {
+  outline: var(--cae-focus-ring);
+  outline-offset: var(--cae-focus-ring-offset);
+}
+
+// Projected popover content.
+.forge-popover-panel__title {
+  margin: 0 0 var(--cae-space-2);
+  color: var(--cae-color-on-surface);
+}
+.forge-popover-panel__body {
+  margin: 0;
+  color: var(--cae-color-on-surface-variant);
+}
+
+.forge-popover-status {
+  margin: var(--cae-space-4) 0 0;
+  color: var(--cae-color-on-surface-variant);
+}
