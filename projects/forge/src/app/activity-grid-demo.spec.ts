@@ -2,7 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 
 import { CaeDataGrid } from 'caelum/grid';
-import { TanStackGridAdapter } from 'caelum/grid';
+import { TanStackGridAdapter } from 'caelum/grid-tanstack';
 
 import { ActivityGridDemo } from './activity-grid-demo';
 

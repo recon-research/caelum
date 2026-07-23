@@ -1,15 +1,18 @@
 #!/usr/bin/env node
 // Grid engine tree-shake isolation gate (issue #182, from the #171 leakage-lens review).
 //
-// THE CONTRACT (D-03 adapter isolation, at the BUNDLE level): `caelum/grid` ships a
-// single fesm (dist/caelum/fesm2022/caelum-grid.mjs) that exports BOTH the dependency-free
-// providers (provideCaelumGrid — client default; provideServerGrid — lazy/remote) AND the
-// TanStack opt-in (provideTanStackGrid, which statically imports @tanstack/table-core, the
-// ONE engine dependency). A client-default (or server) consumer must ship ZERO engine bytes
-// — the engine reaches their app ONLY when they opt into provideTanStackGrid. That holds
-// purely by downstream tree-shaking: both `caelum` and `@tanstack/table-core` declare
-// sideEffects:false, so a bundler drops the unreferenced TanStackGridAdapter and its
-// table-core import from an app that never names provideTanStackGrid.
+// THE CONTRACT (D-03 adapter isolation, at the BUNDLE level): `caelum/grid`'s fesm
+// (dist/caelum/fesm2022/caelum-grid.mjs) exports the dependency-free providers
+// (provideCaelumGrid — client default; provideServerGrid — lazy/remote) and the CaeDataGrid
+// component. The TanStack opt-in (provideTanStackGrid, which statically imports
+// @tanstack/table-core, the ONE engine dependency) lives in its OWN fesm
+// (caelum-grid-tanstack.mjs) since #652/D-652 — split into a barrel-exempt entry point so the
+// optional peer never rides the primary barrel. A client-default (or server) consumer must
+// ship ZERO engine bytes — post-split that holds STRUCTURALLY (the adapter is not in
+// caelum-grid.mjs's graph at all), stronger than the pre-#652 reliance on downstream
+// tree-shaking. This gate still earns its keep: it catches an accidental engine re-import
+// BACK into caelum/grid (e.g. a client path statically referencing the adapter) — which would
+// silently ship ~14 kB of engine to every client-default consumer with every other gate green.
 //
 // THE EVIDENCE GAP this closes (#171 review): Forge proves the DEFERRAL path (table-core in
 // a lazy chunk, absent from eager main); size-budget.json guards the FESM size; but nothing
@@ -39,6 +42,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const distDir = process.argv[2] || join(ROOT, 'dist', 'caelum');
 const gridFesm = join(distDir, 'fesm2022', 'caelum-grid.mjs');
+const gridTanstackFesm = join(distDir, 'fesm2022', 'caelum-grid-tanstack.mjs');
 
 function fail(msg) {
   console.error(`\x1b[31mFATAL\x1b[0m ${msg}`);
@@ -46,6 +50,7 @@ function fail(msg) {
 }
 
 if (!existsSync(gridFesm)) fail(`no ${gridFesm} — run \`ng build caelum\` first`);
+if (!existsSync(gridTanstackFesm)) fail(`no ${gridTanstackFesm} — run \`ng build caelum\` first`);
 
 const require = createRequire(join(ROOT, 'package.json'));
 let esbuild;
@@ -71,36 +76,42 @@ const ENGINE_SYMBOLS = [
   'createTable',
 ];
 
-// Each probe imports a realistic public surface a consumer would use. `expectEngine` encodes
-// the contract: only the TanStack opt-in may pull the engine in; the two dependency-free
-// providers must not. CaeDataGrid is paired in every probe (it is always imported alongside a
-// provider) so a static reference from the component to any adapter is exercised too.
+// Each probe imports a realistic public surface a consumer would use, from the fesm that
+// actually exports it. `expectEngine` encodes the contract: only the TanStack opt-in (in the
+// separate caelum-grid-tanstack.mjs) may pull the engine in; caelum/grid's dependency-free
+// providers must not. CaeDataGrid is paired in the caelum/grid probes (it is always imported
+// alongside a provider) so a static reference from the component to any adapter is exercised
+// too; the tanstack probe imports from caelum-grid-tanstack.mjs, where CaeDataGrid does not
+// live (it stays in caelum/grid), so it names only the opt-in provider.
 const PROBES = [
   {
     label: 'client-default (provideCaelumGrid)',
+    fesm: gridFesm,
     imports: ['provideCaelumGrid', 'CaeDataGrid'],
     expectEngine: false,
   },
   {
     label: 'server (provideServerGrid)',
+    fesm: gridFesm,
     imports: ['provideServerGrid', 'CaeDataGrid'],
     expectEngine: false,
   },
   {
     label: 'tanstack opt-in (provideTanStackGrid)',
-    imports: ['provideTanStackGrid', 'CaeDataGrid'],
+    fesm: gridTanstackFesm,
+    imports: ['provideTanStackGrid'],
     expectEngine: true,
   },
 ];
 
 const tmp = mkdtempSync(join(tmpdir(), 'cae-treeshake-'));
 
-async function measure({ label, imports }) {
+async function measure({ label, fesm, imports }) {
   const entry = join(tmp, `${label.replace(/[^a-z]+/gi, '-')}.mjs`);
   // console.log marks the imports as used so esbuild does not drop the whole entry as dead.
   writeFileSync(
     entry,
-    `import { ${imports.join(', ')} } from ${JSON.stringify(gridFesm)};\nconsole.log(${imports.join(', ')});\n`,
+    `import { ${imports.join(', ')} } from ${JSON.stringify(fesm)};\nconsole.log(${imports.join(', ')});\n`,
   );
   let result;
   try {

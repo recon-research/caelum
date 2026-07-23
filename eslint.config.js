@@ -91,13 +91,15 @@ module.exports = tseslint.config(
     // Adapter carve-outs (D-03) — each pinned to its EXACT single file path (Book 12
     // §3.3, the "one explicit file path" rule), scoped to the LIBRARY source (never
     // Forge or a consumer app) so a same-named file elsewhere is not auto-exempted.
-    // The base fence above still covers all of `projects/caelum/grid/**`, so a stray
-    // `@tanstack/*` import in the neutral port `grid-adapter.ts` (hyphen) or anywhere
-    // else in the entry point still fails lint — ONLY `grid.adapter.ts` (dot) is exempt.
-    // grid.adapter.ts is real (issue #171); charts/editor stay forward-declared (they
-    // match nothing until D-14/D-09 land, then get pinned to their own flat paths).
+    // The base fence covers all library source, so a stray `@tanstack/*` import in the
+    // neutral port `grid-adapter.ts` (hyphen) or anywhere in `caelum/grid` still fails
+    // lint — ONLY `grid.adapter.ts` (dot) is exempt. That file now lives in its own
+    // barrel-exempt entry point `caelum/grid-tanstack` (#652, D-652), so the peer stays
+    // out of a bare `import from 'caelum'`; the exempt path moved with it. grid.adapter.ts
+    // is real (issue #171); charts/editor stay forward-declared (they match nothing until
+    // D-14/D-09 land, then get pinned to their own flat paths).
     files: [
-      'projects/caelum/grid/grid.adapter.ts',
+      'projects/caelum/grid-tanstack/grid.adapter.ts',
       'projects/caelum/charts/charts.adapter.ts',
       'projects/caelum/editor/editor.adapter.ts',
     ],

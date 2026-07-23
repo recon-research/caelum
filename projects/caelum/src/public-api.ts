@@ -137,7 +137,10 @@ export * from 'caelum/context-menu';
 // --- Composed (M1): tab-menu (#164 — horizontal tab-styled navigation/selection bar over mat-tab-nav-bar) ---
 export * from 'caelum/tab-menu';
 
-// --- Adapters (M2): grid (#170 — neutral engine-swappable data grid; client default here, TanStack behind the same port in #171) ---
+// --- Adapters (M2): grid (#170 — neutral engine-swappable data grid; client + server defaults are
+// engine-free, so this rides the barrel). The TanStack engine (#171) lives in the barrel-EXEMPT
+// entry point `caelum/grid-tanstack` (#652, D-652) and is imported directly — its optional @tanstack
+// peer must not be dragged into a bare `import from 'caelum'` (guard: check-lib-exports.mjs). ---
 export * from 'caelum/grid';
 
 // --- Services: toast (#96, D-15 — the first service passthrough, over MatSnackBar) ---

@@ -1,14 +1,13 @@
 import { ComponentRef } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import { CaeDataGrid } from './data-grid';
-import { CAE_GRID } from './grid-adapter';
+import { CAE_GRID, CaeDataGrid, type CaeColumn, type CaeSort } from 'caelum/grid';
+
 import {
   TanStackGridAdapter,
   provideTanStackGrid,
   tanStackGridAdapterFactory,
 } from './grid.adapter';
-import { CaeColumn, CaeSort } from './grid-types';
 
 interface Row {
   name: string;
