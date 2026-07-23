@@ -1,0 +1,57 @@
+<cae-card
+  class="forge-datepicker-card"
+  title="Date picker"
+  subtitle="cae-datepicker — p-datepicker parity (single · range · inline)"
+>
+  <p class="forge-panel__lead">
+    A value-bearing overlay over Material's datepicker family, behind one
+    <code>ControlValueAccessor</code> whose value shape follows <code>[selectionMode]</code>: a
+    <code>Date</code> for single, a <code>{{ '{' }} start, end {{ '}' }}</code> for range, and (in a
+    later stage) a <code>Date[]</code> for multiple. Type a date or open the calendar; both honour
+    <code>[minDate]</code>/<code>[maxDate]</code>.
+  </p>
+
+  <div class="forge-datepicker-card__grid">
+    <div class="forge-datepicker-card__field">
+      <cae-datepicker
+        label="Due date"
+        hint="Pick a single date"
+        [minDate]="min"
+        [maxDate]="max"
+        [ngModel]="single()"
+        (ngModelChange)="single.set($event)"
+      />
+      <p class="forge-datepicker-card__status" aria-live="polite">
+        Selected: <strong>{{ fmt(single()) }}</strong>
+      </p>
+    </div>
+
+    <div class="forge-datepicker-card__field">
+      <cae-datepicker
+        selectionMode="range"
+        label="Reporting period"
+        hint="Pick a start and end"
+        startAriaLabel="Start date"
+        endAriaLabel="End date"
+        [ngModel]="range()"
+        (ngModelChange)="range.set($event)"
+      />
+      <p class="forge-datepicker-card__status" aria-live="polite">
+        Range: <strong>{{ fmtRange(range()) }}</strong>
+      </p>
+    </div>
+
+    <div class="forge-datepicker-card__field">
+      <p class="forge-datepicker-card__inline-label">Inline calendar</p>
+      <cae-datepicker
+        [inline]="true"
+        ariaLabel="Inline date"
+        [ngModel]="inlineDate()"
+        (ngModelChange)="inlineDate.set($event)"
+      />
+      <p class="forge-datepicker-card__status" aria-live="polite">
+        Selected: <strong>{{ fmt(inlineDate()) }}</strong>
+      </p>
+    </div>
+  </div>
+</cae-card>

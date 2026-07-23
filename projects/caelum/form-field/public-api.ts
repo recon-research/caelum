@@ -194,6 +194,18 @@ export abstract class CaeFormFieldControlBase<T = string> implements ControlValu
     this.updateInnerErrorState();
   }
 
+  /**
+   * The `AbstractControl` bound to the outer `<cae-*>` (or `null` before it resolves / when template-
+   * driven only). Exposed for subclasses that must read or *augment* the outer control — e.g. a
+   * control that adds its own structural validators to it (`cae-datepicker`'s min/max/filter). A
+   * self-injected-`NgControl` control (this base) cannot provide `NG_VALIDATORS` — that would form a
+   * DI cycle (`NG_VALIDATORS` → control → self-`NgControl` → the same directive) — so the only way to
+   * validate on the outer control is to attach the validator to this instance imperatively.
+   */
+  protected boundControl(): AbstractControl | null {
+    return this.ngControl?.control ?? null;
+  }
+
   /** The mapped messages for the bound control's currently-active errors, in error order. */
   protected activeErrorMessages(): string[] {
     const errors = this.ngControl?.control?.errors;

@@ -154,6 +154,11 @@ export * from 'caelum/tab-menu';
 // Composes cae-accordion + the CaeMenuItem model, imports no optional peer, so it rides the barrel per D-652) ---
 export * from 'caelum/panel-menu';
 
+// --- Form controls (M3): datepicker (#666 — p-datepicker parity, value-bearing overlay over Material's
+// datepicker family; one CVA whose shape follows [selectionMode]. Imports only @angular/material +
+// caelum/form-field (no optional peer), so it rides the barrel per D-652. Stage 1 = single/range/inline) ---
+export * from 'caelum/datepicker';
+
 // --- Adapters (M2): grid (#170 — neutral engine-swappable data grid; client + server defaults are
 // engine-free, so this rides the barrel). The TanStack engine (#171) lives in the barrel-EXEMPT
 // entry point `caelum/grid-tanstack` (#652, D-652) and is imported directly — its optional @tanstack
