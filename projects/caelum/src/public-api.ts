@@ -150,6 +150,10 @@ export * from 'caelum/context-menu';
 // --- Composed (M1): tab-menu (#164 — horizontal tab-styled navigation/selection bar over mat-tab-nav-bar) ---
 export * from 'caelum/tab-menu';
 
+// --- Composed (M3): panel-menu (#665 — accordion-composed nested navigation menu; p-panelmenu parity.
+// Composes cae-accordion + the CaeMenuItem model, imports no optional peer, so it rides the barrel per D-652) ---
+export * from 'caelum/panel-menu';
+
 // --- Adapters (M2): grid (#170 — neutral engine-swappable data grid; client + server defaults are
 // engine-free, so this rides the barrel). The TanStack engine (#171) lives in the barrel-EXEMPT
 // entry point `caelum/grid-tanstack` (#652, D-652) and is imported directly — its optional @tanstack

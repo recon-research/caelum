@@ -31,6 +31,22 @@ export interface CaeMenuItem {
    * array renders the same icons wherever it is bound.
    */
   icon?: string;
+  /**
+   * Optional link target. A leaf carrying a `url` is a *navigation* item: `cae-panel-menu`
+   * renders it as a real focusable `<a href>` (data-driven nav) rather than a command button.
+   * The flat, action-oriented menus (`cae-menu`, `cae-split-button`, `cae-menubar`,
+   * `cae-context-menu`) ignore it today and always emit `(itemSelect)`; first-class
+   * `routerLink`-driven navigation is the optional-peer follow-up shape from D-595 (#150/#165).
+   */
+  url?: string;
+  /**
+   * Optional nested children — the item is a *branch*. `cae-panel-menu` recurses on these,
+   * rendering a branch as a collapsible section whose body holds this list (any depth). The
+   * flat menus render only the top level and ignore nested `items` (they have no submenu model
+   * — tiered submenus are the `cae-tiered-menu` follow-up, #150). Self-referential so one model
+   * describes a whole tree, matching PrimeNG's universal `MenuItem` shape.
+   */
+  items?: readonly CaeMenuItem[];
 }
 
 /**

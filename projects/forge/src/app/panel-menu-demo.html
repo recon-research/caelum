@@ -1,0 +1,23 @@
+<cae-card
+  class="forge-panel-menu-card"
+  title="Navigation menu"
+  subtitle="cae-panel-menu — accordion-composed nested nav (p-panelmenu parity)"
+>
+  <p class="forge-panel__lead">
+    A data-driven <code>[model]</code> of nested items: branches are collapsible sections (composed
+    from <code>cae-accordion</code>), command leaves are buttons, and the Documentation item carries
+    a <code>url</code> so it renders as a real link. Arrow keys rove a section's items; Enter/Space
+    activate.
+  </p>
+  <div class="forge-panel-menu-card__menu">
+    <cae-panel-menu
+      [model]="nav"
+      ariaLabel="Workspace navigation"
+      [multiple]="true"
+      (itemSelect)="run($event)"
+    />
+  </div>
+  <p class="forge-panel-menu-card__status" aria-live="polite">
+    Last command: <strong>{{ lastCommand() }}</strong>
+  </p>
+</cae-card>

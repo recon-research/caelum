@@ -849,6 +849,14 @@
       <app-popover-demo />
     }
 
+    <!-- cae-panel-menu (#665, M3-exit set) — the accordion-composed nested navigation menu (p-panelmenu
+         parity): a data-driven [model] of nested items rendered as collapsible cae-accordion sections
+         with link + command leaves. Its own @defer'd component keeps the composed-accordion bytes off
+         the eager initial bundle (#85), like the other below-the-fold demos. -->
+    @defer (on idle) {
+      <app-panel-menu-demo />
+    }
+
     <!-- cae-data-grid (#170 interface, #171 TanStack engine — the M2 grid exit criterion). Unlike the
          cae-table above (a thin MatTable wrapper, great for a small roster), the grid renders its OWN
          virtualized DOM over thousands of rows and does all sort/paginate work behind the CaeGridAdapter
