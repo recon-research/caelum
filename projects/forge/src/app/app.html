@@ -841,6 +841,14 @@
       <app-rating-demo />
     }
 
+    <!-- cae-popover + cae-confirm-popup (#664, M3-exit set) — the command-overlay pair (p-popover /
+         p-confirmPopup): anchored, trigger-relative overlays over the CDK Overlay + cdkTrapFocus family
+         (NOT the centered cae-dialog). Its own @defer'd component keeps the overlay bytes off the eager
+         initial bundle (#85/#142), like the other below-the-fold demos. -->
+    @defer (on idle) {
+      <app-popover-demo />
+    }
+
     <!-- cae-data-grid (#170 interface, #171 TanStack engine — the M2 grid exit criterion). Unlike the
          cae-table above (a thin MatTable wrapper, great for a small roster), the grid renders its OWN
          virtualized DOM over thousands of rows and does all sort/paginate work behind the CaeGridAdapter

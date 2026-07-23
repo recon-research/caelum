@@ -162,5 +162,11 @@ export * from 'caelum/toast';
 // --- Services: dialog (#100, D-15 — service passthrough over MatDialog + content directives) ---
 export * from 'caelum/dialog';
 
-// --- Services: confirm (#101, D-15 — the confirm half, role=alertdialog built ON cae-dialog) ---
+// --- Services: confirm (#101, D-15 — the confirm half, role=alertdialog built ON cae-dialog;
+// extended in #664 with confirmAt() — a second, anchored presentation of the SAME service) ---
 export * from 'caelum/confirm';
+
+// --- Popover (M3-exit, #664): anchored, trigger-relative content overlay over CDK Overlay + cdkTrapFocus
+// (p-popover, was p-overlaypanel; Book 09 §3.2 — the OTHER overlay family from centered cae-dialog).
+// Imports no optional peer, so it rides the barrel per D-652. ---
+export * from 'caelum/popover';
