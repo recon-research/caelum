@@ -1,0 +1,41 @@
+// Rating demo (#663) — per-demo card styles, token-driven (D-04). Only structural literals
+// remain (display/flex/gap); the stars draw their own on/off colour from the component's tokens.
+
+.forge-rating-card {
+  display: block;
+}
+.forge-rating-card__title {
+  margin: 0 0 var(--cae-space-2);
+  color: var(--cae-color-on-surface);
+}
+.forge-rating-card__lead {
+  margin: 0 0 var(--cae-space-4);
+  color: var(--cae-color-on-surface-variant);
+}
+.forge-rating-card__lead code {
+  color: var(--cae-color-primary);
+}
+.forge-rating-subtitle {
+  margin: var(--cae-space-4) 0 var(--cae-space-2);
+  color: var(--cae-color-on-surface);
+}
+.forge-rating-status {
+  margin: var(--cae-space-2) 0 0;
+  color: var(--cae-color-on-surface-variant);
+}
+.forge-rating-error {
+  color: var(--cae-color-error);
+}
+
+// Custom [iconTemplate] demo: a hollow dot that fills when the per-star `active` flag is set.
+.forge-rating-dot {
+  display: inline-block;
+  inline-size: 0.75em;
+  block-size: 0.75em;
+  border: 2px solid var(--cae-color-on-surface-variant);
+  border-radius: var(--cae-radius-full);
+}
+.forge-rating-dot--on {
+  border-color: var(--cae-color-primary);
+  background: var(--cae-color-primary);
+}

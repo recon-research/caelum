@@ -833,6 +833,14 @@
       <app-tag-demo />
     }
 
+    <!-- cae-rating (#663, M3-exit set) — a keyboard-operable star rating that is a real form control
+         (NG_VALUE_ACCESSOR, the cae-radio family): role=radiogroup + role=radio per star, roving
+         tabindex, arrows move+select, on/off a solid-vs-hollow shape (not colour alone). Its own
+         @defer'd component keeps it off the eager initial bundle (#85/#142), like the other demos. -->
+    @defer (on idle) {
+      <app-rating-demo />
+    }
+
     <!-- cae-data-grid (#170 interface, #171 TanStack engine — the M2 grid exit criterion). Unlike the
          cae-table above (a thin MatTable wrapper, great for a small roster), the grid renders its OWN
          virtualized DOM over thousands of rows and does all sort/paginate work behind the CaeGridAdapter

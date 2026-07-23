@@ -97,6 +97,7 @@ import { SkeletonDemo } from './skeleton-demo';
 import { AvatarDemo } from './avatar-demo';
 import { TimelineDemo } from './timeline-demo';
 import { TagDemo } from './tag-demo';
+import { RatingDemo } from './rating-demo';
 
 type ThemeMode = 'auto' | 'light' | 'dark';
 /** Layout density (#411). `comfortable` = the default arm; `compact` tightens both
@@ -184,6 +185,7 @@ const SWATCHES: ReadonlyArray<{ token: string; label: string }> = [
     AvatarDemo,
     TimelineDemo,
     TagDemo,
+    RatingDemo,
     CaeTextarea,
     CaeToggleButton,
     CaeTooltip,
