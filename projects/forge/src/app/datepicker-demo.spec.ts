@@ -14,14 +14,18 @@ describe('DatepickerDemo', () => {
     await fixture.whenStable();
   });
 
-  it('renders the three stage-1 pickers (single input, range input, inline calendar)', () => {
+  it('renders every mode (single, range, multiple, datetime, time, month, inline)', () => {
     const el = fixture.nativeElement as HTMLElement;
     expect(el.querySelector('.forge-datepicker-card')).toBeTruthy();
-    expect(el.querySelectorAll('cae-datepicker').length).toBe(3);
-    // Only the inline picker renders a calendar in place; the others render inputs.
+    expect(el.querySelectorAll('cae-datepicker').length).toBe(7);
+    // Only the inline picker renders a calendar in place; the others render inputs / closed overlays.
     expect(el.querySelectorAll('mat-calendar').length).toBe(1);
     expect(el.querySelector('input[matInput]')).toBeTruthy();
     expect(el.querySelector('mat-date-range-input')).toBeTruthy();
+    // Multiple mode shows a read-only trigger with its own calendar-open button.
+    expect(el.querySelector('.cae-datepicker__multi-toggle')).toBeTruthy();
+    // Datetime + time modes bring the Material timepicker toggle into the demo.
+    expect(el.querySelector('mat-timepicker-toggle')).toBeTruthy();
   });
 
   it('round-trips an inline calendar selection into the aria-live status (end-to-end CVA)', async () => {

@@ -1,14 +1,14 @@
 <cae-card
   class="forge-datepicker-card"
   title="Date picker"
-  subtitle="cae-datepicker — p-datepicker parity (single · range · inline)"
+  subtitle="cae-datepicker — p-datepicker parity (single · range · multiple · time · month · inline)"
 >
   <p class="forge-panel__lead">
     A value-bearing overlay over Material's datepicker family, behind one
     <code>ControlValueAccessor</code> whose value shape follows <code>[selectionMode]</code>: a
-    <code>Date</code> for single, a <code>{{ '{' }} start, end {{ '}' }}</code> for range, and (in a
-    later stage) a <code>Date[]</code> for multiple. Type a date or open the calendar; both honour
-    <code>[minDate]</code>/<code>[maxDate]</code>.
+    <code>Date</code> for single, a <code>{{ '{' }} start, end {{ '}' }}</code> for range, and a
+    <code>Date[]</code> for multiple. Time/datetime and month/year are single-value modifiers. Every
+    field honours <code>[minDate]</code>/<code>[maxDate]</code> by keyboard and click.
   </p>
 
   <div class="forge-datepicker-card__grid">
@@ -38,6 +38,60 @@
       />
       <p class="forge-datepicker-card__status" aria-live="polite">
         Range: <strong>{{ fmtRange(range()) }}</strong>
+      </p>
+    </div>
+
+    <div class="forge-datepicker-card__field">
+      <cae-datepicker
+        selectionMode="multiple"
+        label="Blackout dates"
+        hint="Toggle several days"
+        [showToday]="true"
+        [showClear]="true"
+        [ngModel]="multi()"
+        (ngModelChange)="multi.set($event)"
+      />
+      <p class="forge-datepicker-card__status" aria-live="polite">
+        Dates: <strong>{{ fmtList(multi()) }}</strong>
+      </p>
+    </div>
+
+    <div class="forge-datepicker-card__field">
+      <cae-datepicker
+        [showTime]="true"
+        label="Starts at"
+        hint="Date and time"
+        [ngModel]="dateTime()"
+        (ngModelChange)="dateTime.set($event)"
+      />
+      <p class="forge-datepicker-card__status" aria-live="polite">
+        When: <strong>{{ fmtDateTime(dateTime()) }}</strong>
+      </p>
+    </div>
+
+    <div class="forge-datepicker-card__field">
+      <cae-datepicker
+        [timeOnly]="true"
+        label="Reminder time"
+        ariaLabel="Reminder time"
+        [ngModel]="time()"
+        (ngModelChange)="time.set($event)"
+      />
+      <p class="forge-datepicker-card__status" aria-live="polite">
+        Time: <strong>{{ fmtTime(time()) }}</strong>
+      </p>
+    </div>
+
+    <div class="forge-datepicker-card__field">
+      <cae-datepicker
+        view="month"
+        label="Billing month"
+        hint="Pick a whole month"
+        [ngModel]="month()"
+        (ngModelChange)="month.set($event)"
+      />
+      <p class="forge-datepicker-card__status" aria-live="polite">
+        Month: <strong>{{ fmtMonth(month()) }}</strong>
       </p>
     </div>
 

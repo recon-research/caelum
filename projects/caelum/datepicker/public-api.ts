@@ -7,6 +7,9 @@
  * `caelum` barrel** and is re-exported there (this split is additive).
  */
 export * from './datepicker';
+// The one genuine build — a public, reusable multi-date `MatDateSelectionModel` (Material ships only
+// single/range), so a consumer can drive their own multi-select `<mat-calendar>` (#666).
+export { CaeMultiDateSelectionModel } from './multi-date-selection-model';
 // Re-exported so a consumer importing only `caelum/datepicker` can type the inherited
 // `appearance` / `errorMessages` inputs without reaching back to the barrel.
 export type { CaeErrorMessages, CaeFormFieldAppearance } from 'caelum/shared';

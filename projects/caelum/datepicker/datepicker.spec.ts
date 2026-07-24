@@ -1,5 +1,5 @@
 import { OverlayContainer } from '@angular/cdk/overlay';
-import { Component } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import { By } from '@angular/platform-browser';
@@ -478,5 +478,547 @@ describe('CaeDatepicker — min/max validator wiring (keyboard path)', () => {
     await fixture.whenStable();
     fixture.detectChanges();
     expect(host.ctrl.hasError('matDatepickerMin')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Stage 2 (#666): multiple, time/datetime, month/year granularity, today/clear.
+// ---------------------------------------------------------------------------------------------
+
+/** Shared teardown for the appended suites (matches the stage-1 blocks). */
+function teardown(fixture: ComponentFixture<CaeDatepicker>): void {
+  fixture.destroy();
+  fixture.nativeElement.remove();
+  TestBed.inject(OverlayContainer).ngOnDestroy();
+}
+
+describe('CaeDatepicker — multiple mode (inline)', () => {
+  let component: CaeDatepicker;
+  let fixture: ComponentFixture<CaeDatepicker>;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({ imports: [CaeDatepicker] }).compileComponents();
+    fixture = TestBed.createComponent(CaeDatepicker);
+    component = fixture.componentInstance;
+    fixture.componentRef.setInput('selectionMode', 'multiple');
+    fixture.componentRef.setInput('inline', true);
+    fixture.componentRef.setInput('startAt', jan(1)); // show January 2026
+    document.body.appendChild(fixture.nativeElement);
+    fixture.detectChanges();
+    await fixture.whenStable();
+  });
+
+  afterEach(() => teardown(fixture));
+
+  const calendar = (): MatCalendar<Date> =>
+    fixture.debugElement.query(By.directive(MatCalendar)).componentInstance;
+
+  it('renders a bare inline calendar (no form-field, no overlay trigger)', () => {
+    expect(
+      fixture.nativeElement.querySelector('.cae-datepicker__inline mat-calendar'),
+    ).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('mat-form-field')).toBeNull();
+  });
+
+  it('toggles clicked days into a sorted Date[] through the CVA (add / remove / order-stable)', () => {
+    let latest: unknown;
+    component.registerOnChange((v) => (latest = v));
+    calendar().selectedChange.emit(jan(20));
+    expect(latest).toEqual([jan(20)]);
+    calendar().selectedChange.emit(jan(5)); // added out of order → sorted
+    expect(latest).toEqual([jan(5), jan(20)]);
+    calendar().selectedChange.emit(jan(20)); // re-click an already-selected day → removed
+    expect(latest).toEqual([jan(5)]);
+  });
+
+  it('marks every selected day with the multi-selected cell class ([dateClass])', async () => {
+    component.writeValue([jan(5), jan(12)]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    // The class lands on the `.mat-calendar-body-cell` button (Material's `[class]="item.cssClasses"`).
+    expect(document.querySelectorAll('.cae-datepicker__multi-selected').length).toBe(2);
+  });
+
+  it('updates the highlight LIVE as days are toggled (dateClass is not reactive in MatCalendar)', async () => {
+    // Regression guard for the afterRenderEffect re-init: MatCalendar ignores dateClass changes, so
+    // without the forced re-render a toggled day would never visibly highlight.
+    const marked = (): number =>
+      document.querySelectorAll('.cae-datepicker__multi-selected').length;
+    calendar().selectedChange.emit(jan(9));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(marked()).toBe(1);
+    calendar().selectedChange.emit(jan(9)); // toggle the same day off
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(marked()).toBe(0);
+  });
+});
+
+describe('CaeDatepicker — multiple mode (overlay)', () => {
+  let component: CaeDatepicker;
+  let fixture: ComponentFixture<CaeDatepicker>;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({ imports: [CaeDatepicker] }).compileComponents();
+    fixture = TestBed.createComponent(CaeDatepicker);
+    component = fixture.componentInstance;
+    fixture.componentRef.setInput('selectionMode', 'multiple');
+    fixture.componentRef.setInput('startAt', jan(1));
+    document.body.appendChild(fixture.nativeElement);
+    fixture.detectChanges();
+    await fixture.whenStable();
+  });
+
+  afterEach(() => teardown(fixture));
+
+  const toggleBtn = (): HTMLButtonElement =>
+    fixture.nativeElement.querySelector('.cae-datepicker__multi-toggle');
+
+  it('renders a read-only trigger input + a calendar toggle; the calendar is closed until opened', () => {
+    const input = fixture.nativeElement.querySelector('input[matInput]') as HTMLInputElement;
+    expect(input.readOnly).toBe(true);
+    expect(toggleBtn()).toBeTruthy();
+    expect(document.querySelector('.cae-datepicker__panel')).toBeNull();
+  });
+
+  it('opens a CDK-overlay calendar on toggle (aria-expanded reflects the state)', async () => {
+    const input = fixture.nativeElement.querySelector('input[matInput]') as HTMLInputElement;
+    expect(input.getAttribute('aria-expanded')).toBe('false');
+    toggleBtn().click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const panel = document.querySelector('.cae-datepicker__panel');
+    expect(panel).toBeTruthy();
+    expect(panel?.querySelector('mat-calendar')).toBeTruthy();
+    expect(panel?.getAttribute('role')).toBe('dialog');
+    expect(input.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('shows the formatted selection in the read-only trigger (multiDisplay)', () => {
+    component.writeValue([jan(5), jan(12)]);
+    fixture.detectChanges();
+    const input = fixture.nativeElement.querySelector('input[matInput]') as HTMLInputElement;
+    expect(input.value).toContain('Jan 5');
+    expect(input.value).toContain('Jan 12');
+  });
+
+  it('closes the overlay on a backdrop click', async () => {
+    toggleBtn().click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(document.querySelector('.cae-datepicker__panel')).toBeTruthy();
+    (document.querySelector('.cdk-overlay-backdrop') as HTMLElement).click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(document.querySelector('.cae-datepicker__panel')).toBeNull();
+  });
+
+  it('does not open when disabled (the isDisabled guard, not the native attr, blocks it)', async () => {
+    component.setDisabledState(true);
+    fixture.detectChanges();
+    // triggerEventHandler invokes the bound handler directly, bypassing the DOM's disabled-click
+    // masking — so the isDisabled() guard in toggleMulti is what's proven, not the native [disabled].
+    fixture.debugElement
+      .query(By.css('.cae-datepicker__multi-toggle'))
+      .triggerEventHandler('click', new MouseEvent('click'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(document.querySelector('.cae-datepicker__panel')).toBeNull();
+  });
+
+  it('opens from the keyboard (ArrowDown / Enter / Space) and the toggle closes it', () => {
+    const inputDebug = fixture.debugElement.query(By.css('input[matInput]'));
+    const inputEl = fixture.nativeElement.querySelector('input[matInput]') as HTMLElement;
+    for (const key of ['ArrowDown', 'Enter', ' ']) {
+      inputDebug.triggerEventHandler('keydown', new KeyboardEvent('keydown', { key }));
+      fixture.detectChanges();
+      expect(inputEl.getAttribute('aria-expanded')).toBe('true');
+      toggleBtn().click(); // toggle closed for the next key
+      fixture.detectChanges();
+      expect(inputEl.getAttribute('aria-expanded')).toBe('false');
+    }
+  });
+
+  it('ignores a non-activating key on the trigger', () => {
+    const inputEl = fixture.nativeElement.querySelector('input[matInput]') as HTMLElement;
+    fixture.debugElement
+      .query(By.css('input[matInput]'))
+      .triggerEventHandler('keydown', new KeyboardEvent('keydown', { key: 'a' }));
+    fixture.detectChanges();
+    expect(inputEl.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('closes the open overlay on Escape (the panel keydown handler)', async () => {
+    toggleBtn().click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const panel = document.querySelector('.cae-datepicker__panel') as HTMLElement;
+    expect(panel).toBeTruthy();
+    panel.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(document.querySelector('.cae-datepicker__panel')).toBeNull();
+  });
+
+  it('closes the overlay when the control is disabled while open', async () => {
+    toggleBtn().click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(document.querySelector('.cae-datepicker__panel')).toBeTruthy();
+    component.setDisabledState(true); // the reactive close effect must dismiss the live dialog
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(document.querySelector('.cae-datepicker__panel')).toBeNull();
+  });
+
+  it('highlights the selection inside the open overlay and keeps it live on change', async () => {
+    toggleBtn().click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    component.writeValue([jan(5)]); // change the set while the overlay is open
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(
+      document.querySelectorAll('.cae-datepicker__panel .cae-datepicker__multi-selected').length,
+    ).toBe(1);
+  });
+});
+
+describe('CaeDatepicker — time-only + datetime', () => {
+  let component: CaeDatepicker;
+  let fixture: ComponentFixture<CaeDatepicker>;
+
+  async function make(inputs: Record<string, unknown>): Promise<void> {
+    await TestBed.configureTestingModule({ imports: [CaeDatepicker] }).compileComponents();
+    fixture = TestBed.createComponent(CaeDatepicker);
+    component = fixture.componentInstance;
+    for (const [k, v] of Object.entries(inputs)) fixture.componentRef.setInput(k, v);
+    document.body.appendChild(fixture.nativeElement);
+    fixture.detectChanges();
+    await fixture.whenStable();
+  }
+
+  afterEach(() => teardown(fixture));
+
+  const mk = (h: number, m: number): Date => new Date(2026, 5, 1, h, m); // an arbitrary day; only H:M read
+
+  it('time-only: renders a timepicker input + toggle and commits the picked time as a Date', async () => {
+    await make({ timeOnly: true });
+    expect(fixture.nativeElement.querySelector('mat-timepicker-toggle')).toBeTruthy();
+    let latest: unknown;
+    component.registerOnChange((v) => (latest = v));
+    const t = mk(14, 30);
+    fixture.debugElement.query(By.css('input[matInput]')).triggerEventHandler('valueChange', t);
+    expect(latest).toBe(t);
+  });
+
+  it('datetime: renders a date input AND a companion time input', async () => {
+    await make({ showTime: true });
+    expect(fixture.nativeElement.querySelectorAll('mat-form-field').length).toBe(2);
+    expect(fixture.nativeElement.querySelector('.cae-datepicker__time')).toBeTruthy();
+    expect(fixture.debugElement.query(By.directive(MatDatepickerInput))).toBeTruthy();
+  });
+
+  it('datetime: combines a date then a time into one Date value', async () => {
+    await make({ showTime: true });
+    let latest: Date | null = null;
+    component.registerOnChange((v) => (latest = v as Date | null));
+    fixture.debugElement
+      .query(By.directive(MatDatepickerInput))
+      .triggerEventHandler('dateChange', { value: jan(15) });
+    expect(latest).toEqual(new Date(2026, 0, 15, 0, 0, 0, 0)); // date only → midnight
+    fixture.detectChanges();
+    fixture.debugElement
+      .query(By.css('.cae-datepicker__time input[matInput]'))
+      .triggerEventHandler('valueChange', mk(9, 45));
+    expect(latest).toEqual(new Date(2026, 0, 15, 9, 45, 0, 0)); // date kept, time applied
+  });
+
+  it('datetime: setting the time BEFORE the date preserves the time (regression: onSingleChange)', async () => {
+    await make({ showTime: true });
+    let latest: Date | null = null;
+    component.registerOnChange((v) => (latest = v as Date | null));
+    fixture.debugElement
+      .query(By.css('.cae-datepicker__time input[matInput]'))
+      .triggerEventHandler('valueChange', mk(8, 15)); // time first, no date yet
+    fixture.detectChanges();
+    fixture.debugElement
+      .query(By.directive(MatDatepickerInput))
+      .triggerEventHandler('dateChange', { value: jan(15) });
+    const v = latest as unknown as Date;
+    expect([v.getFullYear(), v.getMonth(), v.getDate(), v.getHours(), v.getMinutes()]).toEqual([
+      2026, 0, 15, 8, 15,
+    ]);
+  });
+});
+
+describe('CaeDatepicker — month/year granularity', () => {
+  let component: CaeDatepicker;
+  let fixture: ComponentFixture<CaeDatepicker>;
+
+  async function make(view: 'date' | 'month' | 'year'): Promise<void> {
+    await TestBed.configureTestingModule({ imports: [CaeDatepicker] }).compileComponents();
+    fixture = TestBed.createComponent(CaeDatepicker);
+    component = fixture.componentInstance;
+    fixture.componentRef.setInput('view', view);
+    document.body.appendChild(fixture.nativeElement);
+    fixture.detectChanges();
+    await fixture.whenStable();
+  }
+
+  afterEach(() => teardown(fixture));
+
+  const picker = (): MatDatepicker<Date> =>
+    fixture.debugElement.query(By.directive(MatDatepicker)).injector.get(MatDatepicker);
+  const emit = (event: 'monthSelected' | 'yearSelected', date: Date): void =>
+    fixture.debugElement.query(By.css('mat-datepicker')).triggerEventHandler(event, date);
+
+  it('month view: opens on the year panel', async () => {
+    await make('month');
+    expect(picker().startView).toBe('year');
+  });
+
+  it('month view: commits the FIRST of the picked month on monthSelected', async () => {
+    await make('month');
+    let latest: unknown;
+    component.registerOnChange((v) => (latest = v));
+    emit('monthSelected', new Date(2026, 4, 20)); // May 20
+    expect(latest).toEqual(new Date(2026, 4, 1)); // → May 1
+  });
+
+  it('year view: opens on the multi-year panel and commits Jan 1 on yearSelected', async () => {
+    await make('year');
+    expect(picker().startView).toBe('multi-year');
+    let latest: unknown;
+    component.registerOnChange((v) => (latest = v));
+    emit('yearSelected', new Date(2026, 7, 15)); // Aug 15 2026
+    expect(latest).toEqual(new Date(2026, 0, 1)); // → Jan 1 2026
+  });
+
+  it('date view (default): monthSelected does NOT commit (lets the calendar drill to days)', async () => {
+    await make('date');
+    let latest: unknown = 'unset';
+    component.registerOnChange((v) => (latest = v));
+    emit('monthSelected', new Date(2026, 4, 20));
+    expect(latest).toBe('unset');
+  });
+});
+
+describe('CaeDatepicker — today / clear affordances', () => {
+  let component: CaeDatepicker;
+  let fixture: ComponentFixture<CaeDatepicker>;
+
+  async function make(inputs: Record<string, unknown>): Promise<void> {
+    await TestBed.configureTestingModule({ imports: [CaeDatepicker] }).compileComponents();
+    fixture = TestBed.createComponent(CaeDatepicker);
+    component = fixture.componentInstance;
+    for (const [k, v] of Object.entries(inputs)) fixture.componentRef.setInput(k, v);
+    document.body.appendChild(fixture.nativeElement);
+    fixture.detectChanges();
+    await fixture.whenStable();
+  }
+
+  afterEach(() => teardown(fixture));
+
+  const actionButton = (label: string): HTMLButtonElement | undefined =>
+    Array.from(fixture.nativeElement.querySelectorAll('.cae-datepicker__actions button')).find(
+      (b) => (b as HTMLElement).textContent?.trim() === label,
+    ) as HTMLButtonElement | undefined;
+
+  it('renders Today and Clear buttons only when enabled', async () => {
+    await make({ showToday: true, showClear: true });
+    expect(fixture.nativeElement.querySelectorAll('.cae-datepicker__actions button').length).toBe(
+      2,
+    );
+    expect(actionButton('Today')).toBeTruthy();
+    expect(actionButton('Clear')).toBeTruthy();
+  });
+
+  it('renders no actions bar when neither is enabled', async () => {
+    await make({});
+    expect(fixture.nativeElement.querySelector('.cae-datepicker__actions')).toBeNull();
+  });
+
+  it('Today commits today (single mode)', async () => {
+    await make({ showToday: true });
+    let latest: Date | null = null;
+    component.registerOnChange((v) => (latest = v as Date | null));
+    actionButton('Today')!.click();
+    fixture.detectChanges();
+    const now = new Date();
+    const v = latest as unknown as Date;
+    expect([v.getFullYear(), v.getMonth(), v.getDate()]).toEqual([
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+    ]);
+  });
+
+  it('Clear empties a single value to null', async () => {
+    await make({ showClear: true });
+    component.writeValue(jan(10));
+    let latest: unknown = 'unset';
+    component.registerOnChange((v) => (latest = v));
+    actionButton('Clear')!.click();
+    fixture.detectChanges();
+    expect(latest).toBeNull();
+  });
+
+  it('Clear empties a multiple value to [] (not null — array stays an array)', async () => {
+    await make({ selectionMode: 'multiple', inline: true, showClear: true });
+    component.writeValue([jan(5), jan(9)]);
+    let latest: unknown = 'unset';
+    component.registerOnChange((v) => (latest = v));
+    actionButton('Clear')!.click();
+    fixture.detectChanges();
+    expect(latest).toEqual([]);
+  });
+});
+
+describe('CaeDatepicker — stage 2 review coverage', () => {
+  let component: CaeDatepicker;
+  let fixture: ComponentFixture<CaeDatepicker>;
+
+  async function make(inputs: Record<string, unknown>): Promise<void> {
+    await TestBed.configureTestingModule({ imports: [CaeDatepicker] }).compileComponents();
+    fixture = TestBed.createComponent(CaeDatepicker);
+    component = fixture.componentInstance;
+    for (const [k, v] of Object.entries(inputs)) fixture.componentRef.setInput(k, v);
+    document.body.appendChild(fixture.nativeElement);
+    fixture.detectChanges();
+    await fixture.whenStable();
+  }
+
+  afterEach(() => teardown(fixture));
+
+  const actionButton = (label: string): HTMLButtonElement =>
+    Array.from(fixture.nativeElement.querySelectorAll('.cae-datepicker__actions button')).find(
+      (b) => (b as HTMLElement).textContent?.trim() === label,
+    ) as HTMLButtonElement;
+
+  it('validate() flags an out-of-range element inside a multiple Date[] value', async () => {
+    await make({ selectionMode: 'multiple', minDate: jan(5) });
+    expect(component.validate(new FormControl([jan(1), jan(10)]))).toEqual({
+      matDatepickerMin: { min: jan(5), actual: jan(1) },
+    });
+    expect(component.validate(new FormControl([jan(6), jan(10)]))).toBeNull();
+  });
+
+  it('validate() ignores an invalid (NaN) Date instead of falsely passing min/max', async () => {
+    await make({ minDate: jan(5) });
+    // compareDate(NaN, min) is NaN, so NaN < 0 is false — a naive datesOf would let it through unflagged.
+    // The guard drops it, so validate() is null (no phantom min error on a corrupt date).
+    expect(component.validate(new FormControl(new Date(NaN)))).toBeNull();
+  });
+
+  it('writeValue round-trips a datetime into the date input (write half)', async () => {
+    await make({ showTime: true });
+    const withTime = new Date(2026, 0, 15, 9, 45);
+    component.writeValue(withTime);
+    fixture.detectChanges();
+    const dateInput = fixture.debugElement
+      .query(By.directive(MatDatepickerInput))
+      .injector.get(MatDatepickerInput) as MatDatepickerInput<Date>;
+    expect(dateInput.value).toEqual(withTime);
+  });
+
+  it('writeValue round-trips a month value into the input (write half)', async () => {
+    await make({ view: 'month' });
+    component.writeValue(new Date(2026, 4, 1));
+    fixture.detectChanges();
+    const input = fixture.debugElement
+      .query(By.directive(MatDatepickerInput))
+      .injector.get(MatDatepickerInput) as MatDatepickerInput<Date>;
+    expect(input.value).toEqual(new Date(2026, 4, 1));
+  });
+
+  it('selectToday toggles today into a multiple set', async () => {
+    await make({ selectionMode: 'multiple', inline: true, showToday: true });
+    let latest: unknown;
+    component.registerOnChange((v) => (latest = v));
+    actionButton('Today').click();
+    fixture.detectChanges();
+    const now = new Date();
+    const picked = (latest as Date[])[0];
+    expect((latest as Date[]).length).toBe(1);
+    expect([picked.getFullYear(), picked.getMonth(), picked.getDate()]).toEqual([
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+    ]);
+  });
+
+  it('selectToday commits the first of THIS month in month view', async () => {
+    await make({ view: 'month', showToday: true });
+    let latest: Date | null = null;
+    component.registerOnChange((v) => (latest = v as Date | null));
+    actionButton('Today').click();
+    fixture.detectChanges();
+    const now = new Date();
+    const v = latest as unknown as Date;
+    expect([v.getFullYear(), v.getMonth(), v.getDate()]).toEqual([
+      now.getFullYear(),
+      now.getMonth(),
+      1,
+    ]);
+  });
+
+  it('Clear empties a datetime to null', async () => {
+    await make({ showTime: true, showClear: true });
+    component.writeValue(new Date(2026, 0, 15, 9, 45));
+    let latest: unknown = 'unset';
+    component.registerOnChange((v) => (latest = v));
+    actionButton('Clear').click();
+    fixture.detectChanges();
+    expect(latest).toBeNull();
+  });
+});
+
+// Proves the [formControl] swap re-validates the control it detaches from — without it, a stale
+// matDatepickerMin error would linger on the swapped-away control (adversarial review, Lens B).
+@Component({
+  imports: [CaeDatepicker, ReactiveFormsModule],
+  template: ` <cae-datepicker [formControl]="current()" [minDate]="min" /> `,
+})
+class DatepickerSwapHost {
+  readonly min = new Date(2026, 0, 10);
+  readonly a = new FormControl<Date | null>(new Date(2026, 0, 1)); // before min → invalid
+  readonly b = new FormControl<Date | null>(new Date(2026, 0, 20)); // valid
+  // A signal so the swap propagates through CD (a plain property mutation wouldn't dirty the host).
+  readonly current = signal<FormControl<Date | null>>(this.a);
+}
+
+describe('CaeDatepicker — [formControl] swap re-validation', () => {
+  let fixture: ComponentFixture<DatepickerSwapHost>;
+  let host: DatepickerSwapHost;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({ imports: [DatepickerSwapHost] }).compileComponents();
+    fixture = TestBed.createComponent(DatepickerSwapHost);
+    host = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+  });
+
+  it('clears the stale validator error on the control it swaps away from', async () => {
+    expect(host.a.hasError('matDatepickerMin')).toBe(true); // A is invalid while bound
+    // The swap is detected in cae-datepicker's ngDoCheck. In a real app the swap's writeValue dirties
+    // the value signal and CD (hence ngDoCheck) follows; the OnPush child isn't reliably re-checked by
+    // a bare host detectChanges in the test, so drive the public lifecycle hook directly to exercise
+    // the swap logic deterministically (the same detach + re-validate a real CD would run).
+    const cae = fixture.debugElement.query(By.directive(CaeDatepicker))
+      .componentInstance as CaeDatepicker;
+    host.current.set(host.b); // swap [formControl] to B (a signal, so CD propagates the new control)
+    fixture.detectChanges(); // rebinds the FormControlDirective a -> b
+    cae.ngDoCheck(); // detach + re-validate A, attach B
+    expect(host.a.hasError('matDatepickerMin')).toBe(false); // A re-validated on detach — no phantom
+    expect(host.a.validator).toBeNull(); // and the validator itself is gone from A
+    expect(host.b.hasError('matDatepickerMin')).toBe(false); // B is in range
   });
 });

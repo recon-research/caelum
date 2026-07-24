@@ -44,8 +44,8 @@ Below, the **current** selector is listed with the historical alias noted. Verif
 | `p-togglebutton`, `p-selectbutton` | `cae-toggle-button` / `cae-select-button` | `MatButtonToggle` (group) | Direct | 11 |
 | `p-slider` | `cae-slider` | `MatSlider` | Direct | 07 |
 | `p-listbox` | `cae-listbox` | `mat-selection-list` (or `cdkListbox`) | Direct | 06 |
-| `p-datepicker` (was `p-calendar`) | `cae-datepicker` | `MatDatepicker` + `mat-date-range-input` | Compose | 09 |
-| — (time-of-day) | `cae-time-picker` | `matInput` mask (no first-party time picker — R2 scar) | Build-S | 08 |
+| `p-datepicker` (was `p-calendar`) | `cae-datepicker` | `MatDatepicker` + `mat-date-range-input` + `MatTimepicker` (time/datetime) + a custom multi-date `MatDateSelectionModel` (the one build) | Compose | 09 |
+| — (time-of-day) | `cae-datepicker [timeOnly]` / `[showTime]` | `MatTimepicker` — **first-party since Material 22**, so the "no time picker" R2 scar is closed (#666); no `matInput` mask, no standalone `cae-time-picker` needed | Compose | 09 |
 | `p-inputnumber` | `cae-input-number` | `matInput` format/parse; `number\|null` CVA component | Build-S | 08 |
 | `p-inputmask` | `cae-input-mask` | fixed-template mask **component** (extends `CaeFormFieldControlBase`); **unmasked**-string CVA, live re-mask + caret discipline + paste-spread, no foreign mask lib | Build-S | 08 |
 | `p-inputotp` | `cae-input-otp` | N segmented native inputs; one `string` CVA (NG_VALUE_ACCESSOR), roving tabindex | Build-S | 08 |
