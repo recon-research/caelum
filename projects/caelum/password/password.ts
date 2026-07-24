@@ -241,7 +241,10 @@ function estimateStrength(password: string): number {
        aria-hidden glyph, which owes only the 3:1 graphical bound (WCAG 1.4.11). */
     .cae-password__capslock {
       color: var(--cae-color-on-surface-variant);
-      font-size: 0.875em;
+      /* Secondary TEXT ⇒ the type-scale token, not a relative em (PATTERNS §11, #509). Numerically
+         identical here (--cae-text-sm is 0.875rem), but it stops the hint re-scaling if a consumer
+         sets a font-size on the field wrapper — the glyph beside it keeps its em on purpose. */
+      font-size: var(--cae-text-sm);
     }
     .cae-password__capslock--on {
       display: flex;
