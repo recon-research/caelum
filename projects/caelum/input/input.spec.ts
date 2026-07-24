@@ -5,6 +5,7 @@ import { MatInput } from '@angular/material/input';
 import { By } from '@angular/platform-browser';
 
 import { CaeInput } from './input';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 describe('CaeInput', () => {
   let component: CaeInput;
@@ -21,6 +22,18 @@ describe('CaeInput', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  it('has no axe violations (named via ariaLabel)', async () => {
+    // Name the control via ariaLabel (a direct attribute on the inner <input>) rather than the
+    // visible [label]: mat-form-field's MDC floating label is flagged "hidden" by axe in jsdom
+    // because its visibility is CSS-driven and no stylesheet is applied in a unit test. The
+    // visible-label path + its contrast are covered by the real-browser harness (#240). This
+    // still exercises the component's full DOM for invalid ARIA, duplicate ids, and the rest.
+    fixture.componentRef.setInput('ariaLabel', 'Email address');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    await expectNoA11yViolations(fixture.nativeElement);
   });
 
   it('reflects a value written by the form model (writeValue)', () => {
