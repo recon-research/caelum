@@ -298,7 +298,7 @@ describe('CaeBreadcrumb', () => {
     });
   });
 
-  describe('nameless-crumb dev-warn (#384)', () => {
+  describe('nameless-crumb dev-warn (#384 interactive / #532 current page)', () => {
     let warn: ReturnType<typeof vi.spyOn>;
     beforeEach(() => {
       warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -325,17 +325,38 @@ describe('CaeBreadcrumb', () => {
       expect(warn).not.toHaveBeenCalled();
     });
 
-    it('does NOT warn for a nameless current page, a disabled crumb, or inert url-less text', () => {
-      // The last crumb is the current page (inert text) even with a url — a nameless one is a different,
-      // non-4.1.2 concern, out of #384's scope (teeth for the isCurrent guard).
+    it('warns for a nameless CURRENT page under 2.4.8, not the 4.1.2 message (#532)', () => {
+      // The last crumb is the current page (inert text) even with a url, so this is NOT a nameless-
+      // control failure — it renders `<span aria-current="page"></span>`, a "you are here" marker with
+      // no name, which defeats the function a breadcrumb serves (WCAG 2.4.8 Location).
       render({
         items: [
           { label: 'Root', url: '/' },
           { label: '', url: '/current' },
         ],
       });
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('current-page crumb'));
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('2.4.8'));
+      // Teeth for "two criteria, two messages": the location warn must not borrow the 4.1.2 wording,
+      // which would misattribute the failure (the whole reason #532 is a parallel branch, not a fold-in).
+      expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('4.1.2'));
+      expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('interactive'));
+    });
+
+    it('warns once per offending crumb when both an interactive and the current crumb are nameless', () => {
+      // Independent branches over the same trail — teeth against one shadowing the other.
+      render({
+        items: [{ label: '', url: '/x' }, { label: '' }],
+      });
+      expect(warn).toHaveBeenCalledTimes(2);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('interactive link crumb'));
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('current-page crumb'));
+    });
+
+    it('does NOT warn for a disabled crumb or inert url-less text', () => {
       // A disabled crumb (even with a url) is inert, and a url-less non-command crumb is inert text
-      // (teeth for the !disabled and interactive guards).
+      // (teeth for the !disabled and interactive guards). The last crumb is named, so 2.4.8 is satisfied.
       render({
         items: [{ label: '', url: '/x', disabled: true }, { label: '' }, { label: 'End' }],
       });

@@ -309,19 +309,34 @@ export class CaeBreadcrumb {
     // and neither the current page nor `disabled` — with an empty/whitespace `label` renders as a
     // NAMELESS control (axe link-name / button-name, WCAG 4.1.2). The interface documents "give it a
     // non-empty label"; this warns when the data violates it. Reactive to crumbs(), so it re-checks
-    // whenever the trail changes; the whole effect is gated out of production by isDevMode(). The current
-    // page (last crumb) is inert text — a nameless one is a different, non-4.1.2 concern, out of scope.
+    // whenever the trail changes; the whole effect is gated out of production by isDevMode().
+    //
+    // The CURRENT page (last crumb) gets its own parallel branch (#532) carrying a deliberately DISTINCT
+    // message. It is inert text, so a nameless one is NOT a 4.1.2 failure — but it renders
+    // `<span aria-current="page"></span>`, a "you are here" marker with no name, defeating the very
+    // function a breadcrumb serves (WCAG 2.4.8 Location). Two criteria, two messages: folding them into
+    // one would misattribute the failure. The branches are mutually exclusive by construction
+    // (`isInteractive` requires `!isCurrent`); a crumb that is neither — inert ancestor text, or a
+    // `disabled` one — is deliberately not warned, having no control and no location semantics.
     if (isDevMode()) {
       effect(() => {
         const crumbs = this.crumbs();
         crumbs.forEach((crumb, i) => {
           const isCurrent = i === crumbs.length - 1;
           const isInteractive = !isCurrent && !crumb.disabled && (!!crumb.url || !!crumb.command);
-          if (isInteractive && !crumb.label?.trim()) {
+          const nameless = !crumb.label?.trim();
+          if (isInteractive && nameless) {
             console.warn(
               `cae-breadcrumb: an interactive ${crumb.url ? 'link' : 'command'} crumb has an empty ` +
                 `label, so it renders as a nameless control (axe link-name/button-name, WCAG 4.1.2). ` +
                 'Give every interactive crumb a non-empty `label`.',
+            );
+          } else if (isCurrent && nameless) {
+            console.warn(
+              'cae-breadcrumb: the current-page crumb has an empty label, so the trail ends in a ' +
+                'nameless `aria-current="page"` marker — a screen reader cannot announce where the user ' +
+                'is, which is the function a breadcrumb exists to serve (WCAG 2.4.8 Location). Give the ' +
+                'last crumb a non-empty `label`.',
             );
           }
         });
