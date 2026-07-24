@@ -345,10 +345,16 @@ describe('CaeCarousel', () => {
   // every test above — which drives from the active dot — passes under either rule and can't catch this.
   it('steps arrows from the ACTIVE page, not the focused dot (#560)', async () => {
     document.body.appendChild(fixture.nativeElement);
-    indicators()[0].focus();
 
-    carousel.page.set(1); // external page change; focus stays on the now-stale dot 0
+    // Seed the stale pairing PAGE-FIRST, then focus. #571 re-syncs focus onto the active dot whenever
+    // the page changes *while a dot already holds focus*, so the old seeding (focus, then page.set)
+    // now self-heals and would leave this test vacuous. Changing the page while focus is still outside
+    // the group trips #571's anti-steal gate (no dot focused ⇒ no-op), and focusing a dot afterwards
+    // moves neither clampedPage() nor indicatorBtns(), so nothing re-triggers the re-sync. The stale
+    // pairing therefore survives, which is exactly the state this #560 rule defends against.
+    carousel.page.set(1);
     await sync();
+    indicators()[0].focus(); // now stale: active page 1, focus on dot 0
     expect(document.activeElement).toBe(indicators()[0]);
     expect(activePage()).toBe(1);
 
@@ -364,15 +370,10 @@ describe('CaeCarousel', () => {
   it('re-syncs focus to the active dot when an arrow clamps at a bound (#560)', async () => {
     document.body.appendChild(fixture.nativeElement);
 
-    // Reach the stale-focus state the way a user actually can: keyboard to the last page (focus
-    // follows), THEN an external write moves the page back. Seeding it by focusing a tabindex="-1"
-    // dot directly would test a state no route produces — clicking a dot calls goTo() and syncs it.
-    indicators()[0].focus();
-    key(indicators()[0], 'End');
-    expect(carousel.page()).toBe(4);
-
-    carousel.page.set(0); // external change; focus stays stranded on dot 4
-    await sync();
+    // Seeded page-first for the reason given in the test above (#571 would otherwise heal the pairing):
+    // the page is already 0, so simply focusing the stale dot 4 establishes the state without any page
+    // change to re-trigger the re-sync.
+    indicators()[4].focus();
     expect(document.activeElement).toBe(indicators()[4]);
     expect(activePage()).toBe(0);
 
@@ -382,6 +383,59 @@ describe('CaeCarousel', () => {
     // goTo no-ops, but focus must still come home to the real tab stop: dot 0 holds tabindex 0 and
     // dot 4 holds -1, so leaving focus on 4 keeps the user on an element Tab order excludes.
     expect(document.activeElement).toBe(indicators()[0]);
+  });
+
+  // #571 — stop the focus/page divergence persisting at all: when the page changes while a dot already
+  // holds focus, focus follows the new active dot, so the roving tab stop and document.activeElement
+  // never disagree.
+  it('re-syncs focus to the new active dot when the page changes under focus (#571)', async () => {
+    document.body.appendChild(fixture.nativeElement);
+    indicators()[3].focus();
+    key(indicators()[3], 'Home'); // land on dot 0 legitimately, focus following
+    expect(document.activeElement).toBe(indicators()[0]);
+
+    carousel.page.set(3); // consumer [(page)] write — route sync / data refresh
+    await sync();
+
+    expect(activePage()).toBe(3);
+    expect(document.activeElement).toBe(indicators()[3]); // focus followed, no divergence
+    // The tab stop and focus must be the SAME element, else Tab-out/Shift-Tab-back re-enters elsewhere.
+    expect(indicators()[3].getAttribute('tabindex')).toBe('0');
+  });
+
+  it('does NOT move focus when the page changes with focus outside the dots (#571 anti-steal)', async () => {
+    document.body.appendChild(fixture.nativeElement);
+    nextBtn()!.focus();
+    expect(document.activeElement).toBe(nextBtn());
+
+    carousel.page.set(2); // background page change while the user is on the nav button
+    await sync();
+
+    // WCAG 3.2.5: a consumer-driven model write must never yank focus across the page. The gate keys on
+    // "an indicator already owns focus", so anything else — nav button, slide content, elsewhere — is inert.
+    expect(activePage()).toBe(2);
+    expect(document.activeElement).toBe(nextBtn());
+  });
+
+  it('no longer moves focus against the arrow direction after an external write (#571)', async () => {
+    // The ticket's worked example, which #560 alone left broken: focus dot 3, consumer writes page 0,
+    // press ArrowRight. Pre-#571 focus jumped 3 → 1, i.e. two dots LEFT on a right-arrow press.
+    document.body.appendChild(fixture.nativeElement);
+    indicators()[0].focus();
+    key(indicators()[0], 'End');
+    key(indicators()[4], 'ArrowLeft'); // walk to dot 3 with focus following
+    expect(document.activeElement).toBe(indicators()[3]);
+    expect(carousel.page()).toBe(3);
+
+    carousel.page.set(0);
+    await sync();
+    expect(document.activeElement).toBe(indicators()[0]); // re-synced, so the anchors agree
+
+    key(indicators()[0], 'ArrowRight');
+
+    expect(carousel.page()).toBe(1);
+    // Forward, one step — never backwards past the pressed dot.
+    expect(document.activeElement).toBe(indicators()[1]);
   });
 
   it('indicator arrows wrap under [circular], matching the nav buttons (#573)', async () => {

@@ -6,6 +6,7 @@ import {
   Component,
   ElementRef,
   PLATFORM_ID,
+  afterRenderEffect,
   booleanAttribute,
   computed,
   contentChild,
@@ -678,6 +679,34 @@ export class CaeCarousel<T = unknown> {
     effect(() => {
       const clamped = this.clampedPage();
       if (this.value().length > 0 && this.page() !== clamped) this.page.set(clamped);
+    });
+
+    // Re-sync DOM focus onto the active dot when the page changes while focus is ALREADY inside the
+    // indicator group (#571). The roving tab stop is `tabindex=0` on the active dot, so a consumer
+    // `[(page)]` write (route sync, data refresh, "back to start") moves the tab stop while DOM focus
+    // stays put — and the two anchors diverge. Left alone, the next arrow press steps the page correctly
+    // (#560 made relative moves step from clampedPage()) but drags FOCUS against the pressed direction,
+    // and a Tab-out / Shift-Tab-back re-enters the group at the wrong dot.
+    //
+    // Anti-steal gate (WCAG 3.2.5): move focus ONLY when an indicator already owns it. Focused on a nav
+    // button, on slide content, or anywhere else on the page ⇒ no-op, so a background page change can
+    // never yank focus across the document. Following the active dot when focus is already in the group
+    // is not a context change — the roving tab stop MUST equal document.activeElement or the group's
+    // keyboard model breaks.
+    //
+    // afterRenderEffect, not effect: the new tabindex/aria-current must be in the DOM before focus moves,
+    // and indicatorBtns() must reflect the re-stamped set. Inherently browser-only (render hooks do not
+    // run under SSR, cf. #602), so it needs no isBrowser guard.
+    //
+    // Self-quieting: the keyboard path already calls focusIndicator(resolved) alongside goTo(resolved),
+    // so by the time this runs the two coincide and it returns at the `focused === page` check.
+    afterRenderEffect(() => {
+      const page = this.clampedPage();
+      const btns = this.indicatorBtns();
+      const active = document.activeElement;
+      const focused = btns.findIndex((b) => b.nativeElement === active);
+      if (focused === -1 || focused === page) return; // not ours to move, or already coincident
+      this.focusIndicator(page);
     });
 
     // Dev-only guidance: a carousel with no accessible name, or slides with no item template.
