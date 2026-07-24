@@ -2,6 +2,7 @@ import { Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MatChip } from '@angular/material/chips';
 import { By } from '@angular/platform-browser';
+import { afterEach, beforeEach, vi } from 'vitest';
 
 import { CaeTag } from './tag';
 import { expectNoA11yViolations } from '../testing/a11y';
@@ -51,10 +52,18 @@ describe('CaeTag', () => {
   });
 
   it('applies the severity class', async () => {
-    await make(() => set('severity', 'success'));
+    // Labelled deliberately: a severity tag with no text is the #669 footgun and would dev-warn,
+    // which is noise here — this case is about the class, which is independent of the label.
+    await make(() => {
+      set('severity', 'success');
+      set('value', 'Active');
+    });
     expect(chip()!.classList.contains('cae-tag--success')).toBe(true);
 
-    await make(() => set('severity', 'danger'));
+    await make(() => {
+      set('severity', 'danger');
+      set('value', 'Blocked');
+    });
     expect(chip()!.classList.contains('cae-tag--danger')).toBe(true);
   });
 
@@ -82,8 +91,42 @@ describe('CaeTag', () => {
   it('maps info severity to the primary token (no --cae-color-info exists)', async () => {
     // Documents the #662 decision: info is a real severity, colour-mapped to primary. The class must
     // apply so the stylesheet's primary-token mapping takes effect.
-    await make(() => set('severity', 'info'));
+    await make(() => {
+      set('severity', 'info');
+      set('value', 'Note');
+    });
     expect(chip()!.classList.contains('cae-tag--info')).toBe(true);
+  });
+
+  describe('severity-without-text dev-warn (#669)', () => {
+    let warn: ReturnType<typeof vi.spyOn>;
+    beforeEach(() => {
+      warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    });
+    afterEach(() => warn.mockRestore());
+
+    it('warns when [severity] is set with no label text at all', async () => {
+      await make(() => set('severity', 'danger'));
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('1.4.1'));
+      // The message names the offending severity, so the tag is findable in a busy page.
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('danger'));
+    });
+
+    it('does NOT warn when [severity] carries a [value]', async () => {
+      await make(() => {
+        set('severity', 'warn');
+        set('value', 'Overdue');
+      });
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('does NOT warn for a textless NEUTRAL tag (no severity ⇒ no colour-only claim)', async () => {
+      // Teeth for the `if (!this.severity()) return` guard: colour-only is only a 1.4.1 concern when
+      // a severity colour is actually conveying the status.
+      await make();
+      expect(warn).not.toHaveBeenCalled();
+    });
   });
 });
 
@@ -123,5 +166,33 @@ describe('CaeTag (templates & projection)', () => {
   it('renders projected <ng-content> when no [value] is given', () => {
     const second = root.querySelectorAll('cae-tag')[1];
     expect(second.querySelector('.cae-tag__label')?.textContent?.trim()).toBe('Projected');
+  });
+});
+
+@Component({
+  imports: [CaeTag],
+  template: `<cae-tag severity="danger">{{ text }}</cae-tag>`,
+})
+class ProjectedSeverityTagHost {
+  text = 'Overdue';
+}
+
+describe('CaeTag severity + projected content (#669 false-positive guard)', () => {
+  let warn: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+  afterEach(() => warn.mockRestore());
+
+  it('does NOT warn when the label comes from projected content instead of [value]', async () => {
+    // THE reason the guard reads the rendered label instead of the [value] input. This markup is
+    // valid and fully accessible, and an input-only check would have flagged it — a guard firing on
+    // the correct path, the exact failure mode removed elsewhere in #642.
+    const fixture = TestBed.createComponent(ProjectedSeverityTagHost);
+    await fixture.whenStable();
+    const root = fixture.nativeElement as HTMLElement;
+    // Prove the scan target is genuinely populated, so "no warn" can't pass vacuously.
+    expect(root.querySelector('.cae-tag__label')?.textContent?.trim()).toBe('Overdue');
+    expect(warn).not.toHaveBeenCalled();
   });
 });

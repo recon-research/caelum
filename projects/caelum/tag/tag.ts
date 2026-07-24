@@ -1,9 +1,13 @@
 import { NgTemplateOutlet } from '@angular/common';
 import {
+  afterNextRender,
   booleanAttribute,
   ChangeDetectionStrategy,
   Component,
+  ElementRef,
+  inject,
   input,
+  isDevMode,
   TemplateRef,
 } from '@angular/core';
 import { MatChipsModule } from '@angular/material/chips';
@@ -160,4 +164,35 @@ export class CaeTag {
 
   /** The D-596 context builder, single-homed in `caelum/icon` (#649). */
   protected readonly iconContext = caeItemIconContext;
+
+  private readonly hostRef = inject(ElementRef<HTMLElement>);
+
+  constructor() {
+    // Dev-only DX guard (#669): a [severity] tag with NO text conveys status by the background tint
+    // and a DECORATIVE (aria-hidden) icon alone — i.e. by colour only, WCAG 1.4.1. The meaning is
+    // supposed to live in the label.
+    //
+    // It reads the RENDERED label text, not the [value] input, and that distinction is the whole
+    // design: the label is `[value]` OR projected `<ng-content>`, so warning on an empty [value]
+    // alone would fire on the perfectly valid `<cae-tag severity="danger">Overdue</cae-tag>`. A guard
+    // that fires on the correct path trains the reader to skim it (#525/#642) — worse than no guard.
+    // Reading the DOM after render is what closes the projection blind spot the ticket flagged.
+    //
+    // One-shot afterNextRender, deliberately NOT an afterRenderEffect: this catches the static
+    // authoring footgun (`<cae-tag severity="danger" />`) without re-warning on every later render.
+    // A tag whose content is emptied at runtime is not covered — an accepted, documented limit.
+    if (isDevMode()) {
+      afterNextRender(() => {
+        const severity = this.severity();
+        if (!severity) return;
+        const label = (this.hostRef.nativeElement as HTMLElement).querySelector('.cae-tag__label');
+        if (label && !label.textContent?.trim()) {
+          console.warn(
+            `cae-tag: [severity="${severity}"] with no label text conveys status by colour alone ` +
+              '(the icon is decorative) — WCAG 1.4.1. Pass [value] or project text.',
+          );
+        }
+      });
+    }
+  }
 }
