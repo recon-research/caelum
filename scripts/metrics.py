@@ -58,7 +58,26 @@ os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # repo ro
 # motivated matched zero PRs, silently. A files-based (doc-only) classifier was
 # rejected: genuine docs: slices DO receipt (#264), so it would silently exempt
 # real slices -- the same false-negative trade #269 rejected for title prefixes.
-CHECKPOINT_PREFIXES = ("checkpoint/",)
+#
+# WIDENED IN #642. The single "checkpoint/" entry matched only the CURRENT
+# convention, so the alarm fired on 7 merges (#634..#647) that were every one a
+# doc-only checkpoint or decision-record -- 7/7 false positives, the exact
+# fires-on-the-good-path failure that trains a reader to skim it (#525). The
+# entries below are the branch shapes this repo has actually used for
+# receipt-less merges; each is narrow enough that a genuine slice can't match:
+#   checkpoint/    -- the current convention (conventions > Merge policy)
+#   docs/checkpoint, docs/compaction -- the pre-#579 drift, still in-window
+#   slice/decisions- -- D-NN decision-record PRs; unclaimed by design, and a
+#                       real slice branch is slice/<issue#>-*, i.e. a DIGIT
+#                       follows the slash, so it can never collide.
+# Deliberately NOT a bare "docs/": a real docs: slice (e.g. the p-*->cae-*
+# migration guide) rides docs/<slug> and MUST still owe its receipt (#264).
+CHECKPOINT_PREFIXES = (
+    "checkpoint/",
+    "docs/checkpoint",
+    "docs/compaction",
+    "slice/decisions-",
+)
 
 WINDOW = 90
 if "--window-days" in sys.argv:
@@ -303,6 +322,10 @@ else:
     drift_note = "Drift check arms at 8+ merges in scope (%d now)." % len(slices)
 
 n_receipts = sum(1 for s in slices if s["receipt"])
+# Coverage is over receipt-EXPECTED merges only (#642): counting checkpoint-path
+# merges in the denominator depressed the figure (17/40) against a target only
+# the exempt-excluded set can ever reach, making a healthy session read as ~40%.
+n_expected = sum(1 for s in slices if s["expects_receipt"])
 
 # guard: #263 -- receipts-coverage tripwire. A `cost:` receipt is ship_pr's
 # skill-step-backed artifact: hooks and scripts fire on their own, but a skill
@@ -360,7 +383,7 @@ growth_line = (("Fastest-growing docs (net lines this window): "
 slice_md = f"""
 ## Per-slice cost & pace (#255)
 
-Receipts (`cost:` PR comments, posted at merge by `ship_pr` via `scripts/slice_telemetry.py`) aggregated by slice type (the PR-title prefix). **Tripwires, never targets:** a :warning: here routes to a [`retrospective`](../.claude/skills/retrospective/SKILL.md), never gates a merge, and cost rising *with* matching churn/quality is not a finding. {n_receipts}/{len(slices)} merged PRs in scope carry receipts (last 40 merges, windowed; receipt-less rows fall back to pr-open->merge wall, no usd).
+Receipts (`cost:` PR comments, posted at merge by `ship_pr` via `scripts/slice_telemetry.py`) aggregated by slice type (the PR-title prefix). **Tripwires, never targets:** a :warning: here routes to a [`retrospective`](../.claude/skills/retrospective/SKILL.md), never gates a merge, and cost rising *with* matching churn/quality is not a finding. {n_receipts}/{n_expected} receipt-expected merges in scope carry receipts ({len(slices)} merged total; checkpoint-path merges are receipt-less by design and excluded from both this figure and the alarm below — #642). Last 40 merges, windowed; receipt-less rows fall back to pr-open->merge wall, no usd.
 
 | Type | n | med wall | med usd | med Δlines | med CI runs |
 |---|---|---|---|---|---|
@@ -556,7 +579,7 @@ else:
         f.write(body)
     print(f"metrics: wrote docs/METRICS.md (window {WINDOW}d; "
           f"{n_merged} merged, {len(bugs)} bugs, {len(runs_w)} PR runs, "
-          f"{n_receipts}/{len(slices)} receipts)"
+          f"{n_receipts}/{n_expected} receipts)"
           + ("" if gh_alive else " -- WARNING: gh unreachable, values may be n/a"))
 
 if PLOT_DIR:
