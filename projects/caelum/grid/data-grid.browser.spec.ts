@@ -35,6 +35,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { CaeDataGrid } from './data-grid';
 import { CaeColumn } from './grid-types';
 import { expectNoA11yViolations } from '../testing/a11y';
+import { loadCaelumTheme, themeToken } from '../testing/theme';
 
 interface Person {
   name: string;
@@ -85,6 +86,9 @@ describe('CaeDataGrid (real browser)', () => {
   async function setup(inputs: Record<string, unknown> = {}): Promise<void> {
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({ imports: [CaeDataGrid] });
+    // Before the component: axe must see the colours Caelum actually ships, not the
+    // unstyled defaults a themeless page would give it (#724).
+    loadCaelumTheme();
     fixture = TestBed.createComponent(CaeDataGrid<Person>);
     fixture.componentRef.setInput('columns', COLUMNS);
     fixture.componentRef.setInput('data', PEOPLE);
@@ -137,12 +141,40 @@ describe('CaeDataGrid (real browser)', () => {
     expect(document.activeElement).toBe(body());
   });
 
+  it('resolves the real token layer, so colour rules are not vacuous', async () => {
+    await setup();
+    // The guard for every colour assertion below. Absent tokens read '' and would make
+    // axe's color-contrast a check against unstyled defaults (#724). The semantic colours
+    // are `light-dark(…)`, which only a real engine resolves — jsdom stores them raw.
+    expect(themeToken('--cae-color-border')).not.toBe('');
+    // A custom property computes as a token stream, so the semantic colours read back as the
+    // literal `light-dark(…)` here just as in jsdom. What axe actually reads is the USED value,
+    // which only a real engine resolves — that is the assertion worth making.
+    expect(themeToken('--cae-color-on-surface')).toContain('light-dark(');
+    const frame = el.querySelector('.cae-data-grid') as HTMLElement;
+    expect(getComputedStyle(frame).color).toMatch(/^rgba?\(/);
+    // …and the grid is really painting with the tokens: the frame's border comes back.
+    expect(getComputedStyle(frame).borderTopWidth).toBe('1px');
+    expect(getComputedStyle(frame).borderTopStyle).toBe('solid');
+  });
+
   it('has no axe violations, no rules disabled', async () => {
     await setup({ caption: 'Team roster' });
     // Nothing disabled: with rows really rendered, the table role really scoped
     // (#718) and layout really computed, color-contrast — which axe can only
     // report as `incomplete` under jsdom — is evaluated for real here.
     await expectNoA11yViolations(el);
+  });
+
+  it('really evaluates color-contrast — a low-contrast override fails the run', async () => {
+    await setup({ caption: 'Team roster' });
+    // The teeth check for the whole colour story. Before #724 no theme was loaded, so axe
+    // compared unstyled near-black-on-white defaults: the rule passed trivially and could
+    // not fail whatever Caelum shipped. Force a near-invisible foreground on the frame and
+    // the very same run must now report color-contrast — proving the green above is earned.
+    const frame = el.querySelector('.cae-data-grid') as HTMLElement;
+    frame.style.setProperty('--cae-color-on-surface', '#f7f7f8');
+    await expect(expectNoA11yViolations(el)).rejects.toThrow(/color-contrast/);
   });
 
   it('has no axe violations with the pager rendered', async () => {
@@ -166,24 +198,29 @@ describe('CaeDataGrid (real browser)', () => {
   it('splits the table role off the frame without adding a box of its own', async () => {
     await setup({ caption: 'Team roster', paginated: true, pageSize: 25 });
     const rect = (sel: string) => (el.querySelector(sel) as HTMLElement).getBoundingClientRect();
+    const frameEl = el.querySelector('.cae-data-grid') as HTMLElement;
     const frame = rect('.cae-data-grid');
     const wrapper = rect('.cae-data-grid__table');
     const caption = rect('.cae-data-grid__caption');
     const body = rect('.cae-data-grid__body');
     const pager = rect('.cae-data-grid__pager');
+    // The frame's 1px token border is real here (#724), so compare against its CONTENT box —
+    // an earlier version of this test compared to the border box and only passed because the
+    // themeless page computed the border to 0.
+    const cs = getComputedStyle(frameEl);
+    const bx = Number.parseFloat(cs.borderLeftWidth) + Number.parseFloat(cs.borderRightWidth);
+    const by = Number.parseFloat(cs.borderBottomWidth);
     // The role wrapper spans exactly its content — no border/padding/margin of its own …
     expect(wrapper.top).toBe(caption.top);
     expect(wrapper.bottom).toBe(body.bottom);
-    expect(wrapper.width).toBe(frame.width);
+    expect(wrapper.width).toBe(frame.width - bx);
     // … and the frame still stacks contiguously through the pager, which is what makes
     // the #718 restructure visually inert. Measured against a `display: contents` control
     // (which reproduces the pre-split box tree): every rect was byte-identical. The frame
     // keeps the clipping + the busy-overlay anchor.
     expect(pager.top).toBe(body.bottom);
-    expect(frame.bottom).toBe(pager.bottom);
-    expect(getComputedStyle(el.querySelector('.cae-data-grid') as HTMLElement).overflow).toBe(
-      'hidden',
-    );
+    expect(frame.bottom - by).toBe(pager.bottom);
+    expect(cs.overflow).toBe('hidden');
   });
 
   it('keeps the status live region outside the table role but inside the frame', async () => {
