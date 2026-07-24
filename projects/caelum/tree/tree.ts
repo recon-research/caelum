@@ -51,8 +51,16 @@ export interface CaeTreeNode {
     >
       <!-- Leaf node: the treeitem host is the focus/activation target (CDK roving tabindex +
            keyboard nav); (activation) selects via Enter/Space. (click) is the mouse
-           equivalent; onNodeClick stops the bubble so a nested ancestor doesn't also select. -->
-      <mat-tree-node
+           equivalent; onNodeClick stops the bubble so a nested ancestor doesn't also select.
+
+           NESTED, not <mat-tree-node>, even though a leaf stamps no children (#491). CdkTreeNode
+           declares _type='flat' and CdkNestedTreeNode _type='nested', and each reports it to the tree
+           via _setNodeTypeIfUnset() in ngOnInit — so a flat leaf inside a childrenAccessor (nested)
+           tree made the tree log "conflicting node types … Current node type: nested, new node type
+           flat", under which the CDK states expand/collapse bookkeeping is undefined. A leaf nested
+           node with no matTreeNodeOutlet is safe: updateChildrenNodes() no-ops when the outlet query
+           is empty, and nodeOutlet is a QueryList, so .changes never throws. -->
+      <mat-nested-tree-node
         *matTreeNodeDef="let node"
         (activation)="nodeSelect.emit(node)"
         (click)="onNodeClick(node, $event)"
@@ -60,7 +68,7 @@ export interface CaeTreeNode {
         <span class="cae-tree__row cae-tree__row--leaf">
           <span class="cae-tree__label">{{ node.label }}</span>
         </span>
-      </mat-tree-node>
+      </mat-nested-tree-node>
 
       <!-- Expandable node: toggle (tabindex=-1) + plain-text label; children stamped into the
            outlet, hidden when collapsed. -->
