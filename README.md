@@ -55,7 +55,7 @@ npm start   # Forge on http://localhost:4200 — light/dark, density toggle, liv
 |------|------------|
 | [`projects/caelum/`](projects/caelum/) | The library — one self-contained entry point per component, plus the [token bridge](projects/caelum/styles/). |
 | [`projects/forge/`](projects/forge/) | Forge, the demo admin console exercising every shipped component. |
-| [`docs/`](docs/) | [Architecture](docs/ARCHITECTURE.md) (shape, invariants, decision log) and the [Roadmap](docs/ROADMAP.md) (milestones M0–M4). |
+| [`docs/`](docs/) | [Architecture](docs/ARCHITECTURE.md) (shape, invariants, decision log), the [Roadmap](docs/ROADMAP.md) (milestones M0–M4), and the [**PrimeNG migration guide**](docs/MIGRATION.md). |
 | [`textbooks/`](textbooks/) | A 20-book, self-validating knowledge library (RAG) that grounds the build — see the [outline](textbooks/LIBRARY_OUTLINE.md) and [library readme](textbooks/README.md). |
 | [`research/`](research/) | Frontier research notes — every claim sourced, tiered, and dated. |
 | [`CLAUDE.md`](CLAUDE.md), [`.claude/`](.claude/) | The autopilot harness (see below). |
