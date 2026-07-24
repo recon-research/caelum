@@ -62,7 +62,9 @@ let gridInstanceCounter = 0;
  * carrying `aria-rowindex`/`aria-colindex` so assistive tech conveys position even across the
  * virtual-scroll wrapper. `role="table"` (not `role="grid"`) is deliberate for v1: the cells are
  * read-only text with no cell-cursor, which is exactly the ARIA *table* pattern (and matches p-table,
- * a native `<table>`); it becomes `role="grid"` when arrow-key cell navigation lands (#175). The
+ * a native `<table>`); it becomes `role="grid"` when arrow-key cell navigation lands (#175). The role
+ * sits on an **inner** element, not the visual frame: ARIA's `table` owns only row/rowgroup/caption, so
+ * the status live region and the pager are siblings *outside* it while still inside the frame (#718). The
  * accessible name comes from a visible `caption` (via `aria-labelledby`, preferred) **or** `ariaLabel`
  * — set one, not both. A sortable header is a real `<button>` (Enter/Space, three-state asc → desc →
  * unsorted). The empty state is a persistent `role="status"` live region (announced on a
@@ -93,81 +95,89 @@ let gridInstanceCounter = 0;
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CdkVirtualScrollViewport, CdkFixedSizeVirtualScroll, CdkVirtualForOf],
   template: `
-    <div
-      class="cae-data-grid"
-      role="table"
-      [attr.aria-labelledby]="caption() ? captionId : null"
-      [attr.aria-label]="caption() ? null : ariaLabel() || null"
-      [attr.aria-rowcount]="adapter.total() + 1"
-      [attr.aria-colcount]="columns().length"
-    >
-      @if (caption()) {
-        <div class="cae-data-grid__caption" [id]="captionId">{{ caption() }}</div>
-      }
-
-      <div class="cae-data-grid__head" role="rowgroup">
-        <div class="cae-data-grid__row" role="row" aria-rowindex="1">
-          @for (col of columns(); track col.id; let colIndex = $index) {
-            <div
-              class="cae-data-grid__cell cae-data-grid__cell--head"
-              role="columnheader"
-              [attr.aria-colindex]="colIndex + 1"
-              [attr.aria-sort]="col.sortable ? ariaSort(col) : null"
-              [style.text-align]="col.align === 'end' ? 'end' : 'start'"
-              [style.flex]="col.width ? '0 0 ' + col.width : '1 1 0'"
-            >
-              @if (col.sortable) {
-                <button
-                  type="button"
-                  class="cae-data-grid__sort"
-                  [attr.aria-disabled]="loading() ? 'true' : null"
-                  (click)="toggleSort(col)"
-                >
-                  <span>{{ col.header }}</span>
-                  <span class="cae-data-grid__sort-icon" aria-hidden="true">{{
-                    sortGlyph(col)
-                  }}</span>
-                </button>
-              } @else {
-                <span>{{ col.header }}</span>
-              }
-            </div>
-          }
-        </div>
-      </div>
-
-      <!-- tabindex=0: the viewport scrolls, so it must be reachable by keyboard or a
-           keyboard-only user cannot reach rows below the fold (WCAG 2.1.1; axe
-           scrollable-region-focusable). jsdom neither lays out nor scrolls, so this
-           was invisible until the real-browser harness (#240). -->
-      <cdk-virtual-scroll-viewport
-        class="cae-data-grid__body"
-        role="rowgroup"
-        tabindex="0"
-        [attr.aria-busy]="loading() ? 'true' : null"
-        [itemSize]="rowHeight()"
-        [style.height]="viewportHeight()"
+    <div class="cae-data-grid">
+      <!-- The frame (above) and the table role (below) are deliberately DIFFERENT elements.
+           ARIA's table role owns only row/rowgroup/caption, so the status live region and the
+           pager — both of which must stay inside the visual frame — would be disallowed children
+           if the frame carried the role (#718, axe critical). Splitting them keeps the border,
+           radius, clipping and the position:relative busy-overlay anchor on the frame while the
+           role wraps exactly the tabular content. -->
+      <div
+        class="cae-data-grid__table"
+        role="table"
+        [attr.aria-labelledby]="caption() ? captionId : null"
+        [attr.aria-label]="caption() ? null : ariaLabel() || null"
+        [attr.aria-rowcount]="adapter.total() + 1"
+        [attr.aria-colcount]="columns().length"
       >
-        <div
-          *cdkVirtualFor="let row of adapter.viewRows(); let i = index; trackBy: trackRow"
-          class="cae-data-grid__row"
-          role="row"
-          [attr.aria-rowindex]="pageOffset() + i + 2"
-          [style.height.px]="rowHeight()"
-        >
-          @for (col of columns(); track col.id; let colIndex = $index) {
-            <div
-              class="cae-data-grid__cell"
-              role="cell"
-              [attr.aria-colindex]="colIndex + 1"
-              [style.text-align]="col.align === 'end' ? 'end' : 'start'"
-              [style.flex]="col.width ? '0 0 ' + col.width : '1 1 0'"
-            >
-              {{ col.value(row.data) }}
-            </div>
-          }
+        @if (caption()) {
+          <div class="cae-data-grid__caption" [id]="captionId">{{ caption() }}</div>
+        }
+
+        <div class="cae-data-grid__head" role="rowgroup">
+          <div class="cae-data-grid__row" role="row" aria-rowindex="1">
+            @for (col of columns(); track col.id; let colIndex = $index) {
+              <div
+                class="cae-data-grid__cell cae-data-grid__cell--head"
+                role="columnheader"
+                [attr.aria-colindex]="colIndex + 1"
+                [attr.aria-sort]="col.sortable ? ariaSort(col) : null"
+                [style.text-align]="col.align === 'end' ? 'end' : 'start'"
+                [style.flex]="col.width ? '0 0 ' + col.width : '1 1 0'"
+              >
+                @if (col.sortable) {
+                  <button
+                    type="button"
+                    class="cae-data-grid__sort"
+                    [attr.aria-disabled]="loading() ? 'true' : null"
+                    (click)="toggleSort(col)"
+                  >
+                    <span>{{ col.header }}</span>
+                    <span class="cae-data-grid__sort-icon" aria-hidden="true">{{
+                      sortGlyph(col)
+                    }}</span>
+                  </button>
+                } @else {
+                  <span>{{ col.header }}</span>
+                }
+              </div>
+            }
+          </div>
         </div>
-      </cdk-virtual-scroll-viewport>
+
+        <!-- tabindex=0: the viewport scrolls, so it must be reachable by keyboard or a
+             keyboard-only user cannot reach rows below the fold (WCAG 2.1.1; axe
+             scrollable-region-focusable). jsdom neither lays out nor scrolls, so this
+             was invisible until the real-browser harness (#240). -->
+        <cdk-virtual-scroll-viewport
+          class="cae-data-grid__body"
+          role="rowgroup"
+          tabindex="0"
+          [attr.aria-busy]="loading() ? 'true' : null"
+          [itemSize]="rowHeight()"
+          [style.height]="viewportHeight()"
+        >
+          <div
+            *cdkVirtualFor="let row of adapter.viewRows(); let i = index; trackBy: trackRow"
+            class="cae-data-grid__row"
+            role="row"
+            [attr.aria-rowindex]="pageOffset() + i + 2"
+            [style.height.px]="rowHeight()"
+          >
+            @for (col of columns(); track col.id; let colIndex = $index) {
+              <div
+                class="cae-data-grid__cell"
+                role="cell"
+                [attr.aria-colindex]="colIndex + 1"
+                [style.text-align]="col.align === 'end' ? 'end' : 'start'"
+                [style.flex]="col.width ? '0 0 ' + col.width : '1 1 0'"
+              >
+                {{ col.value(row.data) }}
+              </div>
+            }
+          </div>
+        </cdk-virtual-scroll-viewport>
+      </div>
 
       <div class="cae-data-grid__empty" role="status" aria-live="polite">{{ statusText() }}</div>
 
@@ -240,6 +250,13 @@ let gridInstanceCounter = 0;
       color: var(--cae-color-on-surface, currentColor);
       background: var(--cae-surface-base, transparent);
       font: var(--cae-text-md);
+    }
+    /* Purely structural — it exists to scope role="table" (see the template note, #718), so it
+       repeats the frame's column layout and adds nothing else. Caption/head/body stay flex items
+       of a flex column exactly as before, which is what keeps the restructure visually inert. */
+    .cae-data-grid__table {
+      display: flex;
+      flex-direction: column;
     }
     .cae-data-grid__busy {
       position: absolute;

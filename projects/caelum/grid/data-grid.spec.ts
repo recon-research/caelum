@@ -81,14 +81,21 @@ describe('CaeDataGrid', () => {
   const pageBtn = (label: string) =>
     el.querySelector<HTMLButtonElement>(`.cae-data-grid__page-btn[aria-label="${label}"]`);
 
+  // No rules disabled. The long-standing aria-required-children carve-out came off with #718:
+  // it was blamed on jsdom rendering an empty rowgroup, but the real-browser harness (#240) showed
+  // the rule still firing with rows rendered — the role=status live region was a disallowed child
+  // of role=table. #718 moved the role onto an inner element instead. The full-fidelity run (both
+  // arms, real layout) lives in data-grid.browser.spec.ts.
   it('has no axe violations (columns + rows, captioned)', async () => {
     setup({ caption: 'Team roster' });
-    // The body is a cdk-virtual-scroll-viewport (role="rowgroup"). Under jsdom it has no layout, so
-    // it renders zero rows — but that is NOT why this rule is disabled. The real-browser harness
-    // (#240) showed aria-required-children still firing with rows rendered: the role=status live
-    // region is a disallowed child of role=table (#718). This carve-out comes off when #718 lands.
-    // The table role, caption, header rowgroup, and columnheaders below are still meaningfully scanned.
-    await expectNoA11yViolations(el, { disableRules: ['aria-required-children'] });
+    await expectNoA11yViolations(el);
+  });
+
+  it('has no axe violations with the pager rendered', async () => {
+    // The pager's buttons + rows-per-page select are exactly what role=table would have disallowed
+    // had the role stayed on the frame — the second half of #718, and untested before it.
+    setup({ caption: 'Team roster', paginated: true, pageSize: 2, pageSizeOptions: [2, 5] });
+    await expectNoA11yViolations(el);
   });
 
   it('renders a role=table with aria-rowcount (incl. header) + aria-colcount', () => {
