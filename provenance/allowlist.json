@@ -218,6 +218,10 @@
     }
   },
   "devCopyleftExceptions": {
+    "axe-core": {
+      "license": "MPL-2.0",
+      "reason": "The automated a11y verification engine (Deque; Book 16 §3.2, Layer 1 — 'broad and shallow'). Weak/file-level copyleft, run ONLY in dev/test — vitest/jsdom unit specs now; real-browser via @axe-core/playwright later (#240) — and NEVER shipped in Caelum's published package. Zero runtime + zero peer deps (verified 4.12.1). The MPL share-alike attaches to axe-core's own files, which Caelum neither modifies nor redistributes, so the copyleft never reaches Caelum's distributed source (Book 03 §3.3, the runtime-vs-dev distinction made concrete). US-origin (Deque Systems, Phoenix AZ). Admitted at the dev tier per the D-11 policy rule above; grounding research/notes/a11y-testing-tooling.md (slice #690)."
+    },
     "rollup-plugin-dts": {
       "license": "LGPL-3.0-only",
       "reason": "Weak/file-level copyleft build tool used by ng-packagr to bundle .d.ts declarations. Dev-only, contributes ZERO bytes to Caelum's published/browser bundle, and Caelum does not modify or redistribute its LGPL files — so the copyleft never reaches Caelum's distributed source. Ledgered per Book 16 §3.2 (the axe-core precedent) and Book 03 §3.1 (conditional dev-only admit)."

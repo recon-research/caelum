@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { CaeCheckbox } from './checkbox';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 describe('CaeCheckbox', () => {
   let component: CaeCheckbox;
@@ -18,6 +19,13 @@ describe('CaeCheckbox', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  it('has no axe violations (named via ariaLabel)', async () => {
+    fixture.componentRef.setInput('ariaLabel', 'Accept the terms');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    await expectNoA11yViolations(fixture.nativeElement);
   });
 
   it('reflects a value written by the form model (writeValue)', () => {

@@ -6,6 +6,7 @@ import { MatMenuTrigger } from '@angular/material/menu';
 import { CAE_ICON_GLYPHS } from 'caelum/icon';
 
 import { CaeMenu, CaeMenuItem, CaeMenuTrigger } from './menu';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 @Component({
   imports: [CaeMenu, CaeMenuTrigger],
@@ -38,6 +39,13 @@ describe('CaeMenu', () => {
   });
 
   afterEach(() => overlayContainer?.ngOnDestroy());
+
+  it('has no axe violations in the open menu overlay (scanned outside the fixture)', async () => {
+    trigger().open();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await expectNoA11yViolations(overlayContainer.getContainerElement());
+  });
 
   const trigger = (): CaeMenuTrigger =>
     fixture.debugElement.query(By.directive(CaeMenuTrigger)).injector.get(CaeMenuTrigger);

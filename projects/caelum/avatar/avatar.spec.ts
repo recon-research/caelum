@@ -2,6 +2,7 @@ import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { CaeAvatar, CaeAvatarGroup } from './avatar';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 describe('CaeAvatar', () => {
   let fixture: ComponentFixture<CaeAvatar>;
@@ -24,6 +25,14 @@ describe('CaeAvatar', () => {
     expect(img()).not.toBeNull();
     expect(img()!.getAttribute('src')).toBe('a.png');
     expect(img()!.getAttribute('alt')).toBe('Ada');
+  });
+
+  it('has no axe violations (label variant with an accessible name)', async () => {
+    await make(() => {
+      set('label', 'AL');
+      set('ariaLabel', 'Ada Lovelace');
+    });
+    await expectNoA11yViolations(host);
   });
 
   it('falls back to the label variant when the image fails to load (no broken image)', async () => {

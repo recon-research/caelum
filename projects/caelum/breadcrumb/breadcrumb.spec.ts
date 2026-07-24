@@ -4,6 +4,7 @@ import { afterEach, beforeEach, vi } from 'vitest';
 import { CAE_ICON_GLYPHS } from 'caelum/icon';
 
 import { CaeBreadcrumb, CaeBreadcrumbItem, CaeBreadcrumbSelectEvent } from './breadcrumb';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 /** Host that drives the breadcrumb's inputs from signals so a test can flip them at runtime. */
 @Component({
@@ -71,6 +72,12 @@ describe('CaeBreadcrumb', () => {
     { label: 'Q3', url: '/reports/q3' },
     { label: 'Summary' },
   ];
+
+  it('has no axe violations (named nav trail)', async () => {
+    render({ items: TRAIL, ariaLabel: 'Breadcrumb' });
+    await fixture.whenStable();
+    await expectNoA11yViolations(fixture.nativeElement);
+  });
 
   it('renders a named nav landmark wrapping an ordered list', () => {
     render({ items: TRAIL });
