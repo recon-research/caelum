@@ -76,7 +76,8 @@ describe('CaeImageCompare', () => {
     } as DOMRect);
   }
 
-  // jsdom has no PointerEvent constructor → MouseEvent (no pointerId) exercises the setPointerCapture guard.
+  // jsdom (28+) DOES implement PointerEvent, but a MouseEvent named 'pointerdown' carries no pointerId — so it
+  // drives the component's `pointerId == null` branch, which skips setPointerCapture (itself absent from jsdom).
   function pointerDown(clientX: number, button = 0): void {
     divider().dispatchEvent(
       new MouseEvent('pointerdown', {

@@ -242,9 +242,12 @@ export class CaeSplitterPanel {
       outline: none;
     }
     .cae-splitter__gutter:focus-visible .cae-splitter__grip {
-      outline: 2px solid var(--cae-color-primary);
-      outline-offset: 2px;
-      /* A surface-coloured halo under the outline keeps the ring visible over any panel backdrop. */
+      outline: var(--cae-focus-ring);
+      outline-offset: var(--cae-focus-ring-offset);
+      /* A surface-coloured halo under the outline keeps the ring visible over any panel backdrop. The
+         0 0 0 4px spread is the shared surface-halo idiom (breadcrumb/order-list/pick-list/scroll-panel/
+         image-compare use the identical literal), NOT a splitter-local magnitude — keep it in step with them
+         rather than tokening this one copy in isolation. */
       box-shadow: 0 0 0 4px var(--cae-surface-raised);
     }
   `,
