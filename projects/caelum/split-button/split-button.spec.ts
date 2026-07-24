@@ -6,6 +6,7 @@ import { CAE_ICON_GLYPHS } from 'caelum/icon';
 import { CaeMenuTrigger, type CaeMenuItem } from 'caelum/menu';
 
 import { CaeSplitButton } from './split-button';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 const MODEL: CaeMenuItem[] = [
   { value: 'close', label: 'Save and close' },
@@ -63,6 +64,11 @@ describe('CaeSplitButton', () => {
       .filter((c) => (c.startsWith('mat') || c.startsWith('mdc')) && !c.includes('menu-trigger'))
       .sort()
       .join(' ');
+
+  it('has no axe violations (labeled group, primary + chevron)', async () => {
+    await setup({ ariaLabel: 'Save actions' });
+    await expectNoA11yViolations(el);
+  });
 
   it('renders the primary label and groups the two halves under role=group', async () => {
     await setup();

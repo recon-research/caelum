@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { CaeSkeleton } from './skeleton';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 describe('CaeSkeleton', () => {
   let fixture: ComponentFixture<CaeSkeleton>;
@@ -13,6 +14,11 @@ describe('CaeSkeleton', () => {
     await fixture.whenStable();
   };
   const set = (name: string, value: unknown): void => fixture.componentRef.setInput(name, value);
+
+  it('has no axe violations (named busy status)', async () => {
+    await make(() => set('ariaLabel', 'Loading profile'));
+    await expectNoA11yViolations(host);
+  });
 
   it('is decorative by default — aria-hidden, no role/label', async () => {
     await make();

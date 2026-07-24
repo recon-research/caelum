@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { CaeSelectButton, CaeSelectButtonOption } from './select-button';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 const OPTIONS: CaeSelectButtonOption[] = [
   { value: 'private', label: 'Private' },
@@ -28,6 +29,13 @@ describe('CaeSelectButton', () => {
     expect(component).toBeTruthy();
     expect(buttons().length).toBe(3);
     expect(buttons().map((b) => b.textContent?.trim())).toEqual(['Private', 'Team', 'Public']);
+  });
+
+  it('has no axe violations (named via ariaLabel, renders inline — no overlay)', async () => {
+    fixture.componentRef.setInput('ariaLabel', 'Visibility');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await expectNoA11yViolations(fixture.nativeElement);
   });
 
   it('is a radiogroup with radio children in single-select mode', () => {

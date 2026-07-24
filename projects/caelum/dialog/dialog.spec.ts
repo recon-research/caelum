@@ -15,6 +15,7 @@ import {
   CaeDialogTitle,
   injectCaeDialogRef,
 } from './dialog';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 interface RenameData {
   name: string;
@@ -78,6 +79,14 @@ describe('CaeDialog', () => {
   afterEach(() => {
     // Clears the overlay container outright, so cleanup doesn't depend on an async close settling.
     overlayContainer.ngOnDestroy();
+  });
+
+  it('has no axe violations in the open dialog surface', async () => {
+    const ref = dialog.open<TestDialog, string, RenameData>(TestDialog, { data: { name: 'Acme' } });
+    await opened(ref);
+    await settle();
+    expect(surface()).not.toBeNull();
+    await expectNoA11yViolations(containerEl);
   });
 
   it('opens a component in a dialog, rendering its body with the injected data', async () => {

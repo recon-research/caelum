@@ -2,6 +2,7 @@ import { Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { CaeChip } from './chip';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 @Component({
   imports: [CaeChip],
@@ -40,6 +41,11 @@ describe('CaeChip', () => {
     f.nativeElement.querySelector('mat-chip');
   const removeBtn = (f: ComponentFixture<ChipHost>): HTMLButtonElement | null =>
     chip(f).querySelector('button');
+
+  it('has no axe violations (removable chip with a named remove button)', async () => {
+    const f = await make((h) => (h.removable = true));
+    await expectNoA11yViolations(f.nativeElement);
+  });
 
   it('renders the projected label', async () => {
     const f = await make();

@@ -5,6 +5,7 @@ import { By } from '@angular/platform-browser';
 import { MatStepper } from '@angular/material/stepper';
 
 import { CaeStep, CaeStepper } from './stepper';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 /** Index of the header Material marks selected — the real selection signal, and the one assistive
  *  tech reads. Step BODIES stamp eagerly, so their presence in the DOM says nothing about which
@@ -29,7 +30,7 @@ const selectedLabelIn = (root: HTMLElement): string | null =>
     <form [formGroup]="form">
       <cae-stepper ariaLabel="Setup" [selectedIndex]="index" (selectedIndexChange)="index = $event">
         <cae-step label="Identity">
-          <input class="step-name" formControlName="name" />
+          <input class="step-name" formControlName="name" aria-label="Name" />
         </cae-step>
         <cae-step label="Details" optional>
           <p class="panel-2">Second step body</p>
@@ -56,6 +57,10 @@ describe('CaeStepper', () => {
   });
 
   const el = (): HTMLElement => fixture.nativeElement as HTMLElement;
+
+  it('has no axe violations (labeled stepper, two projected steps)', async () => {
+    await expectNoA11yViolations(el());
+  });
 
   it('renders one step header per projected cae-step, with its label', () => {
     const headers = el().querySelectorAll('[role="tab"], .mat-step-label, mat-step-header');

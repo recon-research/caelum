@@ -7,6 +7,7 @@ import { CaeMenuTrigger, type CaeMenuItem } from 'caelum/menu';
 import { CAE_ICON_GLYPHS } from 'caelum/icon';
 
 import { CaeMenubar, type CaeMenubarItem } from './menubar';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 const GROUPS: CaeMenubarItem[] = [
   {
@@ -80,6 +81,14 @@ describe('CaeMenubar', () => {
     expect(bar.getAttribute('aria-label')).toBe('Main');
     expect(triggers().length).toBe(GROUPS.length);
     expect(triggers().map((b) => b.textContent!.trim())).toEqual(['File', 'Edit', 'View']);
+  });
+
+  it('has no axe violations in the toolbar and an open group dropdown', async () => {
+    await setup({ ariaLabel: 'Main' });
+    menuTriggerAt(0).open();
+    await flush();
+    expect(menuItems().length).toBeGreaterThan(0);
+    await expectNoA11yViolations(overlayContainer.getContainerElement());
   });
 
   it('marks each trigger role=menuitem with type=button (no form submit — #148) and a popup', async () => {

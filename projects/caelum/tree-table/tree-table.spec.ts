@@ -3,6 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { CaeTreeTable, CaeTreeTableColumn, CaeTreeTableNode } from './tree-table';
 import { CaeTreeCellDef } from './tree-cell-def';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 interface Item {
   name: string;
@@ -75,6 +76,10 @@ describe('CaeTreeTable', () => {
 
   it('creates', () => {
     expect(component).toBeTruthy();
+  });
+
+  it('has no axe violations (captioned treegrid, root rows)', async () => {
+    await expectNoA11yViolations(fixture.nativeElement);
   });
 
   it('renders only the root rows while every branch is collapsed', () => {

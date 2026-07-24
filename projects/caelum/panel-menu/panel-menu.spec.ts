@@ -4,6 +4,7 @@ import { By } from '@angular/platform-browser';
 
 import type { CaeMenuItem } from 'caelum/menu';
 import { CaePanelMenu } from './panel-menu';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 const MODEL: CaeMenuItem[] = [
   {
@@ -96,6 +97,10 @@ describe('CaePanelMenu', () => {
 
   afterEach(() => {
     fixture.nativeElement.remove();
+  });
+
+  it('has no axe violations (named nav, collapsed by default)', async () => {
+    await expectNoA11yViolations(fixture.nativeElement);
   });
 
   it('is a single <nav> landmark with the accessible name (no per-level duplication)', () => {

@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { CaeProgressBar } from './progress-bar';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 describe('CaeProgressBar', () => {
   let fixture: ComponentFixture<CaeProgressBar>;
@@ -12,6 +13,13 @@ describe('CaeProgressBar', () => {
   function bar(): HTMLElement {
     return fixture.nativeElement.querySelector('mat-progress-bar')!;
   }
+
+  it('has no axe violations (named via ariaLabel)', async () => {
+    fixture.componentRef.setInput('ariaLabel', 'Upload progress');
+    fixture.componentRef.setInput('value', 42);
+    fixture.detectChanges();
+    await expectNoA11yViolations(fixture.nativeElement);
+  });
 
   it('renders a progressbar with static min/max', () => {
     fixture.detectChanges();

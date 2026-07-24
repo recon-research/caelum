@@ -2,9 +2,11 @@ import { Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import { By } from '@angular/platform-browser';
+import { OverlayContainer } from '@angular/cdk/overlay';
 import { MatSelect } from '@angular/material/select';
 
 import { CaeSelect, CaeSelectOption } from './select';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 const OPTIONS: CaeSelectOption[] = [
   { value: 'a', label: 'Alpha' },
@@ -15,20 +17,33 @@ const OPTIONS: CaeSelectOption[] = [
 describe('CaeSelect', () => {
   let component: CaeSelect;
   let fixture: ComponentFixture<CaeSelect>;
+  let overlayContainer: OverlayContainer;
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({ imports: [CaeSelect] }).compileComponents();
     fixture = TestBed.createComponent(CaeSelect);
     component = fixture.componentInstance;
     fixture.componentRef.setInput('options', OPTIONS);
+    overlayContainer = TestBed.inject(OverlayContainer);
     await fixture.whenStable();
   });
+
+  afterEach(() => overlayContainer?.ngOnDestroy());
 
   const matSelect = (): MatSelect =>
     fixture.debugElement.query(By.directive(MatSelect)).componentInstance;
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  it('has no axe violations in the open panel (named via ariaLabel)', async () => {
+    fixture.componentRef.setInput('ariaLabel', 'Region');
+    matSelect().open();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(document.querySelectorAll('mat-option').length).toBe(OPTIONS.length);
+    await expectNoA11yViolations(overlayContainer.getContainerElement());
   });
 
   it('reflects a value written by the form model (writeValue)', () => {

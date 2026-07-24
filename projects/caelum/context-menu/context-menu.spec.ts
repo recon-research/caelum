@@ -7,6 +7,7 @@ import { CdkContextMenuTrigger, CdkMenuItem } from '@angular/cdk/menu';
 import { CaeContextMenu } from './context-menu';
 import type { CaeMenuItem } from 'caelum/menu';
 import { CAE_ICON_GLYPHS } from 'caelum/icon';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 @Component({
   imports: [CaeContextMenu],
@@ -59,6 +60,12 @@ describe('CaeContextMenu', () => {
   it('projects the right-click target content (transparent wrapper)', () => {
     expect(target()).toBeTruthy();
     expect(target().textContent).toContain('Right-click me');
+  });
+
+  it('has no axe violations in the open context menu panel', async () => {
+    await rightClick();
+    expect(panel()).toBeTruthy();
+    await expectNoA11yViolations(overlayContainer.getContainerElement());
   });
 
   it('opens a role=menu panel with one role=menuitem per data item on right-click', async () => {

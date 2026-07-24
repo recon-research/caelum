@@ -2,6 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { MatProgressSpinner } from '@angular/material/progress-spinner';
 import { CaeProgressSpinner } from './progress-spinner';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 describe('CaeProgressSpinner', () => {
   let fixture: ComponentFixture<CaeProgressSpinner>;
@@ -14,6 +15,12 @@ describe('CaeProgressSpinner', () => {
   function spinner(): HTMLElement {
     return fixture.nativeElement.querySelector('mat-progress-spinner')!;
   }
+
+  it('has no axe violations (named via ariaLabel)', async () => {
+    fixture.componentRef.setInput('ariaLabel', 'Loading');
+    fixture.detectChanges();
+    await expectNoA11yViolations(fixture.nativeElement);
+  });
 
   it('defaults to an indeterminate progressbar (min/max pinned, no aria-valuenow)', () => {
     fixture.detectChanges();

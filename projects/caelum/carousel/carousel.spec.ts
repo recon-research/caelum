@@ -6,6 +6,7 @@ import { vi } from 'vitest';
 
 import { CaeCarousel, CaeCarouselResponsiveOption } from './carousel';
 import { CaeCarouselItem } from './carousel-item';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 // A projecting host — a carousel needs an item template, so every functional test drives it through one
 // (mirrors cae-tree-table's TemplatedHost). Inputs are host properties so a test can vary numVisible /
@@ -86,6 +87,10 @@ describe('CaeCarousel', () => {
 
   it('creates', () => {
     expect(carousel).toBeTruthy();
+  });
+
+  it('has no axe violations (labeled carousel, 5 slides + controls)', async () => {
+    await expectNoA11yViolations(fixture.nativeElement);
   });
 
   it('renders one slide per value item', () => {

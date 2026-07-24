@@ -2,6 +2,7 @@ import { Component, ElementRef, signal, viewChild } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { CaeChipSet, CaeChipRemoveEvent } from './chip-set';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 @Component({
   imports: [CaeChipSet],
@@ -132,6 +133,11 @@ describe('CaeChipSet', () => {
   const rows = (f: ComponentFixture<unknown>): HTMLElement[] =>
     Array.from((f.nativeElement as HTMLElement).querySelectorAll('mat-chip-row'));
   const removeBtn = (row: HTMLElement): HTMLButtonElement | null => row.querySelector('button');
+
+  it('has no axe violations (named via ariaLabel)', async () => {
+    const f = await makeString((h) => (h.ariaLabel = 'Workspace tags'));
+    await expectNoA11yViolations(f.nativeElement);
+  });
 
   it('renders one chip row per item, in order, with the labels', async () => {
     const f = await makeString();

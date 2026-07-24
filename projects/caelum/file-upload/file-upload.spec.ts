@@ -13,6 +13,7 @@ import {
   CaeFileUploadFileDef,
   CaeFileUploadProgress,
 } from './file-upload';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 const URL = '/api/upload';
 
@@ -66,6 +67,12 @@ describe('CaeFileUpload', () => {
     ).files();
   }
   const el = (sel: string) => fixture.nativeElement.querySelector(sel) as HTMLElement | null;
+
+  it('has no axe violations (button + dropzone, named by the visible <label for>)', async () => {
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await expectNoA11yViolations(fixture.nativeElement);
+  });
 
   it('renders a keyboard-reachable native file input labelled by the styled button', () => {
     const input = el('input[type="file"]') as HTMLInputElement;

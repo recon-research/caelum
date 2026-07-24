@@ -4,6 +4,7 @@ import { Dir, Direction, Directionality } from '@angular/cdk/bidi';
 import { vi } from 'vitest';
 
 import { CaeImageCompare } from './image-compare';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 /** A Directionality double we can seed to a fixed direction (root Directionality defaults to 'ltr'). */
 class FakeDirectionality {
@@ -131,6 +132,11 @@ describe('CaeImageCompare', () => {
   }
 
   // --- Structure & default state ---
+
+  it('has no axe violations (labeled separator, both images alt-ed)', async () => {
+    await render();
+    await expectNoA11yViolations(el);
+  });
 
   it('renders both images with their alt text', async () => {
     await render({ beforeAlt: 'Retouched', afterAlt: 'Original' });

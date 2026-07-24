@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { CaeRadio, CaeRadioOption } from './radio';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 const OPTIONS: CaeRadioOption[] = [
   { value: 'a', label: 'Alpha' },
@@ -25,6 +26,13 @@ describe('CaeRadio', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  it('has no axe violations (named via ariaLabel)', async () => {
+    fixture.componentRef.setInput('ariaLabel', 'Plan');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await expectNoA11yViolations(fixture.nativeElement);
   });
 
   it('renders one radio per option', () => {

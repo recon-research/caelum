@@ -6,6 +6,7 @@ import { CAE_GRID } from './grid-adapter';
 import { ClientGridAdapter } from './client-grid-adapter';
 import { ServerGridAdapter, provideServerGrid } from './server-grid-adapter';
 import { CaeColumn, CaeGridDataRequest, CaeSort } from './grid-types';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 // A plain typed interface (no index signature) — the grid generic is unconstrained (like cae-table).
 interface Person {
@@ -79,6 +80,15 @@ describe('CaeDataGrid', () => {
     Array.from(el.querySelectorAll<HTMLButtonElement>('.cae-data-grid__sort'));
   const pageBtn = (label: string) =>
     el.querySelector<HTMLButtonElement>(`.cae-data-grid__page-btn[aria-label="${label}"]`);
+
+  it('has no axe violations (columns + rows, captioned)', async () => {
+    setup({ caption: 'Team roster' });
+    // The body is a cdk-virtual-scroll-viewport (role="rowgroup"). Under jsdom it has no layout, so
+    // it renders zero rows and axe flags the transiently-empty rowgroup (aria-required-children).
+    // The rendered-row structure + this rule are verified in the real-browser harness (#240); the
+    // table role, caption, header rowgroup, and columnheaders below are still meaningfully scanned.
+    await expectNoA11yViolations(el, { disableRules: ['aria-required-children'] });
+  });
 
   it('renders a role=table with aria-rowcount (incl. header) + aria-colcount', () => {
     setup();

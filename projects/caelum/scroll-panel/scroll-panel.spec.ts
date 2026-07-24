@@ -5,6 +5,7 @@ import { By } from '@angular/platform-browser';
 import { vi } from 'vitest';
 
 import { CaeScrollPanel } from './scroll-panel';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 /** Host that projects signal-driven content + name so a test can flip the name/content at runtime. */
 @Component({
@@ -71,6 +72,12 @@ describe('CaeScrollPanel', () => {
     (instance() as unknown as { measureOverflow(): void }).measureOverflow();
     fixture.detectChanges();
   }
+
+  it('has no axe violations (named, overflowing region)', async () => {
+    render({ label: 'Release notes' });
+    measureWith({ scrollHeight: 300, clientHeight: 100 });
+    await expectNoA11yViolations(panel);
+  });
 
   it('projects content into the token scroll container', () => {
     render();

@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { CaeSwitch } from './switch';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 describe('CaeSwitch', () => {
   let component: CaeSwitch;
@@ -20,6 +21,13 @@ describe('CaeSwitch', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  it('has no axe violations (named via ariaLabel)', async () => {
+    fixture.componentRef.setInput('ariaLabel', 'Enable notifications');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await expectNoA11yViolations(fixture.nativeElement);
   });
 
   it('reflects a value written by the form model (writeValue)', () => {

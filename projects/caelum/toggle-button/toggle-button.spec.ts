@@ -1,6 +1,17 @@
+import { Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { CaeToggleButton } from './toggle-button';
+import { expectNoA11yViolations } from '../testing/a11y';
+
+// CaeToggleButton has no `ariaLabel` input (#70 tracks that cross-control seam) — it takes its
+// accessible name from its projected content, like a plain <button>text</button>. A bare
+// TestBed.createComponent(CaeToggleButton) projects nothing, so a host is needed to name it.
+@Component({
+  imports: [CaeToggleButton],
+  template: `<cae-toggle-button>Bold</cae-toggle-button>`,
+})
+class ToggleButtonHost {}
 
 describe('CaeToggleButton', () => {
   let component: CaeToggleButton;
@@ -74,5 +85,21 @@ describe('CaeToggleButton', () => {
     fixture.componentRef.setInput('ariaDescribedby', 'pin-hint');
     await fixture.whenStable();
     expect(nativeButton().getAttribute('aria-describedby')).toBe('pin-hint');
+  });
+});
+
+// A separate describe (NOT nested): the outer beforeEach configures + instantiates a bare
+// CaeToggleButton, and TestBed cannot be reconfigured once instantiated. This one names the control
+// via projected content through its own host, mirroring the file's scenario-local host pattern.
+describe('CaeToggleButton — a11y', () => {
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({ imports: [ToggleButtonHost] }).compileComponents();
+  });
+
+  it('has no axe violations (named via projected content)', async () => {
+    const f = TestBed.createComponent(ToggleButtonHost);
+    f.detectChanges();
+    await f.whenStable();
+    await expectNoA11yViolations(f.nativeElement);
   });
 });
