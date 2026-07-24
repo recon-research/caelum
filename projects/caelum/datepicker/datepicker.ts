@@ -648,7 +648,9 @@ export class CaeDatepicker extends CaeFormFieldControlBase<CaeDatepickerValue> {
   protected onMonthSelected(date: Date, picker: MatDatepicker<Date>): void {
     if (this.view() !== 'month') return;
     this.onTouched();
-    this.commitValue(this.adapter.createDate(this.adapter.getYear(date), this.adapter.getMonth(date), 1));
+    this.commitValue(
+      this.adapter.createDate(this.adapter.getYear(date), this.adapter.getMonth(date), 1),
+    );
     picker.close();
   }
   protected onYearSelected(date: Date, picker: MatDatepicker<Date>): void {
@@ -662,7 +664,8 @@ export class CaeDatepicker extends CaeFormFieldControlBase<CaeDatepickerValue> {
   /** Combine a date's Y/M/D with a time's H/M/S (native-`Date`-based; see the class docstring). */
   private combine(datePart: Date, timePart: Date | null): Date {
     const out = new Date(datePart);
-    if (timePart) out.setHours(timePart.getHours(), timePart.getMinutes(), timePart.getSeconds(), 0);
+    if (timePart)
+      out.setHours(timePart.getHours(), timePart.getMinutes(), timePart.getSeconds(), 0);
     else out.setHours(0, 0, 0, 0);
     return out;
   }

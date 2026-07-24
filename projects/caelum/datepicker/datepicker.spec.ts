@@ -514,7 +514,9 @@ describe('CaeDatepicker — multiple mode (inline)', () => {
     fixture.debugElement.query(By.directive(MatCalendar)).componentInstance;
 
   it('renders a bare inline calendar (no form-field, no overlay trigger)', () => {
-    expect(fixture.nativeElement.querySelector('.cae-datepicker__inline mat-calendar')).toBeTruthy();
+    expect(
+      fixture.nativeElement.querySelector('.cae-datepicker__inline mat-calendar'),
+    ).toBeTruthy();
     expect(fixture.nativeElement.querySelector('mat-form-field')).toBeNull();
   });
 
@@ -541,7 +543,8 @@ describe('CaeDatepicker — multiple mode (inline)', () => {
   it('updates the highlight LIVE as days are toggled (dateClass is not reactive in MatCalendar)', async () => {
     // Regression guard for the afterRenderEffect re-init: MatCalendar ignores dateClass changes, so
     // without the forced re-render a toggled day would never visibly highlight.
-    const marked = (): number => document.querySelectorAll('.cae-datepicker__multi-selected').length;
+    const marked = (): number =>
+      document.querySelectorAll('.cae-datepicker__multi-selected').length;
     calendar().selectedChange.emit(jan(9));
     fixture.detectChanges();
     await fixture.whenStable();
@@ -774,13 +777,15 @@ describe('CaeDatepicker — today / clear affordances', () => {
   afterEach(() => teardown(fixture));
 
   const actionButton = (label: string): HTMLButtonElement | undefined =>
-    Array.from(
-      fixture.nativeElement.querySelectorAll('.cae-datepicker__actions button'),
-    ).find((b) => (b as HTMLElement).textContent?.trim() === label) as HTMLButtonElement | undefined;
+    Array.from(fixture.nativeElement.querySelectorAll('.cae-datepicker__actions button')).find(
+      (b) => (b as HTMLElement).textContent?.trim() === label,
+    ) as HTMLButtonElement | undefined;
 
   it('renders Today and Clear buttons only when enabled', async () => {
     await make({ showToday: true, showClear: true });
-    expect(fixture.nativeElement.querySelectorAll('.cae-datepicker__actions button').length).toBe(2);
+    expect(fixture.nativeElement.querySelectorAll('.cae-datepicker__actions button').length).toBe(
+      2,
+    );
     expect(actionButton('Today')).toBeTruthy();
     expect(actionButton('Clear')).toBeTruthy();
   });
