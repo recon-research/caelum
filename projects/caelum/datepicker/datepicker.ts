@@ -57,9 +57,11 @@ export interface CaeDateRange {
 /**
  * The CVA value of `cae-datepicker`, whose shape follows `[selectionMode]` (Book 07 §3.1 — the model
  * is the value, never the display text): a `Date | null` for `single` (and its time/datetime/month/
- * year modifiers), a {@link CaeDateRange} for `range`, a `Date[]` for `multiple`. Empty is `null`
- * for single/range; for `multiple` it is an empty array `[]` — an array model stays an array so a
- * consumer's `.length` read never hits `null` (the one carve-out from the "empty is null" rule).
+ * year modifiers), a {@link CaeDateRange} for `range`, a `Date[]` for `multiple`. Empty is `null` for
+ * single/range. For `multiple`, every value this component **emits** is an array (empty is `[]`, never
+ * `null`) — so a subscriber can always `.length` what it emits — but seed and reset the bound control
+ * with a `Date[]` (e.g. `new FormControl<Date[]>([])`): a `reset()` to `null` is stored by the control
+ * itself, which the component cannot override, so guard `?.length` if a `null` reset is possible.
  */
 export type CaeDatepickerValue = Date | Date[] | CaeDateRange | null;
 
@@ -91,7 +93,8 @@ export type CaeDatepickerView = 'date' | 'month' | 'year';
  *   for a datetime; the value stays a single `Date` carrying the chosen time.
  * - `[view]` — `date` (default), `month` (pick a whole month), or `year` (pick a whole year), for the
  *   non-inline single form; the value is the first of the chosen month / Jan 1 of the chosen year.
- *   (Inline month/year is deferred — MatCalendar always drills to the day view; see #666 follow-ups.)
+ *   (Inline month/year is deferred — MatCalendar always drills to the day view; see #686. Pairing
+ *   `[view]` month/year with `[showTime]` is unsupported — the month/year commit drops the time.)
  * - `[minDate]`/`[maxDate]`/`[dateFilter]` enforced on click (Material disables cells) *and* keyboard
  *   (this component is a `Validator` on the OUTER control — Material's own validators run only against
  *   the inner input, which the wrapper never has — flagging `matDatepickerMin`/`Max`/`Filter`; map
@@ -103,7 +106,8 @@ export type CaeDatepickerView = 'date' | 'month' | 'year';
  * date-fns). Trade-off: a component-level provider also *overrides* any app-root `DateAdapter` /
  * `MAT_DATE_FORMATS` for this subtree, so app-level locale/format customization (and month/year
  * display formats) do not currently reach `cae-datepicker`; a `[dateFormats]`/custom-adapter seam is
- * its own future slice. Time combination (datetime) is likewise native-`Date`-based.
+ * its own future slice. Time combination (datetime) is likewise native-`Date`-based: clearing the date
+ * clears the datetime, and setting a time before any date anchors it to today.
  *
  * Zoneless-compatible: `OnPush` + signal state, no zone-coupled APIs (provisional on #9; Book 01 §3.2).
  */
@@ -162,14 +166,14 @@ export type CaeDatepickerView = 'date' | 'month' | 'year';
             [startAt]="startAt()"
             [minDate]="minDate()"
             [maxDate]="maxDate()"
-            [dateFilter]="calendarFilter()"
+            [dateFilter]="filterFn()"
             [dateClass]="multiDateClass()"
             (selectedChange)="onMultipleChange($event)"
           />
           <ng-container [ngTemplateOutlet]="actions" />
           @if (shouldShowInlineErrors()) {
             @for (message of activeErrorMessages(); track $index) {
-              <div class="cae-datepicker__error">{{ message }}</div>
+              <div class="cae-datepicker__error" role="alert">{{ message }}</div>
             }
           }
         </div>
@@ -205,6 +209,7 @@ export type CaeDatepickerView = 'date' | 'month' | 'year';
             class="cae-datepicker__multi-toggle"
             [disabled]="isDisabled()"
             [attr.aria-label]="'Open calendar'"
+            [attr.aria-expanded]="multiOpen()"
             (click)="toggleMulti()"
           >
             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" width="24" height="24">
@@ -233,6 +238,7 @@ export type CaeDatepickerView = 'date' | 'month' | 'year';
           <div
             class="cae-datepicker__panel"
             role="dialog"
+            [attr.aria-modal]="true"
             [attr.aria-label]="label() || ariaLabel() || 'Choose dates'"
             cdkTrapFocus
             [cdkTrapFocusAutoCapture]="true"
@@ -243,7 +249,7 @@ export type CaeDatepickerView = 'date' | 'month' | 'year';
               [startAt]="startAt()"
               [minDate]="minDate()"
               [maxDate]="maxDate()"
-              [dateFilter]="calendarFilter()"
+              [dateFilter]="filterFn()"
               [dateClass]="multiDateClass()"
               (selectedChange)="onMultipleChange($event)"
             />
@@ -260,7 +266,7 @@ export type CaeDatepickerView = 'date' | 'month' | 'year';
             [startView]="startView()"
             [minDate]="minDate()"
             [maxDate]="maxDate()"
-            [dateFilter]="calendarFilter()"
+            [dateFilter]="filterFn()"
             (selectedChange)="onInlineRangeChange($event)"
           />
         } @else {
@@ -270,7 +276,7 @@ export type CaeDatepickerView = 'date' | 'month' | 'year';
             [startView]="startView()"
             [minDate]="minDate()"
             [maxDate]="maxDate()"
-            [dateFilter]="calendarFilter()"
+            [dateFilter]="filterFn()"
             (selectedChange)="onSingleChange($event)"
           />
         }
@@ -290,7 +296,7 @@ export type CaeDatepickerView = 'date' | 'month' | 'year';
           [rangePicker]="rangePicker"
           [min]="minDate()"
           [max]="maxDate()"
-          [dateFilter]="inputFilter()"
+          [dateFilter]="filterFn()"
           [disabled]="isDisabled()"
           [required]="required()"
         >
@@ -332,7 +338,7 @@ export type CaeDatepickerView = 'date' | 'month' | 'year';
           [value]="singleValue()"
           [min]="minDate()"
           [max]="maxDate()"
-          [matDatepickerFilter]="inputFilter()"
+          [matDatepickerFilter]="filterFn()"
           [disabled]="isDisabled()"
           [required]="required()"
           [errorStateMatcher]="errorStateMatcher"
@@ -463,6 +469,12 @@ export class CaeDatepicker extends CaeFormFieldControlBase<CaeDatepickerValue> {
       this.currentMultiple(); // the reactive dep — the set the highlight must track
       for (const cal of this.calendars()) cal.updateTodaysDate();
     });
+    // Force the multiple-mode overlay closed if the control is disabled while open, or if
+    // selectionMode switches away from 'multiple' — otherwise a live dialog lingers on a disabled
+    // trigger, or the re-mounted cdkConnectedOverlay spontaneously re-opens with a stale `multiOpen`.
+    effect(() => {
+      if (this.isDisabled() || this.selectionMode() !== 'multiple') this.multiOpen.set(false);
+    });
   }
 
   /** How many dates to pick — drives the value shape (see {@link CaeDatepickerValue}). */
@@ -556,16 +568,17 @@ export class CaeDatepicker extends CaeFormFieldControlBase<CaeDatepickerValue> {
     }
   });
 
-  // --- Disabled-date wiring: two filter shapes, recomputed so a filter swap re-renders the panel ---
-  /** `MatDatepickerInput`'s filter — receives a possibly-null date. Recomputed on filter change. */
-  protected readonly inputFilter = computed<DateFilterFn<Date | null>>(() => {
+  // --- Disabled-date wiring: one filter for every surface, recomputed so a swap re-renders the panel ---
+  /**
+   * The `[dateFilter]`/`[matDatepickerFilter]` predicate for every surface — the date input, the range
+   * input, and the calendars. `MatCalendar` declares `(date: Date) => boolean` and the inputs declare
+   * `(date: Date | null) => boolean`; a `Date | null`-accepting predicate satisfies both (the calendar
+   * only ever calls it with a real `Date`), so one computed serves all six binding sites. Recomputed on
+   * filter change so a swap re-renders the panel.
+   */
+  protected readonly filterFn = computed<DateFilterFn<Date | null>>(() => {
     const f = this.dateFilter();
     return f ? (d) => (d ? f(d) : true) : () => true;
-  });
-  /** `MatCalendar`/`MatDateRangeInput`'s filter — receives a non-null date. Recomputed on filter change. */
-  protected readonly calendarFilter = computed<(date: Date) => boolean>(() => {
-    const f = this.dateFilter();
-    return f ? (d) => f(d) : () => true;
   });
 
   /** Every rendered `<mat-calendar>` (inline and/or the multiple overlay), for forced re-highlight. */
@@ -645,18 +658,23 @@ export class CaeDatepicker extends CaeFormFieldControlBase<CaeDatepickerValue> {
   }
 
   // --- month/year granularity (non-inline single) — intercept + close so it never drills to days ---
+  /** Truncate `d` to the current `[view]`: first of its month (`month`), Jan 1 (`year`), else `d` itself. */
+  private toViewDate(d: Date): Date {
+    const a = this.adapter;
+    if (this.view() === 'month') return a.createDate(a.getYear(d), a.getMonth(d), 1);
+    if (this.view() === 'year') return a.createDate(a.getYear(d), 0, 1);
+    return d;
+  }
   protected onMonthSelected(date: Date, picker: MatDatepicker<Date>): void {
     if (this.view() !== 'month') return;
     this.onTouched();
-    this.commitValue(
-      this.adapter.createDate(this.adapter.getYear(date), this.adapter.getMonth(date), 1),
-    );
+    this.commitValue(this.toViewDate(date));
     picker.close();
   }
   protected onYearSelected(date: Date, picker: MatDatepicker<Date>): void {
     if (this.view() !== 'year') return;
     this.onTouched();
-    this.commitValue(this.adapter.createDate(this.adapter.getYear(date), 0, 1));
+    this.commitValue(this.toViewDate(date));
     picker.close();
   }
 
@@ -720,15 +738,7 @@ export class CaeDatepicker extends CaeFormFieldControlBase<CaeDatepickerValue> {
         this.commitRange(today, null);
         return;
       default:
-        if (this.view() === 'month') {
-          this.commitValue(
-            this.adapter.createDate(this.adapter.getYear(today), this.adapter.getMonth(today), 1),
-          );
-        } else if (this.view() === 'year') {
-          this.commitValue(this.adapter.createDate(this.adapter.getYear(today), 0, 1));
-        } else {
-          this.commitValue(today);
-        }
+        this.commitValue(this.toViewDate(today));
     }
   }
   protected clear(): void {
@@ -752,6 +762,9 @@ export class CaeDatepicker extends CaeFormFieldControlBase<CaeDatepickerValue> {
     const control = this.boundControl();
     if (control !== this.validatedControl) {
       this.validatedControl?.removeValidators(this.boundValidator);
+      // Re-validate the control we just detached from, so a `[formControl]` swap doesn't strand a
+      // stale matDatepickerMin/Max/Filter error on it (removeValidators alone never recomputes).
+      this.validatedControl?.updateValueAndValidity({ emitEvent: false });
       this.validatedControl = control;
       control?.addValidators(this.boundValidator);
       control?.updateValueAndValidity({ emitEvent: false });
@@ -787,11 +800,12 @@ export class CaeDatepicker extends CaeFormFieldControlBase<CaeDatepickerValue> {
     }
     return null;
   }
-  /** Every concrete `Date` inside a value, whatever the mode's shape (empty range endpoints skipped). */
+  /** Every real (finite) `Date` inside a value, whatever the mode's shape (nulls + invalid dates skipped). */
   private datesOf(value: CaeDatepickerValue): Date[] {
+    const real = (d: unknown): d is Date => d instanceof Date && !isNaN(d.getTime());
     if (value == null) return [];
-    if (value instanceof Date) return [value];
-    if (Array.isArray(value)) return value.filter((d): d is Date => d instanceof Date);
-    return [value.start, value.end].filter((d): d is Date => d instanceof Date);
+    if (value instanceof Date) return real(value) ? [value] : [];
+    if (Array.isArray(value)) return value.filter(real);
+    return [value.start, value.end].filter(real);
   }
 }
