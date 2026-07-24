@@ -219,8 +219,11 @@ let nextUniqueId = 0;
           [attr.aria-multiselectable]="multiple() ? 'true' : null"
         >
           <!-- Leaf: the treeitem host is the focus/activation target (CDK roving tabindex + keyboard).
-               (activation) selects via Enter/Space; (click) is the mouse equivalent. -->
-          <mat-tree-node
+               (activation) selects via Enter/Space; (click) is the mouse equivalent.
+               NESTED, not <mat-tree-node> — same #491 node-type fix as cae-tree: a flat leaf inside a
+               childrenAccessor (nested) tree makes the CDK log "conflicting node types", under which
+               expand/collapse bookkeeping is undefined. A leaf stamps no outlet, which is safe. -->
+          <mat-nested-tree-node
             *matTreeNodeDef="let node"
             [attr.aria-selected]="ariaSelected(node)"
             [attr.aria-checked]="ariaChecked(node)"
@@ -246,7 +249,7 @@ let nextUniqueId = 0;
               }
               <span class="cae-tree-select__label">{{ node.label }}</span>
             </span>
-          </mat-tree-node>
+          </mat-nested-tree-node>
 
           <!-- Expandable: toggle (tabindex=-1, mouse affordance; keyboard uses Left/Right) + label.
                The toggle stops propagation so expanding never also selects. -->
