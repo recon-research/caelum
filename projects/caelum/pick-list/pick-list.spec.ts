@@ -14,6 +14,7 @@ import {
   CaePickListTargetHeaderDef,
   CaePickListTransferEvent,
 } from './pick-list';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 interface Row {
   id: string;
@@ -277,6 +278,12 @@ describe('CaePickList', () => {
     el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, ...mods }));
     fixture.detectChanges();
   }
+
+  it('has no axe violations (named source/target listboxes with rows)', async () => {
+    render({ source: ROWS(), target: [{ id: 'z', name: 'Zeta' }] });
+    await fixture.whenStable();
+    await expectNoA11yViolations(fixture.nativeElement);
+  });
 
   it('renders two multiselectable listboxes; each option (not the container) is described by the instructions', () => {
     render({ source: ROWS(), target: [{ id: 'z', name: 'Zeta' }] });

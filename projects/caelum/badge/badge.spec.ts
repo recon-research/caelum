@@ -4,6 +4,7 @@ import { By } from '@angular/platform-browser';
 import { MatBadge } from '@angular/material/badge';
 
 import { CaeBadge } from './badge';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 @Component({
   imports: [CaeBadge],
@@ -38,6 +39,12 @@ describe('CaeBadge', () => {
     const badge = fixture.debugElement.query(By.directive(MatBadge)).injector.get(MatBadge);
     return { fixture, badge };
   }
+
+  it('has no axe violations (described badge count on a named host)', async () => {
+    const { fixture } = render();
+    await fixture.whenStable();
+    await expectNoA11yViolations(fixture.nativeElement);
+  });
 
   it('applies MatBadge as a host directive with the aliased content', () => {
     const { badge } = render();

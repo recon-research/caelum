@@ -4,6 +4,7 @@ import { OverlayContainer } from '@angular/cdk/overlay';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { CaeToast, CaeToastRef } from './toast';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 @Component({ template: '' })
 class ToastHost {
@@ -57,6 +58,13 @@ describe('CaeToast', () => {
     await settle();
     expect(snackBar()).not.toBeNull();
     expect(snackBar()!.textContent).toContain('Workspace saved');
+  });
+
+  it('has no axe violations in the open toast (with an action button)', async () => {
+    toast.open('Project archived', 'Undo');
+    await settle();
+    expect(snackBar()).not.toBeNull();
+    await expectNoA11yViolations(containerEl);
   });
 
   it('renders no action button for a message-only toast', async () => {

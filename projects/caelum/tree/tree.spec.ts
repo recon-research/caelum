@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { CaeTree, CaeTreeNode } from './tree';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 const NODES: CaeTreeNode[] = [
   {
@@ -43,6 +44,10 @@ describe('CaeTree', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  it('has no axe violations (labeled tree, nested nodes)', async () => {
+    await expectNoA11yViolations(fixture.nativeElement);
   });
 
   it('renders a labelled treeitem for every node in the nested data', () => {

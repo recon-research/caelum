@@ -3,6 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import { By } from '@angular/platform-browser';
 import { CaeInputMask, caeMaskComplete } from './input-mask';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 const PHONE = '(999) 999-9999';
 
@@ -50,6 +51,13 @@ describe('CaeInputMask', () => {
 
   it('creates', () => {
     expect(component).toBeTruthy();
+  });
+
+  it('has no axe violations (named via ariaLabel)', async () => {
+    fixture.componentRef.setInput('ariaLabel', 'Phone number');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await expectNoA11yViolations(fixture.nativeElement);
   });
 
   it('renders the label', () => {

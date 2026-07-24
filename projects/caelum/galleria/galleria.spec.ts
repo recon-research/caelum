@@ -9,6 +9,7 @@ import { of, Subject } from 'rxjs';
 import { CaeDialog } from 'caelum/dialog';
 import { CaeGalleria, type CaeGalleriaItem, type CaeGalleriaResponsiveOption } from './galleria';
 import { CaeGalleriaItemDef, CaeGalleriaThumbnailDef } from './galleria-item';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 const ITEMS: readonly CaeGalleriaItem[] = [
   { src: 'a.jpg', alt: 'Alpha' },
@@ -56,6 +57,11 @@ describe('CaeGalleria', () => {
   afterEach(() => {
     overlayContainer.ngOnDestroy();
     fixture?.nativeElement.remove();
+  });
+
+  it('has no axe violations (labeled gallery, 3 images + thumbnails)', async () => {
+    await render();
+    await expectNoA11yViolations(el);
   });
 
   it('labels the gallery as a group (role=group, not a region landmark) with a roledescription', async () => {

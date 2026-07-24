@@ -15,6 +15,7 @@ import {
 } from '@angular/material/datepicker';
 
 import { CaeDatepicker, CaeDateRange } from './datepicker';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 const jan = (day: number): Date => new Date(2026, 0, day); // 2026-01-<day>, local time
 
@@ -51,6 +52,23 @@ describe('CaeDatepicker — single mode', () => {
     expect(fixture.nativeElement.querySelector('mat-form-field')).toBeTruthy();
     expect(fixture.nativeElement.querySelector('input[matInput]')).toBeTruthy();
     expect(fixture.nativeElement.querySelector('mat-calendar')).toBeNull(); // overlay-only until opened
+  });
+
+  it('has no axe violations in the open calendar overlay', async () => {
+    // A real datepicker always carries a field label. Material names the popup (role="dialog") via
+    // aria-labelledby → the mat-form-field label id, so without a label the popup is nameless
+    // (aria-dialog-name). `ariaLabel` names the inner input CSS-independently (the #690 floating-
+    // label caveat); `label` supplies the form-field label element the popup points at.
+    fixture.componentRef.setInput('label', 'Start date');
+    fixture.componentRef.setInput('ariaLabel', 'Start date');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    picker().open();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(document.querySelector('mat-calendar')).toBeTruthy();
+    await expectNoA11yViolations(TestBed.inject(OverlayContainer).getContainerElement());
+    picker().close();
   });
 
   it('renders a datepicker toggle button as the open affordance', () => {

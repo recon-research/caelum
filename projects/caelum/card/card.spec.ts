@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { CaeCard } from './card';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 describe('CaeCard', () => {
   let fixture: ComponentFixture<CaeCard>;
@@ -13,6 +14,14 @@ describe('CaeCard', () => {
 
   it('should create', () => {
     expect(fixture.componentInstance).toBeTruthy();
+  });
+
+  it('has no axe violations (titled/subtitled card)', async () => {
+    fixture.componentRef.setInput('title', 'Workspace');
+    fixture.componentRef.setInput('subtitle', 'Overview');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await expectNoA11yViolations(fixture.nativeElement);
   });
 
   it('renders the title into a card header when provided', () => {

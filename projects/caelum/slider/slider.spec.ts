@@ -2,6 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 
 import { CaeSlider } from './slider';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 /**
  * MatSlider depends on real layout geometry (getBoundingClientRect / ResizeObserver / pointer
@@ -43,6 +44,13 @@ describe('CaeSlider', () => {
     expect(component).toBeTruthy();
     expect(singleThumb()).not.toBeNull();
     expect(startThumb()).toBeNull();
+  });
+
+  it('has no axe violations (named via ariaLabel)', async () => {
+    fixture.componentRef.setInput('ariaLabel', 'Volume');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await expectNoA11yViolations(fixture.nativeElement);
   });
 
   it('reflects a value written by the form model (writeValue, single) on the rendered thumb', () => {

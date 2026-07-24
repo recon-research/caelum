@@ -3,6 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 
 import { CaeAutocomplete, CaeAutocompleteOption } from './autocomplete';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 /**
  * MatAutocomplete opens its panel in a CDK overlay that needs real focus/layout to attach, which
@@ -39,6 +40,17 @@ describe('CaeAutocomplete', () => {
     expect(component).toBeTruthy();
     expect(inputEl()).not.toBeNull();
     expect(fixture.nativeElement.querySelector('mat-autocomplete')).not.toBeNull();
+  });
+
+  it('has no axe violations (named via ariaLabel; the panel is a real-browser check per the header note)', async () => {
+    // Named via ariaLabel, not the visible [label] — mat-form-field's MDC floating label is
+    // CSS-positioned and axe judges it "hidden" in jsdom (same fix as input.spec.ts). The
+    // suggestion panel needs real focus/layout to attach in jsdom (this file's header comment),
+    // so — like every other test in this file — this stays at the CVA/rendered-input boundary.
+    fixture.componentRef.setInput('ariaLabel', 'Country');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await expectNoA11yViolations(fixture.nativeElement);
   });
 
   it('renders the chosen label in the input when the form writes a value (writeValue)', async () => {

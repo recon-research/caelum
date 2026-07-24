@@ -5,6 +5,7 @@ import { of, Subject } from 'rxjs';
 
 import { CaeDialog } from 'caelum/dialog';
 import { CaeImage } from './image';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 describe('CaeImage', () => {
   let fixture: ComponentFixture<CaeImage>;
@@ -64,6 +65,11 @@ describe('CaeImage', () => {
     await render();
     expect(img()!.getAttribute('src')).toBe('photo.jpg');
     expect(img()!.getAttribute('alt')).toBe('A wide star field');
+  });
+
+  it('has no axe violations (image with a labeled preview trigger)', async () => {
+    await render();
+    await expectNoA11yViolations(el);
   });
 
   it('is opt-in: no preview trigger by default (p-image parity — a bare image is inert)', async () => {

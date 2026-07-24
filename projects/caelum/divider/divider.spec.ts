@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { CaeDivider } from './divider';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 describe('CaeDivider', () => {
   let fixture: ComponentFixture<CaeDivider>;
@@ -12,6 +13,11 @@ describe('CaeDivider', () => {
   function divider(): HTMLElement {
     return fixture.nativeElement.querySelector('mat-divider')!;
   }
+
+  it('has no axe violations', async () => {
+    fixture.detectChanges();
+    await expectNoA11yViolations(fixture.nativeElement);
+  });
 
   it('renders a horizontal separator by default', () => {
     fixture.detectChanges();

@@ -4,6 +4,7 @@ import { MatChip } from '@angular/material/chips';
 import { By } from '@angular/platform-browser';
 
 import { CaeTag } from './tag';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 describe('CaeTag', () => {
   let fixture: ComponentFixture<CaeTag>;
@@ -17,6 +18,14 @@ describe('CaeTag', () => {
   };
   const set = (name: string, value: unknown): void => fixture.componentRef.setInput(name, value);
   const chip = (): HTMLElement | null => host.querySelector('mat-chip');
+
+  it('has no axe violations (labelled, iconed tag)', async () => {
+    await make(() => {
+      set('value', 'Active');
+      set('icon', 'user');
+    });
+    await expectNoA11yViolations(host);
+  });
 
   it('composes a mat-chip and renders [value] as the label', async () => {
     await make(() => set('value', 'Active'));

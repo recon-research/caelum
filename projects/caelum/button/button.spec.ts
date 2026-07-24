@@ -8,6 +8,7 @@ import { MatTooltip } from '@angular/material/tooltip';
 
 import { CaeButton } from './button';
 import { CaeMenu, CaeMenuItem } from '../menu/menu';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 describe('CaeButton', () => {
   let fixture: ComponentFixture<CaeButton>;
@@ -20,6 +21,13 @@ describe('CaeButton', () => {
 
   it('should create', () => {
     expect(fixture.componentInstance).toBeTruthy();
+  });
+
+  it('has no axe violations (named via ariaLabel)', async () => {
+    fixture.componentRef.setInput('ariaLabel', 'Save workspace');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await expectNoA11yViolations(fixture.nativeElement);
   });
 
   it('renders a Material button carrying the requested variant', () => {

@@ -5,6 +5,7 @@ import { MatInput } from '@angular/material/input';
 import { By } from '@angular/platform-browser';
 
 import { CaeInputNumber } from './input-number';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 describe('CaeInputNumber', () => {
   let component: CaeInputNumber;
@@ -26,6 +27,13 @@ describe('CaeInputNumber', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  it('has no axe violations (named via ariaLabel)', async () => {
+    fixture.componentRef.setInput('ariaLabel', 'Quantity');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    await expectNoA11yViolations(fixture.nativeElement);
   });
 
   it('formats a written number for display (writeValue: model → view)', () => {

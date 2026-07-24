@@ -7,6 +7,7 @@ import {
   CaeTimelineMarker,
   CaeTimelineOpposite,
 } from './timeline';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 interface Ev {
   when: string;
@@ -50,6 +51,11 @@ describe('CaeTimeline', () => {
     root = fixture.nativeElement as HTMLElement;
   };
   const events = (): HTMLElement[] => Array.from(root.querySelectorAll('.cae-timeline__event'));
+
+  it('has no axe violations (ordered list with opposite + content)', async () => {
+    await make();
+    await expectNoA11yViolations(root);
+  });
 
   it('renders ordered-list semantics — one <li> per value item inside an <ol>', async () => {
     await make();

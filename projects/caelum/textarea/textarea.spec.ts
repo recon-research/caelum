@@ -5,6 +5,7 @@ import { MatInput } from '@angular/material/input';
 import { By } from '@angular/platform-browser';
 
 import { CaeTextarea } from './textarea';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 describe('CaeTextarea', () => {
   let component: CaeTextarea;
@@ -21,6 +22,13 @@ describe('CaeTextarea', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  it('has no axe violations (named via ariaLabel)', async () => {
+    fixture.componentRef.setInput('ariaLabel', 'Notes');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await expectNoA11yViolations(fixture.nativeElement);
   });
 
   it('reflects a value written by the form model (writeValue)', () => {

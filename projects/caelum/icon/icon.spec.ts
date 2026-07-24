@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { CAE_ICON_GLYPHS, CaeIcon } from './icon';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 describe('CaeIcon', () => {
   let fixture: ComponentFixture<CaeIcon>;
@@ -12,6 +13,12 @@ describe('CaeIcon', () => {
 
   const svg = (): SVGSVGElement | null =>
     (fixture.nativeElement as HTMLElement).querySelector('svg');
+
+  it('has no axe violations (decorative glyph)', async () => {
+    fixture.componentRef.setInput('name', 'home');
+    fixture.detectChanges();
+    await expectNoA11yViolations(fixture.nativeElement);
+  });
 
   it('renders the named glyph as decorative inline SVG', () => {
     fixture.componentRef.setInput('name', 'home');

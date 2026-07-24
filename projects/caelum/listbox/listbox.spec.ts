@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { CaeListbox, CaeListboxOption } from './listbox';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 /**
  * Unlike MatSlider, MatSelectionList needs no layout geometry, so it renders in jsdom and a
@@ -37,6 +38,13 @@ describe('CaeListbox', () => {
     expect(component).toBeTruthy();
     expect(list().getAttribute('role')).toBe('listbox');
     expect(optionEls().length).toBe(3);
+  });
+
+  it('has no axe violations (named via ariaLabel, renders inline — no overlay)', async () => {
+    fixture.componentRef.setInput('ariaLabel', 'Team members');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await expectNoA11yViolations(fixture.nativeElement);
   });
 
   it('defaults to single-select (aria-multiselectable is not true)', () => {

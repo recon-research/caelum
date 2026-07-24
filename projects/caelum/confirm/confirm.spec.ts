@@ -6,6 +6,7 @@ import { of } from 'rxjs';
 
 import { CaeDialog } from 'caelum/dialog';
 import { CaeConfirmService } from './confirm';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 @Component({ template: '' })
 class ConfirmHost {
@@ -40,6 +41,25 @@ describe('CaeConfirmService', () => {
 
   afterEach(() => {
     overlayContainer.ngOnDestroy();
+  });
+
+  it('has no axe violations in the open confirm dialog', async () => {
+    const result = confirm.confirm({
+      header: 'Delete workspace?',
+      message: 'This cannot be undone.',
+    });
+    await settle();
+    expect(surface()).not.toBeNull();
+    // MatDialogTitle (behind caeDialogTitle) wires the container's aria-labelledby on a deferred
+    // macrotask (it avoids an ExpressionChanged error); settle()'s whenStable does not flush a bare
+    // setTimeout, so flush it here — otherwise the alertdialog is nameless only in the test, not to
+    // a real user (aria-dialog-name).
+    await new Promise((resolve) => setTimeout(resolve));
+    fixture.detectChanges();
+    await expectNoA11yViolations(containerEl);
+
+    rejectBtn()!.click();
+    await result;
   });
 
   it('opens an alertdialog rendering the header, message, and defaulted labels', async () => {

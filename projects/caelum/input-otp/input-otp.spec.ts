@@ -3,6 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 
 import { CaeInputOtp } from './input-otp';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 describe('CaeInputOtp', () => {
   let component: CaeInputOtp;
@@ -47,6 +48,10 @@ describe('CaeInputOtp', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  it('has no axe violations (several cells, named via ariaLabel from beforeEach)', async () => {
+    await expectNoA11yViolations(fixture.nativeElement);
   });
 
   it('renders `length` cells inside a role=group (default 6)', () => {

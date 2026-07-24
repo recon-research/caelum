@@ -4,6 +4,7 @@ import { ENTER, SPACE } from '@angular/cdk/keycodes';
 import { CAE_ICON_GLYPHS } from 'caelum/icon';
 
 import { CaeTabMenu, type CaeTabMenuItem } from './tab-menu';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 type Section = 'overview' | 'activity' | 'settings';
 
@@ -51,6 +52,11 @@ describe('CaeTabMenu', () => {
       return { fixture, host, el, tabs };
     });
   }
+
+  it('has no axe violations (labeled tablist, projected panel content)', async () => {
+    const { el } = await setup();
+    await expectNoA11yViolations(el);
+  });
 
   it('renders one role=tab link per item, with its label', async () => {
     const { tabs } = await setup();

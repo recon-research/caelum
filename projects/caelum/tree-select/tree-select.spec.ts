@@ -9,6 +9,7 @@ import { CaeTreeSelect, type CaeTreeSelectionMode } from './tree-select';
 // The node model is reused from cae-tree (type-only in the component). A spec may reach the source
 // directly — it is not packaged — so this needs no built dist.
 import type { CaeTreeNode } from '../tree/tree';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 const NODES: readonly CaeTreeNode[] = [
   {
@@ -132,6 +133,13 @@ describe('CaeTreeSelect', () => {
     expect(t.getAttribute('aria-haspopup')).toBe('tree');
     expect(t.getAttribute('aria-expanded')).toBe('false');
     expect(t.textContent?.trim()).toContain('Select…');
+  });
+
+  it('has no axe violations in the open tree panel (named via ariaLabel)', async () => {
+    await init();
+    await open();
+    expect(panel()).not.toBeNull();
+    await expectNoA11yViolations(container());
   });
 
   it('reflects the accessible name and required state on the trigger', async () => {

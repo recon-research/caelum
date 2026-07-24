@@ -12,6 +12,7 @@ import {
   CaeOrderListItemDef,
   CaeOrderListReorderEvent,
 } from './order-list';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 interface Row {
   id: string;
@@ -223,6 +224,12 @@ describe('CaeOrderList', () => {
     options()[i].dispatchEvent(new MouseEvent('click', { bubbles: true, ...mods }));
     fixture.detectChanges();
   }
+
+  it('has no axe violations (named listbox with rich rows)', async () => {
+    render();
+    await fixture.whenStable();
+    await expectNoA11yViolations(fixture.nativeElement);
+  });
 
   it('renders a named listbox of option rows, one per item, wired as a cdkDropList', () => {
     render();

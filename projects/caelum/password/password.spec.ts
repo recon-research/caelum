@@ -3,6 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 
 import { CaePassword } from './password';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 describe('CaePassword', () => {
   let component: CaePassword;
@@ -46,6 +47,13 @@ describe('CaePassword', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  it('has no axe violations (named via ariaLabel)', async () => {
+    fixture.componentRef.setInput('ariaLabel', 'Password');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await expectNoA11yViolations(fixture.nativeElement);
   });
 
   // --- Visibility toggle ---

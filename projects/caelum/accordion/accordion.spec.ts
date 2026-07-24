@@ -2,6 +2,7 @@ import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { CaeAccordion, CaeExpansionPanel } from './accordion';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 // ---------------------------------------------------------------------------
 // CaeExpansionPanel — a single collapsible panel, standalone (no accordion).
@@ -110,6 +111,12 @@ describe('CaeAccordion', () => {
 
   const headers = (f: ComponentFixture<AccordionHost>): HTMLElement[] =>
     Array.from(f.nativeElement.querySelectorAll('mat-expansion-panel-header'));
+
+  it('has no axe violations (two titled, collapsed panels)', async () => {
+    const f = TestBed.createComponent(AccordionHost);
+    await f.whenStable();
+    await expectNoA11yViolations(f.nativeElement);
+  });
 
   it('applies MatAccordion to its host and projects one panel per child', async () => {
     const f = TestBed.createComponent(AccordionHost);

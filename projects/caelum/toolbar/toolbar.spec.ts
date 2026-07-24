@@ -2,6 +2,7 @@ import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
 import { CaeToolbar } from './toolbar';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 @Component({
   imports: [CaeToolbar],
@@ -25,6 +26,11 @@ describe('CaeToolbar', () => {
     fixture.detectChanges();
     return fixture;
   }
+
+  it('has no axe violations', async () => {
+    const el = render().nativeElement as HTMLElement;
+    await expectNoA11yViolations(el);
+  });
 
   it('renders a mat-toolbar (the styled bar), not a role="toolbar" widget', () => {
     const el = render().nativeElement as HTMLElement;

@@ -9,6 +9,7 @@ import {
   CaePopoverTrigger,
   type CaePopoverPosition,
 } from './popover';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 @Component({
   imports: [CaePopover, CaePopoverTrigger],
@@ -82,6 +83,12 @@ describe('CaePopover + caePopoverTriggerFor', () => {
     expect(trigger().getAttribute('aria-expanded')).toBe('false');
     expect(trigger().getAttribute('aria-controls')).toBeNull();
     expect(panel()).toBeNull();
+  });
+
+  it('has no axe violations in the open popover panel', async () => {
+    await open();
+    expect(panel()).not.toBeNull();
+    await expectNoA11yViolations(containerEl);
   });
 
   it('opens on click as a named role=dialog the trigger controls', async () => {

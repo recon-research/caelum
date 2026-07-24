@@ -6,6 +6,7 @@ import { Directionality } from '@angular/cdk/bidi';
 import { CaeIcon } from 'caelum/icon';
 
 import { CaeRating } from './rating';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 /** Access the compiled component styles (structural assertions jsdom can't measure by layout). */
 const compiledStyles = (): string =>
@@ -35,6 +36,13 @@ describe('CaeRating', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  it('has no axe violations (named via ariaLabel)', async () => {
+    fixture.componentRef.setInput('ariaLabel', 'Overall rating');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await expectNoA11yViolations(fixture.nativeElement);
   });
 
   it('renders a radiogroup of `[stars]` role=radio stars (default 5)', () => {

@@ -6,6 +6,7 @@ import { By } from '@angular/platform-browser';
 import { CaeTable, CaeTableColumn } from './table';
 import { CaeCellDef } from './cell-def';
 import { CaeRowDetailDef } from './row-detail-def';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 // A plain typed interface (no index signature) — cae-table's generic is unconstrained, so an
 // ordinary row model type works without `extends Record<string, unknown>` (#141).
@@ -56,6 +57,11 @@ describe('CaeTable', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({ imports: [CaeTable] }).compileComponents();
+  });
+
+  it('has no axe violations (columns + rows, captioned)', async () => {
+    setup({ caption: 'Team roster' });
+    await expectNoA11yViolations(el);
   });
 
   it('renders one header cell per column, in config order, with the header text', () => {

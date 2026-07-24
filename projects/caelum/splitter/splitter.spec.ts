@@ -4,6 +4,7 @@ import { Dir, Direction, Directionality } from '@angular/cdk/bidi';
 import { vi } from 'vitest';
 
 import { CaeSplitter, CaeSplitterPanel } from './splitter';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 /** A Directionality double we can seed to a fixed direction (root Directionality defaults to 'ltr'). */
 class FakeDirectionality {
@@ -186,6 +187,11 @@ describe('CaeSplitter', () => {
   }
 
   // --- Structure, projection & size seeding ---
+
+  it('has no axe violations (labeled dividers, seeded panels)', async () => {
+    await render();
+    await expectNoA11yViolations(el);
+  });
 
   it('renders N panels and N-1 dividers, projecting each panel body', async () => {
     await render({

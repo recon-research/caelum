@@ -2,6 +2,7 @@ import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
 import { CaeTab, CaeTabs } from './tabs';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 @Component({
   imports: [CaeTabs, CaeTab],
@@ -17,6 +18,13 @@ class TabsHost {}
 describe('CaeTabs', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({ imports: [TabsHost] }).compileComponents();
+  });
+
+  it('has no axe violations (labeled tablist, two tabs)', async () => {
+    const fixture = TestBed.createComponent(TabsHost);
+    await fixture.whenStable();
+    const el = fixture.nativeElement as HTMLElement;
+    await expectNoA11yViolations(el);
   });
 
   it('renders one tab per projected cae-tab, with its label', async () => {
