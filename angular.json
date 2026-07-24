@@ -28,7 +28,15 @@
           "builder": "@angular/build:unit-test",
           "options": {
             "tsConfig": "projects/caelum/tsconfig.spec.json",
-            "include": ["../*/**/*.spec.ts"]
+            "include": ["../*/**/*.spec.ts"],
+            "exclude": ["../*/**/*.browser.spec.ts"]
+          }
+        },
+        "test-browser": {
+          "builder": "@angular/build:unit-test",
+          "options": {
+            "tsConfig": "projects/caelum/tsconfig.spec.json",
+            "include": ["../*/**/*.browser.spec.ts"]
           }
         }
       }

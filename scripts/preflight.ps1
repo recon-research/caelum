@@ -114,6 +114,32 @@ function Invoke-StageIfNode {
     }
 }
 
+function Invoke-StageIfBrowser {
+    # The real-browser suite (#240) needs a Playwright browser build on this box.
+    # CI installs one explicitly; a dev machine may have none, and that must SKIP
+    # loudly rather than fail the whole preflight -- the suite supplements the
+    # jsdom gate, it does not replace it. `--check` resolves without running.
+    param([string]$Name, [scriptblock]$Body)
+    if ($script:Failed) { return }
+    if (-not (Get-Command npx -ErrorAction SilentlyContinue)) {
+        Skip-Stage $Name 'needs Node on PATH (durable wiring - #15)'
+        return
+    }
+    node scripts/test-browser.mjs --check *> $null
+    if ($LASTEXITCODE -eq 0) {
+        Invoke-Stage $Name $Body
+    }
+    elseif ($env:CAELUM_TEST_BROWSER) {
+        # A pin that cannot resolve is a broken request, NOT an absent browser --
+        # skipping it would report PASS for a suite that never ran (#538's shape).
+        # Re-run --check as the stage so its own message is the failure output.
+        Invoke-Stage $Name { node scripts/test-browser.mjs --check }
+    }
+    else {
+        Skip-Stage $Name 'no Playwright browser installed - npx playwright install chromium'
+    }
+}
+
 # --- The gates: the same commands as ci.yml's `format & lint` + `build & test` jobs
 #     (run sequentially here; those jobs run in parallel in CI). ---
 Invoke-StageIfNode 'format --check' { npm run format:check }
@@ -137,6 +163,21 @@ if (-not $Quick) {
         $env:CI = 'true'
         try {
             npx ng test
+        } finally {
+            if ($null -eq $prevCI) { Remove-Item Env:\CI -ErrorAction SilentlyContinue } else { $env:CI = $prevCI }
+        }
+    }
+    # Build-tooling unit tests (node --test, no new dependency): the browser
+    # resolver's fallback arm can only be exercised with an injected probe.
+    Invoke-StageIfNode 'test scripts (node --test)' { npm run test:scripts }
+    # Real-browser suite (#240) -- the *.browser.spec.ts files the jsdom target
+    # excludes. Skips loudly when no browser build is installed.
+    Invoke-StageIfBrowser 'test (real browser)' {
+        # CI=true scoped to this stage, same reason as the jsdom stage above (#503).
+        $prevCI = $env:CI
+        $env:CI = 'true'
+        try {
+            npm run test:browser
         } finally {
             if ($null -eq $prevCI) { Remove-Item Env:\CI -ErrorAction SilentlyContinue } else { $env:CI = $prevCI }
         }

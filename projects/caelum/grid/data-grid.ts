@@ -136,9 +136,14 @@ let gridInstanceCounter = 0;
         </div>
       </div>
 
+      <!-- tabindex=0: the viewport scrolls, so it must be reachable by keyboard or a
+           keyboard-only user cannot reach rows below the fold (WCAG 2.1.1; axe
+           scrollable-region-focusable). jsdom neither lays out nor scrolls, so this
+           was invisible until the real-browser harness (#240). -->
       <cdk-virtual-scroll-viewport
         class="cae-data-grid__body"
         role="rowgroup"
+        tabindex="0"
         [attr.aria-busy]="loading() ? 'true' : null"
         [itemSize]="rowHeight()"
         [style.height]="viewportHeight()"
@@ -268,6 +273,14 @@ let gridInstanceCounter = 0;
     }
     .cae-data-grid__body .cae-data-grid__row {
       border-bottom: 1px solid var(--cae-color-border);
+    }
+    /* The scroll viewport is a tab stop (see the template note), so it needs a visible
+       focus indicator like any other. The offset is negated because .cae-data-grid
+       clips with overflow:hidden — a positive offset would draw the ring outside the
+       frame and get cut off. */
+    .cae-data-grid__body:focus-visible {
+      outline: var(--cae-focus-ring);
+      outline-offset: calc(-1 * var(--cae-focus-ring-offset));
     }
     .cae-data-grid__sort {
       display: inline-flex;
