@@ -7,7 +7,7 @@
 
 Caelum pairs Material's foundation with a full application-UI surface, designed to be adopted incrementally — one component at a time — in new and existing Angular apps. Components are named and parity-mapped against their PrimeNG counterparts (`p-*` → `cae-*`), so a migrating team can swap them in at their own pace. Its canonical demo is **Forge**, an example admin console built only from Caelum components — [see it live](https://recon-research.github.io/caelum/).
 
-> **Status:** in active development and further along than you'd guess — 50+ components, 1,300+ tests, CI-gated a11y/theming/provenance invariants. Milestones M0–M2 are complete; M3 (the long tail) is in progress. **Not yet published to npm** — it will publish as **`@recon-research/caelum`** (D-501; the repo-wide rename lands pre-publish, [#514](https://github.com/recon-research/caelum/issues/514)). The live plan is [`docs/ROADMAP.md`](docs/ROADMAP.md).
+> **Status:** in active development and further along than you'd guess — 50+ components, 1,300+ tests, CI-gated a11y/theming/provenance invariants. Milestones M0–M3 are complete; M4 (parity hardening & adoption) is in progress. **Not yet published to npm** — it will publish as **`@recon-research/caelum`** (D-501; the repo-wide rename lands pre-publish, [#514](https://github.com/recon-research/caelum/issues/514)). The live plan is [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Components
 
@@ -15,12 +15,13 @@ Every component is its own tree-shakable secondary entry point, importable indep
 
 | Family | Components |
 |---|---|
-| Form controls | form-field · input · textarea · select · autocomplete · multi-select · listbox · checkbox · radio · switch · slider · password · input-mask · input-number · input-otp · select-button · toggle-button |
-| Buttons & menus | button · split-button · menu · menubar · context-menu · tab-menu · breadcrumb |
+| Form controls | form-field · input · textarea · select · autocomplete · multi-select · listbox · checkbox · radio · switch · slider · password · input-mask · input-number · input-otp · select-button · toggle-button · rating · datepicker |
+| Buttons & menus | button · split-button · menu · menubar · context-menu · tab-menu · panel-menu · breadcrumb |
 | Data | table · grid (TanStack adapter) · tree · tree-table · tree-select · order-list · pick-list |
-| Overlays & feedback | dialog · confirm · toast · tooltip · progress-bar · progress-spinner |
+| Overlays & feedback | dialog · confirm · popover · toast · tooltip · progress-bar · progress-spinner |
 | Media | image · image-compare · carousel · galleria |
 | Layout & structure | accordion · card · tabs · stepper · splitter · toolbar · scroll-panel · divider |
+| Display | avatar · skeleton · tag · timeline · icon |
 | Misc | badge · chip · chip-set · file-upload |
 
 Coming from PrimeNG? The **[`p-*` → `cae-*` comparison map](textbooks/reference/COMPARISON.md)** covers the full PrimeNG surface with a migration-effort tier per component.
@@ -65,7 +66,7 @@ Caelum is built and tested almost entirely by **Claude Code**, running on an aut
 
 ## Roadmap
 
-See [`docs/ROADMAP.md`](docs/ROADMAP.md). In short: **M0** foundation + theming ☑ → **M1** composed components ☑ → **M2** adapters ☑ → **M3** the long tail ◐ → **M4** parity hardening and adoption.
+See [`docs/ROADMAP.md`](docs/ROADMAP.md). In short: **M0** foundation + theming ☑ → **M1** composed components ☑ → **M2** adapters ☑ → **M3** the long tail ☑ → **M4** parity hardening and adoption ◐.
 
 ## Contributing
 
