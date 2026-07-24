@@ -84,9 +84,10 @@ describe('CaeDataGrid', () => {
   it('has no axe violations (columns + rows, captioned)', async () => {
     setup({ caption: 'Team roster' });
     // The body is a cdk-virtual-scroll-viewport (role="rowgroup"). Under jsdom it has no layout, so
-    // it renders zero rows and axe flags the transiently-empty rowgroup (aria-required-children).
-    // The rendered-row structure + this rule are verified in the real-browser harness (#240); the
-    // table role, caption, header rowgroup, and columnheaders below are still meaningfully scanned.
+    // it renders zero rows — but that is NOT why this rule is disabled. The real-browser harness
+    // (#240) showed aria-required-children still firing with rows rendered: the role=status live
+    // region is a disallowed child of role=table (#718). This carve-out comes off when #718 lands.
+    // The table role, caption, header rowgroup, and columnheaders below are still meaningfully scanned.
     await expectNoA11yViolations(el, { disableRules: ['aria-required-children'] });
   });
 

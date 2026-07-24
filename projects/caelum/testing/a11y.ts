@@ -15,8 +15,14 @@
  *
  * jsdom has no layout engine, so axe reports layout-dependent rules (e.g. `color-contrast`)
  * as `incomplete`, **not** as `violations` — this helper asserts on `violations` only, so it
- * never false-fails on a rule jsdom cannot evaluate. Real-browser contrast across light/dark
- * and parity density rides on the `@axe-core/playwright` harness (#240).
+ * never false-fails on a rule jsdom cannot evaluate.
+ *
+ * **This same helper is the browser harness.** Under Vitest browser mode the test runs *inside*
+ * the page, so the plain `axe-core` import above is already the real-browser engine — there is no
+ * separate `@axe-core/playwright` integration, and nothing here changes between environments.
+ * What changes is the verdict: rules jsdom could only mark `incomplete` (contrast, and anything
+ * needing layout) become real pass/fail. Put such a check in a `*.browser.spec.ts` file and run
+ * `npm run test:browser` (#240); light/dark and density arms are still to come.
  *
  * **mat-form-field controls (input/textarea/select/…):** name them via `ariaLabel` in a Layer 1
  * spec, not the visible `[label]`. Material's MDC floating label is CSS-positioned, so with no
@@ -41,7 +47,9 @@ export interface A11yCheckOptions {
 function formatViolations(violations: axe.Result[]): string {
   return violations
     .map((v) => {
-      const nodes = v.nodes.map((n) => `      - ${n.target.join(' ')}`).join('\n');
+      const nodes = v.nodes
+        .map((n) => `      - ${n.target.join(' ')}\n${n.failureSummary ?? ''}`)
+        .join('\n');
       return `  [${v.impact ?? 'n/a'}] ${v.id} - ${v.help}\n    ${v.helpUrl}\n${nodes}`;
     })
     .join('\n\n');

@@ -55,3 +55,9 @@ _intake/*
 *.tsbuildinfo
 npm-debug.log
 yarn-error.log
+
+# --- Real-browser test artifacts (#240) ---
+# Vitest browser mode writes a failure screenshot beside the spec and streams
+# attachments; both are per-run diagnostics, never sources.
+__screenshots__/
+/.vitest-attachments

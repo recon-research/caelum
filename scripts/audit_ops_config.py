@@ -61,6 +61,8 @@ PREFLIGHT_TO_CI = {
     "build library (+ US-origin attestation + size budget)": "Build library (+ US-origin attestation + size gate)",
     "build Forge (production budgets)": "Build Forge (production budgets)",
     "test (caelum + Forge)": "Test (caelum + Forge)",
+    "test scripts (node --test)": "Test scripts (node --test)",
+    "test (real browser)": "Test (real browser)",
     "library audits": "Library audits (refs / routing / links)",
     "research audit": "Research audit (citations / structure / links)",
     "provenance (deps license + US-origin, D-11)": "Dependency provenance (license + US-origin, D-11)",
@@ -132,20 +134,26 @@ def parse_sh_stages(path):
     # `stage "name"` / `skip_stage "name"` (either quote style — both are legal
     # sh and a downstream's style must not zero the parse), plus Caelum's
     # Node-gated wrapper `run_if_node "name" cmd` (project deviation #15 — the
-    # Node stages only run with $HOME/nodejs on PATH). The wrapper's own body
-    # calls `stage "$name"` / `skip_stage "$name"` with a variable, so names
-    # containing `$` are filtered.
-    names = re.findall(r'''^\s*(?:skip_stage|stage|run_if_node)\s+['"]([^'"]+)['"]''', read(path), re.M)
+    # Node stages only run with $HOME/nodejs on PATH) and the browser-gated
+    # `run_if_browser "name" cmd` (#240 — skips when no Playwright build is
+    # installed). The wrappers' own bodies call `stage "$name"` /
+    # `skip_stage "$name"` with a variable, so names containing `$` are filtered.
+    names = re.findall(
+        r'''^\s*(?:skip_stage|stage|run_if_node|run_if_browser)\s+['"]([^'"]+)['"]''', read(path), re.M
+    )
     return [n for n in names if "$" not in n]
 
 
 def parse_ps1_stages(path):
     # `Invoke-Stage 'name'` / `Skip-Stage 'name'` (either quote style, as
-    # above), plus Caelum's Node-gated wrapper `Invoke-StageIfNode 'name'
-    # {...}` (project deviation #15). The wrapper body calls `Invoke-Stage
-    # $Name` with a variable -> `$` filtered.
+    # above), plus Caelum's gated wrappers `Invoke-StageIfNode` (#15) and
+    # `Invoke-StageIfBrowser` (#240). The wrapper bodies call `Invoke-Stage
+    # $Name` with a variable -> `$` filtered. Longest alternative FIRST:
+    # `Invoke-Stage` would match the prefix of the others and then fail on \s+.
     names = re.findall(
-        r"""^\s*(?:Invoke-StageIfNode|Invoke-Stage|Skip-Stage)\s+['"]([^'"]+)['"]""", read(path), re.M
+        r"""^\s*(?:Invoke-StageIfBrowser|Invoke-StageIfNode|Invoke-Stage|Skip-Stage)\s+['"]([^'"]+)['"]""",
+        read(path),
+        re.M,
     )
     return [n for n in names if "$" not in n]
 

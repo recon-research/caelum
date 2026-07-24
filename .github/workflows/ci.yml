@@ -358,6 +358,26 @@ jobs:
           CI: 'true'
         run: npx ng test
 
+      # Build-tooling unit tests (node --test — no new dependency). Cheap, and the
+      # browser resolver's fallback arm is only reachable with an injected probe.
+      - name: Test scripts (node --test)
+        run: npm run test:scripts
+
+      # Real-browser suite (#240): the *.browser.spec.ts files the jsdom target
+      # excludes, driven through Vitest browser mode. Ubuntu only — these verify
+      # layout/a11y behaviour, not OS parity, and Windows bills ~1.7x. CI installs
+      # Chromium EXPLICITLY so the runner is deterministic; the resolver's
+      # Firefox fallback exists for dev machines, and must never silently change
+      # which engine CI reports on.
+      - name: Test (real browser)
+        if: matrix.os == 'ubuntu-latest'
+        env:
+          CI: 'true'
+          CAELUM_TEST_BROWSER: chromium
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:browser
+
       # No headless "run loop" to smoke: Caelum ships a client-side component library
       # and Forge is a static SPA. The build (bundle emitted) + the tests passing ARE
       # the operability evidence (validate_headless_mode) — there is no daemon to probe.

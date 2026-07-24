@@ -94,6 +94,29 @@ test_ci() {
     # builder run once and exit instead of watching (GitHub Actions sets it too).
     CI=true npx ng test || return 1
 }
+test_browser_ci() {
+    CI=true npm run test:browser || return 1
+}
+run_if_browser() {
+    # The real-browser suite (#240) needs a Playwright browser build on this box.
+    # CI installs one explicitly; a dev machine may have none, and that must SKIP
+    # loudly rather than fail the whole preflight — the suite is a supplement to
+    # the jsdom gate, not a second copy of it. `--check` resolves without running.
+    local name="$1"; shift
+    [ "$FAILED" -ne 0 ] && return 0
+    if ! command -v npx >/dev/null 2>&1; then
+        skip_stage "$name" "needs Node on PATH — run with PATH=\"\$HOME/nodejs/bin:\$PATH\" (durable wiring → #15)"
+    elif node scripts/test-browser.mjs --check >/dev/null 2>&1; then
+        stage "$name" "$@"
+    elif [ -n "${CAELUM_TEST_BROWSER:-}" ]; then
+        # A pin that cannot resolve is a broken request, NOT an absent browser —
+        # skipping it would report PASS for a suite that never ran (#538's shape).
+        # Re-run --check as the stage so its own message is the failure output.
+        stage "$name" node scripts/test-browser.mjs --check
+    else
+        skip_stage "$name" "no Playwright browser installed — npx playwright install chromium"
+    fi
+}
 
 # --- The gates: the same commands as ci.yml's `format & lint` + `build & test` jobs
 #     (run sequentially here; those jobs run in parallel in CI). ---
@@ -110,6 +133,12 @@ if [ "$QUICK" -eq 0 ]; then
     # Vitest suite (caelum + Forge). No headless run-loop smoke: Caelum is a
     # client-side library, Forge a static SPA — build+test IS the operability proof.
     run_if_node "test (caelum + Forge)" test_ci
+    # Build-tooling unit tests (node --test, no new dependency): the browser
+    # resolver's fallback arm can only be exercised with an injected probe.
+    run_if_node "test scripts (node --test)" npm run test:scripts
+    # Real-browser suite (#240) — the *.browser.spec.ts files the jsdom target
+    # excludes. Skips loudly when no browser build is installed.
+    run_if_browser "test (real browser)" test_browser_ci
 fi
 
 # --- Real-from-day-one gates (mirror ci.yml's consolidated `static gates` job) ---
