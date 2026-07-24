@@ -18,11 +18,15 @@
  * **What it found.** Running axe against a *rendered* grid immediately surfaced
  * two defects jsdom structurally cannot see: a scrollable region with no keyboard
  * access (fixed with #240 — asserted below), and a `role="status"` live region
- * that is a disallowed child of `role="table"` (#718 — still open, and the one
- * rule disabled below). The second matters twice over: the jsdom spec had been
- * scope-disabling that rule for years, blaming the empty rowgroup, so the
- * carve-out was masking a real critical violation rather than papering over a
- * jsdom artefact.
+ * that is a disallowed child of `role="table"` (#718, since fixed by moving the
+ * role off the visual frame onto an inner element). The second matters twice
+ * over: the jsdom spec had been scope-disabling that rule for years, blaming the
+ * empty rowgroup, so the carve-out was masking a real critical violation rather
+ * than papering over a jsdom artefact.
+ *
+ * The axe runs below therefore disable **no** rules, and cover the pager arm too —
+ * its buttons and rows-per-page `<select>` are the other disallowed table children
+ * #718 would have exposed.
  *
  * Run it: `npm run test:browser`.
  */
@@ -133,13 +137,61 @@ describe('CaeDataGrid (real browser)', () => {
     expect(document.activeElement).toBe(body());
   });
 
-  it('has no axe violations except the known role=status defect (#718)', async () => {
+  it('has no axe violations, no rules disabled', async () => {
     await setup({ caption: 'Team roster' });
-    // The ONE disabled rule, and not for the reason the jsdom spec assumed: it
-    // fires here *with rows rendered*, because the role=status live region is a
-    // disallowed child of role=table. #718 restructures the frame; this comes off
-    // with it. Everything else — including color-contrast, which axe can only
-    // report as `incomplete` under jsdom — is evaluated for real.
-    await expectNoA11yViolations(el, { disableRules: ['aria-required-children'] });
+    // Nothing disabled: with rows really rendered, the table role really scoped
+    // (#718) and layout really computed, color-contrast — which axe can only
+    // report as `incomplete` under jsdom — is evaluated for real here.
+    await expectNoA11yViolations(el);
+  });
+
+  it('has no axe violations with the pager rendered', async () => {
+    await setup({
+      caption: 'Team roster',
+      paginated: true,
+      pageSize: 25,
+      pageSizeOptions: [25, 50],
+    });
+    // The pager sits inside the visual frame but outside role="table" (#718) — its
+    // buttons and rows-per-page select would otherwise be disallowed table children.
+    expect(el.querySelector('.cae-data-grid__pager')).not.toBeNull();
+    const pager = el.querySelector('.cae-data-grid__pager');
+    expect(el.querySelector('[role="table"]')!.contains(pager)).toBe(false);
+    // Mutation-checked: with the pager back inside the role, axe alone (structural
+    // guard removed) reports critical aria-required-children — "Element has children
+    // which are not allowed: span[aria-live], button[aria-label], select".
+    await expectNoA11yViolations(el);
+  });
+
+  it('splits the table role off the frame without adding a box of its own', async () => {
+    await setup({ caption: 'Team roster', paginated: true, pageSize: 25 });
+    const rect = (sel: string) => (el.querySelector(sel) as HTMLElement).getBoundingClientRect();
+    const frame = rect('.cae-data-grid');
+    const wrapper = rect('.cae-data-grid__table');
+    const caption = rect('.cae-data-grid__caption');
+    const body = rect('.cae-data-grid__body');
+    const pager = rect('.cae-data-grid__pager');
+    // The role wrapper spans exactly its content — no border/padding/margin of its own …
+    expect(wrapper.top).toBe(caption.top);
+    expect(wrapper.bottom).toBe(body.bottom);
+    expect(wrapper.width).toBe(frame.width);
+    // … and the frame still stacks contiguously through the pager, which is what makes
+    // the #718 restructure visually inert. Measured against a `display: contents` control
+    // (which reproduces the pre-split box tree): every rect was byte-identical. The frame
+    // keeps the clipping + the busy-overlay anchor.
+    expect(pager.top).toBe(body.bottom);
+    expect(frame.bottom).toBe(pager.bottom);
+    expect(getComputedStyle(el.querySelector('.cae-data-grid') as HTMLElement).overflow).toBe(
+      'hidden',
+    );
+  });
+
+  it('keeps the status live region outside the table role but inside the frame', async () => {
+    await setup();
+    const status = el.querySelector('.cae-data-grid__empty')!;
+    // Both halves matter: outside the role (the #718 violation) …
+    expect(el.querySelector('[role="table"]')!.contains(status)).toBe(false);
+    // … and still inside the frame, so it is clipped/positioned as before.
+    expect(el.querySelector('.cae-data-grid')!.contains(status)).toBe(true);
   });
 });
