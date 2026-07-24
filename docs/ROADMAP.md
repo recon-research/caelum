@@ -49,10 +49,10 @@ Each milestone has a **goal**, **slices**, a verifiable **exit criterion**, a **
 
 ### M4 — Parity hardening & adoption
 - **Goal:** Make "looks done" = "is done", and make the library adoptable.
-- **Slices:** ☑ **density parity (R4)** — *pulled forward*, shipped #411 (PR #415; runtime `[data-density]` compact arm, Material `density:-2` + `--cae-space-*` re-scale under one selector, target-size floor held; API shape = D-19, ratified #412) · ☐ theming polish (visual polish across density × scheme) · ◐ full a11y audit — Layer 1 axe harness ☑ (#690: `expectNoA11yViolations` + 5 archetype exemplars; sweep-all → #691); keyboard/SR + real-browser contrast → #240 · ☐ visual-regression suite (light+dark, incl. density arms — #240) · ☐ capability ledger green · ☐ adoption / `p-*`→`cae-*` migration guide + usage-mapping doc
+- **Slices:** ☑ **density parity (R4)** — *pulled forward*, shipped #411 (PR #415; runtime `[data-density]` compact arm, Material `density:-2` + `--cae-space-*` re-scale under one selector, target-size floor held; API shape = D-19, ratified #412) · ☐ theming polish (visual polish across density × scheme) · ◐ full a11y audit — **Layer 1 axe ☑** (#690 harness + #691 sweep, PR #695: 60 components axe-clean, 0 real violations); keyboard/SR + real-browser (grid virtual rows, tooltip panel, contrast) → #240 · ☐ visual-regression suite (light+dark, incl. density arms — #240) · ☐ capability ledger green · ☐ adoption / `p-*`→`cae-*` migration guide + usage-mapping doc
 - **Exit criterion:** the parity checklist is green; the capability ledger shows every shipped component at `adversarial-passed`; the adoption guide is published.
 - **Leverage:** mixed — automation/audit high; final parity judgment ~1×.
-- **Status:** ◐ **active** (M3 exited 2026-07-24) — density parity (R4) shipped (#411); **a11y Layer 1 axe harness shipped (#690)** — sweep-all #691. Remaining: theming polish · a11y sweep + keyboard/SR audit (#691, #240) · visual-regression suite (#240) · capability ledger green · `p-*`→`cae-*` adoption/migration guide.
+- **Status:** ◐ **active** (M3 exited 2026-07-24) — density parity (R4) shipped (#411); **a11y Layer 1 axe complete** (#690 harness + #691 sweep, PR #695): 60 components axe-clean, 0 real violations. Remaining: theming polish · keyboard/SR + real-browser audit (#240) · visual-regression suite (#240) · capability ledger green · `p-*`→`cae-*` adoption/migration guide.
 
 ## Open decisions
 
