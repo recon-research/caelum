@@ -42,7 +42,9 @@ export interface CaeListboxOption {
  * of `cae-select-button`, #73).
  *
  * **Accessibility.** `mat-selection-list` is `role="listbox"` with the WAI-ARIA roving-tabindex +
- * arrow-key navigation built in (verify real-browser at M4, like #41/#79). Name the list with
+ * arrow-key navigation built in — verified in a real browser (`listbox.browser.spec.ts`, #405):
+ * one tab stop, Up/Down **wrap** at both ends, Home/End jump, and a disabled option is still roved
+ * onto rather than skipped (aria-disabled-focusable). Name the list with
  * `ariaLabel` or `ariaLabelledby` (a `role=listbox` needs an accessible name), and mark it `required`
  * to set `aria-required`. It is not a `MatFormFieldControl`, so validation feedback is consumer-owned:
  * point `ariaDescribedby` at your message (Caelum's consumer-owned error pattern for non-form-field

@@ -28,7 +28,10 @@ import { MatAccordion, MatExpansionModule } from '@angular/material/expansion';
  * toggled by Enter/Space and reachable by Tab — the WAI-ARIA APG *required* accordion interactions.
  * The APG's *optional* inter-header Up/Down/Home/End roving is NOT forwarded: Material drives it from
  * an `@ContentChildren(MatExpansionPanelHeader)` query that doesn't cross the `cae-expansion-panel`
- * view boundary. Tracked in #79 for a real-browser check at M4 (with #41).
+ * view boundary. Confirmed in a real browser and pinned there (`accordion.browser.spec.ts`, #405,
+ * was #79) — along with the required interactions that must survive it: every header is its own tab
+ * stop, and Enter/Space toggle. Closing the gap (it is a parity gap vs both Material and PrimeNG,
+ * though APG-conformant) is #759.
  */
 @Component({
   selector: 'cae-accordion',
