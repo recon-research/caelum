@@ -457,11 +457,10 @@ export interface CaeTableColumn {
     .cae-table__detail-row--collapsed {
       display: none;
     }
-    /* Neutral empty-state hint (token-only): muted text, comfortable padding. currentColor fallback
-       inherits the themed on-surface text (legible in light + dark) when the token is unresolved. */
+    /* Neutral empty-state hint (token-only): muted text, comfortable padding. */
     .cae-table__empty {
       padding: var(--cae-space-4);
-      color: var(--mat-sys-on-surface-variant, currentColor);
+      color: var(--cae-color-on-surface-variant);
       text-align: center;
     }
     /* When rows are present emptyText() is '', so the region collapses (no padded strip). */
