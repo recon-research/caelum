@@ -13,9 +13,10 @@ import { MatDivider } from '@angular/material/divider';
  * height). The wrapper carries no ARIA, so the separator's semantics remain solely on the inner
  * element. One consequence to know: `margin`/`padding`/`border`/`background` set on `<cae-divider>`
  * itself have NO effect (display:contents removes its box) — space it via the surrounding layout
- * (e.g. a flex/grid `gap`) instead. The vertical full-height rendering + separator-in-a11y-tree
- * behaviour under `display:contents` is asserted structurally in the spec and verified in a real
- * browser at M4 (#91).
+ * (e.g. a flex/grid `gap`) instead. The vertical full-height rendering is **measured** in
+ * `divider.browser.spec.ts` (#91 via #405), which also pins the a11y half: the role must stay on
+ * the inner element, because a role-bearing `display: contents` element can be dropped from the
+ * a11y tree and axe — reading the DOM — would not see it (`docs/PATTERNS.md` §12).
  *
  * Parity note: PrimeNG's `p-divider` also supports a centered text label, a line `type`
  * (solid/dashed/dotted), and `align`; `MatDivider` does none of these — tracked as a parity-extras

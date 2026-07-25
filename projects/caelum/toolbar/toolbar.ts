@@ -22,8 +22,9 @@ import { MatToolbar } from '@angular/material/toolbar';
  * **un-grouped** projected content renders start-side too (a forgiving default — nothing is
  * silently dropped, unlike a strict named-only projection). The start/end placement depends on
  * `mat-toolbar` staying a single-row flex container for the spacer to grow inside; the unit spec
- * can only assert DOM order (jsdom computes no flex), so the visual placement is verified in a
- * real browser at M4 (#128). A centered group and multiple rows are PrimeNG extras not covered
+ * can only assert DOM order (jsdom computes no flex), so the rendered placement is **measured**
+ * in `toolbar.browser.spec.ts` (#128 via #405) — which also confirms start/end are genuinely
+ * *inline*: the mirroring under `dir="rtl"` comes free from flex, as no code here reads direction. A centered group and multiple rows are PrimeNG extras not covered
  * here → #127.
  *
  * **a11y — deliberately NOT `role="toolbar"`.** PrimeNG's `p-toolbar` renders `role="toolbar"`
