@@ -103,6 +103,9 @@ describe('CaeDataGrid (real browser)', () => {
 
   const body = () => el.querySelector('.cae-data-grid__body') as HTMLElement;
   const bodyRows = () => Array.from(body().querySelectorAll<HTMLElement>('[role="row"]'));
+  /** Text of the `i`th cell of `row` — the content half of every windowing assertion. */
+  const cellText = (row: HTMLElement, i: number) =>
+    row.querySelectorAll<HTMLElement>('[role="cell"]')[i].textContent!.trim();
 
   it('gives the virtual-scroll viewport real layout', async () => {
     await setup();
@@ -230,5 +233,148 @@ describe('CaeDataGrid (real browser)', () => {
     expect(el.querySelector('[role="table"]')!.contains(status)).toBe(false);
     // … and still inside the frame, so it is clipped/positioned as before.
     expect(el.querySelector('.cae-data-grid')!.contains(status)).toBe(true);
+  });
+
+  // ── Virtual-scroll recycling at scale (#405, was #174) ──────────────────────
+  //
+  // The tests above measure the grid **at rest**. Windowing that holds on first paint but leaks on
+  // scroll is the actual failure mode of a virtual scroller — the DOM grows row by row until a long
+  // list is no longer virtualized at all — and nothing here had ever scrolled the viewport.
+
+  it('keeps the window bounded after a long scroll, with indices anchored to the full set', async () => {
+    await setup();
+    expect(bodyRows()[0].getAttribute('aria-rowindex')).toBe('2');
+
+    // Past row 100 of 200 — far beyond any buffer, so the range must have been recomputed.
+    body().scrollTop = ROW_PX * 100;
+    await settle();
+
+    const rows = bodyRows();
+    // Still a window, not an accumulation: this is what fails when views leak instead of recycling.
+    expect(rows.length).toBeGreaterThanOrEqual(ROWS_FILLING_VIEWPORT);
+    expect(rows.length).toBeLessThan(TOTAL_ROWS);
+
+    // The rendered slice moved, and `aria-rowindex` still counts against the *whole* data set
+    // rather than the rendered window — the property a screen reader reads as "row 102 of 200".
+    const first = Number(rows[0].getAttribute('aria-rowindex'));
+    expect(first).toBeGreaterThan(50);
+    expect(cellText(rows[0], 0)).not.toBe('Person 1');
+    // Index and content agree: row N carries `Person N-1` (header occupies index 1).
+    expect(cellText(rows[0], 0)).toBe(`Person ${first - 1}`);
+  });
+
+  it('recycles the row views instead of rebuilding them', async () => {
+    await setup();
+    const before = bodyRows();
+    const reusedCandidate = before[0];
+    expect(cellText(reusedCandidate, 0)).toBe('Person 1');
+
+    body().scrollTop = ROW_PX * 100;
+    await settle();
+
+    const after = bodyRows();
+    // The recycling claim itself: CDK hands the same DOM back with new content. Node identity is
+    // the only way to tell "reused" from "torn down and rebuilt" — both render correct rows, but
+    // only recycling keeps a long scroll cheap.
+    expect(after).toContain(reusedCandidate);
+    expect(cellText(reusedCandidate, 0)).not.toBe('Person 1');
+  });
+
+  // ── The status region is *watched*, so its text can be an announcement (#405, was #228/#194) ──
+  //
+  // **Scope, stated precisely — these do NOT verify that a screen reader speaks.** A real SR cannot
+  // be driven from this harness; that stays a manual Layer 3 check (#228). What is covered:
+  //
+  //   • the region survives being emptied as a *rendered* node rather than `display: none`, which is
+  //     what keeps it in the a11y tree at all — browser-only, since it is decided by computed style;
+  //   • its message arrives as an in-place `characterData` mutation of a pre-existing node, not as
+  //     the insertion of a node already carrying text (the reliably-silent case).
+  //
+  // **What is NOT covered, deliberately:** the `rendered` born-empty guard behind `statusText`.
+  // Deleting it (`if (false) return ''`) kills none of these tests, and measuring the production
+  // path shows why — under zoneless CD the message lands synchronously inside `ApplicationRef.tick()`
+  // (`atCreate="" | syncAfterTick="No data." | rAF1="No data."`), so the frame gap its comment
+  // describes does not exist to be asserted. Filed as #762 rather than papered over with a test
+  // shaped to pass; the resolution needs the real-SR check this harness cannot make.
+
+  it('keeps the emptied status region in the a11y tree — clipped, never display:none', async () => {
+    await setup(); // data present, so `statusText` is '' and the `:empty` rule applies
+    const status = el.querySelector('.cae-data-grid__empty') as HTMLElement;
+    expect(status.textContent!.trim()).toBe('');
+
+    // The load-bearing distinction. `display: none` (or `visibility: hidden`) prunes the node from
+    // the accessibility tree, which un-watches the live region — the next message would then be
+    // the *insertion* of a region already holding text, which screen readers do not reliably
+    // announce. A clip-based hide looks identical on screen and behaves completely differently.
+    const cs = getComputedStyle(status);
+    expect(cs.display).not.toBe('none');
+    expect(cs.visibility).not.toBe('hidden');
+
+    // …and it really is collapsed rather than merely transparent, so it costs no layout.
+    const rect = status.getBoundingClientRect();
+    expect(rect.width).toBeLessThanOrEqual(2);
+    expect(rect.height).toBeLessThanOrEqual(2);
+  });
+
+  it('delivers its first message by mutating a region that already exists (#194)', async () => {
+    // Instrumented with a MutationObserver rather than a DOM read, because the distinction #194
+    // turns on is a *mutation type*, not a state: a live region announces a `characterData` change
+    // to a node the a11y tree already watches, but not the insertion of a node that arrives
+    // already holding its text. Reading `textContent` after a tick cannot tell those apart — a
+    // first attempt here asserted "empty after the first detectChanges()" and failed, because
+    // zoneless CD completes the afterNextRender re-render inside that same call. The node was
+    // empty when it mattered (at creation); the probe just could not see it.
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ imports: [CaeDataGrid] });
+    loadCaelumTheme();
+    fixture = TestBed.createComponent(CaeDataGrid<Person>);
+    fixture.componentRef.setInput('columns', COLUMNS);
+    fixture.componentRef.setInput('data', []);
+    el = fixture.nativeElement as HTMLElement;
+
+    // Before any change detection: the view exists, so the region is present and *born empty*.
+    const born = el.querySelector('.cae-data-grid__empty') as HTMLElement;
+    expect(born).not.toBeNull();
+    expect(born.textContent!.trim()).toBe('');
+
+    const insertedCarryingText: string[] = [];
+    let textMutations = 0;
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of Array.from(record.addedNodes)) {
+          if (node instanceof HTMLElement && node.classList.contains('cae-data-grid__empty')) {
+            insertedCarryingText.push(node.textContent ?? '');
+          }
+        }
+        if (
+          record.type === 'characterData' &&
+          record.target.parentElement?.classList.contains('cae-data-grid__empty')
+        ) {
+          textMutations++;
+        }
+      }
+    });
+    observer.observe(el, { childList: true, subtree: true, characterData: true });
+
+    fixture.detectChanges();
+    await settle();
+    observer.disconnect();
+
+    expect(born.textContent!.trim()).toBe('No data.');
+    // The claim, as a mutation record: text changed *in place* …
+    expect(textMutations).toBeGreaterThan(0);
+    // … and the region was never (re-)inserted already carrying a message — the silent case.
+    expect(insertedCarryingText).toEqual([]);
+    // Same node throughout, so what the a11y tree watched at creation is what changed.
+    expect(el.querySelector('.cae-data-grid__empty')).toBe(born);
+  });
+
+  it('reads as loading rather than empty while a fetch is in flight (#188)', async () => {
+    await setup({ data: [], loading: true, loadingMessage: 'Fetching…' });
+    const status = el.querySelector('.cae-data-grid__empty') as HTMLElement;
+    // "0 rows" and "still loading" are different announcements; conflating them tells a user the
+    // query returned nothing when it simply has not returned.
+    expect(status.textContent!.trim()).toBe('Fetching…');
+    expect(getComputedStyle(status).display).not.toBe('none');
   });
 });

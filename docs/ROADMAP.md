@@ -49,10 +49,10 @@ Each milestone has a **goal**, **slices**, a verifiable **exit criterion**, a **
 
 ### M4 — Parity hardening & adoption
 - **Goal:** Make "looks done" = "is done", and make the library adoptable.
-- **Slices:** ☑ **density parity (R4)** #411 (PR #415; runtime `[data-density]` compact arm, Material `density:-2` + `--cae-space-*` under one selector, target floor held; D-19 ratified #412) · ◐ theming polish #734 (#425 contrast, prov. #744; #510 bridge; #413 left) · ◐ full a11y audit — **Layer 1 axe ☑** #690+#691 (PR #695: 60 components axe-clean, 0 real violations); keyboard/SR + real-browser → ☑ **harness** #240 (PR #719), ◐ **#405** sweep 6/12 (#718, #724, PRs #728/#730/#760) · ☑ **visual-regression** #732 (PRs #737/#742; 5 components x 4 arms, render pinned per #735) · ☐ capability ledger #733 · ☑ **`p-*`→`cae-*` migration guide** `docs/MIGRATION.md` #715
+- **Slices:** ☑ **density parity (R4)** #411 (PR #415; runtime `[data-density]` compact arm, Material `density:-2` + `--cae-space-*` under one selector, target floor held; D-19 ratified #412) · ◐ theming polish #734 (#425 contrast, prov. #744; #510 bridge; #413 left) · ◐ full a11y audit — **Layer 1 axe ☑** #690+#691 (PR #695: 60 components axe-clean, 0 real violations); keyboard/SR + real-browser → ☑ **harness** #240 (PR #719), ◐ **#405** sweep 7/12 (#718, #724, PRs #728/#730/#760) · ☑ **visual-regression** #732 (PRs #737/#742; 5 components x 4 arms, render pinned per #735) · ☐ capability ledger #733 · ☑ **`p-*`→`cae-*` migration guide** `docs/MIGRATION.md` #715
 - **Exit criterion:** the parity checklist is green; the capability ledger shows every shipped component at `adversarial-passed`; the adoption guide is published.
 - **Leverage:** mixed — automation/audit high; final parity judgment ~1×.
-- **Status:** ◐ **active** (M3 exited 2026-07-24) — shipped: density R4 #411 · a11y Layer 1 axe #690+#691 · hardening batch (PRs #697–#705) · adoption #713/#716 · harness #240 · VR suite #732 (+#736, #745) · **#734 ◐** (#425 contrast, #510 bridge). **#405 sweep 6/12.** Recipes → `docs/PATTERNS.md` §9–§9e/§12. Remaining: #405 · #413 · #733.
+- **Status:** ◐ **active** (M3 exited 2026-07-24) — shipped: density R4 #411 · a11y Layer 1 axe #690+#691 · hardening batch (PRs #697–#705) · adoption #713/#716 · harness #240 · VR suite #732 (+#736, #745) · **#734 ◐** (#425 contrast, #510 bridge). **#405 sweep 6/12.** Recipes → `docs/PATTERNS.md` §9–§9f/§12. Remaining: #405 · #413 · #733.
 
 ## Open decisions
 
