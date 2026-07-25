@@ -16,32 +16,10 @@
  * `:root[data-density='compact']`. Comfortable is the unattributed default, so it is expressed
  * here as `density: null` rather than a third value that does not exist in the stylesheet.
  */
-import { Component, Type, ViewEncapsulation } from '@angular/core';
+import { Type } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
-/**
- * Stands up the **whole** bridge, not just the token layer.
- *
- * `loadCaelumTheme()` (#724) loads `_tokens.scss`, which emits the `--cae-*` custom properties —
- * enough for a Caelum-authored style that reads one directly. It is **not** enough to render a
- * Material-backed component: `_tokens.scss` defines zero `--mat-sys-*`, and it is `_theme.scss`'s
- * `mat.theme()` call that emits Material's system seam. Material ships each component's CSS with
- * the component, so those rules are present either way — they just resolve every colour and font
- * against a missing custom property and fall back to the initial value.
- *
- * Measured, not assumed: with only `_tokens.scss` loaded, `cae-button`'s filled/tonal/elevated
- * variants screenshot as bare serif text on a transparent background, and only `outlined` shows
- * anything at all. That is the whole component set rendering unstyled.
- *
- * `_theme.scss` `@use`s `tokens`, so this is a superset — there is no need to load both.
- */
-@Component({
-  selector: 'cae-vr-theme-host',
-  template: '',
-  styleUrl: '../styles/_theme.scss',
-  encapsulation: ViewEncapsulation.None,
-})
-class CaeVrThemeHost {}
+import { loadCaelumTheme } from './theme';
 
 /** One point in the scheme x density cross product. `density: null` is the unattributed default. */
 export interface VrArm {
@@ -140,7 +118,10 @@ export function applyArm(arm: VrArm): void {
   root.setAttribute('data-theme', arm.theme);
   if (arm.density) root.setAttribute('data-density', arm.density);
   else root.removeAttribute('data-density');
-  TestBed.createComponent(CaeVrThemeHost);
+  // `loadCaelumTheme()` stands up the whole bridge — tokens AND Material's `--mat-sys-*` seam.
+  // It loaded only the token layer until #736, which is why this file briefly carried its own
+  // full-theme host; that duplicate is gone.
+  loadCaelumTheme();
   freezeMotion();
 }
 
