@@ -11,12 +11,12 @@
  * which is the whole point: `axe` (#690/#691) sees contrast but not layout, and the
  * `*.browser.spec.ts` layer (#405) sees behaviour but not appearance.
  *
- * Run it: `npm run test:vr`. Update goldens deliberately: `npm run test:vr -- --update`.
+ * Run it: `npm run test:vr`. Update goldens deliberately: `npm run test:vr:update`.
  */
 import { Component } from '@angular/core';
 
 import { CaeButton, CaeButtonVariant } from './button';
-import { VR_ARMS, renderArm, resetArm } from '../testing/vr';
+import { VR_ARMS, matchArm, renderArm, resetArm } from '../testing/vr';
 
 const VARIANTS: readonly CaeButtonVariant[] = ['filled', 'tonal', 'elevated', 'outlined', 'text'];
 
@@ -59,7 +59,7 @@ describe('CaeButton (visual regression)', () => {
   for (const arm of VR_ARMS) {
     it(`renders every variant in the ${arm.name} arm`, async () => {
       const el = renderArm(ButtonVrHost, arm);
-      await expect.element(el).toMatchScreenshot(`button-${arm.name}`);
+      await matchArm(el, `button-${arm.name}`);
     });
   }
 });

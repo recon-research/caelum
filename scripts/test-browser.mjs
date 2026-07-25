@@ -159,11 +159,18 @@ function main() {
   //     to decide between running a suite and skipping it loudly.
   //   `--vr` drives the visual-regression target (#732) instead of the
   //     behavioural one, under the stricter resolver.
+  //   `--update` rewrites the VR goldens. It is handled *here*, as an env var read
+  //     by `vitest-vr.config.ts`, because `@angular/build:unit-test` has no
+  //     `update` option — forwarding the flag to `ng run` only earns a rejection.
+  //     Doing it here also keeps the one portable spelling: an inline
+  //     `VAR=1 npm run ...` would not survive PowerShell.
   const flags = new Set();
   let i = 0;
-  while (argv[i] === '--check' || argv[i] === '--vr') flags.add(argv[i++]);
+  while (argv[i] === '--check' || argv[i] === '--vr' || argv[i] === '--update')
+    flags.add(argv[i++]);
   const checkOnly = flags.has('--check');
   const vr = flags.has('--vr');
+  const update = flags.has('--update');
   const rest = argv.slice(i);
   const label = vr ? 'visual-regression suite' : 'real-browser suite';
 
@@ -194,7 +201,17 @@ function main() {
     ...rest,
   ];
 
-  const child = spawn('npx', args, { stdio: 'inherit', shell: process.platform === 'win32' });
+  if (update && !vr) {
+    console.error('\n--update only applies to the visual-regression suite (pass --vr)\n');
+    process.exit(1);
+  }
+  if (update) console.log('golden update ENABLED — references will be rewritten, review the diff');
+
+  const child = spawn('npx', args, {
+    stdio: 'inherit',
+    shell: process.platform === 'win32',
+    env: update ? { ...process.env, CAELUM_VR_UPDATE: '1' } : process.env,
+  });
   child.on('error', (error) => {
     console.error(`real-browser suite: could not start "npx ng" — ${error.message}`);
     process.exit(1);

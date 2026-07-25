@@ -18,6 +18,7 @@
  */
 import { Type } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { expect } from 'vitest';
 
 import { loadCaelumTheme } from './theme';
 
@@ -68,9 +69,23 @@ const VR_FONT_MONO = "'Liberation Mono', monospace";
  *
  * `!important` and the `*` reach are deliberate — this stylesheet must beat component styles, and
  * it only ever exists inside a VR test document.
+ *
+ * **It must be re-appended on every arm, not created once.** The font pin is a plain `:root`
+ * custom-property declaration, so it wins only by document order — and Angular re-injects the theme
+ * stylesheet on each `TestBed` reset, landing it *after* this one. An early `return` when the
+ * element already existed therefore surrendered the cascade from the second test onward. Measured:
+ * `--cae-font-body` read `'Liberation Sans'` in the first arm and reverted to the shipped
+ * `Roboto, system-ui, …` stack in the other three, so **three of every four goldens were rasterized
+ * in an unpinned font** — the exact failure #735 exists to prevent, and invisible on one machine
+ * because it takes a *second* environment to turn an unpinned stack into different pixels.
+ * `appendChild` on an existing child moves it, so this stays one element.
  */
 function freezeMotion(): void {
-  if (document.getElementById(STILL_ID)) return;
+  const existing = document.getElementById(STILL_ID);
+  if (existing) {
+    document.head.appendChild(existing);
+    return;
+  }
   const style = document.createElement('style');
   style.id = STILL_ID;
   style.textContent = `
@@ -133,12 +148,52 @@ export function resetArm(): void {
 }
 
 /**
+ * Retry budget for the *outer* `expect.element()` poll — deliberately tiny.
+ *
+ * `expect.element()` is `expect.poll()` underneath: it re-runs the whole matcher until it passes.
+ * For this suite that is redundant and actively harmful. Settling is already handled one layer
+ * down by `toMatchScreenshot`'s own `timeout` (which polls for a *stable frame*), and `freezeMotion`
+ * guarantees a stable frame on the first capture — so an outer retry can only re-take a screenshot
+ * that differs in exactly the same way, then do it again.
+ *
+ * **Measured**, with a genuine one-unit token regression (`--cae-blue-40` `#1565c0`→`#1565c1`):
+ * at the inherited default a mismatch took **15093ms** and reported as `Test timed out in 15000ms`
+ * — a real regression wearing the costume of a hung test. Capped, the same mismatch reports in
+ * **~400ms** as `Screenshot does not match the stored reference.` Across a suite this is the
+ * difference between minutes of silence and an immediate answer that names the problem.
+ *
+ * This cannot cause a false failure: the first attempt always runs to completion, and the budget
+ * only decides whether to run a *second* one. It belongs here rather than in `vitest-vr.config.ts`
+ * because `test.expect.poll.timeout` was measured to have no effect through the Angular builder.
+ */
+const VR_POLL = { timeout: 250 } as const;
+
+/**
+ * Captures `el` and compares it against the golden named `name`.
+ *
+ * Every `*.vr.spec.ts` goes through here rather than calling `expect.element(…)` directly, so the
+ * poll budget above is applied once instead of being restated (or forgotten) per spec.
+ */
+export async function matchArm(el: HTMLElement, name: string): Promise<void> {
+  await expect.element(el, VR_POLL).toMatchScreenshot(name);
+}
+
+/**
  * Mounts `host` in `arm` and returns its root element, sized to `width` so the golden's dimensions
  * come from the harness rather than from whatever the viewport happened to be.
  *
  * The fixture is attached to the document (Vitest screenshots a real element, so a detached
- * fixture would capture nothing) and given an opaque background — a transparent PNG would compare
- * equal in light and dark, making the scheme arms vacuous.
+ * fixture would capture nothing) and painted with Caelum's own base surface.
+ *
+ * **That background must be a real token.** It first read `var(--cae-color-surface)` — a name
+ * `_tokens.scss` has never defined (the surface ramp is `--cae-surface-base|raised|sunken`). An
+ * undefined custom property is invalid at computed-value time, so the declaration dropped and the
+ * element was transparent; the goldens looked opaque only because `color-scheme: dark` makes
+ * Chromium paint its *UA canvas* `#121212` behind them. Every dark golden therefore pictured the
+ * library against a surface the library does not ship (`--cae-surface-base` dark is `#121316`),
+ * and no assertion could have noticed — the same shape as #736. The foreground is pinned from the
+ * token for the same reason: any text a host stamps outside a Material component would otherwise
+ * take the UA's scheme-derived default rather than Caelum's `--cae-color-on-surface`.
  */
 export function renderArm<T>(host: Type<T>, arm: VrArm, width = 480): HTMLElement {
   TestBed.resetTestingModule();
@@ -149,7 +204,18 @@ export function renderArm<T>(host: Type<T>, arm: VrArm, width = 480): HTMLElemen
   const el = fixture.nativeElement as HTMLElement;
   el.style.width = `${width}px`;
   el.style.padding = '16px';
-  el.style.background = 'var(--cae-color-surface)';
+  // The app-shell text contract, mirroring Forge's `body` rule. Caelum deliberately does not style
+  // a consumer's `body`, and Material only fonts the text it owns (a card's title and subtitle have
+  // tokens; its *content* has none and simply inherits). With no shell, inherited text fell through
+  // to the UA default — measured: `cae-card` body copy rasterized in **serif** while its title was
+  // sans. That is not a library defect, but it made the goldens picture text no consumer will see,
+  // and it quietly escaped #735's portability guarantee: the UA serif is Liberation Serif here and
+  // something else in the Playwright image, so those pixels were never actually pinned.
+  el.style.background = 'var(--cae-surface-base)';
+  el.style.color = 'var(--cae-color-on-surface)';
+  el.style.fontFamily = 'var(--cae-font-body)';
+  el.style.fontSize = 'var(--cae-text-md)';
+  el.style.lineHeight = 'var(--cae-line-body)';
   document.body.appendChild(el);
   fixture.detectChanges();
   return el;
