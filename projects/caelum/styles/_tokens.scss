@@ -32,11 +32,17 @@
   --cae-neutral-92: #121316;
   --cae-neutral-96: #0c0d0f;
 
+  // The `*-40` steps are the LIGHT arms of the semantic status colours, so each one is a text
+  // foreground on a light surface and owes WCAG 1.4.3's 4.5:1 (#425, #744). The binding surface is
+  // `--cae-surface-sunken` (#eceef1), the darkest of the three — NOT `--cae-surface-base`; a value
+  // tuned against white alone still fails in a sunken container. Measured against sunken:
+  // red 4.84 · green 4.77 · amber 4.76, one deliberate band. Darken freely, never lighten these
+  // without re-running `theming/contrast.browser.spec.ts`, which fails on exactly this.
   --cae-red-40: #c62828;
   --cae-red-80: #ef9a9a;
-  --cae-green-40: #2e7d32;
+  --cae-green-40: #2c7730;
   --cae-green-80: #a5d6a7;
-  --cae-amber-40: #b26a00;
+  --cae-amber-40: #985a00;
   --cae-amber-80: #ffb74d;
 
   // ── Semantic tier — the component-facing API ────────────────────────────
