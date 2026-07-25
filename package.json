@@ -9,6 +9,7 @@
     "test": "ng test",
     "test:browser": "node scripts/test-browser.mjs",
     "test:vr": "node scripts/test-browser.mjs --vr",
+    "test:vr:update": "node scripts/test-browser.mjs --vr --update",
     "test:scripts": "node --test \"scripts/*.test.mjs\"",
     "lint": "eslint .",
     "format": "prettier --write .",

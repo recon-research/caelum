@@ -22,6 +22,17 @@ import { defineConfig } from 'vitest/config';
  */
 export default defineConfig({
   test: {
+    // The golden-update path. `@angular/build:unit-test` has **no `update` option** (checked
+    // against its `schema.json`), so `ng run caelum:test-vr -- --update` — and therefore
+    // `npm run test:vr -- --update` — cannot work; the flag is rejected, not honoured. The
+    // runner config is the only seam left, so the switch is an env var: `npm run test:vr:update`.
+    // Deliberately opt-in and absent from CI, because an accidental update rewrites the very
+    // evidence the suite exists to defend.
+    update: process.env['CAELUM_VR_UPDATE'] === '1',
+    // NOTE: the outer `expect.element()` retry budget is NOT set here. `test.expect.poll.timeout`
+    // was measured to have no effect through this builder (mismatches still took the full 15s test
+    // timeout), so it lives at the call site instead — `VR_POLL` in `testing/vr.ts`, which explains
+    // why. Configuring it here as well would be a setting that looks load-bearing and is not.
     browser: {
       expect: {
         toMatchScreenshot: {
