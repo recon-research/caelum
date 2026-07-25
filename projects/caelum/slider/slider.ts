@@ -39,8 +39,10 @@ export type CaeSliderValue = number | [number, number];
  * `endAriaLabel` (each falls back to `ariaLabel`); a shared `ariaLabelledby` is only a fallback there —
  * it names BOTH thumbs identically and is suppressed on any thumb that already has an `aria-label`, so
  * a per-thumb name always wins (ARIA ranks `aria-labelledby` above `aria-label`; #111 tracks a
- * per-thumb `aria-labelledby`). The thumb's value is conveyed by `aria-valuenow`/`aria-valuetext`
- * (Material) — keep the accessible NAME static, not the live value. Unlike `cae-input`, a slider is
+ * per-thumb `aria-labelledby`). The thumb's value needs no help: a native `<input type="range">`
+ * has an implicit `slider` role whose `aria-valuenow` the **browser** derives from the element's
+ * value (there is no such attribute in the DOM — measured in `slider.browser.spec.ts`), and
+ * Material adds `aria-valuetext` on top. So keep the accessible NAME static, not the live value. Unlike `cae-input`, a slider is
  * not a `MatFormFieldControl`, so it has no built-in `<mat-error>`; for validation feedback the
  * consumer renders the message and points `ariaDescribedby` at it (Caelum's consumer-owned error
  * pattern for non-form-field controls, #47), forwarded onto the focusable thumb input(s). (These
