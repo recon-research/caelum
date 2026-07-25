@@ -378,6 +378,36 @@ jobs:
           npx playwright install --with-deps chromium
           npm run test:browser
 
+      # Visual-regression goldens (#732): the *.vr.spec.ts arms, compared against
+      # the committed PNGs in each component's `__vr__/`. Ubuntu + Chromium only —
+      # the golden filename carries both, and the suite refuses to run elsewhere
+      # rather than mint a parallel set nothing compares (#735).
+      #
+      # Portability rests on `fonts-liberation`, which the `--with-deps` install
+      # above provides: the arms pin Liberation Sans explicitly instead of trusting
+      # the `sans-serif` generic, which fontconfig resolves differently on every
+      # machine (measured: Noto Sans on a dev box, WenQuanYi Zen Hei in the
+      # Playwright image — a different typeface, not a hinting nuance).
+      - name: Test (visual regression)
+        if: matrix.os == 'ubuntu-latest'
+        env:
+          CI: 'true'
+          CAELUM_TEST_BROWSER: chromium
+        run: npm run test:vr
+
+      # The diff images for a failed golden, so a regression is inspectable from
+      # the run page instead of only reproducible locally.
+      - name: Upload visual-regression diffs
+        if: failure() && matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: vr-diffs
+          path: |
+            .vitest-attachments/**
+            projects/caelum/*/__screenshots__/**
+          if-no-files-found: ignore
+          retention-days: 7
+
       # No headless "run loop" to smoke: Caelum ships a client-side component library
       # and Forge is a static SPA. The build (bundle emitted) + the tests passing ARE
       # the operability evidence (validate_headless_mode) — there is no daemon to probe.

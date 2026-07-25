@@ -97,21 +97,89 @@ export function resolveTestBrowser({
   };
 }
 
+/** The one engine visual-regression goldens are maintained for. */
+export const VR_BROWSER = 'chromium';
+/** The one platform they are maintained for — `process.platform` values. */
+export const VR_PLATFORM = 'linux';
+
+/**
+ * Decides which browser drives the **visual-regression** target.
+ *
+ * Unlike {@link resolveTestBrowser} this has no fallback, and the reason is the same in both
+ * halves of the check: **a missing golden is silently created, not failed.** So anything that
+ * changes the golden's filename does not produce a red test — it produces a second, parallel set
+ * that passes locally forever and that CI can never compare against.
+ *
+ * The filename carries `${browserName}` and `${platform}`, so both are pinned here:
+ *  - **engine** — Firefox rasterizes differently, so its output is not a golden, it is a different
+ *    golden. A `CAELUM_TEST_BROWSER` pin naming anything else is an error, not an override.
+ *  - **platform** — a macOS or Windows checkout would mint `-darwin` / `-win32` goldens beside the
+ *    committed `-linux` ones and report green having compared against nothing.
+ *
+ * @returns `{ browser, reason }` — `reason` is the human log line.
+ * @throws when Chromium is unavailable, the env pins a different browser, or the host platform is
+ *   not the one goldens are maintained for.
+ */
+export function resolveVrBrowser({
+  env = process.env,
+  platform = process.platform,
+  isInstalled = (name) => browserIsInstalled(name, env),
+} = {}) {
+  const pinned = env.CAELUM_TEST_BROWSER?.trim().toLowerCase();
+  if (pinned && pinned !== VR_BROWSER) {
+    throw new Error(
+      `CAELUM_TEST_BROWSER pins "${pinned}", but visual-regression goldens exist only for ${VR_BROWSER}.\n` +
+        `  Goldens are engine-specific — a "${pinned}" run would write a parallel set CI never compares.\n` +
+        `  Unset the pin, or run the behavioural suite instead:  npm run test:browser`,
+    );
+  }
+  if (platform !== VR_PLATFORM) {
+    throw new Error(
+      `visual-regression goldens are maintained for ${VR_PLATFORM} only, and this is "${platform}".\n` +
+        `  A missing golden is CREATED, not failed — so running here would mint a parallel\n` +
+        `  "-${platform}" set that passes locally and is never compared in CI.\n` +
+        `  Run the behavioural suite instead (npm run test:browser); CI covers the goldens.`,
+    );
+  }
+  if (!isInstalled(VR_BROWSER)) {
+    throw new Error(
+      `visual regression needs ${VR_BROWSER}, whose browser build is not installed here.\n` +
+        `  Install it:  npx playwright install ${VR_BROWSER}\n` +
+        `  There is no fallback: another engine rasterizes differently, so its output is not a golden.`,
+    );
+  }
+  return { browser: VR_BROWSER, reason: `${VR_BROWSER} is required for goldens` };
+}
+
 function main() {
   const argv = process.argv.slice(2);
-  // `--check` resolves and reports, without running anything — preflight uses it
-  // to decide between running the suite and skipping it loudly.
-  const checkOnly = argv[0] === '--check';
+  // Leading flags, order-independent, so preflight can ask "would VR run here?"
+  // as `--vr --check`:
+  //   `--check` resolves and reports without running anything — preflight uses it
+  //     to decide between running a suite and skipping it loudly.
+  //   `--vr` drives the visual-regression target (#732) instead of the
+  //     behavioural one, under the stricter resolver.
+  const flags = new Set();
+  let i = 0;
+  while (argv[i] === '--check' || argv[i] === '--vr') flags.add(argv[i++]);
+  const checkOnly = flags.has('--check');
+  const vr = flags.has('--vr');
+  const rest = argv.slice(i);
+  const label = vr ? 'visual-regression suite' : 'real-browser suite';
 
   let choice;
   try {
-    choice = resolveTestBrowser();
+    // A golden is engine-specific — Chromium and Firefox rasterize differently, so
+    // the same DOM yields two different images and only one set is maintained here.
+    // The behavioural suite may fall back to Firefox; VR must not, or a dev would
+    // silently generate a parallel golden set that CI can never match.
+    choice = vr ? resolveVrBrowser() : resolveTestBrowser();
   } catch (error) {
-    console.error(`\nreal-browser suite: ${error.message}\n`);
+    console.error(`\n${label}: ${error.message}\n`);
     process.exit(1);
   }
 
-  console.log(`real-browser suite -> ${choice.browser} (${choice.reason})`);
+  console.log(`${label} -> ${choice.browser} (${choice.reason})`);
   if (checkOnly) return;
 
   // `--headless` keeps a scripted local run from opening a window and the Vitest
@@ -120,10 +188,10 @@ function main() {
   const args = [
     'ng',
     'run',
-    'caelum:test-browser',
+    vr ? 'caelum:test-vr' : 'caelum:test-browser',
     `--browsers=${choice.browser}`,
     ...(process.env.CI ? [] : ['--headless']),
-    ...argv,
+    ...rest,
   ];
 
   const child = spawn('npx', args, { stdio: 'inherit', shell: process.platform === 'win32' });
