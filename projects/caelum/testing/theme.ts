@@ -1,24 +1,34 @@
 /**
- * Loads Caelum's **real** token layer into a test document (#724).
+ * Loads Caelum's **real** theme into a test document (#724, completed by #736).
  *
  * **Dev/test ONLY** — like `a11y.ts`, this file lives outside every secondary entry point
  * (no `ng-package.json`) and is excluded from the library build.
  *
  * **Why this exists.** The `caelum:test-browser` target has no `styles` option (the
  * `@angular/build:unit-test` builder doesn't take one), so a browser test page carries no
- * `--cae-*` tokens at all. Everything that reads one then goes *invalid at computed-value
- * time* and falls back to the property's initial value — measurably: before this helper,
+ * theme at all. Everything that reads a token then goes *invalid at computed-value time*
+ * and falls back to the property's initial value — measurably: before this helper,
  * `.cae-data-grid` computed `border: 0px` / `border-radius: 0px` from
  * `1px solid var(--cae-color-border)` / `var(--cae-radius-md)`.
  *
  * That silently hollows out the single biggest reason to run axe in a real browser
- * (`a11y.ts` header, #240): **`color-contrast`** — which jsdom can only report as
- * `incomplete` — was being evaluated against unstyled defaults (near-black on white),
- * so it passed trivially and tested no colour Caelum actually ships.
+ * (`a11y.ts` header, #240): **`color-contrast`** was being evaluated against unstyled
+ * defaults (near-black on white), so it passed trivially and tested no colour Caelum
+ * actually ships. Note the failure mode precisely — axe does **not** report the rule as
+ * `incomplete` in a browser; it judges the wrong colours and passes. "The rule ran" is
+ * therefore not evidence of anything (`theme.browser.spec.ts` pins this).
+ *
+ * **Load the whole bridge, not the token layer.** #724 originally loaded `_tokens.scss`,
+ * which emits the `--cae-*` properties and **zero** `--mat-sys-*`. Since Caelum is a library
+ * of Direct wrappers, that left nearly every shipped component resolving its colour and font
+ * against an undefined property: `cae-button` rendered as bare serif text with no container
+ * on four of five variants (found via the visual-regression suite, #732). `_theme.scss` is
+ * where `mat.theme()` emits Material's seam, and it `@use`s `tokens`, so it is a strict
+ * superset — hence this loads it and no caller needs both.
  *
  * **How.** Same mechanism `theming/density.spec.ts` established for jsdom: a host component
- * with {@link ViewEncapsulation.None} whose `styleUrl` is the real `_tokens.scss`. Angular
- * compiles the Sass and, unscoped, its `:root` rules land on `document.documentElement`. The
+ * with {@link ViewEncapsulation.None} whose `styleUrl` is the real `_theme.scss`. Angular
+ * compiles the Sass and, unscoped, its `:root`/`html` rules land on the document element. The
  * values are therefore the *compiled* ones, never a hand-copied guess.
  *
  * **Read the *used* value, not the custom property.** A custom property computes as a token
@@ -31,6 +41,7 @@
  * ```ts
  * loadCaelumTheme();                                     // before creating the component
  * expect(themeToken('--cae-color-border')).not.toBe(''); // the liveness guard
+ * expect(themeToken('--mat-sys-primary')).not.toBe('');  // ...and Material's half (#736)
  * expect(getComputedStyle(el).color).toMatch(/^rgb/);    // the resolved colour
  * ```
  */
@@ -40,7 +51,7 @@ import { TestBed } from '@angular/core/testing';
 @Component({
   selector: 'cae-theme-probe-host',
   template: '',
-  styleUrl: '../styles/_tokens.scss',
+  styleUrl: '../styles/_theme.scss',
   encapsulation: ViewEncapsulation.None,
 })
 class CaeThemeProbeHost {}
