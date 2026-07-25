@@ -7,8 +7,9 @@ import { expectNoA11yViolations } from '../testing/a11y';
  * Unlike MatSlider, MatSelectionList needs no layout geometry, so it renders in jsdom and a
  * `.click()` on an option fires `selectionChange` — the CVA glue is exercised end to end here. The
  * one thing jsdom can't exercise is the WAI-ARIA roving-tabindex arrow-key navigation between
- * options (that needs a real focus/keyboard environment); it's bundled into the M4 real-browser
- * a11y verification (#41 / #79).
+ * options (that needs a real focus/keyboard environment); that now lives in
+ * `listbox.browser.spec.ts` (#405), which also pins the `ariaDescribedby` forwarding against the
+ * premise it depends on — that focus lands on the option, never the listbox host.
  */
 describe('CaeListbox', () => {
   let component: CaeListbox;
