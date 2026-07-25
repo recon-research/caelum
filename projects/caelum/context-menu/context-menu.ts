@@ -110,9 +110,12 @@ import { CaeIcon, caeItemIconContext, type CaeItemIconContext } from 'caelum/ico
       min-inline-size: 12rem;
       margin: 0;
       padding-block: var(--cae-space-1);
-      background: var(--mat-sys-surface-container-high, var(--mat-sys-surface));
-      color: var(--mat-sys-on-surface);
-      border-radius: var(--mat-sys-corner-extra-small);
+      background: var(--cae-surface-raised);
+      color: var(--cae-color-on-surface);
+      /* --cae-radius-sm (4px), not -md: the panel previously read Material's own
+         --mat-sys-corner-extra-small, which the bridge does NOT override, and that default
+         measures 4px — so this is a pixel-exact rename rather than a restyling (#510). */
+      border-radius: var(--cae-radius-sm);
       box-shadow: var(--cae-elevation-2);
       outline: none;
     }
@@ -142,7 +145,7 @@ import { CaeIcon, caeItemIconContext, type CaeItemIconContext } from 'caelum/ico
     }
 
     .cae-context-menu__item:hover:not(.cdk-menu-item-disabled) {
-      background: color-mix(in srgb, var(--mat-sys-on-surface) 8%, transparent);
+      background: color-mix(in srgb, var(--cae-color-on-surface) 8%, transparent);
     }
 
     /* The CDK key manager roves onto disabled items too (skipPredicate is off), so the focus ring
@@ -153,11 +156,11 @@ import { CaeIcon, caeItemIconContext, type CaeItemIconContext } from 'caelum/ico
     }
 
     .cae-context-menu__item:focus:not(.cdk-menu-item-disabled) {
-      background: color-mix(in srgb, var(--mat-sys-on-surface) 12%, transparent);
+      background: color-mix(in srgb, var(--cae-color-on-surface) 12%, transparent);
     }
 
     .cae-context-menu__item.cdk-menu-item-disabled {
-      color: var(--mat-sys-on-surface-variant);
+      color: var(--cae-color-on-surface-variant);
       opacity: 0.5;
       cursor: default;
     }

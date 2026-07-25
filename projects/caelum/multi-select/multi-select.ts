@@ -150,18 +150,18 @@ export interface CaeMultiSelectOption {
       box-sizing: border-box;
       inline-size: 100%;
       padding: var(--cae-space-2) var(--cae-space-3);
-      border: 1px solid var(--mat-sys-outline-variant, currentColor);
+      border: 1px solid var(--cae-color-border);
       border-radius: var(--cae-radius-sm);
-      background: var(--mat-sys-surface-container-high, transparent);
-      color: var(--mat-sys-on-surface, currentColor);
+      background: var(--cae-surface-raised);
+      color: var(--cae-color-on-surface);
       font: inherit;
     }
     .cae-multi-select__filter input::placeholder {
-      color: var(--mat-sys-on-surface-variant, currentColor);
+      color: var(--cae-color-on-surface-variant);
     }
     .cae-multi-select__empty {
       padding: var(--cae-space-2) var(--cae-space-4);
-      color: var(--mat-sys-on-surface-variant, currentColor);
+      color: var(--cae-color-on-surface-variant);
     }
   `,
 })
