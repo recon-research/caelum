@@ -63,6 +63,7 @@ PREFLIGHT_TO_CI = {
     "test (caelum + Forge)": "Test (caelum + Forge)",
     "test scripts (node --test)": "Test scripts (node --test)",
     "test (real browser)": "Test (real browser)",
+    "test (visual regression)": "Test (visual regression)",
     "library audits": "Library audits (refs / routing / links)",
     "research audit": "Research audit (citations / structure / links)",
     "provenance (deps license + US-origin, D-11)": "Dependency provenance (license + US-origin, D-11)",
@@ -82,6 +83,7 @@ CI_ONLY_STEPS = {
     "Skills are directories",  # cheap CI structural check; locally covered by the library audits' skills catalog
     "Aggregate heavy results", # heavy-gate aggregation (#206) reads CI job results; nothing to mirror locally
     "PR references a ticket",  # ticket-first gate (#75) is PR-only by nature; preflight runs pre-PR
+    "Upload visual-regression diffs",  # failure-only artifact upload (#732); locally the diffs are already on disk
 }
 
 # The preflight shells this project actually ships (D-218, from harvest #208).

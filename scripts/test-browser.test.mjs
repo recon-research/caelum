@@ -10,7 +10,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { SUPPORTED, browserIsInstalled, resolveTestBrowser } from './test-browser.mjs';
+import {
+  SUPPORTED,
+  VR_BROWSER,
+  browserIsInstalled,
+  resolveTestBrowser,
+  resolveVrBrowser,
+} from './test-browser.mjs';
 
 /** An `isInstalled` stub reporting exactly `names` as present. */
 const installed =
@@ -93,4 +99,56 @@ test('CHROME_BIN makes chromium available without a Playwright download', () => 
 
 test('SUPPORTED is the preference order, chromium first', () => {
   assert.deepEqual(SUPPORTED, ['chromium', 'firefox']);
+});
+
+// --- Visual-regression resolver (#732) ------------------------------------
+// Every arm here guards the same failure: a missing golden is CREATED, not
+// failed, so anything that changes the golden's filename (engine, platform)
+// yields a parallel set that passes locally and is never compared in CI.
+
+test('vr resolves chromium on linux when it is installed', () => {
+  const { browser } = resolveVrBrowser({
+    env: {},
+    platform: 'linux',
+    isInstalled: installed('chromium'),
+  });
+  assert.equal(browser, VR_BROWSER);
+});
+
+test('vr does NOT fall back to firefox — goldens are engine-specific', () => {
+  assert.throws(
+    () => resolveVrBrowser({ env: {}, platform: 'linux', isInstalled: installed('firefox') }),
+    /no fallback/,
+  );
+});
+
+test('vr rejects a pin naming another engine rather than honouring it', () => {
+  assert.throws(
+    () =>
+      resolveVrBrowser({
+        env: { CAELUM_TEST_BROWSER: 'firefox' },
+        platform: 'linux',
+        isInstalled: installed('chromium', 'firefox'),
+      }),
+    /parallel set CI never compares/,
+  );
+});
+
+test('vr accepts a pin that names the golden engine', () => {
+  const { browser } = resolveVrBrowser({
+    env: { CAELUM_TEST_BROWSER: 'Chromium' },
+    platform: 'linux',
+    isInstalled: installed('chromium'),
+  });
+  assert.equal(browser, VR_BROWSER);
+});
+
+test('vr refuses a non-linux host even with chromium present', () => {
+  for (const platform of ['darwin', 'win32']) {
+    assert.throws(
+      () => resolveVrBrowser({ env: {}, platform, isInstalled: installed('chromium') }),
+      /maintained for linux only/,
+      `expected ${platform} to be refused`,
+    );
+  }
 });

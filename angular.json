@@ -29,7 +29,7 @@
           "options": {
             "tsConfig": "projects/caelum/tsconfig.spec.json",
             "include": ["../*/**/*.spec.ts"],
-            "exclude": ["../*/**/*.browser.spec.ts"]
+            "exclude": ["../*/**/*.browser.spec.ts", "../*/**/*.vr.spec.ts"]
           }
         },
         "test-browser": {
@@ -37,6 +37,15 @@
           "options": {
             "tsConfig": "projects/caelum/tsconfig.spec.json",
             "include": ["../*/**/*.browser.spec.ts"]
+          }
+        },
+        "test-vr": {
+          "builder": "@angular/build:unit-test",
+          "options": {
+            "tsConfig": "projects/caelum/tsconfig.spec.json",
+            "include": ["../*/**/*.vr.spec.ts"],
+            "browserViewport": "1280x720",
+            "runnerConfig": "projects/caelum/vitest-vr.config.ts"
           }
         }
       }

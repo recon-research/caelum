@@ -119,13 +119,19 @@ function Invoke-StageIfBrowser {
     # CI installs one explicitly; a dev machine may have none, and that must SKIP
     # loudly rather than fail the whole preflight -- the suite supplements the
     # jsdom gate, it does not replace it. `--check` resolves without running.
-    param([string]$Name, [scriptblock]$Body)
+    #
+    # -Vr asks the stricter visual-regression resolver (#732) instead: goldens
+    # are per-engine AND per-platform, and a missing golden is CREATED rather
+    # than failed, so a Firefox or non-Linux run would mint a parallel set that
+    # passes locally and CI never compares (#735). On Windows this always skips.
+    param([string]$Name, [scriptblock]$Body, [switch]$Vr)
     if ($script:Failed) { return }
     if (-not (Get-Command npx -ErrorAction SilentlyContinue)) {
         Skip-Stage $Name 'needs Node on PATH (durable wiring - #15)'
         return
     }
-    node scripts/test-browser.mjs --check *> $null
+    $mode = if ($Vr) { @('--vr') } else { @() }
+    node scripts/test-browser.mjs @mode --check *> $null
     if ($LASTEXITCODE -eq 0) {
         Invoke-Stage $Name $Body
     }
@@ -133,10 +139,10 @@ function Invoke-StageIfBrowser {
         # A pin that cannot resolve is a broken request, NOT an absent browser --
         # skipping it would report PASS for a suite that never ran (#538's shape).
         # Re-run --check as the stage so its own message is the failure output.
-        Invoke-Stage $Name { node scripts/test-browser.mjs --check }
+        Invoke-Stage $Name { node scripts/test-browser.mjs @mode --check }
     }
     else {
-        Skip-Stage $Name 'no Playwright browser installed - npx playwright install chromium'
+        Skip-Stage $Name 'no usable Chromium/platform for this suite - node scripts/test-browser.mjs --check'
     }
 }
 
@@ -178,6 +184,17 @@ if (-not $Quick) {
         $env:CI = 'true'
         try {
             npm run test:browser
+        } finally {
+            if ($null -eq $prevCI) { Remove-Item Env:\CI -ErrorAction SilentlyContinue } else { $env:CI = $prevCI }
+        }
+    }
+    # Visual-regression goldens (#732) -- the *.vr.spec.ts arms. Chromium+Linux
+    # only, so this stage always SKIPS here and says why (#735).
+    Invoke-StageIfBrowser 'test (visual regression)' -Vr {
+        $prevCI = $env:CI
+        $env:CI = 'true'
+        try {
+            npm run test:vr
         } finally {
             if ($null -eq $prevCI) { Remove-Item Env:\CI -ErrorAction SilentlyContinue } else { $env:CI = $prevCI }
         }
