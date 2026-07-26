@@ -6,7 +6,7 @@ import { OverlayContainer } from '@angular/cdk/overlay';
 import { MatSelect } from '@angular/material/select';
 
 import { CaeMultiSelect, CaeMultiSelectOption } from './multi-select';
-import { expectNoA11yViolations } from '../testing/a11y';
+import { expectAnnouncedErrorState, expectNoA11yViolations } from '../testing/a11y';
 
 const OPTIONS: CaeMultiSelectOption[] = [
   { value: 'a', label: 'Alpha' },
@@ -190,6 +190,7 @@ describe('CaeMultiSelect', () => {
       [formControl]="ctrl"
       [errorMessages]="messages"
       label="Skills"
+      ariaLabel="Skills"
       [options]="opts"
     />
   `,
@@ -233,6 +234,18 @@ describe('CaeMultiSelect — validation errors', () => {
     fixture.detectChanges();
     expect(selectErrorState()).toBe(true);
     expect(errorText()).toContain('Pick at least one skill');
+  });
+
+  // The error state, not the pristine one (#785). The string[] value seam (#135) is the reason to
+  // check this one separately: an empty array is the required-invalid case, and it is also the
+  // shape the trigger renders from, so a break here shows up as a field that looks blank-and-fine.
+  it('announces the error state — message linked, subtree axe-clean', async () => {
+    host.ctrl.markAsTouched();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    await expectAnnouncedErrorState(fixture.nativeElement, 'Pick at least one skill');
   });
 
   it('clears the error when a value is chosen (control becomes valid)', async () => {

@@ -3,7 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 
 import { CaeAutocomplete, CaeAutocompleteOption } from './autocomplete';
-import { expectNoA11yViolations } from '../testing/a11y';
+import { expectAnnouncedErrorState, expectNoA11yViolations } from '../testing/a11y';
 
 /**
  * MatAutocomplete opens its panel in a CDK overlay that needs real focus/layout to attach, which
@@ -183,6 +183,7 @@ describe('CaeAutocomplete', () => {
       [options]="opts"
       [errorMessages]="{ required: 'Pick a country' }"
       label="Country"
+      ariaLabel="Country"
     />
   `,
 })
@@ -204,5 +205,19 @@ describe('CaeAutocomplete — validation-error forwarding', () => {
     const error = fixture.nativeElement.querySelector('mat-error') as HTMLElement;
     expect(error).not.toBeNull();
     expect(error.textContent).toContain('Pick a country');
+  });
+
+  // The error state, not the pristine one (#785). The inner control is a matInput carrying
+  // role="combobox" + the overlay's aria-expanded/-controls, so the error's describedby id lands
+  // alongside the combobox wiring — the arrangement most likely to drop one of the two.
+  it('announces the error state — message linked, subtree axe-clean', async () => {
+    const fixture = TestBed.createComponent(HostCmp);
+    await fixture.whenStable();
+    fixture.componentInstance.ctrl.markAsTouched();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    await expectAnnouncedErrorState(fixture.nativeElement, 'Pick a country');
   });
 });

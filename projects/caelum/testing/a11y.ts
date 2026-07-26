@@ -103,3 +103,71 @@ export async function expectNoA11yViolations(
     );
   }
 }
+
+/**
+ * The focusable element a `mat-form-field` hangs `aria-describedby` on, across all five control
+ * families: `<input>` (input/autocomplete), `<textarea>`, and the `role="combobox"` host that
+ * `mat-select` renders (select/multi-select). Deliberately a union rather than a per-call
+ * parameter — the point of this helper is that all five share one contract.
+ */
+const FIELD_CONTROL = 'input, textarea, [role="combobox"]';
+
+/**
+ * Asserts a `mat-form-field`-wrapping control **announces** its validation failure, then scans the
+ * subtree with axe. Use it in the control's error state — never the pristine one (#785).
+ *
+ * **Why this exists as a helper** (#785). The error state is where the `CaeFormFieldControlBase`
+ * family's least-obvious contract lives: `matInput` *suppresses* `aria-invalid` on an empty
+ * required field, so the linked `<mat-error>` text is the only thing that announces the failure.
+ * Break the link and the field is silently invalid to a screen-reader user while looking perfectly
+ * correct to everyone else. All five subclasses inherit that same bridge, so the check is
+ * identical five times over — and the half that would rot silently (*referenced*, not merely
+ * *rendered*) is the half a copy-paste is most likely to drop.
+ *
+ * **Both assertions are anti-vacuity guards, in opposite directions:**
+ * - *rendered* — without it, axe below would grade a pristine field and prove nothing;
+ * - *referenced* — the actual contract; an unlinked `<mat-error>` looks fine and is inaudible.
+ *
+ * Matching is on the whole `aria-describedby` token list, not a substring: `mat-mdc-error-1` is a
+ * substring of `mat-mdc-error-10`, so a `contains` check can pass against the wrong id.
+ *
+ * Note for the capability ledger: it greps specs for a literal `expectNoA11yViolations(` call, so a
+ * spec whose *only* axe coverage came through this wrapper would read as uncovered. That direction
+ * is the safe one (a false gap, never a false pass), and no spec is in that position today.
+ */
+export async function expectAnnouncedErrorState(
+  root: HTMLElement,
+  expectedMessage: string,
+  options: A11yCheckOptions = {},
+): Promise<void> {
+  const control = root.querySelector(FIELD_CONTROL);
+  if (!control) {
+    throw new Error(
+      `expectAnnouncedErrorState found no form-field control under the given root (looked for: ` +
+        `${FIELD_CONTROL}). Pass the fixture's nativeElement; a control that matches none of these ` +
+        `would make every assertion below vacuous, so this fails loudly rather than skipping.`,
+    );
+  }
+
+  const error = root.querySelector('mat-error');
+  const rendered = error?.textContent?.trim();
+  if (rendered !== expectedMessage) {
+    throw new Error(
+      `expected the error message ${JSON.stringify(expectedMessage)} to be rendered, but found ` +
+        `${error ? JSON.stringify(rendered) : 'no <mat-error> at all'}. The control is not in its ` +
+        `error state, so the axe scan would grade a pristine field and prove nothing.`,
+    );
+  }
+
+  const describedBy = error!.id ? (control.getAttribute('aria-describedby') ?? '') : '';
+  if (!error!.id || !describedBy.split(/\s+/).includes(error!.id)) {
+    throw new Error(
+      `<mat-error id=${JSON.stringify(error!.id)}> is rendered but NOT referenced by the control: ` +
+        `<${control.tagName.toLowerCase()} aria-describedby=${JSON.stringify(describedBy)}>. The ` +
+        `message is visible but inaudible — a screen-reader user gets no announcement, which is ` +
+        `the whole defect class this assertion exists to catch.`,
+    );
+  }
+
+  await expectNoA11yViolations(root, options);
+}
