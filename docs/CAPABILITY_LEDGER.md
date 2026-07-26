@@ -8,7 +8,7 @@ component is "done" only with passing parity scenarios **plus** adversarial sign
 because it renders. Generated from evidence in the repo, so no row can claim a state nothing
 backs. **M4 exits when every shipped entry point reads `adversarial-passed`.**
 
-**59/65 adversarial-passed** · 1 parity-verified · 5 implemented
+**60/65 adversarial-passed** · 0 parity-verified · 5 implemented
 
 `untouched` / `mapped` (§3.4's first two states) are the p-*→cae-* mapping tracked in
 [`textbooks/reference/COMPARISON.md`](../textbooks/reference/COMPARISON.md) (Status column,
@@ -19,9 +19,12 @@ entry point — its introducing commit, and that PR body where the commit body i
 repo uses both homes). Each row carries a verbatim quote so the claim is checkable without
 trusting the seed. New entry points are added by hand; the gate fails until they appear.
 
+One row is not a shipping-slice review: `panel-menu` shipped without one (#774), so its
+pointer is the later slice that ran the review it was owed (PR #778). A row's commit is the
+commit whose message records the review, not necessarily the one that introduced the code.
+
 Gaps below are tracked, not tolerated: **#773** (entry points with no axe assertion — cover
-or record an exemption) and **#774** (`panel-menu`, the only row with no adversarial
-sign-off on record). Both are M4 exit work.
+or record an exemption). That is M4 exit work.
 
 | Entry point | State | spec | axe | browser | VR | Adversarial sign-off |
 |---|---|---|---|---|---|---|
@@ -59,7 +62,7 @@ sign-off on record). Both are M4 exit work.
 | `menubar` | adversarial-passed | ☑ | ☑ | — | — | PR #154 · `402539ad` |
 | `multi-select` | adversarial-passed | ☑ | ☑ | — | — | PR #136 · `5dfd7412` |
 | `order-list` | adversarial-passed | ☑ | ☑ | — | — | PR #339 · `cd77e581` |
-| `panel-menu` | parity-verified | ☑ | ☑ | — | — | **none** |
+| `panel-menu` | adversarial-passed | ☑ | ☑ | — | — | PR #778 · `5be24f1` |
 | `password` | adversarial-passed | ☑ | ☑ | — | — | PR #313 · `1793231c` |
 | `pick-list` | adversarial-passed | ☑ | ☑ | — | — | PR #343 · `766931bb` |
 | `popover` | adversarial-passed | ☑ | ☑ | — | — | PR #678 · `bfbb3bc1` |
@@ -98,7 +101,6 @@ Each row below is M4-exit work, not a formatting nit.
 - **`breadcrumb-router`** — no axe assertion.
 - **`form-field`** — no axe assertion.
 - **`grid-tanstack`** — no axe assertion.
-- **`panel-menu`** — no adversarial sign-off on record.
 - **`shared`** — no functional spec; no axe assertion.
 - **`tooltip`** — no axe assertion.
 

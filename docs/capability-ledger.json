@@ -1,5 +1,5 @@
 {
-  "note": "Sign-off rows were seeded once (#733) from the review run on the slice that **shipped** each\nentry point — its introducing commit, and that PR body where the commit body is silent (the\nrepo uses both homes). Each row carries a verbatim quote so the claim is checkable without\ntrusting the seed. New entry points are added by hand; the gate fails until they appear.\n\nGaps below are tracked, not tolerated: **#773** (entry points with no axe assertion — cover\nor record an exemption) and **#774** (`panel-menu`, the only row with no adversarial\nsign-off on record). Both are M4 exit work.",
+  "note": "Sign-off rows were seeded once (#733) from the review run on the slice that **shipped** each\nentry point — its introducing commit, and that PR body where the commit body is silent (the\nrepo uses both homes). Each row carries a verbatim quote so the claim is checkable without\ntrusting the seed. New entry points are added by hand; the gate fails until they appear.\n\nOne row is not a shipping-slice review: `panel-menu` shipped without one (#774), so its\npointer is the later slice that ran the review it was owed (PR #778). A row's commit is the\ncommit whose message records the review, not necessarily the one that introduced the code.\n\nGaps below are tracked, not tolerated: **#773** (entry points with no axe assertion — cover\nor record an exemption). That is M4 exit work.",
   "signoff": {
     "accordion": {
       "pr": 81,
@@ -205,7 +205,12 @@
       "source": "commit",
       "quote": "2-lens adversarial review (a11y + API) — both lenses converged on one MAJOR: - move buttons use aria-disabled, NOT native [disabled], so a button reaching a bound stays focusable instead of blurring t"
     },
-    "panel-menu": null,
+    "panel-menu": {
+      "pr": 778,
+      "commit": "5be24f1",
+      "source": "commit",
+      "quote": "The adversarial review cae-panel-menu never got (#774). Three lenses: correctness/state, a11y/structure, test integrity. CONFIRMED HIGH - expansion state followed POSITION, not the item. MED - the axe assertion only ever saw the COLLAPSED root. LOW - dropped an inert nested-group rule."
+    },
     "password": {
       "pr": 313,
       "commit": "1793231c",
