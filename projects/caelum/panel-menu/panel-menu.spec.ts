@@ -168,6 +168,50 @@ describe('CaePanelMenu', () => {
     expect(headerByLabel('Edit').getAttribute('aria-expanded')).toBe('true');
   });
 
+  it('keeps a panel’s open state with its ITEM when the model changes ahead of it (#774)', async () => {
+    await expand('Files'); // MODEL[0] open, MODEL[1] (Edit) collapsed
+    expect(headerByLabel('Edit').getAttribute('aria-expanded')).toBe('false');
+
+    // The consumer drops the open branch — a live nav filtering by permission/search does this.
+    host.model.set([MODEL[1]]);
+    await settle();
+
+    // Edit is now at index 0. Tracking by $index would hand it Files' surviving open panel;
+    // tracking by item identity destroys Files' panel and leaves Edit as the user left it.
+    expect(headerByLabel('Edit').getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('carries the open state across a reorder rather than leaving it at the position (#774)', async () => {
+    await expand('Files');
+    host.model.set([MODEL[1], MODEL[0]]); // swap: Edit first
+    await settle();
+    expect(headerByLabel('Files').getAttribute('aria-expanded')).toBe('true');
+    expect(headerByLabel('Edit').getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('isolates a nested accordion — opening a sub-panel never closes its ancestor', async () => {
+    // Single-open is dispatcher-coordinated per accordion; the recursion stamps one per level, so a
+    // deeper level must coordinate only with its own siblings (MAT_ACCORDION resolves skipSelf to
+    // the nearest). Without that, expanding a child would collapse the branch containing it.
+    await expand('Files');
+    await expand('Export');
+    await expand('Advanced');
+    expect(headerByLabel('Files').getAttribute('aria-expanded')).toBe('true');
+    expect(headerByLabel('Export').getAttribute('aria-expanded')).toBe('true');
+    expect(headerByLabel('Advanced').getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('has no axe violations with the deep tree EXPANDED (not just the collapsed root)', async () => {
+    // Collapsed, the tree is one named <nav> and two headers — an axe pass there says almost
+    // nothing about the composition. Expanded is where the nested accordions, the <a>/<button>
+    // leaves and the icon glyphs actually exist.
+    await expand('Files');
+    await expand('Export');
+    await expand('Advanced');
+    expect(leafByLabel('Custom')).not.toBeNull(); // the deep path really is stamped
+    await expectNoA11yViolations(fixture.nativeElement);
+  });
+
   it('renders a built-in glyph for a leaf item.icon (D-596)', async () => {
     await expand('Files');
     const open = leafByLabel('Open');
