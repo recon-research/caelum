@@ -6,7 +6,7 @@ import { OverlayContainer } from '@angular/cdk/overlay';
 import { MatSelect } from '@angular/material/select';
 
 import { CaeSelect, CaeSelectOption } from './select';
-import { expectNoA11yViolations } from '../testing/a11y';
+import { expectAnnouncedErrorState, expectNoA11yViolations } from '../testing/a11y';
 
 const OPTIONS: CaeSelectOption[] = [
   { value: 'a', label: 'Alpha' },
@@ -94,7 +94,13 @@ describe('CaeSelect', () => {
 @Component({
   imports: [CaeSelect, ReactiveFormsModule],
   template: `
-    <cae-select [formControl]="ctrl" [errorMessages]="messages" label="Region" [options]="opts" />
+    <cae-select
+      [formControl]="ctrl"
+      [errorMessages]="messages"
+      label="Region"
+      ariaLabel="Region"
+      [options]="opts"
+    />
   `,
 })
 class SelectErrorHost {
@@ -150,6 +156,19 @@ describe('CaeSelect — validation errors', () => {
     fixture.detectChanges();
     expect(selectErrorState()).toBe(false);
     expect(errorText()).toBe('');
+  });
+
+  // The error state, not the pristine one (#785). mat-select is the branch that DIFFERS from
+  // matInput — it reflects aria-invalid unconditionally — so it has two announcements where
+  // cae-input has one, and this pins that the belt-and-braces pair is coherent, not conflicting.
+  it('announces the error state — message linked, subtree axe-clean', async () => {
+    host.ctrl.markAsTouched();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(ariaInvalid()).toBe('true');
+    await expectAnnouncedErrorState(fixture.nativeElement, 'A region is required');
   });
 
   it('marks the field invalid even when no message is mapped for the error', async () => {

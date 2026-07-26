@@ -5,7 +5,7 @@ import { MatInput } from '@angular/material/input';
 import { By } from '@angular/platform-browser';
 
 import { CaeTextarea } from './textarea';
-import { expectNoA11yViolations } from '../testing/a11y';
+import { expectAnnouncedErrorState, expectNoA11yViolations } from '../testing/a11y';
 
 describe('CaeTextarea', () => {
   let component: CaeTextarea;
@@ -69,7 +69,12 @@ describe('CaeTextarea', () => {
 // Validation-error forwarding (#29) — same bridge as cae-input, over a <textarea>.
 @Component({
   imports: [CaeTextarea, ReactiveFormsModule],
-  template: `<cae-textarea [formControl]="ctrl" [errorMessages]="messages" label="Bio" />`,
+  // ariaLabel duplicates the visible label so the axe arm below has a CSS-independent accessible
+  // name: MDC's floating label is CSS-positioned, so with no stylesheet applied axe judges the
+  // (correctly associated) <label> hidden and the `label` rule false-fires — see testing/a11y.ts.
+  template: `
+    <cae-textarea [formControl]="ctrl" [errorMessages]="messages" label="Bio" ariaLabel="Bio" />
+  `,
 })
 class TextareaErrorHost {
   readonly ctrl = new FormControl('', {
@@ -108,6 +113,18 @@ describe('CaeTextarea — validation errors', () => {
     fixture.detectChanges();
     expect(matInputErrorState()).toBe(true);
     expect(errorText()).toContain('A description is required');
+  });
+
+  // The error state, not the pristine one (#785): <textarea> rides the same matInput branch as
+  // cae-input, so an empty required field carries no aria-invalid and the linked <mat-error> is
+  // the only announcement there is.
+  it('announces the error state — message linked, subtree axe-clean', async () => {
+    host.ctrl.markAsTouched();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    await expectAnnouncedErrorState(fixture.nativeElement, 'A description is required');
   });
 
   it('clears the error when the control becomes valid', async () => {
