@@ -86,6 +86,13 @@ export class CaePanelMenuLeaf {
  * with a `url` is a focusable `<a href>` (data-driven navigation), an item without is a `<button>`
  * that emits `(itemSelect)` — so keyboard, focus, and the accessible name (the label) are native.
  *
+ * **Model updates.** Items are tracked by **object identity**, so a panel's open/closed state follows
+ * its item rather than its position — filtering or reordering `model` leaves the surviving branches
+ * as the user left them (#774). The corollary is a consumer contract: keep item object references
+ * stable across updates. Rebuilding the array with fresh object literals on every change re-stamps
+ * the panels and resets expansion, so derive the model once (or memoize it) rather than constructing
+ * it inside a template expression.
+ *
  * **Keyboard.** Expansion headers follow the accordion's own model (Tab to reach, Enter/Space to
  * toggle; inter-header Arrow roving is the accordion's deferral, #79). Within a panel's item list,
  * Arrow-Up/Down + Home/End rove the leaves (see {@link CaePanelMenuLeaf}); Enter/Space activate them
@@ -111,7 +118,14 @@ export class CaePanelMenuLeaf {
 
     <ng-template #level let-items>
       <cae-accordion class="cae-panel-menu__group" [multiple]="multiple()">
-        @for (item of items; track $index; let i = $index) {
+        <!-- Tracked by item IDENTITY, not $index — panel-menu is the one data-driven menu whose
+             rendered child owns state. The flat menus (cae-menu, cae-menubar, cae-context-menu)
+             track $index safely because their rows are pure renderers, but an expansion panel's
+             open/closed flag lives inside Material and is never bound here, so $index reuse hands
+             a surviving panel's open state to whatever item lands on that position: drop the
+             expanded branch and its collapsed sibling renders expanded (#774). $index still feeds
+             the icon template's positional index, which is genuinely about position. -->
+        @for (item of items; track item; let i = $index) {
           @if (item.items?.length) {
             <cae-expansion-panel [title]="item.label" [disabled]="item.disabled ?? false">
               <ng-container
@@ -158,11 +172,6 @@ export class CaePanelMenuLeaf {
   `,
   styles: `
     :host {
-      display: block;
-    }
-    /* A nested accordion sits inside a panel body; strip its default spacing so depth reads as
-       indentation, not gaps. The body already indents via the expansion panel's padding. */
-    .cae-panel-menu__group .cae-panel-menu__group {
       display: block;
     }
     .cae-panel-menu__leaf {
