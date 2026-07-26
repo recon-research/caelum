@@ -113,9 +113,13 @@ interface CaeTreeTableRow<T> {
  * name with a visible `caption` (preferred) **or** `ariaLabel` — not both (the caption wins, avoiding
  * the #70 label-in-name mismatch; naming is via `aria-labelledby` since a `treegrid`-role element does
  * not reliably take its name from a native `<caption>`). The empty state is a persistent `role="status"`
- * live region intended to announce a populated→empty transition — v1 only reaches empty via `[nodes]=[]`
- * (no filter yet); the SR announcement itself, like the real-browser keyboard/focus behaviour, is
- * confirmed in the M4 pass (#263, #240).
+ * live region announcing a populated→empty transition — v1 only reaches empty via `[nodes]=[]` (no
+ * filter yet). "Persistent" is load-bearing and was **not** true until #405/#263: the region was hidden
+ * with `display: none` while empty, which prunes it from the a11y tree for the whole time the table has
+ * rows — i.e. right up to the transition it exists to announce. It now uses the clip-based hide
+ * cae-data-grid documents. Keyboard/focus behaviour and the region's *mechanism* are verified in
+ * `tree-table.browser.spec.ts` (#263, #240); the SR **utterance** itself is not claimed — no harness
+ * can drive one (the same honest limit as the grid's #228).
  *
  * **Custom cell content.** Project an `<ng-template caeTreeCellDef="<column-key>">` per column to render
  * a badge/link/formatted value instead of text, with the {@link CaeTreeCellContext} (`$implicit` =
@@ -224,7 +228,8 @@ interface CaeTreeTableRow<T> {
     </table>
 
     <!-- Persistent live region (always mounted, text varies) so a data-becomes-empty transition is
-         ANNOUNCED (WCAG 4.1.3); :empty hides the strip while rows are present. Mirrors cae-table. -->
+         ANNOUNCED (WCAG 4.1.3); :empty CLIPS the strip while rows are present — clipped, never
+         display:none, which prunes it from the a11y tree and silences the announcement (#405). -->
     <div class="cae-tree-table__empty" role="status" aria-live="polite">{{ emptyText() }}</div>
   `,
   styles: `
@@ -291,8 +296,21 @@ interface CaeTreeTableRow<T> {
     .cae-tree-table__empty:not(:empty) {
       padding: var(--cae-space-3);
     }
+    /* When empty, collapse VISUALLY but stay in the accessibility tree — a clip-based visually-hidden
+       hide, NOT display:none (which prunes the node from the a11y tree and un-watches the live region).
+       This is the state the region sits in *before* the populated→empty transition it exists to
+       announce, so pruning it here makes the announcement the reliably-silent case: text arriving on a
+       region that was not being watched. display:none was measured doing exactly that (#405/#263, see
+       tree-table.browser.spec.ts); the rule mirrors cae-data-grid, which documents the same hazard. */
     .cae-tree-table__empty:empty {
-      display: none;
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
     }
     @media (prefers-reduced-motion: reduce) {
       .cae-tree-table__chevron {
@@ -330,11 +348,12 @@ export class CaeTreeTable<T = Record<string, unknown>> implements OnInit {
    * for two-way, or `(expandedChange)` to observe. Expansion is **view state**, held here, never in the
    * row data (Book 10 §3.2).
    *
-   * **Focus note (M4, #263):** the keyboard collapse path is safe — Left collapses the *focused* branch,
+   * **Focus note (#769):** the keyboard collapse path is safe — Left collapses the *focused* branch,
    * which stays present. But a **programmatic** collapse (or a `[nodes]` refresh) that removes a
    * *descendant* row while keyboard focus is inside it drops DOM focus to `<body>` (the roving tab stop
-   * re-homes to a valid row, but `.focus()` is not restored); restoring it is a real-browser follow-up,
-   * the same hazard cae-table documents at #241.
+   * re-homes to a valid row, but `.focus()` is not restored). Measured in Chromium and pinned by
+   * `tree-table.browser.spec.ts` (#405/#263), so a fix must update that test deliberately; restoring
+   * focus is tracked as **#769**, the sibling of the same hazard cae-table documents at #241.
    */
   readonly expanded = model<readonly CaeTreeTableNode<T>[]>([]);
   /** Emitted when a row is activated (Enter/Space on the focused row) — the whole node is emitted. */

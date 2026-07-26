@@ -403,7 +403,8 @@ export interface CaeTableColumn {
     <!-- Persistent live region (always mounted, text varies) so a data-becomes-empty transition is
          ANNOUNCED (WCAG 4.1.3). A region stamped together with its text via @if is commonly not
          announced (the Forge convention); here the text goes '' -> emptyMessage on the transition.
-         :empty hides it (no padded strip) while rows are present. -->
+         :empty CLIPS it (no padded strip) while rows are present — clipped, never display:none, which
+         would prune it from the a11y tree in exactly that state and silence the announcement (#405). -->
     <div class="cae-table__empty" role="status" aria-live="polite">{{ emptyText() }}</div>
 
     @if (paginated()) {
@@ -471,9 +472,21 @@ export interface CaeTableColumn {
       color: var(--cae-color-on-surface-variant);
       text-align: center;
     }
-    /* When rows are present emptyText() is '', so the region collapses (no padded strip). */
+    /* When rows are present emptyText() is '', so the region collapses (no padded strip) — but it must
+       collapse VISUALLY while staying in the accessibility tree. display:none prunes the node and
+       un-watches the live region, and that is the state it sits in for the whole time the table has
+       rows, i.e. right up to the populated->empty transition it exists to announce; the message then
+       lands on a region nothing was watching (the reliably-silent case). Measured doing exactly that
+       and fixed in #405 — see table.browser.spec.ts. Same clip-based hide as cae-data-grid. */
     .cae-table__empty:empty {
-      display: none;
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
     }
     /* Visually-hidden but AT-readable (the standard sr-only recipe) — names the selection column. */
     .cae-visually-hidden {

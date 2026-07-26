@@ -149,6 +149,15 @@ class StickyColumnHost {
   readonly data = ROWS.slice(0, 5);
 }
 
+@Component({
+  imports: [CaeTable],
+  template: `<cae-table caption="Roster" [columns]="columns" [data]="data()" />`,
+})
+class EmptyStateHost {
+  readonly columns = COLUMNS;
+  readonly data = signal<readonly Person[]>(ROWS.slice(0, 3));
+}
+
 const frame = (): Promise<unknown> =>
   new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
 
@@ -359,5 +368,73 @@ describe('CaeTable — sticky column placement (real browser, #254)', () => {
 
     expect(left(firstCell())).toBe(0);
     expect(left(secondCell())).toBe(secondBefore - scrollBy);
+  });
+});
+
+/**
+ * The empty-state live region (#405, found while verifying `cae-tree-table`'s #263 box).
+ *
+ * `cae-table` and `cae-tree-table` both hid this region with `display: none` while `:empty`, which
+ * prunes it from the accessibility tree for the entire time the table has rows — i.e. right up to
+ * the populated→empty transition it exists to announce, making that the reliably-silent case.
+ * `cae-data-grid` already documented the rule and the reason in its own stylesheet; these two had
+ * copied each other instead (tree-table's template comment literally says "Mirrors cae-table").
+ * Fixed in both by adopting the grid's clip-based hide.
+ *
+ * Only the *populated-state* computed-style assertion catches this: the mutation record stays
+ * `characterData` either way, and by the time the region holds text it is displayed even when buggy.
+ */
+describe('CaeTable — empty-state live region (real browser, #405)', () => {
+  let fixture: ComponentFixture<EmptyStateHost>;
+  let el: HTMLElement;
+
+  const region = (): HTMLElement => el.querySelector<HTMLElement>('.cae-table__empty')!;
+
+  beforeEach(async () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ imports: [EmptyStateHost] });
+    loadCaelumTheme();
+    fixture = TestBed.createComponent(EmptyStateHost);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    el = fixture.nativeElement as HTMLElement;
+  });
+
+  it('stays in the a11y tree while the table has rows, so the region is watched', () => {
+    expect(region().textContent).toBe('');
+    expect(getComputedStyle(region()).display).not.toBe('none');
+    expect(getComputedStyle(region()).visibility).not.toBe('hidden');
+  });
+
+  it('announces by mutating that same node rather than inserting one already holding text', async () => {
+    const born = region();
+
+    let textMutations = 0;
+    const insertedCarryingText: string[] = [];
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        if (record.type === 'characterData') textMutations++;
+        for (const node of Array.from(record.addedNodes)) {
+          const added = node as HTMLElement;
+          if (added.classList?.contains('cae-table__empty') && added.textContent?.trim()) {
+            insertedCarryingText.push(added.textContent.trim());
+          }
+        }
+      }
+    });
+    observer.observe(el, { characterData: true, childList: true, subtree: true });
+
+    fixture.componentInstance.data.set([]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    await frame();
+    observer.disconnect();
+
+    expect(region().textContent).toContain('No data.');
+    expect(textMutations).toBeGreaterThan(0);
+    expect(insertedCarryingText).toEqual([]);
+    expect(region()).toBe(born);
   });
 });
