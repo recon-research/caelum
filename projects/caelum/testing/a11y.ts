@@ -62,9 +62,16 @@ function formatViolations(violations: axe.Result[]): string {
  * report (impact + rule id + help URL + each failing node's selector) when any is found — a
  * merge gate, not a dashboard (Book 16 §3.2).
  *
- * `root` defaults to the whole `document` so overlay content rendered *outside* the fixture
- * (dialogs, menus, the picker panels of Book 09) is covered; pass a specific element to scope
- * the scan to one component's subtree.
+ * `root` defaults to `document.body` so overlay content rendered *outside* the fixture (dialogs,
+ * menus, tooltips, the picker panels of Book 09) is still covered; pass a specific element to
+ * scope the scan to one component's subtree.
+ *
+ * **Why `document.body` and not `document`** (#773). The default was `document`, which no caller
+ * could actually use: the unit harness's own page has no `<title>` and no `lang` on `<html>`, so
+ * every default-root scan failed on `document-title` + `html-has-lang` before reaching the
+ * component. Those are page-level rules — an app's responsibility, unsatisfiable by a component
+ * library rendering into a test fixture — so scoping one level down drops exactly the noise and
+ * keeps every rule that grades rendered content, overlays included (they attach under `<body>`).
  *
  * **Waits for the render to settle first** ({@link animationsSettled}, #779). axe judges
  * `color-contrast` from *composited* colours, so scanning mid-fade grades the blend rather than
@@ -73,7 +80,7 @@ function formatViolations(violations: axe.Result[]): string {
  * general, not to any one overlay; it is a no-op in jsdom.
  */
 export async function expectNoA11yViolations(
-  root: Element | Document = document,
+  root: Element | Document = document.body,
   options: A11yCheckOptions = {},
 ): Promise<void> {
   const runOptions: axe.RunOptions = {

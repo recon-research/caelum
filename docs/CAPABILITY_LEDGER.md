@@ -6,9 +6,11 @@
 The artifact behind the **evidence-gated done** invariant (`ARCHITECTURE.md` §2, §3.4): a
 component is "done" only with passing parity scenarios **plus** adversarial sign-off — never
 because it renders. Generated from evidence in the repo, so no row can claim a state nothing
-backs. **M4 exits when every shipped entry point reads `adversarial-passed`.**
+backs. **M4 exits when every shipped entry point reads `adversarial-passed`**, bar a recorded
+exemption — and an exemption is re-proven from the source on every run, never taken on trust
+(#773).
 
-**60/65 adversarial-passed** · 0 parity-verified · 5 implemented
+**64/64 adversarial-passed** · 0 parity-verified · 0 implemented · 1 exempt (below)
 
 `untouched` / `mapped` (§3.4's first two states) are the p-*→cae-* mapping tracked in
 [`textbooks/reference/COMPARISON.md`](../textbooks/reference/COMPARISON.md) (Status column,
@@ -23,8 +25,10 @@ One row is not a shipping-slice review: `panel-menu` shipped without one (#774),
 pointer is the later slice that ran the review it was owed (PR #778). A row's commit is the
 commit whose message records the review, not necessarily the one that introduced the code.
 
-Gaps below are tracked, not tolerated: **#773** (entry points with no axe assertion — cover
-or record an exemption). That is M4 exit work.
+The five entry points that had no axe assertion were closed by **#773**: four gained one
+(`breadcrumb-router`, `form-field`, `grid-tanstack`, `tooltip`), and `shared` — which is
+type-only — became the single exemption. Exemptions are re-derived from source on every run,
+never granted by the recorded reason; see the module docstring of the generator.
 
 | Entry point | State | spec | axe | browser | VR | Adversarial sign-off |
 |---|---|---|---|---|---|---|
@@ -33,7 +37,7 @@ or record an exemption). That is M4 exit work.
 | `avatar` | adversarial-passed | ☑ | ☑ | — | — | PR #670 · `89f2560d` |
 | `badge` | adversarial-passed | ☑ | ☑ | — | — | PR #130 · `8cb47816` |
 | `breadcrumb` | adversarial-passed | ☑ | ☑ | — | — | PR #334 · `323efe6e` |
-| `breadcrumb-router` | implemented | ☑ | — | — | — | PR #654 · `6592b4ba` |
+| `breadcrumb-router` | adversarial-passed | ☑ | ☑ | — | — | PR #654 · `6592b4ba` |
 | `button` | adversarial-passed | ☑ | ☑ | — | ☑ | PR #44 · `f2a7368b` |
 | `card` | adversarial-passed | ☑ | ☑ | — | ☑ | PR #44 · `f2a7368b` |
 | `carousel` | adversarial-passed | ☑ | ☑ | — | — | PR #277 · `42277770` |
@@ -46,10 +50,10 @@ or record an exemption). That is M4 exit work.
 | `dialog` | adversarial-passed | ☑ | ☑ | — | — | PR #103 · `b9f225ab` |
 | `divider` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #89 · `11614941` |
 | `file-upload` | adversarial-passed | ☑ | ☑ | — | — | PR #346 · `3f2dc0f1` |
-| `form-field` | implemented | ☑ | — | — | — | PR #55 · `be14721b` |
+| `form-field` | adversarial-passed | ☑ | ☑ | — | — | PR #55 · `be14721b` |
 | `galleria` | adversarial-passed | ☑ | ☑ | — | — | PR #291 · `da997020` |
 | `grid` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #180 · `c8853f92` |
-| `grid-tanstack` | implemented | ☑ | — | — | — | PR #660 · `58b92447` |
+| `grid-tanstack` | adversarial-passed | ☑ | ☑ | — | — | PR #660 · `58b92447` |
 | `icon` | adversarial-passed | ☑ | ☑ | — | — | PR #646 · `d4021f3d` |
 | `image` | adversarial-passed | ☑ | ☑ | — | — | PR #295 · `2355e53b` |
 | `image-compare` | adversarial-passed | ☑ | ☑ | — | — | PR #319 · `407fab00` |
@@ -73,7 +77,7 @@ or record an exemption). That is M4 exit work.
 | `scroll-panel` | adversarial-passed | ☑ | ☑ | — | — | PR #330 · `20d35a8d` |
 | `select` | adversarial-passed | ☑ | ☑ | — | — | PR #44 · `f2a7368b` |
 | `select-button` | adversarial-passed | ☑ | ☑ | — | — | PR #74 · `150ff686` |
-| `shared` | implemented | — | — | — | — | PR #44 · `f2a7368b` |
+| `shared` | exempt | — | — | — | — | PR #44 · `f2a7368b` |
 | `skeleton` | adversarial-passed | ☑ | ☑ | — | — | PR #670 · `89f2560d` |
 | `slider` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #112 · `7f3ca812` |
 | `split-button` | adversarial-passed | ☑ | ☑ | — | — | PR #151 · `1bc5bb8d` |
@@ -89,18 +93,19 @@ or record an exemption). That is M4 exit work.
 | `toast` | adversarial-passed | ☑ | ☑ | — | — | PR #98 · `48381a59` |
 | `toggle-button` | adversarial-passed | ☑ | ☑ | — | — | PR #74 · `150ff686` |
 | `toolbar` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #130 · `8cb47816` |
-| `tooltip` | implemented | ☑ | — | — | — | PR #44 · `f2a7368b` |
+| `tooltip` | adversarial-passed | ☑ | ☑ | — | — | PR #44 · `f2a7368b` |
 | `tree` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #44 · `f2a7368b` |
 | `tree-select` | adversarial-passed | ☑ | ☑ | — | — | PR #284 · `6ec7aa81` |
 | `tree-table` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #271 · `cdea70d9` |
 
+## Exemptions
+
+Not a waiver — each is re-derived on every run from the entry point's own source,
+and the gate fails the moment one starts emitting runtime code (#773).
+
+- **`shared`** — type-only entry point (#28): every export is a type or interface, so it compiles to no runtime code, ships no component, and renders no DOM — there is nothing for axe to scan. Re-proven each run by scripts/capability_ledger.py, which fails the gate if any file here starts emitting runtime code.
+
 ## Open gaps
 
-Each row below is M4-exit work, not a formatting nit.
-
-- **`breadcrumb-router`** — no axe assertion.
-- **`form-field`** — no axe assertion.
-- **`grid-tanstack`** — no axe assertion.
-- **`shared`** — no functional spec; no axe assertion.
-- **`tooltip`** — no axe assertion.
+None — every shipped entry point is `adversarial-passed` or recorded above.
 

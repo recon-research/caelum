@@ -3,7 +3,10 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import { By } from '@angular/platform-browser';
 
+import { CaeInput } from 'caelum/input';
+
 import { CaeFormFieldControlBase } from './public-api';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 // A minimal concrete control that exercises the abstract base WITHOUT a real Material inner
 // control: `updateInnerErrorState` is a spy, and protected members are surfaced through public
@@ -140,5 +143,68 @@ describe('CaeFormFieldControlBase (shared base)', () => {
     host.active.set(host.b);
     fixture.detectChanges();
     expect(ctrl.probeErrorState()).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// The base's a11y contract, exercised through a REAL subclass (#773).
+//
+// Everything above drives `TestFfc`, which deliberately has no Material inner control — right for
+// testing the CVA and error-forwarding seams in isolation, useless for axe: a bare <span> is not
+// the DOM this base produces in practice. So this block binds `cae-input`, one of the five real
+// subclasses, and scans the state the base actually owns.
+//
+// The state is chosen, not incidental. Measured across the library, no axe assertion anywhere ran
+// against a control in its ERROR state — every one of the 55 swept components scans pristine. That
+// leaves the base's own documented edge unverified: a required-empty `matInput` SUPPRESSES
+// `aria-invalid`, so the linked <mat-error> text is the only thing that announces the failure. If
+// that link breaks, the field is silently invalid to a screen-reader user while looking correct to
+// everyone else — which is exactly the defect class axe can catch and a pristine-state scan cannot.
+// ---------------------------------------------------------------------------------------------
+@Component({
+  imports: [CaeInput, ReactiveFormsModule],
+  // Named via ariaLabel rather than the visible [label]: mat-form-field's MDC floating label is
+  // CSS-positioned, so with no stylesheet applied axe judges it hidden and the `label` rule
+  // false-fires (see input.spec.ts). The visible-label path is the real browser's job (#240).
+  template: `
+    <cae-input
+      [formControl]="ctrl"
+      ariaLabel="Email address"
+      [required]="true"
+      [errorMessages]="messages"
+    />
+  `,
+})
+class ErrorStateHost {
+  readonly ctrl = new FormControl('', { nonNullable: true, validators: [Validators.required] });
+  readonly messages = { required: 'Email is required' };
+}
+
+describe('CaeFormFieldControlBase — the error bridge, through cae-input (#773)', () => {
+  let fixture: ComponentFixture<ErrorStateHost>;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({ imports: [ErrorStateHost] }).compileComponents();
+    fixture = TestBed.createComponent(ErrorStateHost);
+    fixture.detectChanges();
+    await fixture.whenStable();
+  });
+
+  it('renders an a11y-clean error state, with the message linked rather than orphaned', async () => {
+    fixture.componentInstance.ctrl.markAsTouched();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const input = fixture.nativeElement.querySelector('input') as HTMLInputElement;
+    const error = fixture.nativeElement.querySelector('mat-error') as HTMLElement | null;
+
+    // Guard the scan against vacuity in both directions: the message must be RENDERED (or the axe
+    // call below grades a pristine field and proves nothing) and it must be REFERENCED (the whole
+    // point — an unlinked <mat-error> is visually fine and inaudible).
+    expect(error?.textContent?.trim()).toBe('Email is required');
+    expect(input.getAttribute('aria-describedby') ?? '').toContain(error!.id);
+
+    await expectNoA11yViolations(fixture.nativeElement);
   });
 });

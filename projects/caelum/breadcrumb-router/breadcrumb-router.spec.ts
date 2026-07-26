@@ -8,6 +8,7 @@ import {
 } from 'caelum/breadcrumb';
 
 import { CaeBreadcrumbRouterLink } from './breadcrumb-router';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 @Component({ template: 'reports' })
 class ReportsPage {}
@@ -114,6 +115,15 @@ describe('CaeBreadcrumbRouterLink (#333, D-595)', () => {
     expect(fixture.nativeElement.querySelector('[aria-current="page"]')?.textContent?.trim()).toBe(
       'Q3',
     );
+  });
+
+  // The directive's central a11y claim, in its own docstring: it "only upgrades the click", so
+  // "the markup and the a11y *tree* are unchanged". That is a claim about the rendered result, and
+  // this is the assertion that holds it — a future version that reached for the markup (say, to
+  // swap an <a href> for a role="link" span, or to drop the href once it owns the click) would
+  // still pass every navigation test above while quietly regressing the trail for AT users.
+  it('leaves the trail a11y-clean — the directive changes the click, not the tree', async () => {
+    await expectNoA11yViolations(fixture.nativeElement);
   });
 
   // Deliberately NOT titled "the subscription is torn down": the framework removes the anchor's
