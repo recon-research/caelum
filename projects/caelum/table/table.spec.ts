@@ -1231,8 +1231,8 @@ class StickyExpandableHost {
  * fully deterministic — and what these tests lock — is the **wiring**: that the input reaches the CDK,
  * that the styler marks exactly the intended cells with the sticky class, and *which edge* each cell is
  * pinned to (`top` for a sticky header, `left`/`right` for a sticky start/end column in LTR — the styler
- * writes the edge property regardless of the measured distance). Real positioning is verified in the M4
- * real-browser pass (#240).
+ * writes the edge property regardless of the measured distance). Real positioning — and the WCAG 2.4.11
+ * focus-occlusion consequence of it — is verified in `table.browser.spec.ts` (#240, #254).
  *
  * The marker is `mat-mdc-table-sticky`, **not** the CDK's own `cdk-table-sticky`: MatTable overrides
  * `stickyCssClass`, and its stylesheet is what actually applies `position: sticky` to that class.
