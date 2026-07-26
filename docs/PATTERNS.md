@@ -240,3 +240,27 @@ Both idioms are correct; they answer different questions, so **neither is swept 
 - **A global-ARIA attribute makes a wrapper opaque.** axe recurses through role-less elements, so a plain `<div>` between the role and its rows is fine — but a `<span aria-live="polite">` (the pager's range label) counts as an owned child in its own right. Bare structural wrappers are safe; anything carrying `aria-*` or a role is not.
 - **Test both arms.** The defect is *conditional*: `data-grid`'s unpaginated axe spec passed for months while the pager arm — buttons, `<select>`, the `aria-live` range — was never scanned at all. When a role's subtree changes with an input, every arm needs its own run.
 - **A `disableRules` carve-out is a suspect, not a settled fact.** This one blamed jsdom's empty rowgroup and masked a real critical that *jsdom could see all along* — removing it failed 2 jsdom specs immediately. Re-derive the stated reason before trusting one. It was also the repo's **only** component carve-out (the sole remaining use is `testing/a11y.spec.ts` exercising the suppression mechanism itself), so "sweep the carve-outs" is a heuristic that is now spent — don't plan around it.
+
+## 13. `track $index` is safe only while the rendered child is stateless (#774)
+
+Every data-driven list in this library tracks `$index` — `cae-menu`, `cae-menubar`,
+`cae-context-menu`, `cae-breadcrumb`. That is correct *there*, because those rows are pure
+renderers: every visible byte comes from a binding, so re-keying just re-binds.
+
+It stops being correct the moment the child owns state the parent never binds. `cae-panel-menu`
+composes `cae-expansion-panel`, whose `expanded` flag lives **inside Material** and is not bound by
+the menu — so `$index` reuse handed a surviving panel's open state to whatever item landed on that
+position. Reproduced: open a branch, drop it from `model`, and its *collapsed* sibling renders
+*expanded*. No error, no failing test — a nav filtering by permission or search just shows the wrong
+sections open.
+
+- **The question to ask of any `@for`** is not "are the items stable?" but **"what state does the
+  child hold that isn't a binding?"** — expansion, scroll position, uncommitted input text,
+  animation phase, focus. Any of those ⇒ track identity.
+- **Probe the trade before switching.** Measured on Angular 22: the same item object twice within
+  one level, and one shared across levels, both render **without throwing**, so `track item` adds no
+  new crash mode here.
+- **It does add a consumer contract** — stable object references; don't build the model in a
+  template expression, or the panels re-stamp and expansion resets. Document it on the component.
+- **`$index` still has a job.** The D-596 icon context's `index` is genuinely positional; only the
+  track key changes.
