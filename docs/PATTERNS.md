@@ -207,6 +207,30 @@ Two browser-only failures that a jsdom spec cannot express, and that both look f
 - **Re-focusing an already-focused element scrolls nothing.** `el.focus()` when `el` is already `document.activeElement` is a no-op, so a probe that scrolls and then re-focuses the same node measures nothing and reports "no change" — which is easy to misread as "no hazard". Move focus via a *neighbour*.
 - **Focus can be gated on an animation, so no amount of flushing reaches it.** Material defers a dialog's `_trapFocus()` until the open animation ends: `sync=BODY | stable=BODY | task=BODY | raf=BODY | +50=BODY | +100=BUTTON`. Neither `whenStable()` nor a macrotask nor a rAF gets there. Wait on the **settled state** (`vi.waitFor`), and split the wait from the claim — one helper absorbs "the surface took focus" so the assertion below reads as *wrong element*, never *not yet*. The same gap means the modal does not contain focus while it is open (#765).
 
+## 9h. Settle the render before axe reads colours (#779)
+
+axe grades `color-contrast` from **composited** colours, so an assertion fired mid-animation judges
+the blend rather than the component. `cae-confirm`'s dialog has a settled **5.746:1**; scanned while
+~89% opaque it graded **4.408** and failed CI — on a palette that is fine.
+
+- **Recognise it by the alpha, not the colour.** Recover the implied alpha per channel from
+  `reported = settled + (background - settled) x (1 - a)`. One *consistent* alpha across R/G/B is a
+  compositing snapshot; a real token defect does not blend uniformly. Here: 0.8932 / 0.8961 / 0.8889.
+  Do this before routing the failure into the contrast track (§9c) — the two look identical in a CI
+  log and have nothing in common.
+- **Focus-settled is not render-settled.** Material defers `_trapFocus()` to the open animation's
+  *done* event, which makes "focus landed" feel like a settle signal. It isn't: the
+  `.cdk-overlay-backdrop` transition is still running at that moment, and under a slowed enter so are
+  the container and surface transitions.
+- **Ask the browser, don't sleep.** `getAnimations({subtree: true})` plus `await a.finished` waits
+  exactly as long as needed; a fixed delay is either dead time or a flake generator (#765).
+- **Exclude infinite animations or you swap a failure for a hang.** `cae-progress-spinner`'s
+  indeterminate arc never completes, so awaiting its `finished` never resolves and the suite dies by
+  timeout, reporting nothing. Filter on a finite `endTime`.
+- The wait belongs in `expectNoA11yViolations` itself (`testing/animation.ts`), not in each caller —
+  the hazard is "run axe after a state change", not any one overlay. It no-ops in jsdom.
+
+
 ## 10. Interactive hit targets — floor with `--cae-target-min` (WCAG 2.5.8, #456)
 
 **Any custom clickable affordance** (icon button, nav arrow, expand/collapse toggle, indicator dot, remove/clear `×`) MUST floor its hit target with the density-INVARIANT `--cae-target-min` (24px) — **never** size it off the `--cae-space-*` scale, which tightens under `[data-density=compact]` (space-5 → 16px, space-4 → 12px, space-2 → 6px) and drops the target below the WCAG 2.5.8 (AA) 24×24 CSS-px minimum. The gap is **silent**: jsdom does no layout, so `theming/density.spec.ts` guards only the *token* (`--cae-target-min ≥ 24`), not its per-affordance use — code review + the M4 browser pass (#240) are the only checks.
