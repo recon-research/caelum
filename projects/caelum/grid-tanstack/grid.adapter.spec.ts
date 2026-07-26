@@ -8,6 +8,7 @@ import {
   provideTanStackGrid,
   tanStackGridAdapterFactory,
 } from './grid.adapter';
+import { expectNoA11yViolations } from '../testing/a11y';
 
 interface Row {
   name: string;
@@ -239,6 +240,16 @@ describe('CaeDataGrid over the TanStack engine (isolation proof)', () => {
     setup();
     const adapter = (fixture.componentInstance as unknown as { adapter: unknown }).adapter;
     expect(adapter).toBeInstanceOf(TanStackGridAdapter);
+  });
+
+  // The isolation claim is "swap the engine, observe nothing different" — and the a11y tree is part
+  // of what a consumer observes. Every other assertion in this block checks structure the component
+  // computes itself; this one checks the whole rendered result, so an engine that fed the unchanged
+  // template subtly different shapes (a null header, a duplicated column id landing on two
+  // `aria-colindex`es) would be caught here rather than by a consumer's screen reader.
+  it('renders an a11y-clean grid over the swapped engine', async () => {
+    setup({ caption: 'Team' });
+    await expectNoA11yViolations(el);
   });
 
   it('renders the header + aria over the TanStack engine, unchanged component', () => {

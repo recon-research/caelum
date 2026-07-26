@@ -40,10 +40,31 @@ commit) — and each carries a verbatim quote, so every claim is falsifiable at 
   parity-verified   + a functional spec AND an axe assertion (`expectNoA11yViolations`), the bar
                     ARCHITECTURE §2 A11y parity commits built components to
   adversarial-passed + a verified sign-off pointer
+  exempt            a type-only entry point, which axe cannot scan because it renders nothing.
+                    Outside the ladder (see below), not a rung on it.
+
+## Exemptions are PROVEN, not trusted (#773)
+
+An exemption field is the obvious way to let anything be waved through, which is why #733 shipped
+without one. This one is safe for a narrower reason than "we promise to be careful": the only
+claim it can make is one this script **re-derives from the source**. `exempt` records a *reason*
+for the reader, but what actually grants the exemption is {@link runtime_exports} finding no
+runtime export anywhere in the entry point — a type-only entry point compiles to nothing, so
+there is provably no DOM for axe to scan.
+
+The consequence that matters is what happens when the premise stops holding. Add a component to
+an exempt entry point and the exemption does not quietly persist: `runtime_exports` finds it, the
+gate fails with the offending file named, and the row drops back onto the ladder as a visible gap.
+So the mechanism cannot outlive the fact it rests on, and it cannot be pointed at an entry point
+that renders anything — the reason string is documentation, never the grant.
 
 Usage:
   python3 scripts/capability_ledger.py            # regenerate docs/CAPABILITY_LEDGER.md
   python3 scripts/capability_ledger.py --check    # gate: drift + unresolvable pointers (CI)
+  python3 scripts/capability_ledger.py --selftest # corpus-test the runtime-export detector
+
+`--check` runs that corpus too (quietly), so the detector's teeth are re-proven by every preflight
+and CI run without a separate stage anyone could forget to wire up.
 """
 import json
 import os
@@ -57,6 +78,22 @@ CURATED = os.path.join('docs', 'capability-ledger.json')
 LEDGER = os.path.join('docs', 'CAPABILITY_LEDGER.md')
 
 STATES = ['implemented', 'parity-verified', 'adversarial-passed']
+
+# A line that puts a VALUE into the bundle, which is what makes an entry point scannable. Anchored
+# at line start so prose ("...without importing the CaeMenu class") cannot trip it, and `type` is
+# excluded because `export type {...}` / `export type X` erase at build. Deliberately eager
+# otherwise — `export {` is counted without checking whether every specifier is inline-`type`,
+# because the two error directions are not symmetric: over-matching only refuses an exemption
+# (the entry point falls back to needing a real axe assertion), while under-matching would grant
+# one to something that renders. Fail toward "not exempt".
+RUNTIME_EXPORT = re.compile(
+    r'^\s*export\s+(?!type\b)'
+    r'(?:default\b|declare\b|abstract\s+class\b|class\b|function\b|const\b|let\b|var\b|enum\b|\{)',
+    re.M)
+# `export * from 'caelum/menu'` re-exports another entry point's RUNTIME code without declaring
+# anything locally, so the check above would miss it entirely. A relative specifier is fine: that
+# target is a sibling file in this same directory and is scanned on its own.
+FOREIGN_REEXPORT = re.compile(r"^\s*export\s+(?!type\b)[^;\n]*\bfrom\s+['\"](?!\.)", re.M)
 
 
 def git(*args):
@@ -87,6 +124,62 @@ def read(path):
         return fh.read()
 
 
+def emits_runtime(src):
+    """Does this TypeScript source put anything into the bundle? (corpus-tested by --selftest)"""
+    return bool(RUNTIME_EXPORT.search(src) or FOREIGN_REEXPORT.search(src))
+
+
+def runtime_exports(name):
+    """Source files in this entry point that emit runtime code — the exemption's proof obligation.
+
+    Returns a sorted list of filenames (empty ⇒ type-only ⇒ nothing renders ⇒ axe has no subject).
+    Specs are excluded: they are not shipped, and every entry point's tests are full of runtime
+    exports, so counting them would make the type-only case unrepresentable.
+    """
+    d = os.path.join(ROOT, LIB, name)
+    return [f for f in sorted(os.listdir(d))
+            if f.endswith('.ts') and not f.endswith('.spec.ts')
+            and emits_runtime(read(os.path.join(d, f)))]
+
+
+# Each case is a real shape from this library's sources or its docstrings. The corpus exists
+# because this detector's failure mode is SILENT: weaken it and every exemption still passes,
+# the ledger still reads green, and the only symptom is a rubber stamp where a proof used to be.
+DETECTOR_CORPUS = [
+    ('class', 'export class CaeTooltip {}', True),
+    ('abstract class', 'export abstract class CaeFormFieldControlBase<T> {}', True),
+    ('const', "export const tanStackGridAdapterFactory = () => 1;", True),
+    ('function', 'export function provideTanStackGrid() {}', True),
+    ('enum', 'export enum Mode { A }', True),
+    ('default', 'export default thing;', True),
+    ('named value re-export', "export { CaeMenu } from './menu';", True),
+    ('foreign star re-export', "export * from 'caelum/menu';", True),
+    ('relative star re-export', "export * from './appearance';", False),
+    ('type alias', "export type CaeFormFieldAppearance = 'fill' | 'outline';", False),
+    ('interface', 'export interface CaeMenuPanelHost { x(): void }', False),
+    ('type-only re-export', "export type { CaeErrorMessages } from 'caelum/shared';", False),
+    # Prose must never trip it: `shared` is nothing but docstrings and types, and a false positive
+    # there would silently revoke the one exemption the library actually has.
+    ('prose naming a class', ' * without importing the `CaeMenu` *class*.', False),
+    ('commented-out export', '// export const x = 1;', False),
+    ('prose starting mid-line', ' * A file may export class-like types.', False),
+]
+
+
+def selftest(verbose=True):
+    """Returns the number of corpus mismatches. Quiet mode prints only the failures — a guard that
+    chatters on the clean path teaches the reader to skim past it on the day it finally fires."""
+    failed = 0
+    for name, src, want in DETECTOR_CORPUS:
+        got = emits_runtime(src)
+        ok = got == want
+        failed += 0 if ok else 1
+        if verbose or not ok:
+            print(f"{'PASS' if ok else 'FAIL'} runtime-export detector: {name} -> {got}"
+                  + ('' if ok else f' (want {want})'))
+    return failed
+
+
 def verify_pointer(name, entry):
     """A sign-off pointer is resolvable only if its commit exists AND touches this entry point.
 
@@ -108,12 +201,19 @@ def verify_pointer(name, entry):
     return None
 
 
-def state_of(ev, signoff_ok):
+def state_of(ev, signoff_ok, exempt_ok=False):
     """The states are a cumulative ladder, not independent flags.
 
     The invariant is parity scenarios *plus* sign-off, so sign-off alone must not top a row out:
     checking it first would have read the five entry points with no axe assertion as fully done.
+
+    `exempt` sits OUTSIDE that ladder rather than at the top of it, and only when the type-only
+    premise still holds (`exempt_ok`) — so an exempt entry point that grows a component falls
+    straight back to `implemented` and reappears as a gap, instead of keeping a state it earned
+    under different facts.
     """
+    if exempt_ok:
+        return 'exempt'
     parity = bool(ev['unit'] and ev['axe'])
     if parity and signoff_ok:
         return 'adversarial-passed'
@@ -125,12 +225,16 @@ def state_of(ev, signoff_ok):
 def build():
     curated = json.loads(read(os.path.join(ROOT, CURATED)))
     signoff = curated.get('signoff', {})
+    exempt = curated.get('exempt', {})
     rows, problems = [], []
 
     known = set(entry_points())
     for stale in sorted(set(signoff) - known):
         problems.append(f'{CURATED}: row "{stale}" has no entry point at {LIB}/{stale} '
                         '(renamed or removed — drop the row or fix the name)')
+    for stale in sorted(set(exempt) - known):
+        problems.append(f'{CURATED}: exemption "{stale}" has no entry point at {LIB}/{stale} '
+                        '(renamed or removed — drop the exemption or fix the name)')
 
     for name in entry_points():
         ev = evidence(name)
@@ -143,8 +247,24 @@ def build():
         why = verify_pointer(name, entry) if entry else None
         if entry and why:
             problems.append(f'{CURATED}: "{name}" claims sign-off but {why}')
-        rows.append({'name': name, 'ev': ev, 'signoff': entry,
-                     'state': state_of(ev, bool(entry) and not why)})
+
+        # The exemption is re-derived here, every run — the recorded reason never grants it.
+        reason, exempt_ok = exempt.get(name), False
+        if reason:
+            emitting = runtime_exports(name)
+            if emitting:
+                problems.append(
+                    f'{CURATED}: "{name}" claims an axe exemption ("{reason}") but emits runtime '
+                    f'code in {", ".join(emitting)} — it renders, so it needs a real axe '
+                    'assertion, not an exemption')
+            elif ev['axe']:
+                problems.append(f'{CURATED}: "{name}" is covered by an axe assertion, so its '
+                                'exemption is dead weight — drop it')
+            else:
+                exempt_ok = True
+
+        rows.append({'name': name, 'ev': ev, 'signoff': entry, 'exempt': reason if exempt_ok else None,
+                     'state': state_of(ev, bool(entry) and not why, exempt_ok)})
     return rows, problems, curated.get('note', '')
 
 
@@ -164,8 +284,15 @@ def signoff_cell(entry):
 
 def render(rows, note):
     counts = {s: sum(1 for r in rows if r['state'] == s) for s in STATES}
-    total = len(rows)
+    exempt_rows = [r for r in rows if r['state'] == 'exempt']
+    # Exempt entry points leave the denominator rather than counting as passes: a type-only entry
+    # point was never a component to verify, so folding it in either way misreports the fraction.
+    total = len(rows) - len(exempt_rows)
     passed = counts['adversarial-passed']
+    tally = (f'**{passed}/{total} adversarial-passed** · '
+             f"{counts['parity-verified']} parity-verified · {counts['implemented']} implemented")
+    if exempt_rows:
+        tally += f' · {len(exempt_rows)} exempt (below)'
     out = [
         '<!-- GENERATED by scripts/capability_ledger.py — do not edit by hand.',
         '     Curated input: docs/capability-ledger.json · regenerate: python3 scripts/capability_ledger.py -->',
@@ -175,10 +302,11 @@ def render(rows, note):
         'The artifact behind the **evidence-gated done** invariant (`ARCHITECTURE.md` §2, §3.4): a',
         'component is "done" only with passing parity scenarios **plus** adversarial sign-off — never',
         'because it renders. Generated from evidence in the repo, so no row can claim a state nothing',
-        'backs. **M4 exits when every shipped entry point reads `adversarial-passed`.**',
+        'backs. **M4 exits when every shipped entry point reads `adversarial-passed`**, bar a recorded',
+        'exemption — and an exemption is re-proven from the source on every run, never taken on trust',
+        '(#773).',
         '',
-        f'**{passed}/{total} adversarial-passed** · '
-        f"{counts['parity-verified']} parity-verified · {counts['implemented']} implemented",
+        tally,
         '',
         '`untouched` / `mapped` (§3.4\'s first two states) are the p-*→cae-* mapping tracked in',
         '[`textbooks/reference/COMPARISON.md`](../textbooks/reference/COMPARISON.md) (Status column,',
@@ -192,8 +320,14 @@ def render(rows, note):
         '|---|---|---|---|---|---|---|',
     ]
     out += [cell(r) for r in rows]
-    gaps = [r for r in rows if r['state'] != 'adversarial-passed']
+    gaps = [r for r in rows if r['state'] not in ('adversarial-passed', 'exempt')]
     out += ['']
+    if exempt_rows:
+        out += ['## Exemptions', '',
+                'Not a waiver — each is re-derived on every run from the entry point\'s own source,',
+                'and the gate fails the moment one starts emitting runtime code (#773).', '']
+        out += [f"- **`{r['name']}`** — {r['exempt']}" for r in exempt_rows]
+        out += ['']
     if gaps:
         out += ['## Open gaps', '',
                 'Each row below is M4-exit work, not a formatting nit.', '']
@@ -208,13 +342,24 @@ def render(rows, note):
             out.append(f"- **`{r['name']}`** — {'; '.join(missing)}.")
         out += ['']
     else:
-        out += ['## Open gaps', '', 'None — every shipped entry point is `adversarial-passed`.', '']
+        out += ['## Open gaps', '',
+                'None — every shipped entry point is `adversarial-passed` or recorded above.', '']
     return '\n'.join(out) + '\n'
 
 
 def main():
+    if '--selftest' in sys.argv:
+        return 1 if selftest() else 0
+
     check = '--check' in sys.argv
     rows, problems, note = build()
+    # Run the corpus inside --check rather than as a separate stage: preflight and CI already call
+    # --check, so the detector's teeth get re-proven on every run with no wiring left to forget.
+    # Silent only when clean — a passing corpus prints nothing.
+    if check and selftest(verbose=False):
+        problems.append('the runtime-export detector failed its own corpus (run '
+                        '`python3 scripts/capability_ledger.py --selftest`) — exemptions are '
+                        'unsafe until it passes')
     text = render(rows, note)
     path = os.path.join(ROOT, LEDGER)
 
@@ -228,8 +373,10 @@ def main():
         if problems:
             return 1
         passed = sum(1 for r in rows if r['state'] == 'adversarial-passed')
-        print(f'capability ledger: {passed}/{len(rows)} adversarial-passed, '
-              f'{len(rows)} entry points, all sign-off pointers resolve')
+        exempt_n = sum(1 for r in rows if r['state'] == 'exempt')
+        print(f'capability ledger: {passed}/{len(rows) - exempt_n} adversarial-passed, '
+              f'{len(rows)} entry points ({exempt_n} exempt, each re-proven type-only), '
+              'all sign-off pointers resolve')
         return 0
 
     for p in problems:
