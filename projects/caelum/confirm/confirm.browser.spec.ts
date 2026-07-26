@@ -24,17 +24,22 @@
  * — the realistic desync, where the config seam quietly stops steering anything. Both are needed;
  * neither is redundant.
  *
- * **Why the wait is `vi.waitFor` and not a flush.** Measured here, sampling `document.activeElement`
- * after `confirm()` opens: `sync=BODY | stable=BODY | task=BODY | raf=BODY | +50=BODY | +100=BUTTON`.
- * Material defers `_trapFocus()` until the **open animation finishes** (`delayFocusTrap`), so no
- * amount of CD flushing or microtask draining reaches it — the first version of this file failed on
- * exactly that. The anchored popup has no such delay: it focuses from `afterNextRender`. Same
- * contract, two timelines, so both wait on the *settled* state rather than on a tick count.
+ * **Why the wait is `vi.waitFor` and not a flush.** Historically, sampling `document.activeElement`
+ * after `confirm()` opened gave `sync=BODY | stable=BODY | task=BODY | raf=BODY | +50=BODY |
+ * +100=BUTTON`: Material deferred `_trapFocus()` until the **open animation finished**
+ * (`delayFocusTrap`), so no amount of CD flushing or microtask draining reached it — the first
+ * version of this file failed on exactly that.
  *
- * That gap has a consequence beyond timing — during it the modal does not contain focus at all
- * (Tab walks into the page behind the alertdialog). Measured, and filed as **#765**; it is a
- * ~50-100 ms window, so it is deliberately **not** pinned here — asserting it needs a ~10 ms sample,
- * which is a CI flake generator. If #765 is fixed, correct this paragraph.
+ * **That gap is now closed (#765, fork #791).** `CaeDialog` passes `delayFocusTrap: false`, so the
+ * centered confirm traps focus at content-attach and the timeline reads `sync=DIALOG` at every
+ * sample. The consequence that made it worth fixing was never the timing: during the gap the modal
+ * did not contain focus at all, and a Tab pressed 10 ms after open walked into the page *behind* the
+ * alertdialog. That containment is pinned in `dialog/dialog.browser.spec.ts`, at the layer that owns
+ * the flag.
+ *
+ * `focusSettled()` stays anyway, and not out of inertia: the anchored popup focuses from
+ * `afterNextRender`, so this file still spans two timelines, and waiting on the *settled* state
+ * rather than a tick count is what keeps a failure here reading as "focused the wrong button".
  *
  * **Focus settled ≠ render settled (#779).** `focusSettled()` is the right wait for the focus
  * assertions and the wrong one for the axe assertion. Material fires focus on the open animation's

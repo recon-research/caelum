@@ -47,7 +47,7 @@ never granted by the recorded reason; see the module docstring of the generator.
 | `confirm` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #106 · `dfc184d9` |
 | `context-menu` | adversarial-passed | ☑ | ☑ | — | — | PR #159 · `f48cc09b` |
 | `datepicker` | adversarial-passed | ☑ | ☑ | — | — | PR #684 · `a730b5a1` |
-| `dialog` | adversarial-passed | ☑ | ☑ | — | — | PR #103 · `b9f225ab` |
+| `dialog` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #103 · `b9f225ab` |
 | `divider` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #89 · `11614941` |
 | `file-upload` | adversarial-passed | ☑ | ☑ | — | — | PR #346 · `3f2dc0f1` |
 | `form-field` | adversarial-passed | ☑ | ☑ | — | — | PR #55 · `be14721b` |

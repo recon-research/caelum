@@ -182,7 +182,11 @@ describe('CaeDialog', () => {
       closeOnNavigation: false,
     };
     dialog.open(TestDialog, config);
-    expect(spy).toHaveBeenCalledWith(TestDialog, config);
+    // Still an EXACT match, not objectContaining: the claim is that the seam adds nothing beyond the
+    // one documented default, and `objectContaining` would wave through any future stray field.
+    // `delayFocusTrap: false` is Caelum's own (#765, fork #791) — Material would otherwise leave the
+    // modal uncontained until its open animation finished.
+    expect(spy).toHaveBeenCalledWith(TestDialog, { ...config, delayFocusTrap: false });
   });
 
   it('exposes disableClose as a mutable CaeDialogRef flag; close() works regardless', async () => {
