@@ -107,7 +107,9 @@ describe('CaeConfirmService', () => {
   // Material's CSS-selector autoFocus is a no-op there (document.activeElement stays on <body>). It's
   // guarded structurally instead: the template class and the service's autoFocus selector are derived
   // from ONE shared constant (REJECT_CLASS/ACCEPT_CLASS) so they can't desync, and the config-seam test
-  // above asserts the selector value. Real-browser focus-landing verification is filed as M4 (#107).
+  // above asserts the selector value. The focus landing itself is now verified in a real browser —
+  // `confirm.browser.spec.ts` (#107), which also measured that the selector no-ops on a MISS rather
+  // than falling back to first-tabbable, and that focus arrives only after the open animation (#765).
 
   it('resolves false when dismissed without a choice (Escape / backdrop → close(undefined))', async () => {
     const result = confirm.confirm({ message: 'Proceed?' });

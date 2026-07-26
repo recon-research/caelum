@@ -161,7 +161,11 @@ export interface CaeTableColumn {
  *    column widths) that exceeds the wrapper.
  * 3. **`scroll-padding-block-start`** on that wrapper, equal to the header height, whenever
  *    `stickyHeader` is on. Browsers scroll a newly-focused row flush to the scrollport top — i.e. *under*
- *    the pinned header band — and do not account for sticky overlays themselves (#254).
+ *    the pinned header band — and do not account for sticky overlays themselves. **Measured in Chromium**
+ *    (`table.browser.spec.ts`, #254): moving focus *back* one row parks the control at clearance `0`
+ *    under a 56px band without this, and clear of it with it. Note it only bites on a **short** move —
+ *    a long jump gets centred by the browser and looks fine, which is how this stays unnoticed. Nothing
+ *    warns when the wrapper omits it; that gap is **#766**.
  *
  * ```html
  * <div role="region" aria-label="Team roster" tabindex="0"
@@ -177,7 +181,9 @@ export interface CaeTableColumn {
  * built-in expand/select columns are **auto-frozen** whenever the first data column is `sticky`, since they
  * are always rendered before it and a gap there would occlude their own controls (#252). Offsets are
  * measured by the browser, so the unit tests assert the *wiring*; real positioning and the focus-occlusion
- * checks are verified in the M4 pass (#240, #254).
+ * checks live in `table.browser.spec.ts` (#240, #254). One geometry limit surfaced there: a frozen column
+ * cannot leave its containing block, so it un-pins once the scroll passes `tableWidth - columnWidth` —
+ * freeze a *narrow* column, not a wide one.
  *
  * **v1 scope** (#141): text columns, sort, client-side pagination, custom body-cell templates (#143,
  * with a page-relative + absolute row index, #213), multi- and single-select (#144), expandable detail
@@ -309,7 +315,9 @@ export interface CaeTableColumn {
                    [tabIndex] ourselves (exactly one tab stop — see radioTabIndex) because a group-less
                    MatRadioButton otherwise defaults every radio to tabindex 0 (N tab stops). Arrow-key
                    roving+select between the radios then rests on native same-name-radio behaviour
-                   (real-browser verify #223); no arrow clash since cae-table is role=table, not grid. -->
+                   (verified in a real browser: table.browser.spec.ts, #223 — arrows move focus AND
+                   check, and the tab stop follows the selection); no arrow clash since cae-table is
+                   role=table, not grid. -->
               <mat-radio-button
                 [name]="radioName"
                 [tabIndex]="radioTabIndex(row)"
@@ -530,8 +538,8 @@ export class CaeTable<T = Record<string, unknown>> implements OnInit {
    * </div>
    * ```
    *
-   * Real-browser positioning + focus-occlusion are verified in the M4 pass (#240, #254); jsdom has no
-   * layout, so the unit tests assert the wiring, not the offsets.
+   * Real-browser positioning + focus-occlusion are verified in `table.browser.spec.ts` (#240, #254);
+   * jsdom has no layout, so the unit tests assert the wiring, not the offsets.
    */
   readonly stickyHeader = input(false, { transform: booleanAttribute });
 
@@ -777,7 +785,8 @@ export class CaeTable<T = Record<string, unknown>> implements OnInit {
    * row when it is on the current page, else the first rendered row — and every other radio is `-1`.
    * A group-less {@link MatRadioButton} otherwise defaults *every* radio to `tabindex 0` (N tab stops);
    * this gives the radio group one tab stop (never zero, even when the selection is on another page),
-   * with arrow keys roving within it (native same-name-radio behaviour; real-browser verify #223).
+   * with arrow keys roving within it (native same-name-radio behaviour — measured in Chromium, not
+   * assumed: `table.browser.spec.ts`, #223).
    */
   protected radioTabIndex(row: T): number {
     return row === this.singleSelectTabStop() ? 0 : -1;
