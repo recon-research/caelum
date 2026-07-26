@@ -231,6 +231,56 @@ the blend rather than the component. `cae-confirm`'s dialog has a settled **5.74
   the hazard is "run axe after a state change", not any one overlay. It no-ops in jsdom.
 
 
+## 9i. A gate exemption must be re-derived, not recorded (#773)
+
+The capability ledger shipped with **no** exemption field on purpose: a field that lets a row opt
+out of its evidence is the obvious way to let anything be waved through. When one genuinely-exempt
+case appeared (`caelum/shared` is type-only, so axe has nothing to scan), the fix was not to trust
+the recorded reason but to make the gate **re-prove it from the source on every run**.
+
+- **Record the reason for the reader; derive the grant from the code.** `exempt: {reason}` is
+  documentation. What actually grants it is `runtime_exports()` finding no runtime export in the
+  entry point — the exemption cannot be pointed at anything that renders.
+- **Design for the day the premise stops holding**, which is the whole point. Add a component to an
+  exempt entry point and the exemption does not quietly persist: the gate fails naming the file and
+  the row drops back onto the ladder as a visible gap. An exemption that can outlive its fact is
+  just a rubber stamp with extra steps.
+- **Fail toward "not exempt".** The two error directions are not symmetric: over-matching only
+  refuses an exemption (the entry point falls back to needing a real assertion), while
+  under-matching grants one to something that renders. Bias the detector accordingly.
+- **A silent detector needs its own corpus.** This one's failure mode is invisible — weaken it and
+  every exemption still passes green. So it carries a `--selftest` corpus (real shapes *and* the
+  prose that must not trip it) run quietly inside `--check`, i.e. by every preflight and CI run,
+  with no separate stage to forget. Prove the corpus bites by neutralising one branch of the
+  detector — a guard nobody has ever seen fire is indistinguishable from an inert one.
+- **Exempt rows leave the denominator, not the report.** `64/64 + 1 exempt` — folding an exemption
+  in as a pass, or leaving it in as a gap, both misreport the fraction the milestone gates on.
+
+## 9j. Scan the state the contract lives in, not the pristine one (#773)
+
+A sweep that adds one axe assertion per component reliably scans each component's *default* render,
+because that is what a fresh fixture gives you. Measured across this library, that left **zero** axe
+assertions covering a form control in its **error** state — and the error state is where the
+`mat-form-field` family's least-obvious contract lives: `matInput` *suppresses* `aria-invalid` on an
+empty required field, so the linked `<mat-error>` is the only thing that announces the failure.
+
+- **Ask what state the claim is about**, then render that one. For the shared base
+  (`CaeFormFieldControlBase`) the claim is about the error bridge, so the test marks the control
+  touched and asserts through a *real* subclass (`cae-input`), not the synthetic one the unit tests
+  use — a bare `<span>` is not the DOM the base produces in practice.
+- **Guard the scan against vacuity in both directions.** The message must be **rendered** (or axe
+  grades a pristine field and proves nothing) *and* **referenced** by `aria-describedby` (the actual
+  point — an unlinked `<mat-error>` looks fine and is inaudible).
+- **Mutation-test every new axe assertion.** Inject a known violation (an `<img>` with no `alt` is
+  reliable and universally detected) into the exact root being scanned; if the test stays green the
+  scan is not reaching that DOM. A dangling `aria-labelledby` idref is *not* a usable probe — axe
+  grades it `incomplete`, not a violation.
+- **Watch the scan root.** `expectNoA11yViolations()` defaults to `document.body`, not `document`:
+  the unit harness's own page has no `<title>` and no `lang`, so a `document`-rooted scan fails on
+  page-level rules before it ever reaches the component. Overlays still land in scope — they attach
+  under `<body>`.
+
+
 ## 10. Interactive hit targets — floor with `--cae-target-min` (WCAG 2.5.8, #456)
 
 **Any custom clickable affordance** (icon button, nav arrow, expand/collapse toggle, indicator dot, remove/clear `×`) MUST floor its hit target with the density-INVARIANT `--cae-target-min` (24px) — **never** size it off the `--cae-space-*` scale, which tightens under `[data-density=compact]` (space-5 → 16px, space-4 → 12px, space-2 → 6px) and drops the target below the WCAG 2.5.8 (AA) 24×24 CSS-px minimum. The gap is **silent**: jsdom does no layout, so `theming/density.spec.ts` guards only the *token* (`--cae-target-min ≥ 24`), not its per-affordance use — code review + the M4 browser pass (#240) are the only checks.
