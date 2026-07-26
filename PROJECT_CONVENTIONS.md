@@ -41,7 +41,7 @@ The drop-in skills describe *what* to do; the project-specific *where* and *how*
 ## Conventions
 - **Naming**: components export selector `cae-*` (parity-mapped to the `p-*` they replace) and class `Cae<Name>`; files `kebab-case.ts`; one component per folder under its family; adapters named `<gap>.adapter.ts`; design tokens `--cae-<group>-<role>` (e.g. `--cae-color-surface`)
 - **Determinism / reproducibility**: n/a for the UI runtime, but **visual/golden tests are deterministic** — snapshots compare like-for-like under fixed viewport + light/dark; goldens are never regenerated just to make a change pass (a diff is a finding — see Golden/oracle policy below)
-- **Domain conventions**: theme values come **only** from the token bridge (no hardcoded color/space/radius/type — invariant, `D-04`); every built component carries explicit keyboard + ARIA behavior at PrimeNG parity (invariant); a component is "done" only at `adversarial-passed` in the capability ledger with evidence (`docs/ARCHITECTURE.md` §2)
+- **Domain conventions**: theme values come **only** from the token bridge (no hardcoded color/space/radius/type — invariant, `D-04`); every built component carries explicit keyboard + ARIA behavior at PrimeNG parity (invariant); a component is "done" only at `adversarial-passed` in the capability ledger ([`docs/CAPABILITY_LEDGER.md`](docs/CAPABILITY_LEDGER.md), generated + gated; a new entry point must be added to `docs/capability-ledger.json` or the gate fails) with evidence (`docs/ARCHITECTURE.md` §2)
 
 ## Agent / Tooling
 - **MCP server name(s)**: none — Caelum is a client-side component library, not an agent/MCP host (`add_agent_tool` / `add_telemetry_event` are not applicable here; ignore unless that changes)

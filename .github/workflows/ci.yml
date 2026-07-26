@@ -190,6 +190,14 @@ jobs:
         env: { PYTHONIOENCODING: utf-8, PYTHONUTF8: "1" }
         run: python3 scripts/check_theming.py
 
+      # Evidence-gated done (#733): the capability ledger is generated from repo evidence
+      # (ARCHITECTURE §2/§3.4), so it goes stale the moment a component ships. Also refuses a
+      # curated sign-off pointer that does not resolve to a commit touching that entry point.
+      # Mirrored by the `capability ledger (evidence-gated done)` stage in preflight.{sh,ps1}.
+      - name: Capability ledger (evidence-gated done)
+        env: { PYTHONIOENCODING: utf-8, PYTHONUTF8: "1" }
+        run: python3 scripts/capability_ledger.py --check
+
       # Doc-drift budgets (#67): the docs are state caches of the tracker; this caps
       # Status/ARCHITECTURE/ROADMAP growth so session journaling cannot creep in.
       # Mirrored by the `doc budgets` stage in scripts/preflight.{sh,ps1}.

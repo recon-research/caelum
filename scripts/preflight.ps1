@@ -226,6 +226,11 @@ Invoke-Stage 'provenance (deps license + US-origin, D-11)' { python3 scripts/che
 # value from the --cae-* bridge - mechanical since the file-upload escape (#496).
 Invoke-Stage 'theming scan (D-04 token-only)' { python3 scripts/check_theming.py }
 
+# Evidence-gated-done gate (#733): docs/CAPABILITY_LEDGER.md is generated from repo
+# evidence, so it goes stale the moment a component ships; this also refuses a sign-off
+# pointer that does not resolve to a commit touching that entry point. Node-free.
+Invoke-Stage 'capability ledger (evidence-gated done)' { python3 scripts/capability_ledger.py --check }
+
 # Doc-drift budgets (#67), ops-config three-way-mirror integrity (#71), and the
 # repo-docs relative-link audit (#73) - gates from the pyxis template sync (#245),
 # mirroring ci.yml's static-gates steps and preflight.sh (same stage names).
