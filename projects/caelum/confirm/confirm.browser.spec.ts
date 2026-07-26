@@ -36,6 +36,14 @@
  * ~50-100 ms window, so it is deliberately **not** pinned here — asserting it needs a ~10 ms sample,
  * which is a CI flake generator. If #765 is fixed, correct this paragraph.
  *
+ * **Focus settled ≠ render settled (#779).** `focusSettled()` is the right wait for the focus
+ * assertions and the wrong one for the axe assertion. Material fires focus on the open animation's
+ * *done* event, but at that instant the `.cdk-overlay-backdrop` transition is still running — and on
+ * a slower runner the container and surface transitions are too. axe judges `color-contrast` from
+ * composited colours, so it graded this dialog's settled **5.746:1** as **4.408** and failed CI on a
+ * palette that is fine. That wait now lives inside `expectNoA11yViolations` itself
+ * (`testing/animation.ts`), so this file needs no extra step and neither does the next overlay spec.
+ *
  * **Why a browser.** Every assertion reads `document.activeElement` after a real overlay attach —
  * what the browser actually focused, which is the single thing jsdom cannot answer.
  *
