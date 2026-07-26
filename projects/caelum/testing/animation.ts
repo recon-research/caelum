@@ -11,11 +11,12 @@
  * 0.889) recovered consistently from all three channels; a real palette defect does not blend
  * uniformly. It reddened an unrelated PR (#778) and passed on a re-run of the same sha.
  *
- * **Why waiting on focus is not enough.** Material defers `_trapFocus()` until the dialog's open
- * animation reports done (`delayFocusTrap`, see `confirm.browser.spec.ts`'s header), so "focus has
- * landed" *feels* like "the overlay has settled". Measured, it isn't: at that moment the
- * `.cdk-overlay-backdrop` transition is still running, and on a slower runner the container and
- * surface transitions are too. Hence a wait keyed to the animations themselves.
+ * **Why waiting on focus is not enough.** "Focus has landed" *feels* like "the overlay has settled",
+ * and is not — the `.cdk-overlay-backdrop` transition is still running when focus arrives, and on a
+ * slower runner the container and surface transitions are too. That was true when Material deferred
+ * `_trapFocus()` to the open animation, and it is *more* true since `CaeDialog` set
+ * `delayFocusTrap: false` (#765): focus now lands at content-attach, i.e. before the animation has
+ * even started. Hence a wait keyed to the animations themselves.
  *
  * **Why not a fixed delay.** A sleep long enough to be safe on the slowest runner is dead time on
  * every other run, and a sleep tuned to a fast box is the flake generator this repo already avoids

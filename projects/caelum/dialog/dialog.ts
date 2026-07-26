@@ -122,7 +122,24 @@ export class CaeDialog {
     // signature on Angular-core primitives only — it's structurally assignable to what `MatDialog.open`
     // expects. CaeDialogConfig<D> is a structural subset of MatDialogConfig<D> — every field matches by
     // name and type — so it passes straight through with only a cast (no coercion).
-    return this.dialog.open<T, D, R>(componentOrTemplate, config as MatDialogConfig<D>);
+    //
+    // `delayFocusTrap: false` is Caelum's default, not Material's (#765). Material waits for the open
+    // ANIMATION to finish before calling `_trapFocus()`, which measurably leaves a modal not behaving
+    // as one: for ~100-200ms the CDK anchors exist but contain nothing, because anchors only redirect
+    // focus that LEAVES the overlay — focus starting outside never reaches them. Measured in Chromium,
+    // Tab pressed 10ms after open walked into the page BEHIND an open `role="alertdialog"`, then got
+    // yanked into the dialog when the animation completed.
+    //
+    // Material's stated reason for the delay is that focusing mid-animation can jump the scroll or
+    // catch the element before its final position. Both were measured here against the same runner,
+    // and neither materialises: scroll (before-open vs after-close) and the surface's rect while open
+    // are byte-identical with the flag on and off, and the whole browser suite is unchanged. It is set
+    // here rather than exposed on CaeDialogConfig because no consumer should have to opt into their
+    // modal being modal — see #791 for the fork.
+    return this.dialog.open<T, D, R>(componentOrTemplate, {
+      delayFocusTrap: false,
+      ...config,
+    } as MatDialogConfig<D>);
   }
 
   /** Close every open dialog. */
