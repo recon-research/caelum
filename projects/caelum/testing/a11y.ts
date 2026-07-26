@@ -32,6 +32,8 @@
  */
 import * as axe from 'axe-core';
 
+import { animationsSettled } from './animation';
+
 export interface A11yCheckOptions {
   /**
    * axe rule ids to disable for this run. Use sparingly and only for a rule that cannot be
@@ -63,6 +65,12 @@ function formatViolations(violations: axe.Result[]): string {
  * `root` defaults to the whole `document` so overlay content rendered *outside* the fixture
  * (dialogs, menus, the picker panels of Book 09) is covered; pass a specific element to scope
  * the scan to one component's subtree.
+ *
+ * **Waits for the render to settle first** ({@link animationsSettled}, #779). axe judges
+ * `color-contrast` from *composited* colours, so scanning mid-fade grades the blend rather than
+ * the component — a settled 5.746:1 read as 4.408 and reddened an unrelated PR. The wait lives
+ * here, not in each caller, because the hazard belongs to "run axe after a state change" in
+ * general, not to any one overlay; it is a no-op in jsdom.
  */
 export async function expectNoA11yViolations(
   root: Element | Document = document,
@@ -76,6 +84,8 @@ export async function expectNoA11yViolations(
       : {}),
     ...options.runOptions,
   };
+
+  await animationsSettled(root);
 
   const results = await axe.run(root, runOptions);
 
