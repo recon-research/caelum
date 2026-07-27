@@ -15,8 +15,18 @@
 // side-effecting `@use` has nowhere to put the argument. There is exactly one way
 // to theme; `caelum.theme()` at its defaults reproduces the pre-#413 output.
 
+@use 'sass:list';
+@use 'sass:meta';
 @use '@angular/material' as mat;
 @use 'tokens'; // emits the :root `--cae-*` definitions (once)
+
+// Material's density scale: unitless integers 0..-5. `mat.theme()` does NOT validate —
+// it gates on `@if ($scale != 0)` with the RAW value, then hands it to `clamp-density()`,
+// which returns 0 for anything non-numeric or unit-bearing. So `-2px`, `'compact'` and
+// `'-2'` all compile clean and silently emit the COMFORTABLE arm. This list is the
+// validation `mat.theme()` doesn't do (`CLAUDE.md` › Working style: validation at trust
+// boundaries is non-negotiable, and this is the library's newest public API).
+$_scales: (0, -1, -2, -3, -4, -5);
 
 // ── The theme mixin (D-757, #413) ───────────────────────────────────────────
 //
@@ -27,19 +37,58 @@
 // **The trap this shape exists to avoid** (measured in #757, re-measured in #413):
 // interpolating a single baseline into `$density` while leaving the compact arm
 // hardcoded at `-2` means a consumer who bakes `-2` gets both arms at `-2`. The arm
-// still emits — 61 `--mat-*` declarations, ~2.8 kB — but **not one of them differs
-// from the baseline**, so `data-density="compact"` becomes a silent no-op with no
-// route back to the comfortable arm, quietly killing the knob D-19 ratified. With
-// both arms parameterized (`-2` / `-3`) 29 of those 61 still differ and the knob
-// lives. `theming/density-mixin.spec.ts` is the assertion that fails on the naive
-// shape — note it must read `--mat-*`, NOT `--cae-space-*`: the space scale is
-// emitted by `_tokens.scss` and is untouched by `$density`, so a `--cae-space-*`
-// assertion passes under BOTH shapes and tests nothing.
+// still emits — ~60 `--mat-*` declarations — but **not one of them differs from the
+// baseline**, so `data-density="compact"` becomes a silent no-op with no route back
+// to the comfortable arm, quietly killing the knob D-19 ratified. Exact figures are
+// single-homed in ARCHITECTURE §3.1; they are Material-version data (the count moves
+// the day Angular wires up one more `get-density-tokens`), so don't re-copy them here.
+// `theming/density-mixin.spec.ts` is the assertion that fails on the naive shape —
+// note it must read `--mat-*`, NOT `--cae-space-*`: the space scale is emitted by
+// `_tokens.scss` and is untouched by `$density`, so a `--cae-space-*` assertion
+// passes under BOTH shapes and tests nothing.
 //
-// Setting the two equal is the accident above, so it warns and drops the dead arm.
-// Passing `$density-compact: null` is the deliberate way to say "no runtime knob" —
-// silent, because a guard that fires on a correct path trains you to skim it.
+// **The invariant is "the arm's values differ from the baseline's" — not "the two
+// arguments differ."** #413's first cut guarded the latter, and an adversarial pass
+// found four ways to satisfy it while emitting a dead or inverted arm, every one of
+// them silent (each reproduced against dart-sass):
+//   • `$density: -3` alone      -> the DEFAULT `-2` arm is LOOSER; 29 tokens grow
+//                                  under compact while `--cae-space-*` shrinks.
+//   • `$density: -5`            -> every component saturates at its own clamp floor,
+//                                  so no `$density-compact` can move anything.
+//   • `$density-compact: 0`     -> scale 0 emits no density tokens at all: dead arm.
+//   • `$density: -2px`          -> `-2px == -2` is false, so it slips an equality
+//                                  check AND clamps to the comfortable 0.
+// Validating to `$_scales` and requiring `$density-compact` STRICTLY TIGHTER closes
+// all four: every adjacent in-range pair (0/-1 … -4/-5) was measured to emit a live
+// arm, so "tighter and in range" is a sufficient guarantee, not a proxy for one.
+// `null` is the deliberate "no runtime knob" opt-out — the only correct answer at
+// `$density: -5`, where nothing tighter exists.
 @mixin theme($density: 0, $density-compact: -2) {
+  // The mixin emits ABSOLUTE `html` / `:root[…]` selectors. Pre-D-757 landing them at the
+  // document root was structural — `@use` is top-level-only. A mixin can be invoked anywhere,
+  // so `:host { @include caelum.theme(); }` or `.app-theme { @include caelum.theme(); }` now
+  // compiles clean and emits `.app-theme html { … }`, which matches nothing: the #724 state,
+  // silently. (Angular's emulated encapsulation rewrites the same way, which Sass cannot see —
+  // hence the `ViewEncapsulation.None` requirement documented in `testing/theme.ts`.)
+  @if & {
+    @error 'caelum.theme() must be included at the top level of a GLOBAL stylesheet. Nested, ' +
+      'it emits "#{&} html", which matches nothing and leaves every component unthemed.';
+  }
+  @if not list.index($_scales, $density) {
+    @error 'caelum.theme(): $density must be a unitless integer in #{$_scales} — got ' +
+      '#{meta.inspect($density)}. Material silently treats anything else as 0 (comfortable).';
+  }
+  @if $density-compact != null and not list.index($_scales, $density-compact) {
+    @error 'caelum.theme(): $density-compact must be a unitless integer in #{$_scales}, or ' +
+      'null to ship no runtime arm — got #{meta.inspect($density-compact)}.';
+  }
+  @if $density-compact != null and $density-compact >= $density {
+    @error 'caelum.theme(): $density-compact (#{$density-compact}) must be TIGHTER than ' +
+      '$density (#{$density}), or null. Equal arms emit ~2.8kB that changes nothing and leave ' +
+      'no route back to a roomier arm; a looser one INVERTS the [data-density] knob. At ' +
+      '$density: -5 nothing tighter exists, so pass $density-compact: null.';
+  }
+
   html {
     // Stand Material up. `theme-type` is omitted, so it defaults to `color-scheme`
     // and Material emits its own system colors via `light-dark()` — every Material
@@ -73,12 +122,7 @@
     );
   }
 
-  @if $density-compact == $density {
-    @warn 'caelum.theme(): $density and $density-compact are both #{$density}, so ' +
-      '[data-density="compact"] would emit ~2.8kB that changes nothing and leave no route ' +
-      'back to a roomier arm. Dropping the arm. Pass a tighter $density-compact to keep the ' +
-      'D-19 runtime knob, or $density-compact: null to opt out silently.';
-  } @else if $density-compact != null {
+  @if $density-compact != null {
     // ── Density parity arm (R4, Book 04 §3.4) ───────────────────────────────
     // The runtime companion to the `[data-density]` `--cae-space-*` re-declaration
     // in `_tokens.scss`: that tightens built `cae-*` components; this tightens
