@@ -20,6 +20,7 @@
  * out of the bundled typings (shipping an empty `export {}`); declaring it here keeps it (#46).
  */
 import {
+  afterNextRender,
   booleanAttribute,
   ChangeDetectorRef,
   computed,
@@ -177,6 +178,23 @@ export abstract class CaeFormFieldControlBase<T = string> implements ControlValu
     // NgControl's validity for error forwarding (Book 07 §4). `this` is the concrete subclass
     // instance, which carries the (inherited) CVA methods.
     if (this.ngControl) this.ngControl.valueAccessor = this;
+
+    // Recompute once the subclass's own template has run (#741). `ngDoCheck` is a hook of the
+    // PARENT view, so on the very first pass it fires BEFORE this component's template applies
+    // `[errorStateMatcher]` to the inner Material control. `updateErrorState()` therefore reads
+    // Material's DI-default matcher instead of ours, evaluates it against the inner control's
+    // own `NgControl` — which is absent by design, that being the whole reason this bridge
+    // exists — and latches `errorState = false`.
+    //
+    // Every later transition repairs itself, which is why this only bites at startup: a control
+    // swap re-enters `ngDoCheck`, and a programmatic `markAsTouched()` emits on `control.events`,
+    // which `wireErrorState` turns into a CD nudge. A control marked touched BEFORE `[formControl]`
+    // bound emits nothing — the flag is already set when the subscription is created — so without
+    // this one post-render recompute the field stays visibly pristine while reporting invalid.
+    // Measured, not reasoned: `ngDoCheck` runs exactly once in that scenario, with `touched` and
+    // `invalid` both already true. Not `ngAfterViewInit`, which subclasses would have to remember
+    // to call `super` from; a constructor-scoped hook cannot be silently overridden away.
+    afterNextRender(() => this.updateInnerErrorState());
   }
 
   ngDoCheck(): void {
@@ -231,8 +249,10 @@ export abstract class CaeFormFieldControlBase<T = string> implements ControlValu
     this.errorSub = control.events
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.cdr.markForCheck());
-    // One CD so ngDoCheck runs again with the inner control resolved — syncs a control that
-    // starts touched + invalid.
+    // Nudge CD for the re-wire itself. This does NOT cover a control that arrives already touched:
+    // marking dirty from inside the pass that is checking this view buys no further `ngDoCheck`
+    // (measured — it runs exactly once), which is why that case needs the constructor's
+    // post-render recompute instead (#741).
     this.cdr.markForCheck();
   }
 

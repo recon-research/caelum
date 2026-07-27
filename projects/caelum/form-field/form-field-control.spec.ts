@@ -4,6 +4,7 @@ import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import { By } from '@angular/platform-browser';
 
 import { CaeInput } from 'caelum/input';
+import { CaeSelect } from 'caelum/select';
 
 import { CaeFormFieldControlBase } from './public-api';
 import { expectNoA11yViolations } from '../testing/a11y';
@@ -206,5 +207,108 @@ describe('CaeFormFieldControlBase — the error bridge, through cae-input (#773)
     expect(input.getAttribute('aria-describedby') ?? '').toContain(error!.id);
 
     await expectNoA11yViolations(fixture.nativeElement);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// A control marked touched BEFORE [formControl] binds (#741).
+//
+// "Pre-touch the form so every error shows at once" is a normal consumer pattern — a validate-on-
+// load screen, or a restored half-filled form. It used to render nothing: no red outline, no
+// <mat-error>, and `aria-invalid="false"` on a field the model considered invalid. Invisible, not
+// noisy, which is the worst shape for an a11y defect.
+//
+// The cause is an ordering seam, and it is worth naming because the symptom points at the wrong
+// layer. `touched` is NOT lost — measured true on the control throughout. `ngDoCheck` is a hook of
+// the PARENT view, so on the first pass it runs BEFORE the subclass template applies
+// `[errorStateMatcher]` to the inner Material control; `updateErrorState()` then consults Material's
+// DI-default matcher against the inner control's own (absent) NgControl and latches `false`. The
+// hosts below differ ONLY in when they touch, which is what isolates the seam: touching later emits
+// on `control.events`, and that emission is the CD nudge that repairs it by accident.
+// ---------------------------------------------------------------------------------------------
+@Component({
+  imports: [CaeInput, ReactiveFormsModule],
+  template: `
+    <cae-input
+      [formControl]="ctrl"
+      ariaLabel="Email address"
+      [required]="true"
+      [errorMessages]="messages"
+    />
+  `,
+})
+class PreTouchedInputHost {
+  readonly ctrl = new FormControl('', { nonNullable: true, validators: [Validators.required] });
+  readonly messages = { required: 'Email is required' };
+  constructor() {
+    // In the constructor ON PURPOSE: before the view exists, so before FormControlDirective binds.
+    this.ctrl.markAsTouched();
+  }
+}
+
+@Component({
+  imports: [CaeSelect, ReactiveFormsModule],
+  template: `
+    <cae-select
+      [formControl]="ctrl"
+      ariaLabel="Country"
+      [required]="true"
+      [options]="options"
+      [errorMessages]="messages"
+    />
+  `,
+})
+class PreTouchedSelectHost {
+  readonly ctrl = new FormControl('', { nonNullable: true, validators: [Validators.required] });
+  readonly options = [{ value: 'us', label: 'United States' }];
+  readonly messages = { required: 'Country is required' };
+  constructor() {
+    this.ctrl.markAsTouched();
+  }
+}
+
+describe('CaeFormFieldControlBase — a control pre-touched before binding (#741)', () => {
+  it('surfaces the error state on cae-input, with no repair emission to lean on', async () => {
+    const fixture = TestBed.createComponent(PreTouchedInputHost);
+    const ctrl = fixture.componentInstance.ctrl;
+
+    // PREMISE, pinned so this test cannot quietly decay into a duplicate of the #773 one above.
+    // It is only a #741 test while BOTH hold: the control is already touched before the first CD,
+    // and it emits nothing afterwards. That second half is the actual mechanism — `wireErrorState`
+    // turns a `control.events` emission into a CD nudge, so an emission here would repair the
+    // state for reasons having nothing to do with the fix under test. Counting to zero is what
+    // proves the recompute did the work.
+    expect(ctrl.touched).toBe(true);
+    let emissions = 0;
+    const sub = ctrl.events.subscribe(() => emissions++);
+
+    fixture.detectChanges();
+    await fixture.whenStable();
+    sub.unsubscribe();
+
+    const input = fixture.nativeElement.querySelector('input') as HTMLInputElement;
+    const error = fixture.nativeElement.querySelector('mat-error') as HTMLElement | null;
+
+    expect(emissions).toBe(0);
+    expect(error?.textContent?.trim()).toBe('Email is required');
+    expect(input.getAttribute('aria-describedby') ?? '').toContain(error!.id);
+    // A required-empty matInput suppresses `aria-invalid` by design (Book 07 §3.3), so the visual
+    // invalid state is what distinguishes "bridged" from "still pristine" on this control.
+    expect(fixture.nativeElement.querySelector('.mat-form-field-invalid')).not.toBeNull();
+  });
+
+  it('reaches a second subclass with a different inner control (cae-select)', async () => {
+    // The fix lives in the shared base, so it must hold for a control whose inner Material widget
+    // is NOT matInput. mat-select also reflects `aria-invalid` unconditionally, which gives this
+    // arm an assertion the input arm cannot make.
+    const fixture = TestBed.createComponent(PreTouchedSelectHost);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const trigger = fixture.nativeElement.querySelector('mat-select') as HTMLElement;
+    const error = fixture.nativeElement.querySelector('mat-error') as HTMLElement | null;
+
+    expect(error?.textContent?.trim()).toBe('Country is required');
+    expect(trigger.getAttribute('aria-invalid')).toBe('true');
   });
 });
