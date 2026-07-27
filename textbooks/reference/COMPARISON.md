@@ -12,7 +12,7 @@
 
 - **☑ shipped** — the entry point exists; the Import column names it.
 - **◐ partial** — no dedicated `cae-*`, but an existing Material/CDK path covers the case; the row says which.
-- **☐ planned** — mapped target, no code. Every ☐ row names its tracking issue, so a migrating team always has something to point at. Hitting one means an explicit **build-or-drop** decision (Book 20 §6).
+- **☐ planned** — mapped target, no code. Every ☐ row names its tracking issue, so a migrating team always has something to point at — **enforced by `scripts/audit_comparison.py`** (a preflight/CI gate since #810, which found four rows that had gone untracked through a milestone exit). Hitting one means an explicit **build-or-drop** decision (Book 20 §6).
 
 **Import** — the **secondary entry point** to import from. Prefer it over the primary `caelum` barrel, which pulls the whole set. `—` on a ☐ row.
 
@@ -135,7 +135,7 @@ Below, the **current** selector is listed with the historical alias noted. Verif
 | `p-menubar` | `cae-menubar` | `caelum/menubar` | ☑ | `MatToolbar` + `MatMenu` (via `cae-menu`; v1 #153 = one-level dropdowns + CDK `FocusKeyManager` roving + Down/Up-opens + skip-disabled + empty-items guard; submenus/rich items/responsive collapse/RTL/disabled-interactive → #155) | Compose | 09 |
 | (TabMenu) | `cae-tab-menu` | `caelum/tab-menu` | ☑ | `mat-tab-nav-bar` + `mat-tab-link` (v1 #164 = manual-`active` mode; selection is VALUE-based — assign each item a `value` and bind `[(activeValue)]`, *not* p-tabMenu's reference-based `activeItem`; the wrapper owns the `mat-tab-nav-panel` internally for the ARIA tabs pattern; router-linked mode/icons/rich items/responsive/RTL/closable → #165) | Direct | 09 |
 | `p-contextmenu` | `cae-context-menu` | `caelum/context-menu` | ☑ | CDK Menu (`cdkContextMenuTriggerFor`; v1 #157 = flat `CaeMenuItem[]` right-click menu, token-styled overlay panel via `ViewEncapsulation.None`, empty-items disables trigger, a11y free from the CDK primitives; submenus/rich items/groups/global-open/per-target data → #158) | Compose | 09 |
-| `p-tieredmenu` | `cae-tiered-menu` | — | ☐ **#150** / **#155** / **#158** | CDK Menu (nested) | Compose | 09 |
+| `p-tieredmenu` | nested `items` on `cae-menu` — **no dedicated `cae-tiered-menu` is planned** | — | ☐ **#150** | `MatMenu` nesting. `CaeMenuItem.items` is already the self-referential model, but a flat menu renders only the top level and ignores nested items (`menu.ts`); **#150** adds the submenu rendering to `cae-menu` itself. The menubar and context-menu arms of the same gap are **#155** / **#158** — they enrich *those* components, so they do not own this row. | Compose | 09 |
 | `p-breadcrumb` | `cae-breadcrumb` | `caelum/breadcrumb` | ☑ | semantic `nav` + `<ol>` with `aria-current="page"` on the current page (non-link); silent `aria-hidden` token separators; data-driven `[items]`/`[home]`; no overlay | Build-S | 09 |
 | ↳ router-linked crumbs | `[caeBreadcrumbRouterLink]` | ⚠ `caelum/breadcrumb-router` — **not in the barrel** (D-595) | ☑ | optional peer `@angular/router`; without it, intercept via `(itemSelect)` | Build-S | 09 |
 | `p-panelmenu` | `cae-panel-menu` | `caelum/panel-menu` | ☑ | `MatExpansionPanel` + nav | Build-S | 09 |
@@ -193,13 +193,13 @@ Below, the **current** selector is listed with the historical alias noted. Verif
 | `p-tag` | `cae-tag` | `caelum/tag` | ☑ | `MatChip` (static, non-focusable) | Compose | 11 |
 | `p-avatar` (`p-avatargroup`) | `cae-avatar` / `cae-avatar-group` | `caelum/avatar` | ☑ | small component (no first-party avatar) | Build-S | 11 |
 | — (D-596 glyphs) | `cae-icon [name]` + `CAE_ICON_GLYPHS` / `CaeIconName` | `caelum/icon` | ☑ | inline SVG, a closed library-owned registry (no icon font, no `iconUrl`) | Build-S | 11 |
-| `p-inplace`, `p-blockui`, `p-scrolltop`, `p-terminal`, `pAnimateOnScroll` | (build on demand) | — | ☐ | CDK | Build-S | — |
+| `p-inplace`, `p-blockui`, `p-scrolltop`, `pAnimateOnScroll` | (build on demand) | — | ☐ **#712** | CDK | Build-S | — |
 
 ## Niche / out-of-scope tail
 
 The low-usage tail splits three ways — all kept explicit, never a silent map hole:
 
-- **Conditional Build targets (mapped, ☐, built only on demand).** Two standing lists: **#667** — `p-knob`, `p-organizationchart`, `p-megamenu`, `p-dock` (the D-18 four) — and **#712** — `p-paginator` (standalone), `p-dataview`, `p-metergroup`, `p-cascadeselect`, `p-mention`, `p-colorpicker`, `p-speeddial`, `pKeyFilter`. A real consumer need promotes a row out of either list into its own slice ticket.
+- **Conditional Build targets (mapped, ☐, built only on demand).** Two standing lists: **#667** — `p-knob`, `p-organizationchart`, `p-megamenu`, `p-dock` (the D-18 four) — and **#712** — `p-paginator` (standalone), `p-dataview`, `p-metergroup`, `p-cascadeselect`, `p-mention`, `p-colorpicker`, `p-speeddial`, `pKeyFilter`, `p-inplace`, `p-blockui`, `p-scrolltop`, `pAnimateOnScroll`. A real consumer need promotes a row out of either list into its own slice ticket.
 - **Real gaps with their own tickets.** `p-drawer`→`cae-drawer` (**#709**), `p-message`→`cae-alert` (**#710**), `p-panel`/`p-fieldset`→`cae-panel`/`cae-fieldset` (**#711**) are common enough that they are tracked as buildable slices rather than on-demand deferrals.
 - **Out of scope (no Material/CDK path).** `p-terminal` and PrimeNG utility directives with no Caelum analogue (`pStyleClass`, `pBind`, `ClassNames`, `p-fluid`, `FilterService`) have no first-party path at all.
 
