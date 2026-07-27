@@ -28,8 +28,9 @@ assertion that measures nothing passes hardest.)
 
 SCOPE -- deliberately textual. The gate proves a ☐ row *names* an issue; it does
 not call the tracker to prove that issue is open (preflight runs offline and
-must stay fast). A ☐ pointing at a closed issue is caught by the reconcile step
-in `onboard`, not here.
+must stay fast). A ☐ pointing at a closed issue therefore PASSES here while
+breaking the promise -- tracked as #821, which notes the interesting case is
+usually a stale row (the component shipped or was dropped), not a stale link.
 
 Project-owned machinery: `scripts/audit_docs.py` is taken WHOLESALE from the
 pyxis template (TEMPLATE_VERSION #518), so a Caelum-specific map check placed
