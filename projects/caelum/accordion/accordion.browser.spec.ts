@@ -1,38 +1,45 @@
 /**
- * Real-browser verification for `cae-accordion` (#405, was #79).
+ * Real-browser verification for `cae-accordion` (#405, was #79; roving restored in #759).
  *
- * **The claim under test — a negative one.** Unlike its siblings in this sweep, `cae-accordion`
- * documents an a11y behaviour it does *not* have:
+ * **The claim under test.** `cae-accordion` now has the WAI-ARIA APG's *optional* inter-header
+ * Up/Down/Home/End roving, which it lost to a view boundary: Material drives the rove from a
+ * `FocusKeyManager` over headers found by `@ContentChildren`, and that query cannot see the
+ * `<mat-expansion-panel-header>` rendered inside `cae-expansion-panel`'s own view. #759 hands the
+ * manager those headers; this file is the evidence that the keyboard actually behaves.
  *
- * > *"The APG's **optional** inter-header Up/Down/Home/End roving is NOT forwarded: Material
- * > drives it from an `@ContentChildren(MatExpansionPanelHeader)` query that doesn't cross the
- * > `cae-expansion-panel` view boundary. Tracked in #79 for a real-browser check at M4."*
+ * This file previously pinned the *absence* of the rove (a documented limitation is a claim like
+ * any other, and nothing fails when one is stated inaccurately). That inversion is the point: the
+ * limitation test was what made the fix's scope legible, and it flips to a behaviour test here
+ * rather than being deleted.
  *
- * A documented limitation is a claim like any other, and it is the *dangerous* kind: nothing fails
- * when a limitation is stated inaccurately. Two things therefore need pinning, and they pull in
- * opposite directions:
+ * **Two things must survive the fix, and they pull against it:**
  *
- * 1. **The limitation is real** — arrow keys genuinely do not rove between headers. If a future
- *    Angular release starts crossing that boundary, this file fails and the doc block gets
- *    corrected instead of quietly becoming a lie.
- * 2. **The limitation is only the optional part.** The APG's *required* accordion interactions —
- *    every header reachable by Tab, Enter and Space toggling it — must still work. A wrapper that
- *    lost the optional rove is conformant; one that also broke tabbing is broken. Nothing today
- *    separates those two outcomes.
+ * 1. **The APG *required* interactions.** Every header reachable by Tab, Enter and Space toggling
+ *    it. A wrapper that gained the optional rove but broke tabbing is a regression, not a fix.
+ * 2. **The rove is *additive*, not a roving tab stop.** Material binds
+ *    `[attr.tabindex]="disabled ? -1 : tabIndex"` on every header, so a real `mat-accordion` leaves
+ *    each one independently tabbable and layers arrow keys on top. Re-homing focus into a single
+ *    tab stop would be a *different* widget from the one Material ships — and would silently drop
+ *    every other header out of the Tab order.
  *
- * **Why a browser.** Both halves are pure focus behaviour: which element `Tab` reaches, and
- * whether a real `ArrowDown` moves focus. jsdom can dispatch a synthetic key event but cannot
- * answer where the browser would actually put focus.
+ * **Why a browser.** All of it is pure focus behaviour: which element `Tab` reaches, and where a
+ * real `ArrowDown` puts focus. jsdom can dispatch a synthetic key event but cannot answer either.
+ * The item list feeding the manager — the mechanism, including the ownership filter for nested
+ * accordions — is pinned in jsdom (`accordion.spec.ts`), where it is directly observable.
  *
  * Run it: `npm run test:browser`.
  */
-import { Component } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
+import { Component, signal } from '@angular/core';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { userEvent } from 'vitest/browser';
 
 import { CaeAccordion, CaeExpansionPanel } from './accordion';
 import { expectNoA11yViolations } from '../testing/a11y';
 import { loadCaelumTheme, themeToken } from '../testing/theme';
+
+/** Shared by both hosts below — neither depends on which fixture is mounted. */
+const titleOf = (n: Element | null) => n?.querySelector('mat-panel-title')?.textContent?.trim();
+const active = () => document.activeElement?.closest('mat-expansion-panel-header') ?? null;
 
 @Component({
   imports: [CaeAccordion, CaeExpansionPanel],
@@ -49,12 +56,16 @@ class AccordionHost {}
 describe('CaeAccordion (real browser)', () => {
   let el: HTMLElement;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({ imports: [AccordionHost] });
     loadCaelumTheme();
     const fixture = TestBed.createComponent(AccordionHost);
     fixture.detectChanges();
+    // whenStable, not detectChanges alone: #759's sync runs in an afterRenderEffect, and after-render
+    // hooks are flushed by the application tick — a bare detectChanges() would leave the key manager
+    // empty and every rove test below would fail for the wrong reason.
+    await fixture.whenStable();
     el = fixture.nativeElement as HTMLElement;
   });
 
@@ -63,8 +74,6 @@ describe('CaeAccordion (real browser)', () => {
   });
 
   const headers = () => Array.from(el.querySelectorAll<HTMLElement>('mat-expansion-panel-header'));
-  const titleOf = (n: Element | null) => n?.querySelector('mat-panel-title')?.textContent?.trim();
-  const active = () => document.activeElement?.closest('mat-expansion-panel-header') ?? null;
   const byTitle = (t: string) => headers().find((h) => titleOf(h) === t)!;
 
   it('resolves the real token layer, so the headers are the ones Caelum ships', () => {
@@ -73,9 +82,11 @@ describe('CaeAccordion (real browser)', () => {
     expect(headers().map(titleOf)).toEqual(['Shipping', 'Billing', 'Returns']);
   });
 
-  it('makes every header its own tab stop — the shape a non-roving accordion has', () => {
-    // The observable signature of "no roving": each header is independently tabbable, rather than
-    // one tab stop that the arrow keys move (the tree/listbox shape in this same sweep).
+  it('keeps every header its own tab stop — the rove is additive, not a roving tab stop', () => {
+    // Guards the #759 fix against the obvious wrong shape. Adding arrow-key movement invites
+    // re-homing focus into ONE tab stop (the tree/listbox shape elsewhere in this sweep), which
+    // would drop the other headers out of the Tab order entirely. Material does not do that to a
+    // `mat-accordion`, so neither may we — matching it is the whole parity claim.
     for (const header of headers()) {
       expect(header.getAttribute('tabindex')).toBe('0');
     }
@@ -91,24 +102,61 @@ describe('CaeAccordion (real browser)', () => {
     expect(active()).toBe(byTitle('Billing'));
   });
 
-  it('does NOT rove between headers with the arrow keys — the documented limitation, pinned', async () => {
+  it('roves between headers with ArrowDown/ArrowUp (#759)', async () => {
     byTitle('Shipping').focus();
 
     await userEvent.keyboard('{ArrowDown}');
-    // The #79 claim itself. Verified rather than assumed: if Angular ever forwards the
-    // ContentChildren query across the wrapper's view boundary, this fails and the doc block in
-    // `accordion.ts` must be corrected — which is the entire point of pinning a limitation.
+    expect(active()).toBe(byTitle('Billing'));
+
+    await userEvent.keyboard('{ArrowDown}');
+    expect(active()).toBe(byTitle('Returns'));
+
+    await userEvent.keyboard('{ArrowUp}');
+    expect(active()).toBe(byTitle('Billing'));
+  });
+
+  it('wraps at both ends, and jumps with Home/End — Material’s own manager options', async () => {
+    // Not incidental behaviour to re-derive: these come from `withWrap()` and `withHomeAndEnd()` on
+    // the manager #759 feeds. They are asserted because they are the reason for reusing Material's
+    // manager instead of standing up a second one — if a future change swaps in a hand-rolled
+    // manager, this is what notices the silent loss.
+    byTitle('Shipping').focus();
+    await userEvent.keyboard('{ArrowUp}');
+    expect(active()).toBe(byTitle('Returns'));
+
+    await userEvent.keyboard('{ArrowDown}');
     expect(active()).toBe(byTitle('Shipping'));
 
     await userEvent.keyboard('{End}');
-    expect(active()).toBe(byTitle('Shipping'));
+    expect(active()).toBe(byTitle('Returns'));
 
-    // Vacuity guard, in this test rather than a sibling one. "Focus did not move" is exactly the
-    // assertion that also passes when keys reach nothing at all — a broken harness, a detached
-    // fixture, an unfocusable header. Enter on the SAME element in the SAME state must still
-    // toggle it, so the two arrows above are proven inert rather than merely undelivered.
+    await userEvent.keyboard('{Home}');
+    expect(active()).toBe(byTitle('Shipping'));
+  });
+
+  it('continues from the header the user tabbed to, not from the top of the list', async () => {
+    // The half that a naive fix drops. The key manager tracks an active INDEX, and Tab moves focus
+    // without telling it — so unless the header's focus monitor re-syncs the manager
+    // (`accordion._handleHeaderFocus`, live only because our inner panel injects MAT_ACCORDION),
+    // ArrowDown after a Tab restarts at the first header and focus jumps backwards under the user.
+    byTitle('Shipping').focus();
+    await userEvent.keyboard('{Tab}');
+    expect(active()).toBe(byTitle('Billing'));
+
+    await userEvent.keyboard('{ArrowDown}');
+    expect(active()).toBe(byTitle('Returns'));
+  });
+
+  it('still toggles with Enter after arrowing — the rove does not swallow the required keys', async () => {
+    // Material's header handles Enter/Space itself and forwards only *other* keys to the accordion.
+    // Feeding that accordion a non-empty item list must not disturb the split.
+    byTitle('Shipping').focus();
+    await userEvent.keyboard('{ArrowDown}');
+    expect(active()).toBe(byTitle('Billing'));
+
     await userEvent.keyboard('{Enter}');
-    expect(byTitle('Shipping').getAttribute('aria-expanded')).toBe('true');
+    expect(byTitle('Billing').getAttribute('aria-expanded')).toBe('true');
+    expect(byTitle('Shipping').getAttribute('aria-expanded')).toBe('false');
   });
 
   it('toggles the focused header with Enter and Space — the other required interaction', async () => {
@@ -125,5 +173,63 @@ describe('CaeAccordion (real browser)', () => {
 
   it('has no axe violations, no rules disabled', async () => {
     await expectNoA11yViolations(el);
+  });
+});
+
+@Component({
+  imports: [CaeAccordion, CaeExpansionPanel],
+  template: `
+    <cae-accordion>
+      @if (showInserted()) {
+        <cae-expansion-panel title="Inserted">inserted body</cae-expansion-panel>
+      }
+      <cae-expansion-panel title="Alpha">alpha body</cae-expansion-panel>
+      <cae-expansion-panel title="Beta">beta body</cae-expansion-panel>
+    </cae-accordion>
+  `,
+})
+class DynamicAccordionHost {
+  readonly showInserted = signal(false);
+}
+
+describe('CaeAccordion (real browser) — the panel list changes under a focused header', () => {
+  let fixture: ComponentFixture<DynamicAccordionHost>;
+  let el: HTMLElement;
+
+  beforeEach(async () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ imports: [DynamicAccordionHost] });
+    loadCaelumTheme();
+    fixture = TestBed.createComponent(DynamicAccordionHost);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    el = fixture.nativeElement as HTMLElement;
+  });
+
+  afterEach(() => {
+    if (el?.parentNode) el.parentNode.removeChild(el);
+  });
+
+  const headers = () => Array.from(el.querySelectorAll<HTMLElement>('mat-expansion-panel-header'));
+  const byTitle = (t: string) => headers().find((h) => titleOf(h) === t)!;
+
+  it('re-homes the key manager when a panel is inserted above the focused header', async () => {
+    // A filtered or lazily-populated accordion does this routinely, and it is the #611 failure mode
+    // on a different widget: the manager tracks the active item by INDEX, and re-`reset`ting its
+    // list does not by itself tell it that the focused header moved. Left stale, the index still
+    // points at slot 0 — so the next ArrowDown walks to slot 1, which is now the focused header
+    // itself, and focus silently goes nowhere (or backwards) under the user's hand.
+    byTitle('Alpha').focus();
+    expect(active()).toBe(byTitle('Alpha'));
+
+    fixture.componentInstance.showInserted.set(true);
+    await fixture.whenStable();
+
+    expect(headers().map(titleOf)).toEqual(['Inserted', 'Alpha', 'Beta']);
+    // The insert itself must not move focus — only the manager's bookkeeping changes.
+    expect(active()).toBe(byTitle('Alpha'));
+
+    await userEvent.keyboard('{ArrowDown}');
+    expect(active()).toBe(byTitle('Beta'));
   });
 });
