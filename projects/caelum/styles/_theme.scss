@@ -4,60 +4,97 @@
 // resolving `var(--cae-surface-base)` land on the SAME computed value, so a single
 // edit to a `--cae-*` token moves both. Sync is structural, not vigilant (R4).
 //
-// A consumer applies the whole theme with one line:  `@use 'caelum/styles/theme';`
+// A consumer applies the whole theme with two lines (D-757):
+//
+//   @use 'caelum/styles/theme' as caelum;
+//   @include caelum.theme();
+//
+// This file is MIXIN-ONLY — `@use` alone emits the `--cae-*` token layer (via the
+// `tokens` forward below) but none of the Material bridge. That is deliberate: it
+// is the one seam where a consumer chooses a compile-time density baseline, and a
+// side-effecting `@use` has nowhere to put the argument. There is exactly one way
+// to theme; `caelum.theme()` at its defaults reproduces the pre-#413 output.
 
 @use '@angular/material' as mat;
 @use 'tokens'; // emits the :root `--cae-*` definitions (once)
 
-html {
-  // Stand Material up. `theme-type` is omitted, so it defaults to `color-scheme`
-  // and Material emits its own system colors via `light-dark()` — every Material
-  // component then responds to the same `color-scheme` switch our tokens use.
-  @include mat.theme(
-    (
-      color: (
-        primary: mat.$azure-palette,
-      ),
-      typography: Roboto,
-      density: 0,
-    )
-  );
+// ── The theme mixin (D-757, #413) ───────────────────────────────────────────
+//
+// `$density` bakes the BASELINE Material density at compile time; `$density-compact`
+// is the value the runtime `[data-density='compact']` arm (D-19) switches to. BOTH
+// arms are parameterized deliberately, and that is the whole point of the slice.
+//
+// **The trap this shape exists to avoid** (measured in #757, re-measured in #413):
+// interpolating a single baseline into `$density` while leaving the compact arm
+// hardcoded at `-2` means a consumer who bakes `-2` gets both arms at `-2`. The arm
+// still emits — 61 `--mat-*` declarations, ~2.8 kB — but **not one of them differs
+// from the baseline**, so `data-density="compact"` becomes a silent no-op with no
+// route back to the comfortable arm, quietly killing the knob D-19 ratified. With
+// both arms parameterized (`-2` / `-3`) 29 of those 61 still differ and the knob
+// lives. `theming/density-mixin.spec.ts` is the assertion that fails on the naive
+// shape — note it must read `--mat-*`, NOT `--cae-space-*`: the space scale is
+// emitted by `_tokens.scss` and is untouched by `$density`, so a `--cae-space-*`
+// assertion passes under BOTH shapes and tests nothing.
+//
+// Setting the two equal is the accident above, so it warns and drops the dead arm.
+// Passing `$density-compact: null` is the deliberate way to say "no runtime knob" —
+// silent, because a guard that fires on a correct path trains you to skim it.
+@mixin theme($density: 0, $density-compact: -2) {
+  html {
+    // Stand Material up. `theme-type` is omitted, so it defaults to `color-scheme`
+    // and Material emits its own system colors via `light-dark()` — every Material
+    // component then responds to the same `color-scheme` switch our tokens use.
+    @include mat.theme(
+      (
+        color: (
+          primary: mat.$azure-palette,
+        ),
+        typography: Roboto,
+        density: $density,
+      )
+    );
 
-  // Re-point Material's system seam at the Caelum semantic tokens. Unknown keys
-  // are silently ignored by the mixin, so this list is safe to evolve.
-  @include mat.theme-overrides(
-    (
-      primary: var(--cae-color-primary),
-      on-primary: var(--cae-color-on-primary),
-      surface: var(--cae-surface-base),
-      surface-container: var(--cae-surface-raised),
-      surface-container-high: var(--cae-surface-raised),
-      on-surface: var(--cae-color-on-surface),
-      on-surface-variant: var(--cae-color-on-surface-variant),
-      outline: var(--cae-color-border),
-      outline-variant: var(--cae-color-border),
-      error: var(--cae-color-error),
-      corner-medium: var(--cae-radius-md),
-    )
-  );
-}
+    // Re-point Material's system seam at the Caelum semantic tokens. Unknown keys
+    // are silently ignored by the mixin, so this list is safe to evolve.
+    @include mat.theme-overrides(
+      (
+        primary: var(--cae-color-primary),
+        on-primary: var(--cae-color-on-primary),
+        surface: var(--cae-surface-base),
+        surface-container: var(--cae-surface-raised),
+        surface-container-high: var(--cae-surface-raised),
+        on-surface: var(--cae-color-on-surface),
+        on-surface-variant: var(--cae-color-on-surface-variant),
+        outline: var(--cae-color-border),
+        outline-variant: var(--cae-color-border),
+        error: var(--cae-color-error),
+        corner-medium: var(--cae-radius-md),
+      )
+    );
+  }
 
-// ── Density parity arm (R4, Book 04 §3.4) ───────────────────────────────────
-// The runtime companion to the `[data-density]` `--cae-space-*` re-declaration in
-// `_tokens.scss`: that tightens built `cae-*` components; this tightens MATERIAL's
-// controls under the SAME selector, so one global attribute moves both toward
-// PrimeNG-equivalent compactness. `mat.theme()` with only a `density` key re-emits
-// just Material's density-dependent component tokens (color/typography untouched),
-// scoped to the selector it's included in. Material clamps density to each
-// component's own minimum metrics, so the a11y target-size floor holds here too.
-// Absence of the attribute = the comfortable `density: 0` baseline above. A
-// compile-time baked baseline (a `caelum.theme($density)` mixin) is a follow-on if
-// a consumer needs one — setting `data-density="compact"` on the root is simpler.
-// Provisional on #412 (density-API shape).
-:root[data-density='compact'] {
-  @include mat.theme(
-    (
-      density: -2,
-    )
-  );
+  @if $density-compact == $density {
+    @warn 'caelum.theme(): $density and $density-compact are both #{$density}, so ' +
+      '[data-density="compact"] would emit ~2.8kB that changes nothing and leave no route ' +
+      'back to a roomier arm. Dropping the arm. Pass a tighter $density-compact to keep the ' +
+      'D-19 runtime knob, or $density-compact: null to opt out silently.';
+  } @else if $density-compact != null {
+    // ── Density parity arm (R4, Book 04 §3.4) ───────────────────────────────
+    // The runtime companion to the `[data-density]` `--cae-space-*` re-declaration
+    // in `_tokens.scss`: that tightens built `cae-*` components; this tightens
+    // MATERIAL's controls under the SAME selector, so one global attribute moves
+    // both toward PrimeNG-equivalent compactness. `mat.theme()` with only a
+    // `density` key re-emits just Material's density-dependent component tokens
+    // (color/typography untouched), scoped to the selector it's included in.
+    // Material clamps density to each component's own minimum metrics, so the a11y
+    // target-size floor holds here too. Absence of the attribute = the `$density`
+    // baseline above.
+    :root[data-density='compact'] {
+      @include mat.theme(
+        (
+          density: $density-compact,
+        )
+      );
+    }
+  }
 }

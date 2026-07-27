@@ -27,9 +27,15 @@
  * superset — hence this loads it and no caller needs both.
  *
  * **How.** Same mechanism `theming/density.spec.ts` established for jsdom: a host component
- * with {@link ViewEncapsulation.None} whose `styleUrl` is the real `_theme.scss`. Angular
+ * with {@link ViewEncapsulation.None} whose `styleUrl` compiles the real bridge. Angular
  * compiles the Sass and, unscoped, its `:root`/`html` rules land on the document element. The
  * values are therefore the *compiled* ones, never a hand-copied guess.
+ *
+ * **Why a fixture rather than `_theme.scss` directly (#413, D-757).** The bridge is now
+ * mixin-only, so compiling `_theme.scss` on its own emits the token layer and **zero
+ * `--mat-sys-*`** — the #724 failure above, silently restored. `_theme-probe.scss` is the real
+ * adoption line (`@use … as caelum; @include caelum.theme();`), so this helper both loads the
+ * whole bridge and pins the contract D-757 committed to.
  *
  * **Read the *used* value, not the custom property.** A custom property computes as a token
  * stream, so `themeToken('--cae-color-on-surface')` returns the literal
@@ -51,7 +57,7 @@ import { TestBed } from '@angular/core/testing';
 @Component({
   selector: 'cae-theme-probe-host',
   template: '',
-  styleUrl: '../styles/_theme.scss',
+  styleUrl: './_theme-probe.scss',
   encapsulation: ViewEncapsulation.None,
 })
 class CaeThemeProbeHost {}
