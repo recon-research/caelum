@@ -43,7 +43,8 @@ export interface CaeMenuItem {
    * Optional nested children — the item is a *branch*. `cae-panel-menu` recurses on these,
    * rendering a branch as a collapsible section whose body holds this list (any depth). The
    * flat menus render only the top level and ignore nested `items` (they have no submenu model
-   * — tiered submenus are the `cae-tiered-menu` follow-up, #150). Self-referential so one model
+   * — tiered submenus land on `cae-menu` itself via #150; there is no separate `cae-tiered-menu`
+   * component planned, which is how COMPARISON maps `p-tieredmenu`). Self-referential so one model
    * describes a whole tree, matching PrimeNG's universal `MenuItem` shape.
    */
   items?: readonly CaeMenuItem[];

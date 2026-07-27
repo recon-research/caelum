@@ -183,6 +183,12 @@ stage "theming scan (D-04 token-only)" python3 scripts/check_theming.py
 # mirrors ci.yml's static-gates step.
 stage "capability ledger (evidence-gated done)" python3 scripts/capability_ledger.py --check
 
+# Parity-map tracking gate (#810): every ☐ row in textbooks/reference/COMPARISON.md
+# names a tracking issue, the promise the map makes twice and docs/MIGRATION.md repeats
+# to consumers. The ledger stage above grades M4's exit clause 2; this grades clause 1,
+# so the milestone is measured by gates rather than re-litigated (#808). Node-free.
+stage "parity map (COMPARISON tracking refs)" python3 scripts/audit_comparison.py
+
 # Doc-drift budgets (#67), ops-config three-way-mirror integrity (#71), and the
 # repo-docs relative-link audit (#73) — gates from the pyxis template sync (#245),
 # mirroring ci.yml's static-gates steps and preflight.ps1 (same stage names).

@@ -198,6 +198,16 @@ jobs:
         env: { PYTHONIOENCODING: utf-8, PYTHONUTF8: "1" }
         run: python3 scripts/capability_ledger.py --check
 
+      # Parity-map tracking refs (#810): every planned row in COMPARISON.md names a
+      # tracking issue — the promise the map makes twice and docs/MIGRATION.md repeats
+      # to consumers, enforced by nothing until a milestone exit review found a hole
+      # that had survived one. The ledger step above grades M4's exit clause 2; this
+      # grades clause 1 (#808). Mirrored by the `parity map (COMPARISON tracking refs)`
+      # stage in preflight.{sh,ps1}.
+      - name: Parity-map audit (COMPARISON tracking refs)
+        env: { PYTHONIOENCODING: utf-8, PYTHONUTF8: "1" }
+        run: python3 scripts/audit_comparison.py
+
       # Doc-drift budgets (#67): the docs are state caches of the tracker; this caps
       # Status/ARCHITECTURE/ROADMAP growth so session journaling cannot creep in.
       # Mirrored by the `doc budgets` stage in scripts/preflight.{sh,ps1}.
