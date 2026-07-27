@@ -14,17 +14,18 @@
  * sensitive tripwire for a repeat of #736 (the theme bridge loading only half its properties). A
  * `cae-button` renders acceptably against a handful of missing properties; a form field does not.
  *
- * **The errored control is touched in `ngAfterViewInit`, and that timing is load-bearing.** The
+ * **The errored control is touched in the host constructor, and that timing is load-bearing.** The
  * error trigger is `invalid && (touched || submitted)`, so the control must be touched before the
- * capture. Doing it in the host *constructor* — the obvious place — does not work: measured, the
- * golden rendered an ordinary empty field with no red outline and no message, silently vacating the
- * one arm that witnesses `--cae-color-error`. Touching it after the view initializes renders the
- * error. Adding a second `detectChanges()` does **not** help (measured, and removed again), so the
- * cause is the timing relative to `FormControlDirective` binding rather than a missed render pass.
- * Why a pre-binding `markAsTouched()` fails to stick is filed as #741 — a consumer pre-touching a
- * form to surface all its errors at once would hit the same thing.
+ * capture. This spec used to touch it in `ngAfterViewInit` instead, because the constructor — the
+ * obvious place — rendered an ordinary empty field with no red outline and no message, silently
+ * vacating the one arm that witnesses `--cae-color-error`. That was #741, a real bridge defect and
+ * not a fact about this spec: `ngDoCheck` ran before the subclass template bound
+ * `[errorStateMatcher]`, so the inner control latched a `false` error state that nothing recomputed.
+ * `CaeFormFieldControlBase` now recomputes once after the first render, so the pre-binding touch
+ * sticks — and keeping it here means this golden also witnesses that fix, which is why the
+ * workaround was removed rather than merely re-commented.
  */
-import { AfterViewInit, Component } from '@angular/core';
+import { Component } from '@angular/core';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 
 import { CaeInput } from './input';
@@ -47,7 +48,7 @@ import { VR_ARMS, matchArm, renderArm, resetArm } from '../testing/vr';
     }
   `,
 })
-class InputVrHost implements AfterViewInit {
+class InputVrHost {
   readonly filled = new FormControl('user@example.com', { nonNullable: true });
   // Disabled via the *control*, not a `disabled` attribute: with `[formControl]` present the bare
   // attribute binds to `FormControlDirective`'s own `disabled` input (typed `boolean`) rather than
@@ -60,7 +61,7 @@ class InputVrHost implements AfterViewInit {
   readonly ctrl = new FormControl('', { nonNullable: true, validators: [Validators.required] });
   readonly messages: Record<string, string> = { required: 'Email is required' };
 
-  ngAfterViewInit(): void {
+  constructor() {
     this.ctrl.markAsTouched();
   }
 }
