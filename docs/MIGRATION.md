@@ -44,7 +44,9 @@ Caelum's theming is a **token bridge**: you adopt one Sass entry point, and ever
 
 ```scss
 // styles.scss
-@use 'caelum/styles/theme';
+@use 'caelum/styles/theme' as caelum;
+
+@include caelum.theme();
 ```
 
 ```html
@@ -54,6 +56,7 @@ Caelum's theming is a **token bridge**: you adopt one Sass entry point, and ever
 Two things to know up front, because they differ structurally from a per-component approach:
 
 - **There is no `[density]` input anywhere.** Density is the global `data-density` attribute ([D-19](ARCHITECTURE.md)). Setting `data-density="compact"` re-declares the `--cae-space-*` scale *and* re-emits Material's density at `-2` in one move. Compact never drops an interactive target below the density-invariant `--cae-target-min` (24px), so WCAG 2.5.8 holds in every arm.
+- **`theme()` is a mixin, so a compile-time baseline is available too** ([D-757](ARCHITECTURE.md)). `@include caelum.theme($density: -2, $density-compact: -3)` bakes a compact baseline *and* keeps the runtime knob switching to something tighter still. Both arms are yours to set: leaving `$density-compact` at its default while baking `$density: -2` would make the two identical, so the mixin warns and drops the dead arm — pass `$density-compact: null` if you genuinely want no runtime knob.
 - **Theming is tokens only.** Components expose no colour inputs. Where PrimeNG offers a `severity` colour on a control, Caelum either maps it to a token-backed variant or deliberately omits it (see `cae-button` and `cae-badge` in §4.5).
 
 ---

@@ -1,0 +1,11 @@
+// Test-only fixture for `density-mixin.spec.ts` (#413, D-757).
+//
+// A NON-DEFAULT baseline is the whole point: the naive single-baseline shape only misbehaves
+// once `$density` moves off `0`. Baked baseline `-2`, runtime compact arm `-3` — both arms
+// parameterized deliberately, which is what D-757 commits the mixin to.
+//
+// Under the naive shape (compact hardcoded at `-2`) this fixture emits both arms at `-2`: the
+// 61 `--mat-*` declarations still appear, not one of them differs, and the spec fails.
+@use '../styles/theme' as caelum;
+
+@include caelum.theme($density: -2, $density-compact: -3);

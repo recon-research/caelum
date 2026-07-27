@@ -1,0 +1,19 @@
+// Test-only fixture for `loadCaelumTheme()` (#413).
+//
+// **Dev/test ONLY** — like `theme.ts` itself, this file lives outside every secondary entry
+// point and never reaches the published package.
+//
+// **Why it exists.** Before D-757, `theme.ts` pointed its probe host's `styleUrl` straight at
+// `../styles/_theme.scss` and relied on that file SIDE-EFFECTING on compile. D-757 made the
+// bridge mixin-only, so compiling `_theme.scss` alone now emits the `--cae-*` token layer and
+// **zero `--mat-sys-*`** — silently recreating the exact regression `theme.ts`'s own header
+// documents (#724, completed by #736): every Direct wrapper resolving its colour and font
+// against an undefined property, `cae-button` rendering as bare serif text on four of five
+// variants, and axe's `color-contrast` grading unstyled defaults instead of what Caelum ships.
+//
+// Routing the probe through the real adoption line keeps the helper loading the whole bridge
+// AND makes it exercise the consumer contract D-757 committed to, so a break in that line
+// fails the 142 browser specs + 24 VR goldens rather than hollowing them out.
+@use '../styles/theme' as caelum;
+
+@include caelum.theme();
