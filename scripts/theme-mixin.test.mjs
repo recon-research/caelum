@@ -23,16 +23,23 @@ import path from 'node:path';
 import * as sass from 'sass';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const THEME = path.join(ROOT, 'projects/caelum/styles/theme');
+
+/**
+ * Resolve `theme` and `@angular/material` through `loadPaths` rather than interpolating an
+ * absolute path into the `@use`. On Windows an absolute path is `D:\a\…`; slash-normalizing it
+ * yields `D:/a/…`, which Sass parses as a **relative URL**, so the module silently fails to
+ * load and every `assert.throws` below passes for the wrong reason. (Caught by CI's
+ * windows-latest arm — the Linux preflight was green. `loadPaths` takes real filesystem paths
+ * on every platform, so no normalization is needed at all.)
+ */
+const LOAD_PATHS = [path.join(ROOT, 'projects/caelum/styles'), path.join(ROOT, 'node_modules')];
+
+/** Compile a stylesheet against the library's load paths. */
+const compileSource = (source) => sass.compileString(source, { loadPaths: LOAD_PATHS }).css;
 
 /** Compile `@include caelum.theme(<args>)`. Returns the CSS, or throws Sass's error. */
 const compile = (args = '') =>
-  sass.compileString(
-    `@use '${THEME.replace(/\\/g, '/')}' as caelum;\n@include caelum.theme(${args});\n`,
-    {
-      loadPaths: [path.join(ROOT, 'node_modules')],
-    },
-  ).css;
+  compileSource(`@use 'theme' as caelum;\n@include caelum.theme(${args});\n`);
 
 /** The `--mat-*` declarations of a selector block, as a Map. `--mat-sys-*` shape/state excluded. */
 function densityTokens(css, selectorTest) {
@@ -49,6 +56,14 @@ function densityTokens(css, selectorTest) {
 
 const baselineTokens = (css) => densityTokens(css, (s) => s === 'html');
 const compactTokens = (css) => densityTokens(css, (s) => s.includes('data-density'));
+
+test('the theme module resolves at all (guards every assertion below)', () => {
+  // Without this, a load-path break makes `@use 'theme'` throw "Can't find stylesheet", every
+  // REJECT case throws for the wrong reason, and the suite reports 14 opaque failures instead
+  // of one cause. Exactly how the Windows arm failed the first time this file shipped.
+  const css = compile();
+  assert.match(css, /--mat-sys-primary/, 'the bridge did not compile — check LOAD_PATHS');
+});
 
 // ── REJECT: every way found to produce a dead or inverted arm ────────────────────────────
 // Each was measured against dart-sass BEFORE the guard existed; the comment is the observed
@@ -81,10 +96,7 @@ test('rejects a nested @include — it would emit "<sel> html", which matches no
   // Pre-D-757 this was structurally impossible (`@use` is top-level-only). The mixin form
   // invites it, and unguarded it compiles clean into dead CSS: the silent #724 state.
   const nested = () =>
-    sass.compileString(
-      `@use '${THEME.replace(/\\/g, '/')}' as caelum;\n.app-theme { @include caelum.theme(); }\n`,
-      { loadPaths: [path.join(ROOT, 'node_modules')] },
-    ).css;
+    compileSource(`@use 'theme' as caelum;\n.app-theme { @include caelum.theme(); }\n`);
   assert.throws(nested, /top level of a GLOBAL stylesheet/);
 });
 
