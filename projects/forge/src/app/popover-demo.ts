@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
 
 import { CaeButton } from 'caelum/button';
 import { CaeCard } from 'caelum/card';
@@ -23,17 +23,23 @@ import { CaePopover, CaePopoverTrigger } from 'caelum/popover';
 })
 export class PopoverDemo {
   private readonly confirm = inject(CaeConfirmService);
+  /** Binds an open confirm-popup to this component's lifetime — required by `confirmAt` (D-831). */
+  private readonly destroyRef = inject(DestroyRef);
   /** The outcome of the last confirm-popup, shown so the round-trip is visibly end-to-end. */
   protected readonly lastResult = signal<'—' | 'Deleted' | 'Kept'>('—');
 
   /** Anchor a confirm next to the clicked button; record accept/reject so the demo does something real. */
   protected async onDelete(event: MouseEvent): Promise<void> {
-    const ok = await this.confirm.confirmAt(event, {
-      header: 'Delete this item?',
-      message: 'This cannot be undone.',
-      acceptLabel: 'Delete',
-      rejectLabel: 'Keep',
-    });
+    const ok = await this.confirm.confirmAt(
+      event,
+      {
+        header: 'Delete this item?',
+        message: 'This cannot be undone.',
+        acceptLabel: 'Delete',
+        rejectLabel: 'Keep',
+      },
+      this.destroyRef,
+    );
     this.lastResult.set(ok ? 'Deleted' : 'Kept');
   }
 }
