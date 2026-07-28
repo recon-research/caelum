@@ -20,22 +20,22 @@ The few metrics that each change a decision when they cross a threshold -- not a
 
 ## Per-slice cost & pace (#255)
 
-Receipts (`cost:` PR comments, posted at merge by `ship_pr` via `scripts/slice_telemetry.py`) aggregated by slice type (the PR-title prefix). **Tripwires, never targets:** a :warning: here routes to a [`retrospective`](../.claude/skills/retrospective/SKILL.md), never gates a merge, and cost rising *with* matching churn/quality is not a finding. 14/18 receipt-expected merges in scope carry receipts (40 merged total; checkpoint-path merges are receipt-less by design and excluded from both this figure and the alarm below — #642). Last 40 merges, windowed; receipt-less rows fall back to pr-open->merge wall, no usd.
+Receipts (`cost:` PR comments, posted at merge by `ship_pr` via `scripts/slice_telemetry.py`) aggregated by slice type (the PR-title prefix). **Tripwires, never targets:** a :warning: here routes to a [`retrospective`](../.claude/skills/retrospective/SKILL.md), never gates a merge, and cost rising *with* matching churn/quality is not a finding. 16/20 receipt-expected merges in scope carry receipts (40 merged total; checkpoint-path merges are receipt-less by design and excluded from both this figure and the alarm below — #642). Last 40 merges, windowed; receipt-less rows fall back to pr-open->merge wall, no usd.
 
 | Type | n | med wall | med usd | med Δlines | med CI runs |
 |---|---|---|---|---|---|
-| docs | 26 | 1m | n/a | 10 | n/a |
-| fix | 6 | 19m | $7.38 | 164 | 1 |
+| docs | 26 | 1m | $41.51 | 18 | 1 |
+| fix | 6 | 23m | $7.72 | 164 | 1 |
 | (other) | 5 | 15m | $3.96 | 305 | 1 |
 | feat | 3 | 21m | $12.25 | 466 | 1 |
 
-Merge-order trend (oldest→newest): usd `·▂····▂·▂··▃··▂·▂··▄··▂···▁·▇··▂··▅···█·` · wall-h `▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▂▁▁▁▁▁█▁▁▁▃▁` · Δlines `▁▄▁█▁▁▂▁▂▁▁▄▂▁▃▁▂▁▁▅▁▁▂▁▁▁▄▁▄▁▁▂▁▁▅▁▁▁▅▁`
+Merge-order trend (oldest→newest): usd `···▂·▂··▃··▂·▂··▃··▂···▁·▆··▂··▅···▇██▇·` · wall-h `▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▂▁▁▁▁▁█▁▁▁▃▃▃▂▁` · Δlines `█▁▁▂▁▂▁▁▄▂▁▃▁▂▁▁▅▁▁▂▁▁▁▄▁▄▁▁▂▁▁▅▁▁▁▅▁▁▇▁`
 
 :warning: **Cost drift without churn** -- newer-half median usd/wall-h is >=2x the older half while diff size isn't. Hidden-bloat candidate (journaling doc? swelling gate? context hygiene?) -- route to a retrospective; never fix by splitting slices to beat the number.
 
-:warning: **Receipt-less merges since receipts began** -- #798, #802, #829, #834 carry no `cost:` comment: a session likely drove gh below `ship_pr` (steps 0/7 skipped, checkpoint at risk too). Route to a retrospective -- the guard is skill-layer, not a backfilled receipt.
+:warning: **Receipt-less merges since receipts began** -- #798, #802, #829, #838 carry no `cost:` comment: a session likely drove gh below `ship_pr` (steps 0/7 skipped, checkpoint at risk too). Route to a retrospective -- the guard is skill-layer, not a backfilled receipt.
 
-Fastest-growing docs (net lines this window): `docs/PATTERNS.md` +371 · `docs/MIGRATION.md` +345 · `docs/provenance/M0-2-transitive-provenance-scan.md` +155 · `docs/CAPABILITY_LEDGER.md` +140 · `docs/ARCHITECTURE.md` +117 *(a process doc growing with no matching slices is the journaling smell -- eyeball it)*
+Fastest-growing docs (net lines this window): `docs/PATTERNS.md` +371 · `docs/MIGRATION.md` +347 · `docs/provenance/M0-2-transitive-provenance-scan.md` +155 · `docs/CAPABILITY_LEDGER.md` +139 · `docs/ARCHITECTURE.md` +117 *(a process doc growing with no matching slices is the journaling smell -- eyeball it)*
 
 ## Local telemetry (this machine)
 
@@ -47,8 +47,8 @@ Fastest-growing docs (net lines this window): `docs/PATTERNS.md` +371 · `docs/M
 | Median peak context | 0% | &lt; 85% -- alarm &ge; 85% | Peak context% reached per session. High = compacting too late; a forced summary is what drops the Resume point. |
 | Compactions | 103 (8.0/wk) | trend | source=='compact' session starts. Read with the row above: many compactions at low peaks is healthy; few at 90%+ is not. |
 | Permission denials | 7 (0.5/wk) | trend | Denied tool calls (rules or the auto-mode classifier) -- each one stalled autopilot. A climb means the allowlist or the denial protocol (CLAUDE.md > Working style) needs work. |
-| Session cost / merged PR | $7.45 | trend | This machine's windowed session spend over repo-wide merges -- the per-slice price of autopilot. A climb flags context hygiene or slice sizing before the dedicated metrics trip. Directional on multi-machine setups (each box sees only its own spend). |
-| Guard hits | 720 across 12 guard/rule pair(s) -- top: inject_rule_reminders/commit x223, inject_rule_reminders/merge x207, inject_rule_reminders/first-push x135, inject_rule_reminders/pr-create x90, inject_rule_reminders/ask-user-question x22 | trend | Fires/catches of the mechanical guards (guard-lifecycle ledger, #253). Zero hits over ~2 retro periods = retirement candidate; constant hits = misaimed noise -- retrospective step 6 judges both. Machine-local. |
-| Preflight duration | median 51s over 341 run(s) · halves 47s → 78s | trend -- alarm: newer half &ge;2&times; older and &ge;60s | Wall time of the full local gate (#255). A climb is the test/audit suite outgrowing the loop -- make the gate selective (targeted tests inner-loop, full suite at the merge gate) before it taxes every push. |
+| Session cost / merged PR | $7.59 | trend | This machine's windowed session spend over repo-wide merges -- the per-slice price of autopilot. A climb flags context hygiene or slice sizing before the dedicated metrics trip. Directional on multi-machine setups (each box sees only its own spend). |
+| Guard hits | 733 across 12 guard/rule pair(s) -- top: inject_rule_reminders/commit x228, inject_rule_reminders/merge x210, inject_rule_reminders/first-push x137, inject_rule_reminders/pr-create x92, inject_rule_reminders/ask-user-question x23 | trend | Fires/catches of the mechanical guards (guard-lifecycle ledger, #253). Zero hits over ~2 retro periods = retirement candidate; constant hits = misaimed noise -- retrospective step 6 judges both. Machine-local. |
+| Preflight duration | median 51s over 344 run(s) · halves 47s → 79s | trend -- alarm: newer half &ge;2&times; older and &ge;60s | Wall time of the full local gate (#255). A climb is the test/audit suite outgrowing the loop -- make the gate selective (targeted tests inner-loop, full suite at the merge gate) before it taxes every push. |
 
 *Sources: `.claude/metrics/` -- statusline session snapshots, the skill ledger (age 19d), session-start and permission-denial events. Gitignored: ONE machine's view, not project truth; other machines and CI each see their own or nothing. Skill catalog: 32 on disk.*
