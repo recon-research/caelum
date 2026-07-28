@@ -176,11 +176,15 @@ Confirm is one contract with two presentations, so `p-confirmDialog` and `p-conf
 
 ```ts
 private readonly confirm = inject(CaeConfirmService);
+private readonly destroyRef = inject(DestroyRef);
+
 await this.confirm.confirm({ message: 'Delete project?', header: 'Delete' });  // centered
-await this.confirm.confirmAt(triggerEl, { message: 'Delete project?' });       // anchored
+await this.confirm.confirmAt(triggerEl, { message: 'Delete project?' }, this.destroyRef);  // anchored
 ```
 
 There is **no `<cae-confirm-popup>` selector to bind to** — the popup body is internal and reachable only through `confirmAt()`.
+
+> **`confirmAt` takes a third argument that `p-confirmPopup` has no equivalent for** ([D-831](ARCHITECTURE.md)). An anchored panel is positioned against its trigger, so a component that goes away while its confirm is open would leave the panel anchored to a detached node with a click-swallowing backdrop over whatever replaced it. Passing your own `DestroyRef` binds the confirm to your component: teardown resolves it `false`. It is required rather than optional so the leak cannot reappear by omission — PrimeNG leaves this to the caller, so this is one of the deltas a rename cannot infer. The centered `confirm()` needs no such argument.
 
 Toast follows the same shape:
 

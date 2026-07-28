@@ -2,6 +2,7 @@ import {
   afterNextRender,
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   ElementRef,
   Injectable,
   InjectionToken,
@@ -9,6 +10,7 @@ import {
   inject,
 } from '@angular/core';
 import { A11yModule } from '@angular/cdk/a11y';
+import { _getFocusedElementPierceShadowDom } from '@angular/cdk/platform';
 import { Overlay } from '@angular/cdk/overlay';
 import type { ConnectedPosition } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
@@ -200,6 +202,19 @@ const CAE_CONFIRM_POPUP = new InjectionToken<CaeConfirmPopupContext>('CAE_CONFIR
  * container's). Not exported: reach it only through `confirmAt()`. The action-button marker classes are
  * the SAME {@link REJECT_CLASS}/{@link ACCEPT_CLASS} constants — used here for both the button class and
  * this panel's own initial-focus selector, so they can never desync (the centered dialog's invariant).
+ *
+ * **`aria-modal` + `tabindex="-1"` (D-826, widened to this panel).** The panel ships modal machinery —
+ * `role="alertdialog"`, `cdkTrapFocus`, and a click-blocking backdrop — so it declares modality to
+ * assistive tech too, rather than blocking pointer users while screen-reader users read straight past
+ * it. **The two presentations reach modality by different mechanisms, and only one is available here:**
+ * the centered half rides CDK `Dialog`, which walks the overlay container's siblings and marks them
+ * `aria-hidden="true"` (`cdk/dialog.mjs` `_hideNonDialogContentFromAssistiveTechnology`) — note it
+ * actually renders `aria-modal="false"`, since `MatDialogConfig.ariaModal` defaults `false`. The
+ * anchored half is a raw `Overlay` with no such pass, so `aria-modal` is the only way it can declare
+ * modality at all. `tabindex="-1"` makes the panel a **click-focus target**: without it a click on the
+ * message text or padding has no focusable ancestor inside the panel, so focus drops to `<body>` —
+ * outside the trap — and the next `Tab` walks the page behind the modal (the D-791 failure mode by
+ * another door).
  */
 @Component({
   selector: 'cae-confirm-popup',
@@ -210,6 +225,8 @@ const CAE_CONFIRM_POPUP = new InjectionToken<CaeConfirmPopupContext>('CAE_CONFIR
       class="cae-confirm-popup"
       role="alertdialog"
       cdkTrapFocus
+      tabindex="-1"
+      [attr.aria-modal]="true"
       [attr.aria-label]="ctx.data.header ? null : ctx.data.message"
       [attr.aria-labelledby]="ctx.data.header ? headerId : null"
       [attr.aria-describedby]="ctx.data.header ? ctx.data.describedById : null"
@@ -245,6 +262,12 @@ const CAE_CONFIRM_POPUP = new InjectionToken<CaeConfirmPopupContext>('CAE_CONFIR
       color: var(--cae-color-on-surface);
       box-shadow: var(--cae-elevation-3);
     }
+    /* The panel is a click-focus target (tabindex=-1), not an interactive control — no visible ring when
+       it holds focus only because the click landed on padding. Inner controls draw their own. Mirrors
+       cae-popover's identical rule, so the two anchored panels can't diverge on focus appearance. */
+    .cae-confirm-popup:focus {
+      outline: none;
+    }
     .cae-confirm-popup__header {
       margin: 0 0 var(--cae-space-2);
       font-size: var(--cae-font-size-3);
@@ -276,6 +299,15 @@ class CaeConfirmPopup {
     // analogue of the centered dialog's Material autoFocus. Owned by the panel (its own concern), via the
     // SAME class→selector constant, and — unlike the CSS-selector autoFocus, a jsdom no-op — a real
     // `.focus()` call, so this one IS unit-testable (attached fixture; [[testing-focus-management-deterministically]]).
+    // The fallback is insurance against the action selector missing (it matches `cae-button`'s inner
+    // native <button>, so a change to that internal shape would strand focus on <body>). It is
+    // UNREACHABLE today — both actions render unconditionally and `confirmFocusSelector` only ever
+    // yields one of those two selectors — so it is defence against a future template/button change, not
+    // a live branch, and no test can cover it without breaking one of those two invariants first. It
+    // would have been inert before #825 regardless: the panel had no `tabindex`, so focusing it was a
+    // no-op. (The centered half has no container fallback either — Material only falls back to the
+    // container on its `first-tabbable` mode, and `confirm()` passes a CSS selector, which silently
+    // focuses nothing on a miss; measured in `confirm.browser.spec.ts`.)
     afterNextRender(() => {
       const selector = confirmFocusSelector(this.ctx.defaultFocus);
       const el =
@@ -349,22 +381,47 @@ export class CaeConfirmService {
    * trapped in the panel while open and **restored to the trigger on every close path** — through the one
    * `respond` funnel, so the dismiss path can't diverge from accept/reject.
    *
+   * **`destroyRef` is required (D-831).** An anchored panel is positioned against its trigger, so a
+   * caller that goes away leaves the panel anchored to a detached node — with a full-screen backdrop
+   * still swallowing clicks. Nothing in a `providedIn: 'root'` service can observe that on its own (a
+   * method call is not an injection context), so the caller supplies its own `DestroyRef` and teardown
+   * resolves the confirm `false` — the safe answer, since a vanished caller did not accept. It is
+   * *required* rather than optional so the leak cannot come back by omission; the centered
+   * {@link confirm} needs no such argument (it is never anchored, and `MatDialog` already disposes on
+   * navigation). Navigation and any CDK-initiated detach are handled internally.
+   *
    * ```ts
+   * private readonly destroyRef = inject(DestroyRef);
+   *
    * async onDelete(event: MouseEvent) {
-   *   if (await this.confirm.confirmAt(event, { message: 'Delete this row?', acceptLabel: 'Delete' })) {
+   *   const opts = { message: 'Delete this row?', acceptLabel: 'Delete' };
+   *   if (await this.confirm.confirmAt(event, opts, this.destroyRef)) {
    *     this.remove();
    *   }
    * }
    * ```
    */
-  confirmAt(origin: CaeConfirmOrigin, options: CaeConfirmOptions): Promise<boolean> {
+  confirmAt(
+    origin: CaeConfirmOrigin,
+    options: CaeConfirmOptions,
+    destroyRef: DestroyRef,
+  ): Promise<boolean> {
+    // A caller destroyed before it got here (an async continuation that outlived its component) cannot
+    // be given a confirm: `onDestroy` on a destroyed view THROWS (NG0911), and a throw after
+    // `overlay.create()` would strand exactly the overlay + backdrop this argument exists to prevent.
+    // Resolve `false` — the same answer teardown gives, since a caller that is gone did not accept.
+    if (destroyRef.destroyed) return Promise.resolve(false);
+
     const data = resolveConfirmData(options);
     const triggerEl = originElement(origin);
     // Where focus goes on close. Prefer the element that HELD focus when the confirm opened (usually the
     // trigger's inner native control — e.g. a `cae-button` renders one, and `$event.currentTarget` is the
     // non-focusable component host) and fall back to the anchor element itself. Mirrors MatDialog's
     // restore-to-previously-focused, so a consumer's `confirmAt($event, …)` from any control restores right.
-    const active = document.activeElement as HTMLElement | null;
+    // Pierces shadow roots for the same reason CDK's own dialog does (`cdk/dialog.mjs` uses this): with a
+    // trigger inside a shadow root, plain `document.activeElement` returns the shadow HOST, so the restore
+    // would land on the wrapper instead of the control the user was actually on.
+    const active = _getFocusedElementPierceShadowDom();
     const restoreTarget = active && active !== document.body ? active : triggerEl;
 
     const overlayRef = this.overlay.create({
@@ -378,17 +435,63 @@ export class CaeConfirmService {
       // Transparent backdrop → outside-click dismiss (= reject), matching the centered variant's contract.
       hasBackdrop: true,
       backdropClass: 'cdk-overlay-transparent-backdrop',
+      // The backdrop cannot block history navigation, so without this a Back/Forward press leaves a
+      // click-swallowing backdrop over the NEW route. Not a preference: the centered presentation
+      // already behaves this way, because MatDialogConfig.closeOnNavigation defaults to true while the
+      // raw OverlayConfig flag defaults to false (#825). Scope, measured — this covers Back/Forward and
+      // hash changes ONLY: the CDK subscribes `Location`, whose subject is fed solely from
+      // `onPopState`, so a PUSH navigation (`router.navigate`) never reaches it. A push is covered by
+      // `destroyRef` instead, because the caller unmounts with the route — which is precisely why that
+      // argument is required rather than optional (D-831).
+      disposeOnNavigation: true,
     });
 
     return new Promise<boolean>((resolve) => {
       let settled = false;
+      // Declared `let` and called with `?.` deliberately: `respond` closes over this binding but is
+      // defined BEFORE it, so a `const` would sit in the temporal dead zone for any caller whose
+      // `DestroyRef` fires its callback synchronously — a `ReferenceError` out of the executor, which
+      // would leak the overlay host we just created. `DestroyRef` is abstract and consumer-suppliable,
+      // so that is a reachable shape, not a hypothetical. eslint's prefer-const cannot see the hazard.
+      // eslint-disable-next-line prefer-const
+      let unbindCallerTeardown: (() => void) | undefined;
       const respond = (result: boolean): void => {
         if (settled) return; // one resolution only — accept, reject, Escape, and backdrop all route here
         settled = true;
-        overlayRef.dispose();
-        restoreTarget.focus(); // restore focus to the trigger on EVERY close path (the dismiss path included)
-        resolve(result);
+        try {
+          // Drop the caller-teardown hook: a long-lived component that opens many confirms would
+          // otherwise accumulate one dead closure (holding this overlay and resolver) per confirm.
+          // Safe to call from INSIDE that hook: Angular nulls lView[ON_DESTROY_HOOKS] before iterating a
+          // detached copy, so the unregister no-ops there rather than splicing the array mid-iteration
+          // (`core/_debug_node-chunk.mjs`). The R3Injector flavour swaps in a fresh array, likewise safe.
+          unbindCallerTeardown?.();
+          // dispose() re-enters through detachments() below; the latch above makes that a no-op.
+          overlayRef.dispose();
+          // Restore focus on EVERY close path (the dismiss paths included). Try each candidate and keep
+          // the first that ACTUALLY takes focus: `isConnected` is not enough, because `.focus()` is also
+          // a no-op on a connected element that is disabled, hidden, `inert`, or simply not focusable —
+          // and the last is the common case, since `confirmAt($event, …)` resolves the origin to
+          // `currentTarget`, which for `<cae-button>` is the non-focusable custom-element host. Giving up
+          // is the honest tail: dispose() has already dropped focus to <body> and there is no better
+          // target (`external-removal-focus-restore`). Optional-chained because `originElement` can
+          // yield null for an undispatched synthetic MouseEvent.
+          for (const candidate of [restoreTarget, triggerEl]) {
+            candidate?.focus();
+            if (candidate && document.activeElement === candidate) break;
+          }
+        } finally {
+          // In `finally` so the promise can never be left pending by a throw from dispose or focus —
+          // the caller is awaiting this, and a hang is worse than an error that still propagates.
+          resolve(result);
+        }
       };
+
+      // The portal below is attached with `viewContainerRef = null`, so the panel's lifetime is bound to
+      // ApplicationRef, not to whoever asked for the confirm. Bind it to the caller explicitly (D-831):
+      // a destroyed caller resolves `false` and the overlay goes with it. Registered before the attach so
+      // the ordering is teardown-first; note that an `attach()` throw still rejects this promise, and the
+      // host is then only reclaimed when the caller is destroyed.
+      unbindCallerTeardown = destroyRef.onDestroy(() => respond(false));
 
       const popupInjector = Injector.create({
         parent: this.injector,
@@ -400,6 +503,14 @@ export class CaeConfirmService {
         ],
       });
       overlayRef.attach(new ComponentPortal(CaeConfirmPopup, null, popupInjector));
+
+      // Safety net, mirroring `CaePopoverTrigger` (popover.ts): any detach we didn't initiate — the
+      // disposeOnNavigation subscription above, or ApplicationRef destroying the portal's host view —
+      // still runs the one respond funnel. Without it those paths leave the `await` pending forever,
+      // which is what made the funnel promised in this method's doc-comment unreachable from the detach
+      // path. (A scroll-strategy close is NOT among them here: this overlay uses `reposition()` with no
+      // autoClose, so that particular detach is unreachable — see #832.)
+      overlayRef.detachments().subscribe(() => respond(false));
 
       // Dismiss = reject (disableClose has no analogue here — outside-click/Escape always reject).
       overlayRef.backdropClick().subscribe(() => respond(false));

@@ -54,7 +54,7 @@
  *
  * Run it: `npm run test:browser`.
  */
-import { Component, inject } from '@angular/core';
+import { Component, DestroyRef, inject } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { vi } from 'vitest';
@@ -68,6 +68,8 @@ import { loadCaelumTheme } from '../testing/theme';
 })
 class ConfirmHost {
   readonly confirm = inject(CaeConfirmService);
+  /** `confirmAt` requires the caller's own DestroyRef (D-831) — the compiler enforces it. */
+  readonly destroyRef = inject(DestroyRef);
 }
 
 describe('CaeConfirmService (real browser)', () => {
@@ -82,6 +84,7 @@ describe('CaeConfirmService (real browser)', () => {
     containerEl.querySelector('.cae-confirm__reject button');
   const trigger = (): HTMLButtonElement =>
     (fixture.nativeElement as HTMLElement).querySelector('#trigger')!;
+  const hostDestroyRef = (): DestroyRef => fixture.componentInstance.destroyRef;
 
   /**
    * Wait until the confirm surface owns focus, then let each test assert *which* control has it.
@@ -147,7 +150,11 @@ describe('CaeConfirmService (real browser)', () => {
 
   describe('anchored confirmAt() — the panel focuses itself', () => {
     it('honours the same reject-first contract as the centered dialog', async () => {
-      const result = confirm.confirmAt(trigger(), { message: 'Delete workspace?' });
+      const result = confirm.confirmAt(
+        trigger(),
+        { message: 'Delete workspace?' },
+        hostDestroyRef(),
+      );
       await focusSettled();
 
       expect(document.activeElement).toBe(rejectBtn());
@@ -157,10 +164,11 @@ describe('CaeConfirmService (real browser)', () => {
     });
 
     it('steers to accept through its own selector', async () => {
-      const result = confirm.confirmAt(trigger(), {
-        message: 'Delete workspace?',
-        defaultFocus: 'accept',
-      });
+      const result = confirm.confirmAt(
+        trigger(),
+        { message: 'Delete workspace?', defaultFocus: 'accept' },
+        hostDestroyRef(),
+      );
       await focusSettled();
 
       expect(document.activeElement).toBe(acceptBtn());
@@ -171,7 +179,11 @@ describe('CaeConfirmService (real browser)', () => {
 
     it('restores focus to the trigger when it closes', async () => {
       trigger().focus();
-      const result = confirm.confirmAt(trigger(), { message: 'Delete workspace?' });
+      const result = confirm.confirmAt(
+        trigger(),
+        { message: 'Delete workspace?' },
+        hostDestroyRef(),
+      );
       await focusSettled();
       expect(document.activeElement).not.toBe(trigger());
 
