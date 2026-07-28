@@ -240,7 +240,7 @@ Caelum uses two shapes, and the difference decides whether a component self-upda
 | `cae-input-number` | `number \| null` | not a formatted string |
 | `cae-input-mask` | **unmasked** `string` | mask literals are not in the value |
 | `cae-input-otp` | one `string` | not per-cell |
-| `cae-rating` | `number \| null` | |
+| `cae-rating` | `number \| null` | **writes back once when your value's *shape* is wrong** — fractional rounds, `0` becomes `null` (so `required` behaves), numeric strings coerce (`'3'` → `3`), junk becomes `null`; the corrected value is emitted on a microtask, so `valueChanges` fires without user action ([#823](https://github.com/recon-research/caelum/issues/823)). **Out-of-range is *not* rewritten** — `[stars]` may still grow, so a `7` on a 5-star group is kept and merely displayed clamped, settling on the first interaction. `p-rating` leaves every bad value in place |
 | `cae-datepicker` | `Date \| null` · `CaeDateRange` · `Date[]` | shape follows `[selectionMode]` |
 | `cae-tree-select` | `string \| readonly string[] \| null` | **node keys**, not node objects; parents are derived |
 | `cae-table [(selection)]` | `readonly T[]` **even in `selectionMode="single"`** | a 0/1-length array, so the binding type is stable across modes |
@@ -265,6 +265,8 @@ Data-driven components take icons two ways, and the template wins when both are 
 The built-in registry is deliberately small and closed — `home` · `folder` · `file` · `plus` · `search` · `user` · `chevron-{up,right,down,left}`. There is **no icon font and no `iconUrl` / `iconSvg` input**: both were rejected for US-origin/no-CDN reasons and because raw SVG is an HTML-injection trust boundary ([D-596](ARCHITECTURE.md)). Anything else goes through `iconTemplate`.
 
 `[iconTemplate]` ships on menu, menubar, context-menu, split-button, panel-menu, breadcrumb, tab-menu, tag and rating.
+
+**⚠ `cae-rating` renders its off stars differently from `p-rating`.** Supply only `[icon]` (or only `[offIcon]`) and both states share one glyph, so Caelum draws the off state as a **dashed, slightly smaller** outline — `cae-icon` glyphs are stroke-only, so the built-in star's solid/hollow trick isn't available, and without a shape cue on/off would be conveyed by colour alone (WCAG 1.4.1). Supply **both** icons and nothing is altered: your two glyphs already distinguish the states. On the `[iconTemplate]` path the cue is **yours to draw** — the context's `item.active` is what to branch on ([#823](https://github.com/recon-research/caelum/issues/823)).
 
 **⚠ Known issue:** an `iconTemplate` that stamps *text* poisons `MatMenu`'s typeahead and the item's accessible name ([#648](https://github.com/recon-research/caelum/issues/648)). Keep icon templates to graphics.
 
