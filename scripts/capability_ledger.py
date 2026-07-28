@@ -28,10 +28,49 @@ Deriving it from git was tried first and abandoned on evidence (#733):
      harness and merely added axe specs to their folders.
 
 So sign-off lives in `docs/capability-ledger.json` with a **resolvable** pointer, and this script
-verifies the pointer rather than trusting it: the cited commit must exist AND must touch that
-entry point's directory (checked with git, offline). The seeded rows use the defensible
-attribution rule — the review run on the slice that *shipped* the component (its introducing
-commit) — and each carries a verbatim quote, so every claim is falsifiable at a glance.
+verifies the pointer rather than trusting it: the cited commit must exist, must touch that entry
+point's directory, AND its message must actually contain the quoted review text (all checked with
+git, offline). The seeded rows use the defensible attribution rule — the review run on the slice
+that *shipped* the component (its introducing commit) — and each carries a verbatim quote, so
+every claim is falsifiable at a glance.
+
+## Why the quote is verified, not merely stored (#809)
+
+Until #809 this function proved only that *a real sha touching this folder was recorded*. That is
+strictly weaker than "a review happened", and the gap was not hypothetical:
+
+  - 13 rows (button, card, checkbox, input, menu, radio, select, shared, stepper, tabs, textarea,
+    tooltip, tree) all cited `f2a7368b` — the per-component **entry-point restructure** (#28/PR
+    #44), a packaging slice. Their real reviews (#5/PR #30, #26/PR #37, #27/PR #42) were
+    *uncitable*, because those slices predate `projects/caelum/<name>/` entirely: the components
+    lived at `projects/caelum/src/lib/<name>/`. The path rule structurally forced the packaging
+    commit into the slot — the mis-attribution class this docstring says it rejected, reintroduced
+    by the very check meant to prevent it. Fixed by `paths` (below) plus re-keying those rows.
+  - `docs/CAPABILITY_LEDGER.md` claimed each quote was "checkable without trusting the seed", but
+    nothing read the field: it was neither rendered nor verified. Any quote could be replaced with
+    "totally fabricated" and `--check` still exited 0.
+
+Now the quote must appear in the cited commit's message. Only **whitespace** is normalised before
+comparing, because git hard-wraps a commit body while the JSON holds one line — that is a
+rendering difference, not an edit. Punctuation is deliberately NOT normalised: an em-dash silently
+rewritten to a hyphen is the seed being edited to fit, which is exactly what this check exists to
+catch (it caught one — `panel-menu` carried a condensed paraphrase, not an excerpt).
+
+A `source: 'pr'` row quotes a PR body, which is off-repo and unreadable offline. Those rows are
+pointer-verified only; the gate says so rather than implying the quote was machine-checked, and
+they are counted out of the verified tally and footnoted in the rendered ledger.
+
+## `revoked` — a sign-off a later review took back (#809)
+
+The two rows #809 set out to resolve (`popover`, `rating`) were signed off by an *inline* pass from
+the implementing session — one party, where Book 16 §3.6 leg 6 requires two. Independent reviewers
+re-ran them and **failed both**, and found a third defect in `confirm` on the way. So `revoked`
+carries the ticket holding the findings; the row keeps its pointer and quote (the evidence trail is
+the point, and the pointer is still verified above) but cannot count toward the tally.
+
+This is deliberately *not* the same as setting the row to `null`. "Reviewed and failed" is a worse
+state than "never reviewed" — `panel-menu` was the latter and #774 turned up a real HIGH under it —
+so collapsing the two would discard the very distinction this ledger exists to keep.
 
 ## Derived states
 
@@ -73,7 +112,12 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-LIB = os.path.join('projects', 'caelum')
+# Forward slashes, NOT os.path.join: this value is used both as a filesystem path (Python accepts
+# `/` on Windows) and as a git **pathspec**, where git speaks POSIX on every platform and treats a
+# backslash as an escape character. `os.path.join` would emit `projects\caelum/button` on Windows —
+# a pathspec that matches nothing, which in this script means every pointer silently fails to
+# resolve. CI's static gates are ubuntu-only, so only preflight.ps1 could ever have seen it.
+LIB = 'projects/caelum'
 CURATED = os.path.join('docs', 'capability-ledger.json')
 LEDGER = os.path.join('docs', 'CAPABILITY_LEDGER.md')
 
@@ -166,6 +210,38 @@ DETECTOR_CORPUS = [
 ]
 
 
+# Pinned mutations of one real row (`button`, re-keyed by #809 to its actual review). Same
+# reasoning as DETECTOR_CORPUS: relaxing verify_pointer fails SILENTLY — every row still resolves,
+# the ledger still reads 64/64, and the only symptom is that "adversarial-passed" stops meaning a
+# review happened. Each case below is a way the seed could be edited to fit rather than fixed; if
+# one starts passing, the gate has lost the tooth it names. Fix the gate, do NOT relax the case.
+_BUTTON = {'pr': 30, 'commit': '148b026', 'source': 'commit',
+           'paths': ['projects/caelum/src/lib/button'],
+           'quote': 'Adversarially reviewed (4-lens ultracode workflow: cva-forms/api-design/a11y/ '
+                    'arch-consistency); 0 BLOCKER, 2 MAJOR + 4 MINOR fixed and re-tested.'}
+
+POINTER_CORPUS = [
+    ('unmutated row resolves', {}, True),
+    # The #809 repro: before the quote was read, this passed.
+    ('fabricated quote', {'quote': 'totally fabricated'}, False),
+    ('quote missing', {'quote': ''}, False),
+    # Whitespace is normalised (git wraps a body); punctuation is not, because rewriting it is the
+    # seed being edited to fit — the real instance was `panel-menu`, whose quote had swapped the
+    # commit's em-dashes for hyphens and dropped a parenthetical. Written out in full rather than
+    # derived with .replace(), which silently became a no-op when the source string had no such
+    # character: a corpus case that mutates nothing passes for the wrong reason.
+    ('quote punctuation edited',
+     {'quote': 'Adversarially reviewed (4-lens ultracode workflow: cva-forms/api-design/a11y/ '
+               'arch-consistency), 0 BLOCKER, 2 MAJOR + 4 MINOR fixed and re-tested.'}, False),
+    # The escape hatch must not become a skeleton key.
+    ('paths widened to the library', {'paths': ['projects/caelum']}, False),
+    ('paths naming a sibling component', {'paths': ['projects/caelum/src/lib/card']}, False),
+    # Proves the override is load-bearing rather than decorative: without it this row cannot
+    # resolve at all, because the review predates projects/caelum/button/.
+    ('historical path dropped', {'paths': []}, False),
+]
+
+
 def selftest(verbose=True):
     """Returns the number of corpus mismatches. Quiet mode prints only the failures — a guard that
     chatters on the clean path teaches the reader to skim past it on the day it finally fires."""
@@ -177,27 +253,82 @@ def selftest(verbose=True):
         if verbose or not ok:
             print(f"{'PASS' if ok else 'FAIL'} runtime-export detector: {name} -> {got}"
                   + ('' if ok else f' (want {want})'))
+    for name, patch, want_ok in POINTER_CORPUS:
+        why = verify_pointer('button', {**_BUTTON, **patch})
+        ok = (why is None) == want_ok
+        failed += 0 if ok else 1
+        if verbose or not ok:
+            print(f"{'PASS' if ok else 'FAIL'} sign-off verifier: {name} -> "
+                  + ('resolves' if why is None else why)
+                  + ('' if ok else f" (want {'resolve' if want_ok else 'refusal'})"))
     return failed
 
 
-def verify_pointer(name, entry):
-    """A sign-off pointer is resolvable only if its commit exists AND touches this entry point.
+def squeeze(text):
+    """Collapse runs of whitespace — the ONLY normalisation applied before comparing a quote."""
+    return re.sub(r'\s+', ' ', text).strip()
 
-    That second half is the one that matters: without it any real sha would 'resolve', including
-    one from an unrelated slice — exactly the mis-attribution that ruled out deriving this field.
+
+def signoff_paths(name, entry):
+    """Where this entry point's code may have lived when it was reviewed.
+
+    Returns `(paths, reason)`. Always includes the entry point's current directory; a row may add
+    historical locations via `paths`, because a review that predates a restructure cannot touch a
+    directory that did not exist yet (#809).
+
+    The override is the obvious way to make any commit resolve, so it is **constrained rather than
+    trusted**, in the spirit of the axe exemption above: a declared path must sit under the library
+    AND end in this entry point's own name. `projects/caelum` or `.` would make every commit match;
+    `projects/forge/src/app/button` would let a demo-app commit sign off the library's button. Both
+    are refused by shape, so the field can only ever name a plausible former home of *this*
+    component — it widens where we look, never what counts as touching it.
+    """
+    paths = [f'{LIB}/{name}']
+    for p in (entry or {}).get('paths', []):
+        if not p.startswith(f'{LIB}/') or p.rstrip('/').split('/')[-1] != name:
+            return paths, (f'declared path "{p}" is not a former location of "{name}" — it must be '
+                           f'under {LIB}/ and end in /{name}')
+        paths.append(p.rstrip('/'))
+    return paths, None
+
+
+def verify_pointer(name, entry):
+    """A sign-off is verified only if its commit exists, touches this entry point, and SAYS SO.
+
+    The second clause is what stops mis-attribution: without it any real sha would 'resolve',
+    including one from an unrelated slice. The third is what stops the weaker failure this gate
+    shipped with — a resolvable pointer to a commit that never mentions a review (#809). Together
+    they mean an `adversarial-passed` row is backed by text a reader can go and read.
     """
     sha = (entry or {}).get('commit')
     if not sha:
         return 'no commit pointer'
     if git('cat-file', '-e', f'{sha}^{{commit}}').returncode != 0:
         return f'commit {sha} not found in history'
+
+    paths, bad = signoff_paths(name, entry)
+    if bad:
+        return bad
     # diff-tree asks what THIS commit changed. `git log -1 <sha> -- <path>` does not: it walks
     # history from <sha> and returns the first ANCESTOR touching the path, so a pointer to any
     # commit made after the component shipped would resolve against an unrelated ancestor and
     # pass — which would have hollowed out the one guarantee this function exists to make.
-    r = git('diff-tree', '--no-commit-id', '--name-only', '-r', sha, '--', f'{LIB}/{name}')
+    r = git('diff-tree', '--no-commit-id', '--name-only', '-r', sha, '--', *paths)
     if not r.stdout.strip():
-        return f'commit {sha} does not touch {LIB}/{name}'
+        return f"commit {sha} does not touch {' or '.join(paths)}"
+
+    quote = (entry or {}).get('quote', '')
+    if not quote.strip():
+        return 'no quote — the row claims a review with nothing to check it against'
+    # A PR body lives on GitHub; preflight and CI's static gates run offline and must stay fast, so
+    # this half is genuinely uncheckable here. Say so (the caller footnotes the row) instead of
+    # letting it read identically to a row whose quote was actually matched.
+    if (entry or {}).get('source') == 'pr':
+        return None
+    body = git('log', '-1', '--format=%B', sha).stdout
+    if squeeze(quote) not in squeeze(body):
+        return (f'quote is not a verbatim excerpt of commit {sha} — the ledger promises a quote '
+                'checkable against its source, so fix the quote (or the pointer), never this gate')
     return None
 
 
@@ -247,6 +378,15 @@ def build():
         why = verify_pointer(name, entry) if entry else None
         if entry and why:
             problems.append(f'{CURATED}: "{name}" claims sign-off but {why}')
+        # A sign-off can be REVOKED: a later independent review examined the component and failed
+        # it, so the recorded pass is superseded. The pointer is still verified above — the evidence
+        # trail stays intact and readable — but the row cannot count. Distinct from a null row on
+        # purpose: "reviewed and failed" is a worse state than "never reviewed", and collapsing the
+        # two would lose exactly the kind of information this ledger exists to keep (#809).
+        revoked = (entry or {}).get('revoked')
+        if revoked and not str(revoked).strip():
+            problems.append(f'{CURATED}: "{name}" is revoked but gives no reason — name the '
+                            'ticket carrying the findings, or drop the field')
 
         # The exemption is re-derived here, every run — the recorded reason never grants it.
         reason, exempt_ok = exempt.get(name), False
@@ -264,22 +404,29 @@ def build():
                 exempt_ok = True
 
         rows.append({'name': name, 'ev': ev, 'signoff': entry, 'exempt': reason if exempt_ok else None,
-                     'state': state_of(ev, bool(entry) and not why, exempt_ok)})
+                     'revoked': revoked,
+                     'state': state_of(ev, bool(entry) and not why and not revoked, exempt_ok)})
     return rows, problems, curated.get('note', '')
 
 
 def cell(row):
     ev = row['ev']
     mark = lambda v: '☑' if v else '—'
+    signoff = signoff_cell(row['signoff'])
+    if row.get('revoked'):
+        signoff = f'~~{signoff}~~ **revoked**'
     return (f"| `{row['name']}` | {row['state']} | {mark(ev['unit'])} | {mark(ev['axe'])} "
-            f"| {mark(ev['browser'])} | {mark(ev['vr'])} | {signoff_cell(row['signoff'])} |")
+            f"| {mark(ev['browser'])} | {mark(ev['vr'])} | {signoff} |")
 
 
 def signoff_cell(entry):
     if not entry:
         return '**none**'
     pr = f"#{entry['pr']}" if entry.get('pr') else '—'
-    return f"PR {pr} · `{entry['commit']}`"
+    # † marks the weaker evidence: pointer verified, quote unreadable offline. Without it a
+    # PR-sourced row renders identically to one whose quote this gate actually matched.
+    dagger = ' †' if entry.get('source') == 'pr' else ''
+    return f"PR {pr} · `{entry['commit']}`{dagger}"
 
 
 def render(rows, note):
@@ -289,8 +436,18 @@ def render(rows, note):
     # point was never a component to verify, so folding it in either way misreports the fraction.
     total = len(rows) - len(exempt_rows)
     passed = counts['adversarial-passed']
+    # Split the headline by strength of evidence, not just by state: a row whose quote was matched
+    # against its commit is a stronger claim than one pointing at a PR body nothing offline can
+    # read, and collapsing the two is how "the pointer resolves" came to be read as "a review
+    # happened" (#809).
+    pr_sourced = [r for r in rows
+                  if r['state'] == 'adversarial-passed' and (r['signoff'] or {}).get('source') == 'pr']
     tally = (f'**{passed}/{total} adversarial-passed** · '
              f"{counts['parity-verified']} parity-verified · {counts['implemented']} implemented")
+    if pr_sourced:
+        n = len(pr_sourced)
+        tally += (f' — of which {passed - n} carry a quote verified against their commit and '
+                  f"{n} {'is' if n == 1 else 'are'} pointer-only (†)")
     if exempt_rows:
         tally += f' · {len(exempt_rows)} exempt (below)'
     out = [
@@ -322,6 +479,12 @@ def render(rows, note):
     out += [cell(r) for r in rows]
     gaps = [r for r in rows if r['state'] not in ('adversarial-passed', 'exempt')]
     out += ['']
+    if pr_sourced:
+        out += ['† **Pointer-only.** Every other row\'s quote is matched against its commit message',
+                'on each run. These quote a **PR body**, which lives on GitHub — the gate runs offline,',
+                'so it verifies the commit pointer but cannot check the words. Read the linked PR to',
+                'audit them: ' + ', '.join(f"`{r['name']}` (PR #{r['signoff']['pr']})" for r in pr_sourced) + '.',
+                '']
     if exempt_rows:
         out += ['## Exemptions', '',
                 'Not a waiver — each is re-derived on every run from the entry point\'s own source,',
@@ -337,7 +500,12 @@ def render(rows, note):
                 missing.append('no functional spec')
             if not r['ev']['axe']:
                 missing.append('no axe assertion')
-            if not r['signoff']:
+            if r.get('revoked'):
+                # The reason names the ticket carrying the findings, so this row is actionable
+                # without opening the curated JSON — and cannot be mistaken for "never reviewed".
+                # rstrip('.') so the sentence-shaped reason does not collide with the '.' below.
+                missing.append(f"sign-off REVOKED — {r['revoked'].rstrip('.')}")
+            elif not r['signoff']:
                 missing.append('no adversarial sign-off on record')
             out.append(f"- **`{r['name']}`** — {'; '.join(missing)}.")
         out += ['']

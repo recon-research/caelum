@@ -10,7 +10,7 @@ backs. **M4 exits when every shipped entry point reads `adversarial-passed`**, b
 exemption — and an exemption is re-proven from the source on every run, never taken on trust
 (#773).
 
-**64/64 adversarial-passed** · 0 parity-verified · 0 implemented · 1 exempt (below)
+**61/64 adversarial-passed** · 3 parity-verified · 0 implemented — of which 60 carry a quote verified against their commit and 1 is pointer-only (†) · 1 exempt (below)
 
 `untouched` / `mapped` (§3.4's first two states) are the p-*→cae-* mapping tracked in
 [`textbooks/reference/COMPARISON.md`](../textbooks/reference/COMPARISON.md) (Status column,
@@ -18,8 +18,19 @@ exemption — and an exemption is re-proven from the source on every run, never 
 
 Sign-off rows were seeded once (#733) from the review run on the slice that **shipped** each
 entry point — its introducing commit, and that PR body where the commit body is silent (the
-repo uses both homes). Each row carries a verbatim quote so the claim is checkable without
-trusting the seed. New entry points are added by hand; the gate fails until they appear.
+repo uses both homes). Each row carries a verbatim quote, and since **#809** the gate
+**verifies** it: the cited commit's message must actually contain those words, so the claim is
+checkable without trusting the seed rather than merely asserted to be. Only whitespace is
+normalised before comparing (git wraps a body); edited punctuation reads as an edit and fails.
+New entry points are added by hand; the gate fails until they appear.
+
+Thirteen rows (`button`, `card`, `checkbox`, `input`, `menu`, `radio`, `select`, `shared`,
+`stepper`, `tabs`, `textarea`, `tooltip`, `tree`) were re-keyed by **#809** from `f2a7368b` —
+the entry-point restructure (#28/PR #44), a packaging slice — to the batches that actually
+reviewed them (PR #30, #37, #42). Those reviews predate `projects/caelum/<name>/`, so each row
+declares its former home under `paths`; the field is shape-constrained to a path under the
+library ending in that entry point's own name, so it can widen where the gate looks but never
+what counts as touching the component.
 
 One row is not a shipping-slice review: `panel-menu` shipped without one (#774), so its
 pointer is the later slice that ran the review it was owed (PR #778). A row's commit is the
@@ -30,6 +41,14 @@ The five entry points that had no axe assertion were closed by **#773**: four ga
 type-only — became the single exemption. Exemptions are re-derived from source on every run,
 never granted by the recorded reason; see the module docstring of the generator.
 
+Three rows carry `revoked` (**#809**): `rating` (#823), `popover` (#824) and `confirm`
+(#825). Each had a recorded sign-off that an independent two-party review later failed, so
+the pointer and quote stay on record — the evidence trail is the point — but the row cannot
+count. Deliberately distinct from a `null` row: "reviewed and failed" is a worse state than
+"never reviewed", and collapsing the two would discard exactly what this ledger is for.
+`popover` and `rating` were the two self-reviewed rows #809 set out to resolve; `confirm` was
+found by the same commission while reviewing `popover`.
+
 | Entry point | State | spec | axe | browser | VR | Adversarial sign-off |
 |---|---|---|---|---|---|---|
 | `accordion` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #81 · `10b7ebe9` |
@@ -38,13 +57,13 @@ never granted by the recorded reason; see the module docstring of the generator.
 | `badge` | adversarial-passed | ☑ | ☑ | — | — | PR #130 · `8cb47816` |
 | `breadcrumb` | adversarial-passed | ☑ | ☑ | — | — | PR #334 · `323efe6e` |
 | `breadcrumb-router` | adversarial-passed | ☑ | ☑ | — | — | PR #654 · `6592b4ba` |
-| `button` | adversarial-passed | ☑ | ☑ | — | ☑ | PR #44 · `f2a7368b` |
-| `card` | adversarial-passed | ☑ | ☑ | — | ☑ | PR #44 · `f2a7368b` |
+| `button` | adversarial-passed | ☑ | ☑ | — | ☑ | PR #30 · `148b026` |
+| `card` | adversarial-passed | ☑ | ☑ | — | ☑ | PR #30 · `148b026` |
 | `carousel` | adversarial-passed | ☑ | ☑ | — | — | PR #277 · `42277770` |
-| `checkbox` | adversarial-passed | ☑ | ☑ | — | ☑ | PR #44 · `f2a7368b` |
+| `checkbox` | adversarial-passed | ☑ | ☑ | — | ☑ | PR #30 · `148b026` |
 | `chip` | adversarial-passed | ☑ | ☑ | — | — | PR #86 · `33f3b2f4` |
 | `chip-set` | adversarial-passed | ☑ | ☑ | — | — | PR #203 · `72a07943` |
-| `confirm` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #106 · `dfc184d9` |
+| `confirm` | parity-verified | ☑ | ☑ | ☑ | — | ~~PR #106 · `dfc184d9`~~ **revoked** |
 | `context-menu` | adversarial-passed | ☑ | ☑ | — | — | PR #159 · `f48cc09b` |
 | `datepicker` | adversarial-passed | ☑ | ☑ | — | — | PR #684 · `a730b5a1` |
 | `dialog` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #103 · `b9f225ab` |
@@ -57,46 +76,51 @@ never granted by the recorded reason; see the module docstring of the generator.
 | `icon` | adversarial-passed | ☑ | ☑ | — | — | PR #646 · `d4021f3d` |
 | `image` | adversarial-passed | ☑ | ☑ | — | — | PR #295 · `2355e53b` |
 | `image-compare` | adversarial-passed | ☑ | ☑ | — | — | PR #319 · `407fab00` |
-| `input` | adversarial-passed | ☑ | ☑ | — | ☑ | PR #44 · `f2a7368b` |
+| `input` | adversarial-passed | ☑ | ☑ | — | ☑ | PR #30 · `148b026` |
 | `input-mask` | adversarial-passed | ☑ | ☑ | — | — | PR #316 · `2d0526ee` |
 | `input-number` | adversarial-passed | ☑ | ☑ | — | — | PR #307 · `0ff5d1cf` |
 | `input-otp` | adversarial-passed | ☑ | ☑ | — | — | PR #310 · `de78df5d` |
 | `listbox` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #115 · `1e81e3cf` |
-| `menu` | adversarial-passed | ☑ | ☑ | — | — | PR #44 · `f2a7368b` |
+| `menu` | adversarial-passed | ☑ | ☑ | — | — | PR #42 · `9cc7141` |
 | `menubar` | adversarial-passed | ☑ | ☑ | — | — | PR #154 · `402539ad` |
 | `multi-select` | adversarial-passed | ☑ | ☑ | — | — | PR #136 · `5dfd7412` |
 | `order-list` | adversarial-passed | ☑ | ☑ | — | — | PR #339 · `cd77e581` |
 | `panel-menu` | adversarial-passed | ☑ | ☑ | — | — | PR #778 · `5be24f1` |
 | `password` | adversarial-passed | ☑ | ☑ | — | — | PR #313 · `1793231c` |
 | `pick-list` | adversarial-passed | ☑ | ☑ | — | — | PR #343 · `766931bb` |
-| `popover` | adversarial-passed | ☑ | ☑ | — | — | PR #678 · `bfbb3bc1` |
+| `popover` | parity-verified | ☑ | ☑ | — | — | ~~PR #678 · `bfbb3bc1` †~~ **revoked** |
 | `progress-bar` | adversarial-passed | ☑ | ☑ | — | — | PR #89 · `11614941` |
 | `progress-spinner` | adversarial-passed | ☑ | ☑ | — | — | PR #89 · `11614941` |
-| `radio` | adversarial-passed | ☑ | ☑ | — | — | PR #44 · `f2a7368b` |
-| `rating` | adversarial-passed | ☑ | ☑ | — | — | PR #674 · `906f1510` |
+| `radio` | adversarial-passed | ☑ | ☑ | — | — | PR #37 · `5e53818` |
+| `rating` | parity-verified | ☑ | ☑ | — | — | ~~PR #674 · `906f1510` †~~ **revoked** |
 | `scroll-panel` | adversarial-passed | ☑ | ☑ | — | — | PR #330 · `20d35a8d` |
-| `select` | adversarial-passed | ☑ | ☑ | — | — | PR #44 · `f2a7368b` |
+| `select` | adversarial-passed | ☑ | ☑ | — | — | PR #37 · `5e53818` |
 | `select-button` | adversarial-passed | ☑ | ☑ | — | — | PR #74 · `150ff686` |
-| `shared` | exempt | — | — | — | — | PR #44 · `f2a7368b` |
+| `shared` | exempt | — | — | — | — | PR #37 · `5e53818` |
 | `skeleton` | adversarial-passed | ☑ | ☑ | — | — | PR #670 · `89f2560d` |
 | `slider` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #112 · `7f3ca812` |
 | `split-button` | adversarial-passed | ☑ | ☑ | — | — | PR #151 · `1bc5bb8d` |
 | `splitter` | adversarial-passed | ☑ | ☑ | — | — | PR #326 · `f76a1b9f` |
-| `stepper` | adversarial-passed | ☑ | ☑ | — | — | PR #44 · `f2a7368b` |
+| `stepper` | adversarial-passed | ☑ | ☑ | — | — | PR #42 · `9cc7141` |
 | `switch` | adversarial-passed | ☑ | ☑ | — | — | PR #69 · `f077bb59` |
 | `tab-menu` | adversarial-passed | ☑ | ☑ | — | — | PR #166 · `b9fa4395` |
 | `table` | adversarial-passed | ☑ | ☑ | ☑ | ☑ | PR #146 · `a389b757` |
-| `tabs` | adversarial-passed | ☑ | ☑ | — | — | PR #44 · `f2a7368b` |
+| `tabs` | adversarial-passed | ☑ | ☑ | — | — | PR #37 · `5e53818` |
 | `tag` | adversarial-passed | ☑ | ☑ | — | ☑ | PR #670 · `89f2560d` |
-| `textarea` | adversarial-passed | ☑ | ☑ | — | — | PR #44 · `f2a7368b` |
+| `textarea` | adversarial-passed | ☑ | ☑ | — | — | PR #37 · `5e53818` |
 | `timeline` | adversarial-passed | ☑ | ☑ | — | — | PR #670 · `89f2560d` |
 | `toast` | adversarial-passed | ☑ | ☑ | — | — | PR #98 · `48381a59` |
 | `toggle-button` | adversarial-passed | ☑ | ☑ | — | — | PR #74 · `150ff686` |
 | `toolbar` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #130 · `8cb47816` |
-| `tooltip` | adversarial-passed | ☑ | ☑ | — | — | PR #44 · `f2a7368b` |
-| `tree` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #44 · `f2a7368b` |
-| `tree-select` | adversarial-passed | ☑ | ☑ | — | — | PR #284 · `6ec7aa81` |
+| `tooltip` | adversarial-passed | ☑ | ☑ | — | — | PR #37 · `5e53818` |
+| `tree` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #42 · `9cc7141` |
+| `tree-select` | adversarial-passed | ☑ | ☑ | — | — | PR #284 · `6ec7aa81` † |
 | `tree-table` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #271 · `cdea70d9` |
+
+† **Pointer-only.** Every other row's quote is matched against its commit message
+on each run. These quote a **PR body**, which lives on GitHub — the gate runs offline,
+so it verifies the commit pointer but cannot check the words. Read the linked PR to
+audit them: `tree-select` (PR #284).
 
 ## Exemptions
 
@@ -107,5 +131,9 @@ and the gate fails the moment one starts emitting runtime code (#773).
 
 ## Open gaps
 
-None — every shipped entry point is `adversarial-passed` or recorded above.
+Each row below is M4-exit work, not a formatting nit.
+
+- **`confirm`** — sign-off REVOKED — #825 — found by the same #809 commission while reviewing `cae-popover`: `confirmAt()` has no disposal path except a user response, so caller destroy or navigation leaks the overlay AND its full-screen backdrop, leaving the app unclickable and the promise pending forever.
+- **`popover`** — sign-off REVOKED — #824 — the independent two-party review commissioned by #809 found 3 HIGH defects (the focus trap does not hold for a panel with no tabbable content; the spec's `panel()` oracle is derived from `_isOpen()` so a leaked pane is invisible to every close assertion; the trap itself is never asserted). Blocked on decision #826. The inline sign-off quoted here is superseded.
+- **`rating`** — sign-off REVOKED — #823 — the independent two-party review commissioned by #809 found 2 HIGH defects (the keyboard model follows `value()` rather than the focused star; a value above `[stars]` leaves the control with zero tab stops). The inline sign-off quoted here claimed "no HIGH findings" and is superseded.
 

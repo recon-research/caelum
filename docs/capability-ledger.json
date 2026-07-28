@@ -1,5 +1,5 @@
 {
-  "note": "Sign-off rows were seeded once (#733) from the review run on the slice that **shipped** each\nentry point — its introducing commit, and that PR body where the commit body is silent (the\nrepo uses both homes). Each row carries a verbatim quote so the claim is checkable without\ntrusting the seed. New entry points are added by hand; the gate fails until they appear.\n\nOne row is not a shipping-slice review: `panel-menu` shipped without one (#774), so its\npointer is the later slice that ran the review it was owed (PR #778). A row's commit is the\ncommit whose message records the review, not necessarily the one that introduced the code.\n\nThe five entry points that had no axe assertion were closed by **#773**: four gained one\n(`breadcrumb-router`, `form-field`, `grid-tanstack`, `tooltip`), and `shared` — which is\ntype-only — became the single exemption. Exemptions are re-derived from source on every run,\nnever granted by the recorded reason; see the module docstring of the generator.",
+  "note": "Sign-off rows were seeded once (#733) from the review run on the slice that **shipped** each\nentry point — its introducing commit, and that PR body where the commit body is silent (the\nrepo uses both homes). Each row carries a verbatim quote, and since **#809** the gate\n**verifies** it: the cited commit's message must actually contain those words, so the claim is\ncheckable without trusting the seed rather than merely asserted to be. Only whitespace is\nnormalised before comparing (git wraps a body); edited punctuation reads as an edit and fails.\nNew entry points are added by hand; the gate fails until they appear.\n\nThirteen rows (`button`, `card`, `checkbox`, `input`, `menu`, `radio`, `select`, `shared`,\n`stepper`, `tabs`, `textarea`, `tooltip`, `tree`) were re-keyed by **#809** from `f2a7368b` —\nthe entry-point restructure (#28/PR #44), a packaging slice — to the batches that actually\nreviewed them (PR #30, #37, #42). Those reviews predate `projects/caelum/<name>/`, so each row\ndeclares its former home under `paths`; the field is shape-constrained to a path under the\nlibrary ending in that entry point's own name, so it can widen where the gate looks but never\nwhat counts as touching the component.\n\nOne row is not a shipping-slice review: `panel-menu` shipped without one (#774), so its\npointer is the later slice that ran the review it was owed (PR #778). A row's commit is the\ncommit whose message records the review, not necessarily the one that introduced the code.\n\nThe five entry points that had no axe assertion were closed by **#773**: four gained one\n(`breadcrumb-router`, `form-field`, `grid-tanstack`, `tooltip`), and `shared` — which is\ntype-only — became the single exemption. Exemptions are re-derived from source on every run,\nnever granted by the recorded reason; see the module docstring of the generator.\n\nThree rows carry `revoked` (**#809**): `rating` (#823), `popover` (#824) and `confirm`\n(#825). Each had a recorded sign-off that an independent two-party review later failed, so\nthe pointer and quote stay on record — the evidence trail is the point — but the row cannot\ncount. Deliberately distinct from a `null` row: \"reviewed and failed\" is a worse state than\n\"never reviewed\", and collapsing the two would discard exactly what this ledger is for.\n`popover` and `rating` were the two self-reviewed rows #809 set out to resolve; `confirm` was\nfound by the same commission while reviewing `popover`.",
   "exempt": {
     "shared": "type-only entry point (#28): every export is a type or interface, so it compiles to no runtime code, ships no component, and renders no DOM — there is nothing for axe to scan. Re-proven each run by scripts/capability_ledger.py, which fails the gate if any file here starts emitting runtime code."
   },
@@ -41,16 +41,22 @@
       "quote": "Adversarial review found four real defects, all fixed and mutation-tested: - The decision had to move to the BUBBLED host click"
     },
     "button": {
-      "pr": 44,
-      "commit": "f2a7368b",
+      "pr": 30,
+      "commit": "148b026",
       "source": "commit",
-      "quote": "Adversarially reviewed (4-lens ultracode workflow): 0 BLOCKER/MAJOR (the one MAJOR refuted on verify); MINOR/NIT fixes applied — PROJECT_CONVENTIONS source-layout drift corrected + \"adding a component"
+      "paths": [
+        "projects/caelum/src/lib/button"
+      ],
+      "quote": "Adversarially reviewed (4-lens ultracode workflow: cva-forms/api-design/a11y/ arch-consistency); 0 BLOCKER, 2 MAJOR + 4 MINOR fixed and re-tested."
     },
     "card": {
-      "pr": 44,
-      "commit": "f2a7368b",
+      "pr": 30,
+      "commit": "148b026",
       "source": "commit",
-      "quote": "Adversarially reviewed (4-lens ultracode workflow): 0 BLOCKER/MAJOR (the one MAJOR refuted on verify); MINOR/NIT fixes applied — PROJECT_CONVENTIONS source-layout drift corrected + \"adding a component"
+      "paths": [
+        "projects/caelum/src/lib/card"
+      ],
+      "quote": "Adversarially reviewed (4-lens ultracode workflow: cva-forms/api-design/a11y/ arch-consistency); 0 BLOCKER, 2 MAJOR + 4 MINOR fixed and re-tested."
     },
     "carousel": {
       "pr": 277,
@@ -59,10 +65,13 @@
       "quote": "* cae-carousel: apply 2-lens review fixes (a11y + API) a11y lens: - prev/next use aria-disabled (not the disabled property) so the focused button keeps focus instead of blurring to <body> at an end (W"
     },
     "checkbox": {
-      "pr": 44,
-      "commit": "f2a7368b",
+      "pr": 30,
+      "commit": "148b026",
       "source": "commit",
-      "quote": "Adversarially reviewed (4-lens ultracode workflow): 0 BLOCKER/MAJOR (the one MAJOR refuted on verify); MINOR/NIT fixes applied — PROJECT_CONVENTIONS source-layout drift corrected + \"adding a component"
+      "paths": [
+        "projects/caelum/src/lib/checkbox"
+      ],
+      "quote": "Adversarially reviewed (4-lens ultracode workflow: cva-forms/api-design/a11y/ arch-consistency); 0 BLOCKER, 2 MAJOR + 4 MINOR fixed and re-tested."
     },
     "chip": {
       "pr": 86,
@@ -80,7 +89,8 @@
       "pr": 106,
       "commit": "dfc184d9",
       "source": "commit",
-      "quote": "ai/code/session_01VFguz4Q8QdTr9MGxKn8kwj * review fixes (#101): shared class↔selector constant + disableClose guard Adversarial 4-lens review (0 confirmed MAJOR/BLOCKER, 0 refuted) — applied the MINOR"
+      "quote": "ai/code/session_01VFguz4Q8QdTr9MGxKn8kwj * review fixes (#101): shared class↔selector constant + disableClose guard Adversarial 4-lens review (0 confirmed MAJOR/BLOCKER, 0 refuted) — applied the MINOR",
+      "revoked": "#825 — found by the same #809 commission while reviewing `cae-popover`: `confirmAt()` has no disposal path except a user response, so caller destroy or navigation leaks the overlay AND its full-screen backdrop, leaving the app unclickable and the promise pending forever."
     },
     "context-menu": {
       "pr": 159,
@@ -155,10 +165,13 @@
       "quote": "- 2-lens a11y/API review, no blocker: real dragging-state flag (drops cross-element drags + non-primary-button jumps), NaN-safe clamp + normalize effect, locale-neutral aria-valuetext, both-alts-empty"
     },
     "input": {
-      "pr": 44,
-      "commit": "f2a7368b",
+      "pr": 30,
+      "commit": "148b026",
       "source": "commit",
-      "quote": "Adversarially reviewed (4-lens ultracode workflow): 0 BLOCKER/MAJOR (the one MAJOR refuted on verify); MINOR/NIT fixes applied — PROJECT_CONVENTIONS source-layout drift corrected + \"adding a component"
+      "paths": [
+        "projects/caelum/src/lib/input"
+      ],
+      "quote": "Adversarially reviewed (4-lens ultracode workflow: cva-forms/api-design/a11y/ arch-consistency); 0 BLOCKER, 2 MAJOR + 4 MINOR fixed and re-tested."
     },
     "input-mask": {
       "pr": 316,
@@ -185,10 +198,13 @@
       "quote": "ai/code/session_01VFguz4Q8QdTr9MGxKn8kwj * cae-listbox: apply 4-lens review fixes (0 MAJOR; MINOR/NIT) Adversarial 4-lens review returned 0 confirmed BLOCKER/MAJOR (the CVA core was actively falsified"
     },
     "menu": {
-      "pr": 44,
-      "commit": "f2a7368b",
+      "pr": 42,
+      "commit": "9cc7141",
       "source": "commit",
-      "quote": "Adversarially reviewed (4-lens ultracode workflow): 0 BLOCKER/MAJOR (the one MAJOR refuted on verify); MINOR/NIT fixes applied — PROJECT_CONVENTIONS source-layout drift corrected + \"adding a component"
+      "paths": [
+        "projects/caelum/src/lib/menu"
+      ],
+      "quote": "review: fix 8 adversarial-review findings (batch 3)"
     },
     "menubar": {
       "pr": 154,
@@ -212,7 +228,7 @@
       "pr": 778,
       "commit": "5be24f1",
       "source": "commit",
-      "quote": "The adversarial review cae-panel-menu never got (#774). Three lenses: correctness/state, a11y/structure, test integrity. CONFIRMED HIGH - expansion state followed POSITION, not the item. MED - the axe assertion only ever saw the COLLAPSED root. LOW - dropped an inert nested-group rule."
+      "quote": "The adversarial review cae-panel-menu never got (#774 — the capability ledger's only entry point with no sign-off on record). Three lenses: correctness/state, a11y/structure, test integrity."
     },
     "password": {
       "pr": 313,
@@ -230,7 +246,8 @@
       "pr": 678,
       "commit": "bfbb3bc1",
       "source": "pr",
-      "quote": "- Adversarial review inline (session ran without subagents): 1 finding (overlay leak on trigger destroy) fixed in-slice; correctness + test-integrity lenses SOLID"
+      "quote": "- Adversarial review inline (session ran without subagents): 1 finding (overlay leak on trigger destroy) fixed in-slice; correctness + test-integrity lenses SOLID",
+      "revoked": "#824 — the independent two-party review commissioned by #809 found 3 HIGH defects (the focus trap does not hold for a panel with no tabbable content; the spec's `panel()` oracle is derived from `_isOpen()` so a leaked pane is invisible to every close assertion; the trap itself is never asserted). Blocked on decision #826. The inline sign-off quoted here is superseded."
     },
     "progress-bar": {
       "pr": 89,
@@ -245,16 +262,20 @@
       "quote": "ai/code/session_01VFguz4Q8QdTr9MGxKn8kwj * review(#88): apply adversarial-review MINOR/NIT findings 4-lens review: 0 MAJOR/BLOCKER, 0 refuted, all MINOR/NIT"
     },
     "radio": {
-      "pr": 44,
-      "commit": "f2a7368b",
+      "pr": 37,
+      "commit": "5e53818",
       "source": "commit",
-      "quote": "Adversarially reviewed (4-lens ultracode workflow): 0 BLOCKER/MAJOR (the one MAJOR refuted on verify); MINOR/NIT fixes applied — PROJECT_CONVENTIONS source-layout drift corrected + \"adding a component"
+      "paths": [
+        "projects/caelum/src/lib/radio"
+      ],
+      "quote": "Adversarially reviewed (4-lens ultracode workflow; 2 MAJOR + 2 MINOR + 2 NIT fixed, each re-tested): radio empty-name collision, tooltip keyboard-inaccessibility (→ #36), select touched-only-on-open, appearance cross-file coupling, radio double-label, missing required marker."
     },
     "rating": {
       "pr": 674,
       "commit": "906f1510",
       "source": "pr",
-      "quote": "- Adversarial review: done **inline** (3 lenses — correctness/CVA edges, framework/resource soundness, test integrity); no HIGH findings"
+      "quote": "- Adversarial review: done **inline** (3 lenses — correctness/CVA edges, framework/resource soundness, test integrity); no HIGH findings",
+      "revoked": "#823 — the independent two-party review commissioned by #809 found 2 HIGH defects (the keyboard model follows `value()` rather than the focused star; a value above `[stars]` leaves the control with zero tab stops). The inline sign-off quoted here claimed \"no HIGH findings\" and is superseded."
     },
     "scroll-panel": {
       "pr": 330,
@@ -263,10 +284,13 @@
       "quote": "2-lens adversarial review (a11y + API) applied — fixes shipping here: - MAJOR (a11y): isFocused signal + focus/blur listeners + tabIndex computed keep a focus-holding container at tabindex=-1 when its"
     },
     "select": {
-      "pr": 44,
-      "commit": "f2a7368b",
+      "pr": 37,
+      "commit": "5e53818",
       "source": "commit",
-      "quote": "Adversarially reviewed (4-lens ultracode workflow): 0 BLOCKER/MAJOR (the one MAJOR refuted on verify); MINOR/NIT fixes applied — PROJECT_CONVENTIONS source-layout drift corrected + \"adding a component"
+      "paths": [
+        "projects/caelum/src/lib/select"
+      ],
+      "quote": "Adversarially reviewed (4-lens ultracode workflow; 2 MAJOR + 2 MINOR + 2 NIT fixed, each re-tested): radio empty-name collision, tooltip keyboard-inaccessibility (→ #36), select touched-only-on-open, appearance cross-file coupling, radio double-label, missing required marker."
     },
     "select-button": {
       "pr": 74,
@@ -275,10 +299,13 @@
       "quote": "ai/code/session_01VFguz4Q8QdTr9MGxKn8kwj * #73 review: fix 2 confirmed MAJORs + MINOR/NIT from the 4-lens adversarial review - MAJOR (api-design): cae-select-button had no opt-out for Material's selec"
     },
     "shared": {
-      "pr": 44,
-      "commit": "f2a7368b",
+      "pr": 37,
+      "commit": "5e53818",
       "source": "commit",
-      "quote": "Adversarially reviewed (4-lens ultracode workflow): 0 BLOCKER/MAJOR (the one MAJOR refuted on verify); MINOR/NIT fixes applied — PROJECT_CONVENTIONS source-layout drift corrected + \"adding a component"
+      "paths": [
+        "projects/caelum/src/lib/shared"
+      ],
+      "quote": "Adversarially reviewed (4-lens ultracode workflow; 2 MAJOR + 2 MINOR + 2 NIT fixed, each re-tested): radio empty-name collision, tooltip keyboard-inaccessibility (→ #36), select touched-only-on-open, appearance cross-file coupling, radio double-label, missing required marker."
     },
     "skeleton": {
       "pr": 670,
@@ -305,10 +332,13 @@
       "quote": "2-lens adversarial review (a11y + API), both lenses confirming the MAJOR: the seed now enforces each minSize (enforceMinSizes water-fill) so a mis- declared [size] can't render a pane below its min or"
     },
     "stepper": {
-      "pr": 44,
-      "commit": "f2a7368b",
+      "pr": 42,
+      "commit": "9cc7141",
       "source": "commit",
-      "quote": "Adversarially reviewed (4-lens ultracode workflow): 0 BLOCKER/MAJOR (the one MAJOR refuted on verify); MINOR/NIT fixes applied — PROJECT_CONVENTIONS source-layout drift corrected + \"adding a component"
+      "paths": [
+        "projects/caelum/src/lib/stepper"
+      ],
+      "quote": "review: fix 8 adversarial-review findings (batch 3)"
     },
     "switch": {
       "pr": 69,
@@ -329,10 +359,13 @@
       "quote": "ai/code/session_01VFguz4Q8QdTr9MGxKn8kwj * cae-table: apply 4-lens review — a11y empty-state live region, currentColor, dev guards, API hygiene Confirmed MAJORs fixed: - Empty state is now a persisten"
     },
     "tabs": {
-      "pr": 44,
-      "commit": "f2a7368b",
+      "pr": 37,
+      "commit": "5e53818",
       "source": "commit",
-      "quote": "Adversarially reviewed (4-lens ultracode workflow): 0 BLOCKER/MAJOR (the one MAJOR refuted on verify); MINOR/NIT fixes applied — PROJECT_CONVENTIONS source-layout drift corrected + \"adding a component"
+      "paths": [
+        "projects/caelum/src/lib/tabs"
+      ],
+      "quote": "Adversarially reviewed (4-lens ultracode workflow; 2 MAJOR + 2 MINOR + 2 NIT fixed, each re-tested): radio empty-name collision, tooltip keyboard-inaccessibility (→ #36), select touched-only-on-open, appearance cross-file coupling, radio double-label, missing required marker."
     },
     "tag": {
       "pr": 670,
@@ -341,10 +374,13 @@
       "quote": "Adversarial review (3 lenses) applied — two HIGH fixed: - cae-tag severity label failed WCAG 1"
     },
     "textarea": {
-      "pr": 44,
-      "commit": "f2a7368b",
+      "pr": 37,
+      "commit": "5e53818",
       "source": "commit",
-      "quote": "Adversarially reviewed (4-lens ultracode workflow): 0 BLOCKER/MAJOR (the one MAJOR refuted on verify); MINOR/NIT fixes applied — PROJECT_CONVENTIONS source-layout drift corrected + \"adding a component"
+      "paths": [
+        "projects/caelum/src/lib/textarea"
+      ],
+      "quote": "Adversarially reviewed (4-lens ultracode workflow; 2 MAJOR + 2 MINOR + 2 NIT fixed, each re-tested): radio empty-name collision, tooltip keyboard-inaccessibility (→ #36), select touched-only-on-open, appearance cross-file coupling, radio double-label, missing required marker."
     },
     "timeline": {
       "pr": 670,
@@ -371,16 +407,22 @@
       "quote": "Adversarially reviewed (4-lens: a11y / api-design / arch-packaging / parity-projection): 0 BLOCKER/MAJOR (aliasing/projection/wiring verified SOLID), 11 MINOR/NIT applied — count folded into the acces"
     },
     "tooltip": {
-      "pr": 44,
-      "commit": "f2a7368b",
+      "pr": 37,
+      "commit": "5e53818",
       "source": "commit",
-      "quote": "Adversarially reviewed (4-lens ultracode workflow): 0 BLOCKER/MAJOR (the one MAJOR refuted on verify); MINOR/NIT fixes applied — PROJECT_CONVENTIONS source-layout drift corrected + \"adding a component"
+      "paths": [
+        "projects/caelum/src/lib/tooltip"
+      ],
+      "quote": "Adversarially reviewed (4-lens ultracode workflow; 2 MAJOR + 2 MINOR + 2 NIT fixed, each re-tested): radio empty-name collision, tooltip keyboard-inaccessibility (→ #36), select touched-only-on-open, appearance cross-file coupling, radio double-label, missing required marker."
     },
     "tree": {
-      "pr": 44,
-      "commit": "f2a7368b",
+      "pr": 42,
+      "commit": "9cc7141",
       "source": "commit",
-      "quote": "Adversarially reviewed (4-lens ultracode workflow): 0 BLOCKER/MAJOR (the one MAJOR refuted on verify); MINOR/NIT fixes applied — PROJECT_CONVENTIONS source-layout drift corrected + \"adding a component"
+      "paths": [
+        "projects/caelum/src/lib/tree"
+      ],
+      "quote": "review: fix 8 adversarial-review findings (batch 3)"
     },
     "tree-select": {
       "pr": 284,
