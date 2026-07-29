@@ -1,0 +1,65 @@
+<cae-card class="forge-drawer-card">
+  <h3 class="forge-drawer-card__title">Drawer</h3>
+  <p class="forge-drawer-card__lead">
+    An off-canvas panel over Material's <code>MatDrawer</code>. The mode decides the
+    <em>accessibility contract</em>, not just the animation: <code>over</code> and
+    <code>push</code> render a backdrop and trap focus, so the drawer is a modal
+    <code>dialog</code>; <code>side</code> is part of the layout and is not modal at all. Switch the
+    mode and watch the announced semantics change with it.
+  </p>
+
+  <div class="forge-drawer-controls" role="group" aria-label="Drawer mode">
+    @for (m of modes; track m) {
+      <cae-button
+        variant="outlined"
+        type="button"
+        [attr.aria-pressed]="mode() === m"
+        (click)="selectMode(m)"
+      >
+        {{ m }}
+      </cae-button>
+    }
+  </div>
+
+  <p class="forge-drawer-contract">
+    In <code>{{ mode() }}</code> mode this drawer is
+    <strong>{{ mode() === 'side' ? 'not modal' : 'modal' }}</strong> —
+    @if (mode() === 'side') {
+      no <code>role</code>, no <code>aria-modal</code>, content beside it stays reachable by
+      <code>Tab</code>.
+    } @else {
+      <code>role="dialog"</code> + <code>aria-modal="true"</code> while open, focus trapped inside,
+      <code>Escape</code> dismisses.
+    }
+  </p>
+
+  <cae-drawer-container class="forge-drawer-container">
+    <cae-drawer [(opened)]="opened" [mode]="mode()" ariaLabel="Console navigation">
+      <nav class="forge-drawer-nav">
+        <p class="forge-drawer-nav__heading">Console</p>
+        <ul class="forge-drawer-nav__list">
+          @for (item of navItems; track item.label) {
+            <li>
+              <a class="forge-drawer-nav__link" href="#drawer-demo-target">
+                <span class="forge-drawer-nav__label">{{ item.label }}</span>
+                <span class="forge-drawer-nav__hint">{{ item.hint }}</span>
+              </a>
+            </li>
+          }
+        </ul>
+        <cae-button variant="outlined" type="button" (click)="opened.set(false)">Close</cae-button>
+      </nav>
+    </cae-drawer>
+
+    <div class="forge-drawer-content">
+      <cae-button type="button" (click)="opened.set(!opened())">
+        {{ opened() ? 'Close' : 'Open' }} drawer
+      </cae-button>
+      <p id="drawer-demo-target" class="forge-drawer-content__body">
+        Page content sits beside the drawer. In <code>side</code> mode you can Tab straight from the
+        drawer into this button; in <code>over</code> and <code>push</code> the focus trap keeps you
+        inside until the drawer closes.
+      </p>
+    </div>
+  </cae-drawer-container>
+</cae-card>

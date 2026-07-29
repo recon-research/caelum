@@ -123,7 +123,7 @@ Below, the **current** selector is listed with the historical alias noted. Verif
 | `p-dialog`, DynamicDialog | **`CaeDialog` service** — `open()` → `CaeDialogRef`; body directives `caeDialogTitle`/`caeDialogContent`/`caeDialogActions`/`caeDialogClose`. **Not** a `[(visible)]`-bound component (D-15) | `caelum/dialog` | ☑ | `MatDialog` (component injection) | Direct | 09 |
 | `p-confirmdialog` | **`CaeConfirmService.confirm()`** (centered modal) | `caelum/confirm` | ☑ | `MatDialog` + confirm wrapper (`role=alertdialog`) | Compose | 09 |
 | `p-confirmpopup` | **`CaeConfirmService.confirmAt(origin, …)`** — the *same service*, anchored presentation. There is **no `<cae-confirm-popup>` selector**: the `CaeConfirmPopup` body is internal, reachable only through the service | `caelum/confirm` | ☑ | CDK overlay | Build-S | 09 |
-| `p-drawer` (was `p-sidebar`) | `cae-drawer` | — | ☐ **#709** | `MatSidenav` / `MatDrawer` | Direct | 09 |
+| `p-drawer` (was `p-sidebar`) | `cae-drawer` + `cae-drawer-container` | `caelum/drawer` | ☑ | `MatDrawer` + `MatDrawerContainer` (#709). Supplies the modal semantics Material omits — `MatDrawer` sets no `role`/`aria-*` yet traps focus behind a backdrop in every mode but `side`, so a modal drawer gets `role="dialog"` + `aria-modal` per **D-826**. `position` is `start`/`end` only, matching `MatDrawer`; top/bottom → **#854** | Direct | 09 |
 | `pTooltip` (directive) | `[caeTooltip]` | `caelum/tooltip` | ☑ | `MatTooltip` | Direct | 09 |
 | `p-popover` (was `p-overlaypanel`) | `cae-popover` + `[caePopoverTriggerFor]` | `caelum/popover` | ☑ | CDK Overlay (imperative) | Build-S | 09 |
 
@@ -200,7 +200,7 @@ Below, the **current** selector is listed with the historical alias noted. Verif
 The low-usage tail splits three ways — all kept explicit, never a silent map hole:
 
 - **Conditional Build targets (mapped, ☐, built only on demand).** Two standing lists: **#667** — `p-knob`, `p-organizationchart`, `p-megamenu`, `p-dock` (the D-18 four) — and **#712** — `p-paginator` (standalone), `p-dataview`, `p-metergroup`, `p-cascadeselect`, `p-mention`, `p-colorpicker`, `p-speeddial`, `pKeyFilter`, `p-inplace`, `p-blockui`, `p-scrolltop`, `pAnimateOnScroll`. A real consumer need promotes a row out of either list into its own slice ticket.
-- **Real gaps with their own tickets.** `p-drawer`→`cae-drawer` (**#709**), `p-message`→`cae-alert` (**#710**), `p-panel`/`p-fieldset`→`cae-panel`/`cae-fieldset` (**#711**) are common enough that they are tracked as buildable slices rather than on-demand deferrals.
+- **Real gaps with their own tickets.** `p-message`→`cae-alert` (**#710**) and `p-panel`/`p-fieldset`→`cae-panel`/`cae-fieldset` (**#711**) are common enough that they are tracked as buildable slices rather than on-demand deferrals. `p-drawer`→`cae-drawer` was the third and **shipped in M5** (#709); its one remaining edge, a top/bottom drawer, is **#854**.
 - **Out of scope (no Material/CDK path).** `p-terminal` and PrimeNG utility directives with no Caelum analogue (`pStyleClass`, `pBind`, `ClassNames`, `p-fluid`, `FilterService`) have no first-party path at all.
 
 A migrating team that hits any of these makes an explicit **build-or-drop** decision (Book 20 §6) rather than assuming a target exists.
