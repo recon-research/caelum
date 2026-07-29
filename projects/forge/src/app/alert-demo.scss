@@ -1,0 +1,47 @@
+// Alert demo (#710) — per-demo card styles, token-driven (D-04). Only structural literals remain
+// (display/grid/gap); every colour/space resolves to `--cae-*` (a literal colour would be a defect,
+// Book 04 §3.6).
+
+.forge-alert-card {
+  display: block;
+  margin-block-end: var(--cae-space-4);
+}
+.forge-alert-card__title {
+  margin: 0 0 var(--cae-space-2);
+  color: var(--cae-color-on-surface);
+}
+// The heading is a focus landing spot (tabindex="-1"), so it needs a visible ring when it receives
+// focus — an unannounced, invisible focus move is the defect [dismissFocusTarget] exists to avoid.
+.forge-alert-card__title:focus-visible {
+  outline: var(--cae-focus-ring-width) solid var(--cae-focus-ring-color);
+  outline-offset: var(--cae-focus-ring-offset);
+}
+.forge-alert-card__lead {
+  margin: 0 0 var(--cae-space-4);
+  color: var(--cae-color-on-surface-variant);
+}
+.forge-alert-card__lead code {
+  color: var(--cae-color-primary);
+}
+
+.forge-alert-gallery {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cae-space-3);
+}
+
+.forge-alert-note {
+  margin: var(--cae-space-3) 0 0;
+  color: var(--cae-color-on-surface-variant);
+  font-size: var(--cae-text-sm);
+}
+.forge-alert-note code {
+  color: var(--cae-color-primary);
+}
+
+.forge-alert-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cae-space-2);
+  margin-block-end: var(--cae-space-3);
+}

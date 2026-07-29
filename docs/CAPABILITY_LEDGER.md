@@ -10,7 +10,7 @@ backs. **M4 exits when every shipped entry point reads `adversarial-passed`**, b
 exemption — and an exemption is re-proven from the source on every run, never taken on trust
 (#773).
 
-**65/65 adversarial-passed** · 0 parity-verified · 0 implemented — of which 64 carry a quote verified against their commit and 1 is pointer-only (†) · 1 exempt (below)
+**65/66 adversarial-passed** · 1 parity-verified · 0 implemented — of which 64 carry a quote verified against their commit and 1 is pointer-only (†) · 1 exempt (below)
 
 `untouched` / `mapped` (§3.4's first two states) are the p-*→cae-* mapping tracked in
 [`textbooks/reference/COMPARISON.md`](../textbooks/reference/COMPARISON.md) (Status column,
@@ -51,6 +51,7 @@ failed re-review gets recorded.
 | Entry point | State | spec | axe | browser | VR | Adversarial sign-off |
 |---|---|---|---|---|---|---|
 | `accordion` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #81 · `10b7ebe9` |
+| `alert` | parity-verified | ☑ | ☑ | ☑ | ☑ | **none** |
 | `autocomplete` | adversarial-passed | ☑ | ☑ | — | — | PR #121 · `fc2d36fa` |
 | `avatar` | adversarial-passed | ☑ | ☑ | — | — | PR #670 · `89f2560d` |
 | `badge` | adversarial-passed | ☑ | ☑ | — | — | PR #130 · `8cb47816` |
@@ -131,5 +132,7 @@ and the gate fails the moment one starts emitting runtime code (#773).
 
 ## Open gaps
 
-None — every shipped entry point is `adversarial-passed` or recorded above.
+Each row below is M4-exit work, not a formatting nit.
+
+- **`alert`** — no adversarial sign-off on record.
 

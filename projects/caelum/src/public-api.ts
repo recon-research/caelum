@@ -184,3 +184,8 @@ export * from 'caelum/popover';
 // (p-drawer, was p-sidebar; Book 11 §3.1 — a layout panel as a Direct, token-skinned port). Supplies
 // the modal semantics Material omits (role=dialog + aria-modal, per D-826); start/end only (#854). ---
 export * from 'caelum/drawer';
+
+// --- Alert (M5 parity close, #710): the INLINE status/validation message (p-message; tier Build-S —
+// Material ships no first-party alert, and cae-toast is a different, transient, LiveAnnouncer-based
+// contract). Owns its live region: role=alert/status per severity, dismiss button OUTSIDE it. ---
+export * from 'caelum/alert';

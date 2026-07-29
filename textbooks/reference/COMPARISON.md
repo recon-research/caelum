@@ -158,7 +158,7 @@ Below, the **current** selector is listed with the historical alias noted. Verif
 | PrimeNG (`p-*`) | Caelum (`cae-*`) | Import | Status | Material / CDK basis | Tier | Book |
 |---|---|---|---|---|---|---|
 | `p-toast` | **`CaeToast` service** — `open(message, action?, config?)` → `CaeToastRef` | `caelum/toast` | ☑ | `MatSnackBar` (extend for stacked/rich) | Direct | 09 |
-| `p-message` (inline) | `cae-alert` | — | ☐ **#710** | alert component on `MatCard` (no first-party alert). **No substitute ships** — `cae-toast` is transient and overlay-positioned, a different pattern with a different a11y contract | Build-S | 11 |
+| `p-message` (inline) | `cae-alert` | `caelum/alert` | ☑ | Built from scratch (#710) — Material ships no first-party alert, and the wrap the row once suggested (`MatCard`) supplies none of the contract. Owns its live region: `role="alert"` for `danger`, `role="status"` otherwise, overridable via `[politeness]` (`'off'` = static furniture). The dismiss button sits **outside** the region — ARIA's alert pattern is for announced content, not focusable content — and `[dismissFocusTarget]` catches the focus a self-removing close button would drop (WCAG 2.4.3) | Build-S | 11 |
 | `p-progressbar` | `cae-progress-bar` | `caelum/progress-bar` | ☑ | `MatProgressBar` | Direct | 11 |
 | `p-progressspinner` | `cae-progress-spinner` | `caelum/progress-spinner` | ☑ | `MatProgressSpinner` | Direct | 11 |
 | `p-badge` (`pBadge`) | `[caeBadge]` **directive only** | `caelum/badge` | ☑ | `MatBadge` (forward `caeBadgeDescription` for a11y; no standalone component / severity colour → #129) | Direct | 11 |
@@ -200,7 +200,7 @@ Below, the **current** selector is listed with the historical alias noted. Verif
 The low-usage tail splits three ways — all kept explicit, never a silent map hole:
 
 - **Conditional Build targets (mapped, ☐, built only on demand).** Two standing lists: **#667** — `p-knob`, `p-organizationchart`, `p-megamenu`, `p-dock` (the D-18 four) — and **#712** — `p-paginator` (standalone), `p-dataview`, `p-metergroup`, `p-cascadeselect`, `p-mention`, `p-colorpicker`, `p-speeddial`, `pKeyFilter`, `p-inplace`, `p-blockui`, `p-scrolltop`, `pAnimateOnScroll`. A real consumer need promotes a row out of either list into its own slice ticket.
-- **Real gaps with their own tickets.** `p-message`→`cae-alert` (**#710**) and `p-panel`/`p-fieldset`→`cae-panel`/`cae-fieldset` (**#711**) are common enough that they are tracked as buildable slices rather than on-demand deferrals. `p-drawer`→`cae-drawer` was the third and **shipped in M5** (#709); its one remaining edge, a top/bottom drawer, is **#854**.
+- **Real gaps with their own tickets.** `p-panel`/`p-fieldset`→`cae-panel`/`cae-fieldset` (**#711**) is common enough to be tracked as a buildable slice rather than an on-demand deferral. Two of the original three **shipped in M5**: `p-drawer`→`cae-drawer` (#709), whose one remaining edge — a top/bottom drawer — is **#854**, and `p-message`→`cae-alert` (#710), which owns its live region (`role=alert`/`status` by severity) and carries a stated edge on live-region *insertion*, recorded in [`docs/MIGRATION.md`](../../docs/MIGRATION.md) §6.
 - **Out of scope (no Material/CDK path).** `p-terminal` and PrimeNG utility directives with no Caelum analogue (`pStyleClass`, `pBind`, `ClassNames`, `p-fluid`, `FilterService`) have no first-party path at all.
 
 A migrating team that hits any of these makes an explicit **build-or-drop** decision (Book 20 §6) rather than assuming a target exists.
