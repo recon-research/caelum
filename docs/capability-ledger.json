@@ -435,7 +435,7 @@
     },
     "drawer": {
       "pr": 859,
-      "commit": "cf98449",
+      "commit": "a577773",
       "source": "commit",
       "quote": "Two-party adversarial review — 3 independent read-only lenses (correctness/state, a11y/modality, test-oracle integrity). Verdict: SOLID-with-gaps — 9 HIGH, 15 MED, 13 LOW; every HIGH fixed here or ticketed, 4 filed as #855/#856/#857/#858."
     }

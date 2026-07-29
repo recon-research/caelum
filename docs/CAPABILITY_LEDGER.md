@@ -67,7 +67,7 @@ failed re-review gets recorded.
 | `datepicker` | adversarial-passed | ☑ | ☑ | — | — | PR #684 · `a730b5a1` |
 | `dialog` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #103 · `b9f225ab` |
 | `divider` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #89 · `11614941` |
-| `drawer` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #859 · `cf98449` |
+| `drawer` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #859 · `a577773` |
 | `file-upload` | adversarial-passed | ☑ | ☑ | — | — | PR #346 · `3f2dc0f1` |
 | `form-field` | adversarial-passed | ☑ | ☑ | — | — | PR #55 · `be14721b` |
 | `galleria` | adversarial-passed | ☑ | ☑ | — | — | PR #291 · `da997020` |

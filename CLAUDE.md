@@ -14,7 +14,7 @@ Caelum is an open-source, **US-origin-clean** Angular 22 component library — A
 
 **Open decisions:** **#841** — where focus goes when a popover's trigger is removed while the panel is open. Non-blocking (rare path; an `isConnected` guard was tried and DELETED as provably inert). Decided this session: **D-849** (parity before publish) · **D-850** (first release is `0.1.0` — so breaking changes stay *minor* bumps until a deliberate 1.0.0; grounded in D-831 breaking a shipped signature during M4's exit week). **144 open issues** = deferral log.
 
-**Resume:** `main` @ `f206bb1` + PR **#859** (`slice/709-cae-drawer`), CI green · **M5 open** · next: take **#710** `cae-alert` — claim + branch per `ship_pr` step 0; nothing ships for `p-message` today, so it is a build, not a wrap · verify: `bash scripts/preflight.sh` **node on PATH** (#538), read the **EXIT CODE** (a wrapper's exit can mask it); a Linux preflight cannot see a Windows-only break (#814).
+**Resume:** `main` @ `a577773`, tree clean · **M5 open, no in-flight slice** · next: take **#710** `cae-alert` — claim + branch per `ship_pr` step 0; nothing ships for `p-message` today, so it is a build, not a wrap · verify: `bash scripts/preflight.sh` **node on PATH** (#538), read the **EXIT CODE** (a wrapper's exit can mask it); a Linux preflight cannot see a Windows-only break (#814). **A ledger row ships in its own post-merge PR** — squash orphans a branch-local sha (#860, red main once).
 
 ## Read these first (in order)
 
