@@ -2,6 +2,7 @@ import {
   booleanAttribute,
   ChangeDetectionStrategy,
   Component,
+  computed,
   DestroyRef,
   Directive,
   effect,
@@ -115,7 +116,8 @@ let nextUniqueId = 0;
         #panel
         class="cae-popover__panel"
         role="dialog"
-        tabindex="-1"
+        tabindex="0"
+        [attr.aria-modal]="dismissable() ? true : null"
         [id]="panelId"
         [attr.aria-label]="ariaLabel() || null"
         cdkTrapFocus
@@ -140,10 +142,17 @@ let nextUniqueId = 0;
       color: var(--cae-color-on-surface);
       box-shadow: var(--cae-elevation-3);
     }
-    /* The container is a focus fallback (tabindex=-1), not an interactive control — no visible ring when
-       it holds focus only because the panel had no other focusable target. Inner controls draw their own. */
+    /* No ring when focus lands here PROGRAMMATICALLY (moveFocusIn on open) — the panel is a container,
+       not an interactive control, and inner controls draw their own. */
     .cae-popover__panel:focus {
       outline: none;
+    }
+    /* ...but the panel is tabindex="0" since #824, so Tab can genuinely land on it, and a keyboard user
+       must be able to see where they are (WCAG 2.4.7). :focus-visible is exactly that distinction, and
+       it must follow the blanket rule above — same specificity, so source order decides. */
+    .cae-popover__panel:focus-visible {
+      outline: var(--cae-focus-ring);
+      outline-offset: calc(-1 * var(--cae-focus-ring-width));
     }
   `,
 })
@@ -158,12 +167,30 @@ export class CaePopover {
   /** Stable id for the panel (the trigger's aria-controls target). */
   readonly panelId = `cae-popover-${nextUniqueId++}`;
 
+  /**
+   * @internal The trigger that currently owns the open panel, or `null` when closed. **One popover, one
+   * open panel** — this is the single source of truth for open state, and the trigger identity is what
+   * makes the multi-trigger case honest.
+   *
+   * With a plain boolean, two triggers bound to one popover both rendered `aria-expanded="true"` and the
+   * same `aria-controls` while only one controlled anything, and clicking the second attached a *second*
+   * overlay with the same template — two live `<div id="cae-popover-N" role="dialog">`, which is a
+   * duplicate idref target (axe `duplicate-id-aria`, WCAG 4.1.2). Keying the ARIA off identity makes the
+   * non-owning trigger report closed, and {@link CaePopoverTrigger.open} closes the incumbent first.
+   */
+  readonly _openTrigger = signal<CaePopoverTrigger | null>(null);
+
   // Reached by the trigger directive: the panel template it portals into the overlay, and the VCR that
   // roots the embedded view (so projected content keeps this popover's injection context + CD parent).
   /** @internal */ readonly _template = viewChild.required(TemplateRef);
   /** @internal */ readonly _vcr = inject(ViewContainerRef);
-  /** @internal Open state, reflected by the trigger's `aria-expanded`. Owned here so the two stay in sync. */
-  readonly _isOpen = signal(false);
+  /**
+   * @internal Open state, reflected by the trigger's `aria-expanded`. **Derived** from
+   * {@link _openTrigger} rather than written separately, so the two cannot desync — the previous pair of
+   * independent writes could strand `_isOpen` at `true` forever if the trigger's `[caePopoverTriggerFor]`
+   * binding was swapped while the panel was open.
+   */
+  readonly _isOpen = computed(() => this._openTrigger() !== null);
 
   constructor() {
     // A dialog needs an accessible name (Book 09 §3.6 gate 4). Dev-only warn, mirroring cae-tree-select.
@@ -189,8 +216,10 @@ export class CaePopover {
   exportAs: 'caePopoverTrigger',
   host: {
     'aria-haspopup': 'dialog',
-    '[attr.aria-expanded]': 'popover()._isOpen()',
-    '[attr.aria-controls]': 'popover()._isOpen() ? popover().panelId : null',
+    // Keyed off OWNERSHIP, not the popover's open flag: a second trigger bound to the same popover must
+    // report closed and control nothing, or it advertises an `aria-controls` idref it does not own.
+    '[attr.aria-expanded]': 'popover()._openTrigger() === this',
+    '[attr.aria-controls]': 'popover()._openTrigger() === this ? popover().panelId : null',
     '(click)': 'toggle()',
     '(keydown)': 'onKeydown($event)',
   },
@@ -202,6 +231,8 @@ export class CaePopoverTrigger {
   private readonly overlay = inject(Overlay);
   private readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
   private overlayRef: OverlayRef | null = null;
+  /** The popover this trigger actually opened — captured, because `popover()` is a bindable expression. */
+  private openedPopover: CaePopover | null = null;
 
   constructor() {
     // Dispose an open overlay if the trigger itself is destroyed while the panel is up (e.g. an @if
@@ -219,6 +250,9 @@ export class CaePopoverTrigger {
   open(): void {
     if (this.overlayRef) return;
     const popover = this.popover();
+    // One popover, one open panel: if another trigger already owns it, close that one first rather than
+    // attaching a second overlay rendering the same template under the same id.
+    popover._openTrigger()?.close();
 
     const overlayRef = this.overlay.create({
       positionStrategy: this.overlay
@@ -228,18 +262,26 @@ export class CaePopoverTrigger {
         .withPush(true)
         .withFlexibleDimensions(false),
       scrollStrategy: this.overlay.scrollStrategies.reposition(),
-      // Transparent full-screen backdrop: the standard MatMenu/MatSelect outside-click detector. Present
-      // even when not dismissable (so a stray outside click can't leak to the page) — it just no-ops then.
-      hasBackdrop: true,
+      // Transparent full-screen backdrop: the standard MatMenu/MatSelect outside-click detector — and,
+      // per D-826, what makes this panel genuinely modal. Present exactly when it DOES something.
+      // It used to be unconditional, justified as stopping a stray outside click leaking to the page.
+      // That justification built a trap: `.cdk-overlay-backdrop` is `pointer-events: auto` and covers the
+      // whole viewport including the trigger, so with `[dismissable]="false"` (nothing subscribed) a
+      // mouse-only user had NO way to close the panel — every click, including the one on the trigger,
+      // was eaten. Escape still worked, so it was keyboard-only-escapable (#824).
+      hasBackdrop: popover.dismissable(),
       backdropClass: 'cdk-overlay-transparent-backdrop',
     });
-    this.overlayRef = overlayRef;
+    // Attach BEFORE recording the ref: `popover._template()` is a required viewChild and throws NG0951 if
+    // the popover's view doesn't exist yet. Assigning first left a non-null `overlayRef` with nothing
+    // attached, so the next click ran close() instead of opening (#824).
     overlayRef.attach(new TemplatePortal(popover._template(), popover._vcr));
-    popover._isOpen.set(true);
+    this.overlayRef = overlayRef;
+    this.openedPopover = popover;
+    popover._openTrigger.set(this);
 
-    if (popover.dismissable()) {
-      overlayRef.backdropClick().subscribe(() => this.close());
-    }
+    // Only reachable when a backdrop exists, i.e. when dismissable — see the config above.
+    overlayRef.backdropClick().subscribe(() => this.close());
     // Escape always closes (a dialog affordance), independent of [dismissable].
     overlayRef.keydownEvents().subscribe((event) => {
       if (event.key === 'Escape' && !hasModifier(event)) {
@@ -263,9 +305,21 @@ export class CaePopoverTrigger {
     if (!overlayRef) return;
     this.overlayRef = null; // null first so the dispose→detachments handler early-returns (no re-entry)
     overlayRef.dispose();
-    this.popover()._isOpen.set(false);
+    // Clear the popover we ACTUALLY opened, never `this.popover()` — that input is bindable to an
+    // expression, so a binding swapped while the panel was open would clear the wrong popover and strand
+    // the real one at `open` forever, leaving any later trigger advertising a dangling aria-controls
+    // idref for a dialog that isn't there (#824).
+    this.openedPopover?._openTrigger.set(null);
+    this.openedPopover = null;
     // Restore focus to the trigger. Runs AFTER dispose (which tears down the focus trap), so this is the
     // authoritative final focus target on every path — including outside-click, the usually-missed one.
+    //
+    // NOT guarded on `isConnected`. On the trigger-removal path (an `@if` drops the trigger while open)
+    // `dispose()` re-enters here through `detachments()` and this call lands on a detached element — but
+    // `.focus()` there is a silent no-op, so a guard would skip a call that already does nothing and
+    // change no observable outcome. Mutation-tested: adding one killed zero tests, which is the
+    // definition of inert. The user really does end up on `<body>` in that case; where focus *should*
+    // go once the trigger is gone is a genuine question, filed as #841 rather than papered over here.
     this.elementRef.nativeElement.focus();
   }
 
@@ -282,17 +336,29 @@ export class CaePopoverTrigger {
 
   /**
    * Move focus into the open panel: an author-marked `[cdkFocusInitial]`, else the panel container
-   * itself (`tabindex=-1`). Focusing the container is the APG-permitted default (as `MatDialog` does
+   * itself (`tabindex="0"`). Focusing the container is the APG-permitted default (as `MatDialog` does
    * when no autofocus target exists) and guarantees focus enters even for informational content with no
-   * focusable child — so the trap holds and `Escape` works. Explicit (not `cdkTrapFocusAutoCapture`) so
-   * the enter + restore story is one deterministic, testable pair.
+   * focusable child. Explicit (not `cdkTrapFocusAutoCapture`) so the enter + restore story is one
+   * deterministic, testable pair.
+   *
+   * Note what focus *entering* does and does not buy: it is not the trap **holding**. That is
+   * `tabindex="0"` on the panel (#824) — with `-1` the panel is not tabbable, so CDK's
+   * `_getFirstTabbableElement` returned `null` for informational content and the wrap-around anchors
+   * no-oped, letting Tab walk straight out into the page behind an open `role="dialog"`.
    */
   private moveFocusIn(overlayRef: OverlayRef): void {
     const host = overlayRef.overlayElement;
     // HTML lowercases attribute names, so match both casings — jsdom's selector engine is case-sensitive
     // on the name where a browser is not (the CDK writes the attribute, we only read it back).
     const initial = host.querySelector<HTMLElement>('[cdkFocusInitial], [cdkfocusinitial]');
-    (initial ?? host.querySelector<HTMLElement>('.cae-popover__panel'))?.focus();
+    initial?.focus();
+    // Verified by OUTCOME, not by whether the query matched: `[cdkFocusInitial]` on a disabled button or
+    // a plain <div> matches the selector while `.focus()` is a no-op, and a `??` fallback keyed on the
+    // query would skip the panel and leave focus outside the overlay entirely — where, per D-791's
+    // measurement, the CDK anchors can never retrieve it.
+    if (!host.contains(document.activeElement)) {
+      host.querySelector<HTMLElement>('.cae-popover__panel')?.focus();
+    }
   }
 }
 

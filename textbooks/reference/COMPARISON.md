@@ -125,7 +125,7 @@ Below, the **current** selector is listed with the historical alias noted. Verif
 | `p-confirmpopup` | **`CaeConfirmService.confirmAt(origin, …)`** — the *same service*, anchored presentation. There is **no `<cae-confirm-popup>` selector**: the `CaeConfirmPopup` body is internal, reachable only through the service | `caelum/confirm` | ☑ | CDK overlay | Build-S | 09 |
 | `p-drawer` (was `p-sidebar`) | `cae-drawer` | — | ☐ **#709** | `MatSidenav` / `MatDrawer` | Direct | 09 |
 | `pTooltip` (directive) | `[caeTooltip]` | `caelum/tooltip` | ☑ | `MatTooltip` | Direct | 09 |
-| `p-popover` (was `p-overlaypanel`) | `cae-popover` + `[caePopoverTriggerFor]` | `caelum/popover` | ☑ | `CdkConnectedOverlay` | Build-S | 09 |
+| `p-popover` (was `p-overlaypanel`) | `cae-popover` + `[caePopoverTriggerFor]` | `caelum/popover` | ☑ | CDK Overlay (imperative) | Build-S | 09 |
 
 ## Menu
 
