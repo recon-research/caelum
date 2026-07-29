@@ -10,7 +10,7 @@ backs. **M4 exits when every shipped entry point reads `adversarial-passed`**, b
 exemption — and an exemption is re-proven from the source on every run, never taken on trust
 (#773).
 
-**63/64 adversarial-passed** · 1 parity-verified · 0 implemented — of which 62 carry a quote verified against their commit and 1 is pointer-only (†) · 1 exempt (below)
+**64/64 adversarial-passed** · 0 parity-verified · 0 implemented — of which 63 carry a quote verified against their commit and 1 is pointer-only (†) · 1 exempt (below)
 
 `untouched` / `mapped` (§3.4's first two states) are the p-*→cae-* mapping tracked in
 [`textbooks/reference/COMPARISON.md`](../textbooks/reference/COMPARISON.md) (Status column,
@@ -41,15 +41,12 @@ The five entry points that had no axe assertion were closed by **#773**: four ga
 type-only — became the single exemption. Exemptions are re-derived from source on every run,
 never granted by the recorded reason; see the module docstring of the generator.
 
-One row carries `revoked` (**#809**): `popover` (#824). Each had a
-recorded sign-off that an independent two-party review later failed, so the pointer and quote
-stay on record — the evidence trail is the point — but the row cannot count. Deliberately
-distinct from a `null` row: "reviewed and failed" is a worse state than "never reviewed", and
-collapsing the two would discard exactly what this ledger is for. It was one of the two self-reviewed rows #809
-set out to resolve. Two rows have now EARNED a revoked sign-off back — `confirm` (#825) and
-`rating` (#823) — each by fixing the defect and commissioning its own three-lens review, and
-each now cites that commit. The recovery path is demonstrated, not just described; `popover`
-is the last one owing it, and is gated on #824.
+**No row carries `revoked` today.** All three that #809 revoked have EARNED their sign-offs
+back — `popover` (#824), `confirm` (#825) and `rating` (#823) — each by fixing the defect and
+commissioning its own independent multi-lens review, and each now cites that commit rather
+than the withdrawn one. The `revoked` field stays in the schema: it is what made "reviewed and
+failed" distinguishable from "never reviewed" while the gap was open, and it is how the next
+failed re-review gets recorded.
 
 | Entry point | State | spec | axe | browser | VR | Adversarial sign-off |
 |---|---|---|---|---|---|---|
@@ -90,7 +87,7 @@ is the last one owing it, and is gated on #824.
 | `panel-menu` | adversarial-passed | ☑ | ☑ | — | — | PR #778 · `5be24f1` |
 | `password` | adversarial-passed | ☑ | ☑ | — | — | PR #313 · `1793231c` |
 | `pick-list` | adversarial-passed | ☑ | ☑ | — | — | PR #343 · `766931bb` |
-| `popover` | parity-verified | ☑ | ☑ | ☑ | — | ~~PR #678 · `bfbb3bc1` †~~ **revoked** |
+| `popover` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #842 · `bc51fc23` |
 | `progress-bar` | adversarial-passed | ☑ | ☑ | — | — | PR #89 · `11614941` |
 | `progress-spinner` | adversarial-passed | ☑ | ☑ | — | — | PR #89 · `11614941` |
 | `radio` | adversarial-passed | ☑ | ☑ | — | — | PR #37 · `5e53818` |
@@ -133,7 +130,5 @@ and the gate fails the moment one starts emitting runtime code (#773).
 
 ## Open gaps
 
-Each row below is M4-exit work, not a formatting nit.
-
-- **`popover`** — sign-off REVOKED — #824 — the independent two-party review commissioned by #809 found 3 HIGH defects (the focus trap does not hold for a panel with no tabbable content; the spec's `panel()` oracle is derived from `_isOpen()` so a leaked pane is invisible to every close assertion; the trap itself is never asserted). Blocked on decision #826. The inline sign-off quoted here is superseded.
+None — every shipped entry point is `adversarial-passed` or recorded above.
 
