@@ -69,6 +69,7 @@
     "caelum-confirm": 3008,
     "caelum-datepicker": 8640,
     "caelum-file-upload": 8320,
-    "caelum-drawer": 2560
+    "caelum-drawer": 2560,
+    "caelum-alert": 3584
   }
 }

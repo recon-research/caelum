@@ -1,0 +1,79 @@
+<cae-card class="forge-alert-card">
+  <h3 class="forge-alert-card__title">Alert</h3>
+  <p class="forge-alert-card__lead">
+    The inline status message. Severity is carried by three channels at once — tint, glyph and text
+    — never colour alone (<abbr title="Web Content Accessibility Guidelines">WCAG</abbr> 1.4.1). The
+    part you cannot see: each alert is a <em>live region</em>, and <code>[politeness]</code> decides
+    whether it interrupts, waits its turn, or stays silent.
+  </p>
+
+  <!-- politeness="off" is the point of this gallery, not an oversight: four alerts that announce
+       themselves for merely existing is the anti-pattern. They are page furniture here. -->
+  <div class="forge-alert-gallery">
+    @for (item of severities; track item.severity) {
+      <cae-alert [severity]="item.severity" politeness="off">{{ item.text }}</cae-alert>
+    }
+  </div>
+  <p class="forge-alert-note">
+    All four are <code>politeness="off"</code> — they are page furniture, present at load, so they
+    announce nothing. The inverse is the rule that matters: <strong>never</strong>
+    <code>politeness="off"</code> on a message that appears <em>in response to an action</em>. That
+    is WCAG 4.1.3, and it is what the next card demonstrates.
+  </p>
+</cae-card>
+
+<cae-card class="forge-alert-card">
+  <h3 class="forge-alert-card__title">Announcing an alert</h3>
+  <p class="forge-alert-card__lead">
+    A live region announces <em>changes</em>. Press the button with a screen reader running: the
+    <code>danger</code> alert defaults to <code>role="alert"</code>, so inserting it interrupts and
+    is read out immediately — the behaviour a failed form submission needs.
+  </p>
+
+  <!-- One PERSISTENT control with a swapped label, not an @if-wrapped pair: a button that unmounts
+       itself on its own click drops the keyboard user to <body> (WCAG 2.4.3) — which would be a
+       poor thing to demonstrate on the page about not doing that. Same shape as drawer-demo. -->
+  <div class="forge-alert-controls">
+    <cae-button type="button" (click)="toggleSubmitted()">
+      {{ submitted() ? 'Reset' : 'Submit with an expired card' }}
+    </cae-button>
+  </div>
+
+  @if (submitted()) {
+    <cae-alert severity="danger">
+      Payment failed — the card ending 4242 expired. Update it and try again.
+    </cae-alert>
+  }
+</cae-card>
+
+<cae-card class="forge-alert-card">
+  <h3 #dismissLanding class="forge-alert-card__title" tabindex="-1">Dismissing an alert</h3>
+  <p class="forge-alert-card__lead">
+    A close button destroys the element that holds focus, which would drop a keyboard user to the
+    top of the page (WCAG 2.4.3). <code>[dismissFocusTarget]</code> names where focus goes instead —
+    here, this heading. Close it with the keyboard and the focus ring lands right above.
+  </p>
+
+  <cae-alert
+    severity="info"
+    dismissible
+    [(visible)]="bannerVisible"
+    [dismissFocusTarget]="dismissLanding"
+  >
+    This workspace is read-only while the migration finishes.
+  </cae-alert>
+
+  <!-- Persistent for the same reason. `disabledInteractive` swaps the native `disabled` attribute
+       for `aria-disabled` so the control stays tabbable while inert: a NATIVELY disabled button
+       drops the focus it is holding the instant it disables itself — the same 2.4.3 loss, one level
+       down. Material does not suppress the action for us, hence the guard in showBanner(). -->
+  <cae-button
+    variant="outlined"
+    type="button"
+    [disabled]="bannerVisible()"
+    disabledInteractive
+    (click)="showBanner()"
+  >
+    Bring the banner back
+  </cae-button>
+</cae-card>
