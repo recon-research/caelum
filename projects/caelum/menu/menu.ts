@@ -3,6 +3,7 @@ import {
   Component,
   Directive,
   effect,
+  forwardRef,
   inject,
   input,
   output,
@@ -40,12 +41,18 @@ export interface CaeMenuItem {
    */
   url?: string;
   /**
-   * Optional nested children — the item is a *branch*. `cae-panel-menu` recurses on these,
-   * rendering a branch as a collapsible section whose body holds this list (any depth). The
-   * flat menus render only the top level and ignore nested `items` (they have no submenu model
-   * — tiered submenus land on `cae-menu` itself via #150; there is no separate `cae-tiered-menu`
-   * component planned, which is how COMPARISON maps `p-tieredmenu`). Self-referential so one model
-   * describes a whole tree, matching PrimeNG's universal `MenuItem` shape.
+   * Optional nested children — the item is a *branch*. Self-referential so one model describes a
+   * whole tree, matching PrimeNG's universal `MenuItem` shape.
+   *
+   * **`cae-menu` renders these as tiered submenus** (#150 — how COMPARISON maps `p-tieredmenu`;
+   * there is no separate `cae-tiered-menu` component planned), to any depth, and so do the menus
+   * embedded in `cae-split-button` / `cae-menubar`. A branch is **navigational, not selectable**:
+   * activating it opens its submenu and emits nothing, so `(itemSelect)` only ever carries a leaf
+   * (Book 09 §3.5 draws the same line for CascadeSelect's intermediate nodes). An **empty** `items`
+   * array is not a branch — that item renders as an ordinary leaf rather than a dead-end panel.
+   * `cae-panel-menu` recurses on the same field, rendering a branch as a collapsible section.
+   * `cae-context-menu` is the one family member that does not (it wraps CDK Menu, not `MatMenu`) —
+   * that arm is #158.
    */
   items?: readonly CaeMenuItem[];
 }
@@ -64,29 +71,107 @@ export interface CaeMenuItem {
  * <button [caeMenuTriggerFor]="actions">Actions</button>
  * ```
  *
+ * **Tiered submenus (#150).** An item carrying nested `items` is a *branch*: it stamps its own
+ * nested panel and opens it, to any depth, which is how COMPARISON maps `p-tieredmenu` (no separate
+ * `cae-tiered-menu` component is planned). Book 09 §3.4 reaches for CDK Menu when building a
+ * *dedicated* tiered-menu component; here the component already exists as a `MatMenu` Direct wrap
+ * (D-01/D-02), and `MatMenu` implements every invariant that section names for nesting — verified
+ * in its source, not assumed: `aria-haspopup`/`aria-expanded`/`aria-controls` on the branch row, a
+ * decorative chevron, hover-open, no backdrop on a submenu, `Escape` closing one level, and
+ * **RTL-aware** arrow traversal (right opens / left closes in LTR, mirrored in RTL). Roving focus
+ * stays per-level because Material scopes its key manager to items whose injected parent panel is
+ * that panel. So the submenu behaviour here is Material's, and this component supplies only the
+ * recursion — rebuilding it on CDK Menu would rewrite a shipped Direct wrapper to re-implement
+ * what it already inherits.
+ *
+ * **The recursion is the COMPONENT, not an `ng-template`** — the one shape choice here, and it is
+ * forced. `MatMenu` finds its rows by `@ContentChildren` and each row finds its owning panel by
+ * DI, and **both follow where a template is *declared*, not where its view is inserted**. A
+ * recursive `<ng-template>` + `ngTemplateOutlet` (the `cae-panel-menu` idiom, which is fine there
+ * because an expansion panel needs neither) is declared *outside* `<mat-menu>`, so the panel's
+ * content query matched **zero** items — silently killing roving focus and typeahead — while every
+ * would-be submenu trigger failed to see a parent panel and opened as a standalone menu that
+ * closed its own parent. Measured, not deduced: an early draft of this component did exactly that
+ * and its rendering looked correct. A branch therefore stamps a nested `cae-menu`, whose rows are
+ * declared inside *its* `<mat-menu>`, and is wired up through the same public `[items]` input and
+ * `getMenuPanel()` seam the consumer's own trigger uses.
+ *
  * Theme comes free through the token bridge. Zoneless-compatible: `OnPush` + signal state,
  * no zone-coupled APIs (provisional on #9; Book 01 §3.2).
  */
 @Component({
   selector: 'cae-menu',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MatMenu, MatMenuItem, NgTemplateOutlet, CaeIcon],
+  // Self-import: a branch renders a nested `cae-menu`. `forwardRef` because the class is still
+  // being defined while this decorator is evaluated.
+  imports: [
+    MatMenu,
+    MatMenuItem,
+    MatMenuTrigger,
+    NgTemplateOutlet,
+    CaeIcon,
+    forwardRef(() => CaeMenu),
+  ],
   template: `
     <mat-menu [xPosition]="xPosition()" [yPosition]="yPosition()">
-      @for (item of items(); track $index) {
-        <button mat-menu-item [disabled]="item.disabled ?? false" (click)="itemSelect.emit(item)">
-          @if (iconTemplate(); as tpl) {
+      @for (item of items(); track item; let i = $index) {
+        <!-- Tracked by item IDENTITY, not $index. cae-menu USED to be a pure renderer (every
+             row a stateless button), which is what made $index safe; a branch is not — its
+             submenu's open/closed state lives inside MatMenuTrigger and is never bound here.
+             Under $index a removed branch hands that open state to whatever item slides into
+             its position, the #774 defect cae-panel-menu already carries a guard for. $index
+             still feeds the icon template's positional index, which is genuinely about
+             position (and is per-level, matching what a consumer sees on screen). -->
+        @if (item.items?.length) {
+          <button
+            mat-menu-item
+            [disabled]="item.disabled ?? false"
+            [matMenuTriggerFor]="child.getMenuPanel() ?? null"
+          >
             <ng-container
-              [ngTemplateOutlet]="tpl"
-              [ngTemplateOutletContext]="iconContext(item, $index)"
+              [ngTemplateOutlet]="row"
+              [ngTemplateOutletContext]="{ $implicit: item, index: i }"
             />
-          } @else if (item.icon) {
-            <cae-icon class="cae-menu__icon" [name]="item.icon" />
-          }
-          {{ item.label }}
-        </button>
+          </button>
+          <!-- The recursion: a branch's panel is just another cae-menu, bound through the same
+               public [items] input and read back through the same getMenuPanel() seam the
+               consumer's trigger uses. Depth is data-driven; no code here counts levels.
+               xPosition/yPosition are NOT forwarded: they describe where the ROOT panel sits
+               relative to its trigger, which is not a statement about the whole tree, so a
+               submenu keeps Material's own side and the flexible strategy's edge fallbacks.
+               Forwarding would be visible rather than inert — MatMenu's submenu branch reads
+               menu.xPosition when it places the panel — so whether a consumer expects the
+               root's side to cascade is a real parity question, deferred to #875. -->
+          <cae-menu
+            #child
+            [items]="item.items ?? []"
+            [iconTemplate]="iconTemplate()"
+            (itemSelect)="itemSelect.emit($event)"
+          />
+        } @else {
+          <button mat-menu-item [disabled]="item.disabled ?? false" (click)="itemSelect.emit(item)">
+            <ng-container
+              [ngTemplateOutlet]="row"
+              [ngTemplateOutletContext]="{ $implicit: item, index: i }"
+            />
+          </button>
+        }
       }
     </mat-menu>
+
+    <!-- The row's contents, shared by both arms so a branch and a leaf render identically
+         apart from Material's own submenu chevron. -->
+    <ng-template #row let-item let-index="index">
+      @if (iconTemplate(); as tpl) {
+        <ng-container
+          [ngTemplateOutlet]="tpl"
+          [ngTemplateOutletContext]="iconContext(item, index)"
+        />
+      } @else if (item.icon) {
+        <cae-icon class="cae-menu__icon" [name]="item.icon" />
+      }
+      {{ item.label }}
+    </ng-template>
   `,
   styles: `
     .cae-menu__icon {
@@ -119,6 +204,12 @@ export class CaeMenu implements CaeMenuPanelHost {
    * `MatMenu` type never leaks into the public surface; triggers read it through `getMenuPanel`.
    * Non-required so it reads as `undefined` (rather than throwing) before the panel's view has
    * initialised — a trigger's effect re-runs when it resolves.
+   *
+   * Stays an unqualified by-type query even though #150 made this component recursive: a branch's
+   * nested panel belongs to a nested `cae-menu`'s OWN view, and a view query does not cross a
+   * component boundary — so exactly one `<mat-menu>` is ever in scope here. (Pinning it to a
+   * template ref was tried and dropped: mutation-testing showed the pin could not change any
+   * outcome, and an inert guard is worse than none — it implies a hazard that is not there.)
    * @internal
    */
   readonly panel = viewChild(MatMenu);

@@ -478,6 +478,12 @@ describe('App', () => {
     fixture.componentInstance['runAction']({ value: 'sample', label: 'Fill with sample data' });
     expect(fixture.componentInstance['form'].getRawValue().name).toBe('Acme Console');
     expect(fixture.componentInstance['form'].valid).toBe(true);
+
+    // …and the "Jump to step" BRANCH (#150) is wired to real behaviour, not decoration: its
+    // leaves move the wizard. `fillSample` above reset it to 0, so this is a real transition.
+    expect(fixture.componentInstance['step']()).toBe(0);
+    fixture.componentInstance['runAction']({ value: 'step:2', label: 'Details' });
+    expect(fixture.componentInstance['step']()).toBe(2);
   });
 
   it('round-trips the notify preference through the bound cae-switch (#68)', async () => {

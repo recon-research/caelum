@@ -118,13 +118,15 @@ export class CaePanelMenuLeaf {
 
     <ng-template #level let-items>
       <cae-accordion class="cae-panel-menu__group" [multiple]="multiple()">
-        <!-- Tracked by item IDENTITY, not $index — panel-menu is the one data-driven menu whose
-             rendered child owns state. The flat menus (cae-menu, cae-menubar, cae-context-menu)
-             track $index safely because their rows are pure renderers, but an expansion panel's
-             open/closed flag lives inside Material and is never bound here, so $index reuse hands
-             a surviving panel's open state to whatever item lands on that position: drop the
-             expanded branch and its collapsed sibling renders expanded (#774). $index still feeds
-             the icon template's positional index, which is genuinely about position. -->
+        <!-- Tracked by item IDENTITY, not $index — every menu whose rendered child owns unbound
+             state needs this. An expansion panel's open/closed flag lives inside Material and is
+             never bound here, so $index reuse hands a surviving panel's open state to whatever
+             item lands on that position: drop the expanded branch and its collapsed sibling
+             renders expanded (#774). cae-menu joined this rule at #150, when its branches gained
+             submenus (a MatMenuTrigger's open state is unbound in exactly the same way);
+             cae-context-menu's rows are still pure renderers, so it may keep $index until #158
+             gives it submenus too. $index still feeds the icon template's positional index, which
+             is genuinely about position. -->
         @for (item of items; track item; let i = $index) {
           @if (item.items?.length) {
             <cae-expansion-panel [title]="item.label" [disabled]="item.disabled ?? false">
