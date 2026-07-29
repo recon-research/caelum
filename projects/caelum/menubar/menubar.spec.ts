@@ -58,8 +58,12 @@ describe('CaeMenubar', () => {
     await fixture.whenStable();
   }
 
-  // One <button> per top-level group; each cae-menu is display:none and its panel is an overlay
-  // template, so the toolbar holds exactly one button per group, in model order.
+  // One <button> per top-level group: a cae-menu's panel is an overlay TEMPLATE, so it contributes
+  // no button inline, and the toolbar holds exactly one per group in model order. This component
+  // used to carry its own `cae-menu { display: none }` because mat-toolbar is a flex row with a gap
+  // and an empty inline host blockifies into a stray flex item; since #150 `cae-menu` owns that
+  // rule itself (`:host { display: none }`, measured in menu.browser.spec.ts at 48px vs 24px), so
+  // the local copy was removed rather than kept as a second home for the same fact.
   const triggers = () => Array.from(el.querySelectorAll('button'));
   const menuTriggerAt = (i: number): CaeMenuTrigger =>
     fixture.debugElement.queryAll(By.directive(CaeMenuTrigger))[i].injector.get(CaeMenuTrigger);
@@ -73,6 +77,26 @@ describe('CaeMenubar', () => {
     Object.defineProperty(event, 'keyCode', { get: () => keyCode });
     (el.querySelector('.cae-menubar') as HTMLElement).dispatchEvent(event);
   }
+
+  it('inherits tiered submenus in its group dropdowns from the embedded cae-menu (#150)', async () => {
+    // COMPARISON's p-tieredmenu row claims menubar gets submenus for free by EMBEDDING cae-menu.
+    // #155 still owns the menubar's OWN parity extras; this only pins the inherited half.
+    await setup({
+      model: [
+        { label: 'File', items: [{ label: 'Recent', items: [{ value: 'a', label: 'a.txt' }] }] },
+      ],
+    });
+    menuTriggerAt(0).open();
+    await flush();
+    const branch = menuItems().find((r) => r.textContent!.trim() === 'Recent')!;
+    expect(branch.getAttribute('aria-haspopup')).toBe('menu');
+    branch.click();
+    await flush();
+    const submenu = document.getElementById(branch.getAttribute('aria-controls')!)!;
+    expect(
+      Array.from(submenu.querySelectorAll('[mat-menu-item]')).map((r) => r.textContent!.trim()),
+    ).toEqual(['a.txt']);
+  });
 
   it('renders a role=menubar of one trigger per group, named by ariaLabel', async () => {
     await setup({ ariaLabel: 'Main' });

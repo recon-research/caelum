@@ -155,6 +155,27 @@ describe('CaeSplitButton', () => {
     await flush();
     expect(selected?.value).toBe('draft');
   });
+  it('inherits tiered submenus from the embedded cae-menu, with no split-button wiring (#150)', async () => {
+    // COMPARISON's p-tieredmenu row claims split-button gets submenus for free because it EMBEDS
+    // cae-menu rather than re-rendering CaeMenuItem itself. That is a claim about this component,
+    // so it is asserted here and not only in menu.spec.ts.
+    await setup({
+      model: [
+        { value: 'save', label: 'Save' },
+        { label: 'Export', items: [{ value: 'pdf', label: 'PDF' }] },
+      ],
+    });
+    trigger().open();
+    await flush();
+    const branch = menuItems().find((r) => r.textContent!.trim() === 'Export')!;
+    expect(branch.getAttribute('aria-haspopup')).toBe('menu');
+    branch.click();
+    await flush();
+    const submenu = document.getElementById(branch.getAttribute('aria-controls')!)!;
+    expect(
+      Array.from(submenu.querySelectorAll('[mat-menu-item]')).map((r) => r.textContent!.trim()),
+    ).toEqual(['PDF']);
+  });
 });
 
 @Component({

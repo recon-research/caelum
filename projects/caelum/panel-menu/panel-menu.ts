@@ -103,6 +103,17 @@ export class CaePanelMenuLeaf {
  * {@link caeItemIconContext}, #649). Icons on the *branch headers* wait on the rich
  * expansion-panel header slot (#78) — today a header is its label text.
  *
+ * **Rows track by item identity, not `$index`** (kept in the JSDoc, not the template, because
+ * template comments are string content that ships and is charged by the size gate). Every menu
+ * whose rendered child owns *unbound* state needs this: an expansion panel's open/closed flag lives
+ * inside Material and is never bound here, so `$index` reuse hands a surviving panel's open state to
+ * whatever item lands on that position — drop the expanded branch and its collapsed sibling renders
+ * expanded (#774). `cae-menu` joined the same rule at #150, when its branches gained submenus (a
+ * `MatMenuTrigger`'s open state is unbound in exactly the same way). Family audit, so the next
+ * reader need not redo it: `cae-context-menu` is genuinely exempt (flat rows, no trigger per row,
+ * until #158 gives it submenus), but **`cae-menubar` stamps a trigger per group and still tracks
+ * `$index`**, so it carries this defect today — ticketed as **#879**, not silently excused.
+ *
  * Router-linked leaves (`routerLink`/`routerLinkActive`) are the optional-peer follow-up from D-595
  * (#150/#165); per-item disabled decorations and badges/suffixes are follow-ups too. Token-only
  * theming through the bridge; zoneless-compatible (`OnPush` + signal state; provisional on #9).
@@ -118,13 +129,8 @@ export class CaePanelMenuLeaf {
 
     <ng-template #level let-items>
       <cae-accordion class="cae-panel-menu__group" [multiple]="multiple()">
-        <!-- Tracked by item IDENTITY, not $index — panel-menu is the one data-driven menu whose
-             rendered child owns state. The flat menus (cae-menu, cae-menubar, cae-context-menu)
-             track $index safely because their rows are pure renderers, but an expansion panel's
-             open/closed flag lives inside Material and is never bound here, so $index reuse hands
-             a surviving panel's open state to whatever item lands on that position: drop the
-             expanded branch and its collapsed sibling renders expanded (#774). $index still feeds
-             the icon template's positional index, which is genuinely about position. -->
+        <!-- track item, NOT $index — an expansion panel's open flag is unbound (#774). Family
+             audit in the class doc; cae-menubar's exception is #879. -->
         @for (item of items; track item; let i = $index) {
           @if (item.items?.length) {
             <cae-expansion-panel [title]="item.label" [disabled]="item.disabled ?? false">

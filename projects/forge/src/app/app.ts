@@ -240,9 +240,21 @@ export class App {
     { value: 'public', label: 'Public' },
   ];
 
-  /** Header `cae-menu` items — functional: they drive the wizard end-to-end. */
+  /**
+   * Header `cae-menu` items — functional: they drive the wizard end-to-end. "Jump to step" is a
+   * *branch* (#150): nested `items` render as a tiered submenu, and the branch itself is
+   * navigational — only its leaves reach `runAction`.
+   */
   protected readonly actions: readonly CaeMenuItem[] = [
     { value: 'sample', label: 'Fill with sample data' },
+    {
+      label: 'Jump to step',
+      items: [
+        { value: 'step:0', label: 'Identity' },
+        { value: 'step:1', label: 'Plan' },
+        { value: 'step:2', label: 'Details' },
+      ],
+    },
     { value: 'reset', label: 'Reset form' },
     { value: 'duplicate', label: 'Duplicate workspace', disabled: true },
   ];
@@ -778,6 +790,7 @@ export class App {
   protected runAction(item: CaeMenuItem): void {
     if (item.value === 'sample') this.fillSample();
     else if (item.value === 'reset') this.reset();
+    else if (item.value?.startsWith('step:')) this.goToStep(Number(item.value.slice(5)));
   }
 
   /** Populate the wizard with valid sample data and return to step one. */

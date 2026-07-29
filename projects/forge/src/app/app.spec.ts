@@ -478,6 +478,19 @@ describe('App', () => {
     fixture.componentInstance['runAction']({ value: 'sample', label: 'Fill with sample data' });
     expect(fixture.componentInstance['form'].getRawValue().name).toBe('Acme Console');
     expect(fixture.componentInstance['form'].valid).toBe(true);
+
+    // …and the "Jump to step" BRANCH (#150) is wired to real behaviour, not decoration. Driven
+    // from the ACTUAL model, not a hand-built literal: with a literal, deleting the whole branch
+    // from `actions` left this green while the #150 demonstration silently disappeared — and Forge
+    // liveness is a definition_of_done gate, so the arm has to depend on the data it demonstrates.
+    const branch = fixture.componentInstance['actions'].find((a) => a.items?.length);
+    expect(branch).toBeDefined();
+    const leaf = branch!.items!.at(-1)!;
+    fixture.componentInstance['step'].set(0);
+    fixture.componentInstance['runAction'](leaf);
+    // The last leaf targets the last step, so this is a real transition away from 0.
+    expect(fixture.componentInstance['step']()).toBe(branch!.items!.length - 1);
+    expect(fixture.componentInstance['step']()).toBeGreaterThan(0);
   });
 
   it('round-trips the notify preference through the bound cae-switch (#68)', async () => {

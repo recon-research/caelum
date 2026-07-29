@@ -82,7 +82,7 @@ failed re-review gets recorded.
 | `input-number` | adversarial-passed | ☑ | ☑ | — | — | PR #307 · `0ff5d1cf` |
 | `input-otp` | adversarial-passed | ☑ | ☑ | — | — | PR #310 · `de78df5d` |
 | `listbox` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #115 · `1e81e3cf` |
-| `menu` | adversarial-passed | ☑ | ☑ | — | — | PR #42 · `9cc7141` |
+| `menu` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #42 · `9cc7141` |
 | `menubar` | adversarial-passed | ☑ | ☑ | — | — | PR #154 · `402539ad` |
 | `multi-select` | adversarial-passed | ☑ | ☑ | — | — | PR #136 · `5dfd7412` |
 | `order-list` | adversarial-passed | ☑ | ☑ | — | — | PR #339 · `cd77e581` |
