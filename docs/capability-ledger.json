@@ -223,6 +223,7 @@
       "source": "commit",
       "quote": "2-lens adversarial review (a11y + API) — both lenses converged on one MAJOR: - move buttons use aria-disabled, NOT native [disabled], so a button reaching a bound stays focusable instead of blurring t"
     },
+    "panel": null,
     "panel-menu": {
       "pr": 778,
       "commit": "5be24f1",

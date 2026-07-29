@@ -1,0 +1,75 @@
+// Panel / fieldset demo (#711) — per-demo card styles, token-driven (D-04). Only structural
+// literals remain (display/flex/gap); every colour/space resolves to `--cae-*` (a literal colour
+// would be a defect, Book 04 §3.6).
+
+.forge-panel-card {
+  display: block;
+  margin-block-end: var(--cae-space-4);
+}
+// One rule for every inline code span in the card, rather than one per text block.
+.forge-panel-card code {
+  color: var(--cae-color-primary);
+}
+.forge-panel-card__title {
+  margin: 0 0 var(--cae-space-2);
+  color: var(--cae-color-on-surface);
+}
+.forge-panel-card__lead {
+  margin: 0 0 var(--cae-space-4);
+  color: var(--cae-color-on-surface-variant);
+}
+
+.forge-panel-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cae-space-3);
+}
+
+.forge-panel-body {
+  margin: 0;
+  color: var(--cae-color-on-surface-variant);
+}
+
+// The projected header is a real <h4>; strip the UA margins so it sits in the header row like the
+// plain [header] string does.
+.forge-panel-heading {
+  margin: 0;
+  font: inherit;
+}
+
+.forge-panel-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cae-space-2);
+  margin-block: var(--cae-space-3);
+}
+
+// A plain demo button — Forge's own affordance, not a cae-* component, so it floors its own hit
+// target on the density-INVARIANT token (WCAG 2.5.8; --cae-space-* shrinks under compact).
+.forge-panel-button {
+  min-block-size: var(--cae-target-min);
+  box-sizing: border-box;
+  padding-inline: var(--cae-space-3);
+  border: 1px solid var(--cae-color-border);
+  border-radius: var(--cae-radius-sm);
+  background: var(--cae-surface-raised);
+  color: var(--cae-color-on-surface);
+  font: inherit;
+  cursor: pointer;
+}
+.forge-panel-button:focus-visible {
+  outline: var(--cae-focus-ring-width) solid var(--cae-focus-ring-color);
+  outline-offset: var(--cae-focus-ring-offset);
+}
+
+.forge-panel-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cae-space-3);
+}
+
+.forge-panel-note {
+  margin: var(--cae-space-3) 0 0;
+  color: var(--cae-color-on-surface-variant);
+  font-size: var(--cae-text-sm);
+}
