@@ -6,7 +6,7 @@ Caelum is an open-source, **US-origin-clean** Angular 22 component library — A
 
 > ~10 lines of "where are we". Per-slice detail lives in the merged PRs, [`docs/ROADMAP.md`](docs/ROADMAP.md), and the issue tracker — never here.
 
-**As of:** 2026-07-29 · main @ `2a91731` · CI green (full matrix) · **repo LIVE + protected** ([github.com/recon-research/caelum](https://github.com/recon-research/caelum)) · **Phase 2** · **M0 ☑ · M1 ☑ · M2 ☑ · M3 ☑ · M4 ☑ · M5 ◐** · template @ pyxis `79fdfbe`. Full slice index → [`docs/ROADMAP.md`](docs/ROADMAP.md); recipe + gotchas → [`docs/PATTERNS.md`](docs/PATTERNS.md).
+**As of:** 2026-07-29 · main @ `3e605de` · CI green (full matrix) · **repo LIVE + protected** ([github.com/recon-research/caelum](https://github.com/recon-research/caelum)) · **Phase 2** · **M0 ☑ · M1 ☑ · M2 ☑ · M3 ☑ · M4 ☑ · M5 ◐** · template @ pyxis `79fdfbe`. Full slice index → [`docs/ROADMAP.md`](docs/ROADMAP.md); recipe + gotchas → [`docs/PATTERNS.md`](docs/PATTERNS.md).
 
 **Where we are:** **M5** (**D-849**) — close the five parity gaps that were never a decision to defer, *then* publish. The other 14 `☐` COMPARISON rows are policy, not debt (#712/#667 on-demand lists, #232/#233 D-18 adapter cuts). **2 of 5 done:** ☑ #709 `cae-drawer` (PR #859) · ☑ **#710 `cae-alert`** (PR #867 — owns its live region; ledger **66/66**). Nobody outside this repo can install Caelum yet — that is what M5 ends.
 
@@ -14,7 +14,7 @@ Caelum is an open-source, **US-origin-clean** Angular 22 component library — A
 
 **Open decisions:** **#841** — where focus goes when a popover's trigger is removed while the panel is open. Non-blocking (rare path; an `isConnected` guard was tried and DELETED as provably inert). Decided earlier this session: **D-849** (parity before publish) · **D-850** (first release is `0.1.0` — so breaking changes stay *minor* bumps until a deliberate 1.0.0; grounded in D-831 breaking a shipped signature during M4's exit week). **152 open issues** = deferral log.
 
-**Resume:** `main` @ `2a91731`, tree clean · **M5 open, no in-flight slice** · next: take **#711** `cae-panel`/`cae-fieldset` — claim + branch per `ship_pr` step 0 · verify: `bash scripts/preflight.sh` **node on PATH** (#538), read the **EXIT CODE** (a wrapper's exit can mask it); a Linux preflight cannot see a Windows-only break (#814). **A ledger row ships in its own post-merge PR** — squash orphans a branch-local sha (#860, red main once). **A mutation harness must revert byte-identically** — an empty-string replacement splices code back at file top, and every later mutation then "dies" of a compile error (#867).
+**Resume:** `slice/711-cae-panel-fieldset` @ `3e605de` · **#711 `cae-panel`/`cae-fieldset` in flight** (claimed 2026-07-29) · verify: `bash scripts/preflight.sh` **node on PATH** (#538), read the **EXIT CODE** (a wrapper's exit can mask it); a Linux preflight cannot see a Windows-only break (#814). **A ledger row ships in its own post-merge PR** — squash orphans a branch-local sha (#860, red main once). **A mutation harness must revert byte-identically** — an empty-string replacement splices code back at file top, and every later mutation then "dies" of a compile error (#867).
 
 ## Read these first (in order)
 

@@ -341,8 +341,9 @@ describe('App', () => {
     // the panel-menu demo defers the composed cae-accordion / MatExpansion it uses; the drawer demo
     // (#709, M5) defers the MatSidenav module it pulls in through cae-drawer; the alert demo (#710, M5)
     // defers its own three cards — cae-alert itself is dependency-free, so what it holds back is the
-    // demo, not a Material module.)
-    expect((await fixture.getDeferBlocks()).length).toBe(40);
+    // demo, not a Material module; the panel demo (#711, M5) defers the MatCard cae-panel composes
+    // over plus the cae-input family its fieldset card groups.)
+    expect((await fixture.getDeferBlocks()).length).toBe(41);
     // The eager critical path (the create-workspace form) is present with NO defer block rendered...
     expect(el.querySelector('.forge-form-card')).not.toBeNull();
     // ...while the deferred demo sections are genuinely absent until rendered (proof they're lazy).
@@ -376,6 +377,7 @@ describe('App', () => {
     expect(el.querySelector('.forge-panel-menu-card')).toBeNull();
     expect(el.querySelector('.forge-drawer-card')).toBeNull();
     expect(el.querySelector('.forge-alert-card')).toBeNull();
+    expect(el.querySelector('.forge-panel-card')).toBeNull();
     expect(el.querySelector('.forge-datepicker-card')).toBeNull();
     expect(el.querySelector('.forge-grid-card')).toBeNull();
     expect(el.querySelector('.forge-orders-card')).toBeNull();
@@ -417,6 +419,7 @@ describe('App', () => {
     expect(el.querySelector('.forge-panel-menu-card')).not.toBeNull();
     expect(el.querySelector('.forge-drawer-card')).not.toBeNull();
     expect(el.querySelector('.forge-alert-card')).not.toBeNull();
+    expect(el.querySelector('.forge-panel-card')).not.toBeNull();
     expect(el.querySelector('.forge-datepicker-card')).not.toBeNull();
     expect(el.querySelector('.forge-grid-card')).not.toBeNull();
     expect(el.querySelector('.forge-commands-card')).not.toBeNull();

@@ -189,3 +189,8 @@ export * from 'caelum/drawer';
 // Material ships no first-party alert, and cae-toast is a different, transient, LiveAnnouncer-based
 // contract). Owns its live region: role=alert/status per severity, dismiss button OUTSIDE it. ---
 export * from 'caelum/alert';
+
+// --- Panel / fieldset (M5 parity close, #711): the titled-container family (p-panel, p-fieldset;
+// Book 11 §3.1 rates the row Compose). Two components, not one flagged one: cae-fieldset is a real
+// <fieldset>+<legend>, whose legend natively NAMES the enclosed group — no MatCard reproduces that. ---
+export * from 'caelum/panel';

@@ -102,6 +102,7 @@ import { PopoverDemo } from './popover-demo';
 import { PanelMenuDemo } from './panel-menu-demo';
 import { DrawerDemo } from './drawer-demo';
 import { AlertDemo } from './alert-demo';
+import { PanelDemo } from './panel-demo';
 import { DatepickerDemo } from './datepicker-demo';
 
 type ThemeMode = 'auto' | 'light' | 'dark';
@@ -195,6 +196,7 @@ const SWATCHES: ReadonlyArray<{ token: string; label: string }> = [
     PanelMenuDemo,
     DrawerDemo,
     AlertDemo,
+    PanelDemo,
     DatepickerDemo,
     CaeTextarea,
     CaeToggleButton,

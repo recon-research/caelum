@@ -1,0 +1,83 @@
+<cae-card class="forge-panel-card">
+  <h3 class="forge-panel-card__title">Panel</h3>
+  <p class="forge-panel-card__lead">
+    A titled container with an optional disclosure — the gap between <code>cae-card</code> (no
+    header contract, no collapse) and <code>cae-expansion-panel</code> (collapses, but implies an
+    accordion group). The toggle is a real <code>&lt;button&gt;</code> carrying
+    <code>aria-expanded</code> and <code>aria-controls</code>: the
+    <abbr title="Web Accessibility Initiative — Accessible Rich Internet Applications"
+      >WAI-ARIA</abbr
+    >
+    <em>Disclosure</em> pattern, not <em>Accordion</em>.
+  </p>
+
+  <div class="forge-panel-stack">
+    <cae-panel header="Shipping address">
+      <p class="forge-panel-body">
+        1 Example Way, Nowhere. No <code>[toggleable]</code>, so there is no toggle and nothing to
+        announce — a plain titled box.
+      </p>
+    </cae-panel>
+
+    <cae-panel header="Order details" toggleable [(collapsed)]="detailsCollapsed">
+      <p class="forge-panel-body">
+        Two-way <code>[(collapsed)]</code>, so the button outside this panel and the toggle inside
+        it stay in step.
+      </p>
+    </cae-panel>
+  </div>
+
+  <!-- A PERSISTENT control, not one that unmounts on its own click: a button that removes itself
+       drops the keyboard user to <body> (WCAG 2.4.3). Same shape as the alert/drawer demos. -->
+  <div class="forge-panel-controls">
+    <button type="button" class="forge-panel-button" (click)="toggleDetails()">
+      {{ detailsCollapsed() ? 'Expand' : 'Collapse' }} “Order details” from outside
+    </button>
+  </div>
+
+  <cae-panel toggleable [(collapsed)]="historyCollapsed">
+    <h4 caePanelHeader class="forge-panel-heading">Payment history</h4>
+    <p class="forge-panel-body">
+      This header is a projected <code>[caePanelHeader]</code>, so it can be a real
+      <code>&lt;h4&gt;</code>. The plain <code>[header]</code> string above renders as text — same
+      as <code>p-panel</code> — which is invisible to a screen reader’s heading navigation. Project
+      the slot when the panel is a document section rather than a box.
+    </p>
+  </cae-panel>
+</cae-card>
+
+<cae-card class="forge-panel-card">
+  <h3 class="forge-panel-card__title">Fieldset</h3>
+  <p class="forge-panel-card__lead">
+    A real <code>&lt;fieldset&gt;</code> and <code>&lt;legend&gt;</code>, which is why this is a
+    separate component rather than a flag on <code>cae-panel</code>. The part you cannot see: the
+    legend <em>names the group natively</em>. With a screen reader running, move through the fields
+    below — each one is announced as “Billing details, Cardholder name…”. No <code>MatCard</code>
+    and no ARIA attribute reproduces that association.
+  </p>
+
+  <cae-fieldset legend="Billing details" toggleable [(collapsed)]="billingCollapsed">
+    <div class="forge-panel-fields">
+      <cae-input
+        [(ngModel)]="cardName"
+        label="Cardholder name"
+        name="cardName"
+        autocomplete="cc-name"
+      />
+      <cae-input
+        [(ngModel)]="cardNumber"
+        label="Card number"
+        name="cardNumber"
+        autocomplete="cc-number"
+      />
+    </div>
+  </cae-fieldset>
+
+  <p class="forge-panel-note">
+    Edit a field, collapse the group, then expand it again — <strong>the values survive</strong>.
+    Collapsing sets <code>[hidden]</code> on the content rather than removing it, so the form keeps
+    its values, its scroll position and its pending validation. It also keeps the toggle’s
+    <code>aria-controls</code> pointing at an element that still exists; <code>&#64;if</code> would
+    leave it dangling.
+  </p>
+</cae-card>
