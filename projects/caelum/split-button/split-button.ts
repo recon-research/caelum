@@ -39,9 +39,11 @@ import { CaeMenu, CaeMenuTrigger, type CaeMenuItem } from 'caelum/menu';
  * data-driven menu. Icons follow the library convention (D-596, #644): a primary {@link icon}
  * glyph before the label, per-item `model[].icon` glyphs rendered by the embedded `cae-menu`,
  * and an {@link iconTemplate} escape hatch forwarded to it (wins over per-item glyphs).
- * Remaining follow-ups — button-side extras (projected content, per-half appearance,
- * `disabledInteractive`, `(dropdownClick)`) **#149**; router links / commands / nesting via
- * `cae-menu` **#150**.
+ * **Nested submenus arrive for free** (#150): the dropdown IS a `cae-menu`, so any `model[]` item
+ * with non-empty `items` renders as a submenu branch, to any depth, with no split-button-side
+ * wiring. Remaining follow-ups — button-side extras (projected content, per-half appearance,
+ * `disabledInteractive`, `(dropdownClick)`) **#149**; router links / commands on the shared item
+ * model **#150**.
  *
  * Zoneless-compatible: `OnPush` + signal inputs (D-12).
  */

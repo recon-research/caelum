@@ -53,6 +53,20 @@ export interface CaeMenuItem {
    * `cae-panel-menu` recurses on the same field, rendering a branch as a collapsible section.
    * `cae-context-menu` is the one family member that does not (it wraps CDK Menu, not `MatMenu`) —
    * that arm is #158.
+   *
+   * **Two preconditions, both introduced by the #150 recursion:**
+   * - **The graph must be a finite tree.** A cycle (`a.items = [a]`, or a mutual pair) recurses
+   *   until the stack overflows, and it happens at the first change detection — not on open, since
+   *   a branch's nested menu is projected content that is *created* eagerly even though its DOM is
+   *   only inserted when the panel opens. Material's own recursion guard cannot catch this: it
+   *   trips only when a panel is its own direct parent, and here every level is a distinct
+   *   instance. A dev-mode cycle check is #877.
+   * - **Item objects need stable identity, and must be distinct within a level.** Rows track by
+   *   item identity (see the template), so binding a freshly-built array of fresh objects on every
+   *   change detection — `[items]="buildItems()"` with a non-memoised method — now destroys and
+   *   recreates every row each pass, which drops focus and closes any open submenu. Hold the model
+   *   in a `signal` or a `readonly` field. Repeating one object twice in a level is a dev-mode
+   *   duplicate-key warning plus unreliable view reuse on reorder.
    */
   items?: readonly CaeMenuItem[];
 }
@@ -79,10 +93,15 @@ export interface CaeMenuItem {
  * in its source, not assumed: `aria-haspopup`/`aria-expanded`/`aria-controls` on the branch row, a
  * decorative chevron, hover-open, no backdrop on a submenu, `Escape` closing one level, and
  * **RTL-aware** arrow traversal (right opens / left closes in LTR, mirrored in RTL). Roving focus
- * stays per-level because Material scopes its key manager to items whose injected parent panel is
- * that panel. So the submenu behaviour here is Material's, and this component supplies only the
- * recursion — rebuilding it on CDK Menu would rewrite a shipped Direct wrapper to re-implement
- * what it already inherits.
+ * stays per-level because the recursion is a **component**: `MatMenu` collects its rows with a
+ * content query, and a content query does not cross a component's view boundary, so a parent panel
+ * never sees a nested level's rows at all. (Material *also* filters by each row's injected parent
+ * panel, but that filter is a no-op here — and naming it as the reason would be actively
+ * misleading, because it is exactly what would NOT have saved the `ng-template` draft described
+ * below: with a template there is no view boundary, the nested rows ARE matched, and they inject
+ * the outer panel.) So the submenu behaviour here is Material's, and this component supplies only
+ * the recursion — rebuilding it on CDK Menu would rewrite a shipped Direct wrapper to
+ * re-implement what it already inherits.
  *
  * **The recursion is the COMPONENT, not an `ng-template`** — the one shape choice here, and it is
  * forced. `MatMenu` finds its rows by `@ContentChildren` and each row finds its owning panel by
@@ -95,6 +114,21 @@ export interface CaeMenuItem {
  * and its rendering looked correct. A branch therefore stamps a nested `cae-menu`, whose rows are
  * declared inside *its* `<mat-menu>`, and is wired up through the same public `[items]` input and
  * `getMenuPanel()` seam the consumer's own trigger uses.
+ *
+ * **Two template decisions worth knowing, kept here rather than inline** — HTML comments inside a
+ * `template:` literal are string content, so they are *not* minified away and the per-entry-point
+ * size gate charges for them, while this JSDoc is free:
+ * - **Rows track by item identity, not `$index`.** `cae-menu` used to be a pure renderer (every row
+ *   a stateless button), which is what made `$index` safe; a branch is not, because its submenu's
+ *   open/closed state lives inside `MatMenuTrigger` and is never bound here. Under `$index` a
+ *   removed branch hands that open state to whatever item slides into its position — the #774
+ *   defect `cae-panel-menu` already carries a guard for. `$index` still feeds the icon template's
+ *   positional index, which is genuinely about position, and is per-level.
+ * - **`xPosition`/`yPosition` are not forwarded to a submenu.** They describe where the ROOT panel
+ *   sits relative to its trigger, which is not a statement about the whole tree, so a submenu keeps
+ *   Material's own side and the flexible strategy's edge fallbacks. Forwarding would be *visible*
+ *   rather than inert — Material's submenu placement reads `menu.xPosition` — so whether a
+ *   consumer expects the root's side to cascade is a real parity question, deferred to #875.
  *
  * Theme comes free through the token bridge. Zoneless-compatible: `OnPush` + signal state,
  * no zone-coupled APIs (provisional on #9; Book 01 §3.2).
@@ -113,15 +147,10 @@ export interface CaeMenuItem {
     forwardRef(() => CaeMenu),
   ],
   template: `
-    <mat-menu [xPosition]="xPosition()" [yPosition]="yPosition()">
+    <!-- aria-label: '' yields an absent attribute (MatMenu maps it); see the class doc. -->
+    <mat-menu [xPosition]="xPosition()" [yPosition]="yPosition()" [aria-label]="ariaLabel()">
       @for (item of items(); track item; let i = $index) {
-        <!-- Tracked by item IDENTITY, not $index. cae-menu USED to be a pure renderer (every
-             row a stateless button), which is what made $index safe; a branch is not — its
-             submenu's open/closed state lives inside MatMenuTrigger and is never bound here.
-             Under $index a removed branch hands that open state to whatever item slides into
-             its position, the #774 defect cae-panel-menu already carries a guard for. $index
-             still feeds the icon template's positional index, which is genuinely about
-             position (and is per-level, matching what a consumer sees on screen). -->
+        <!-- track item, NOT $index — a branch's open state is unbound (#774). See the class doc. -->
         @if (item.items?.length) {
           <button
             mat-menu-item
@@ -133,19 +162,12 @@ export interface CaeMenuItem {
               [ngTemplateOutletContext]="{ $implicit: item, index: i }"
             />
           </button>
-          <!-- The recursion: a branch's panel is just another cae-menu, bound through the same
-               public [items] input and read back through the same getMenuPanel() seam the
-               consumer's trigger uses. Depth is data-driven; no code here counts levels.
-               xPosition/yPosition are NOT forwarded: they describe where the ROOT panel sits
-               relative to its trigger, which is not a statement about the whole tree, so a
-               submenu keeps Material's own side and the flexible strategy's edge fallbacks.
-               Forwarding would be visible rather than inert — MatMenu's submenu branch reads
-               menu.xPosition when it places the panel — so whether a consumer expects the
-               root's side to cascade is a real parity question, deferred to #875. -->
+          <!-- The recursion. xPosition/yPosition deliberately NOT forwarded (#875). -->
           <cae-menu
             #child
             [items]="item.items ?? []"
             [iconTemplate]="iconTemplate()"
+            [ariaLabel]="item.label"
             (itemSelect)="itemSelect.emit($event)"
           />
         } @else {
@@ -159,8 +181,7 @@ export interface CaeMenuItem {
       }
     </mat-menu>
 
-    <!-- The row's contents, shared by both arms so a branch and a leaf render identically
-         apart from Material's own submenu chevron. -->
+    <!-- Row contents, shared by both arms; Material adds the branch chevron itself. -->
     <ng-template #row let-item let-index="index">
       @if (iconTemplate(); as tpl) {
         <ng-container
@@ -174,6 +195,19 @@ export interface CaeMenuItem {
     </ng-template>
   `,
   styles: `
+    /* Renders nothing itself — every panel it owns is stamped into a CDK overlay, detached from
+       this host. Without this the host is an empty INLINE box, which is harmless inside a menu
+       panel (a block container: an empty inline with no margin/padding/border yields a line box
+       treated as not existing) but NOT in the flow content where consumers actually place it: a
+       flex or grid parent blockifies it into a real item, and gap then applies to it. Forge's own
+       header is display:flex with gap:var(--cae-space-3) and a cae-menu sitting between two
+       buttons, so the missing rule cost one stray gap; cae-menubar had already patched the same
+       thing locally from the outside. Mirrors Material's own unencapsulated mat-menu display:none.
+       Measured in menu.browser.spec.ts — in BOTH contexts, because an early draft tested only the
+       menu-panel one, measured no difference, and wrongly deleted the rule as inert. */
+    :host {
+      display: none;
+    }
     .cae-menu__icon {
       margin-inline-end: var(--cae-space-2);
     }
@@ -191,6 +225,18 @@ export class CaeMenu implements CaeMenuPanelHost {
    * is its label).
    */
   readonly iconTemplate = input<TemplateRef<CaeItemIconContext<CaeMenuItem>> | null>(null);
+  /**
+   * Accessible name for the panel itself (`role="menu"`), for the case where the trigger's own name
+   * does not describe the list — e.g. two menus opened from icon-only buttons.
+   *
+   * A **submenu sets this for itself**: a branch names its child panel with the branch's label, so
+   * a screen-reader user arriving at level 2 or 3 hears which group they are in rather than a bare
+   * "menu". `aria-controls` on the branch row supplies the *association*, not a name, and no axe
+   * rule covers it — WAI-ARIA APG's menubar pattern names each submenu container from its parent
+   * item, which is what this reproduces (#150). Consumers can still override it per level by
+   * binding a nested `cae-menu` themselves.
+   */
+  readonly ariaLabel = input('');
   /** Horizontal alignment of the panel relative to its trigger. */
   readonly xPosition = input<'before' | 'after'>('after');
   /** Vertical alignment of the panel relative to its trigger. */

@@ -2,6 +2,7 @@ import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { OverlayContainer } from '@angular/cdk/overlay';
+import { BidiModule } from '@angular/cdk/bidi';
 import { MatMenuTrigger } from '@angular/material/menu';
 import { CAE_ICON_GLYPHS } from 'caelum/icon';
 
@@ -276,6 +277,19 @@ describe('CaeMenu tiered submenus (#150)', () => {
     panelOf(fixture.debugElement.query(By.directive(CaeMenuTrigger)).nativeElement as HTMLElement);
   const rowNamed = (panel: HTMLElement, label: string): HTMLElement =>
     rowsIn(panel).find((el) => el.textContent?.trim() === label)!;
+  /**
+   * Dispatch a keydown carrying a CDK keyCode (KeyboardEvent init has no keyCode field).
+   *
+   * **The target matters for some keys and not others, which is worth knowing before trusting an
+   * assertion.** A `MatMenu` panel has NO `(keydown)` binding; `_handleKeydown` is reached through
+   * `overlayRef.keydownEvents()`, and the CDK dispatcher listens on `body` and routes to the
+   * TOP-MOST attached overlay without consulting the event target. So panel-directed keys (Down,
+   * Escape, the closing arrow) would behave identically if dispatched at `document.body` — they
+   * prove "the topmost overlay handled it", not "the key was scoped to this element". Keys on a
+   * TRIGGER row (the opening arrow) are genuinely target-scoped: they fire that row's own host
+   * binding. Assertions that need per-level scoping have to come from observed focus, not from
+   * where the event was aimed.
+   */
   const press = (el: HTMLElement, keyCode: number): void => {
     const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true });
     Object.defineProperty(event, 'keyCode', { get: () => keyCode });
@@ -284,6 +298,9 @@ describe('CaeMenu tiered submenus (#150)', () => {
   const RIGHT_ARROW = 39;
   const LEFT_ARROW = 37;
   const DOWN_ARROW = 40;
+  const ESCAPE = 27;
+  const backdrops = (): number =>
+    overlayContainer.getContainerElement().querySelectorAll('.cdk-overlay-backdrop').length;
 
   // These two are the guard for the defect that ALL of the specs below missed while it was live.
   // An early draft recursed with `ngTemplateOutlet` instead of a nested cae-menu; because MatMenu
@@ -314,6 +331,14 @@ describe('CaeMenu tiered submenus (#150)', () => {
     // Second row of the SUBMENU ('Social'), never row 2 of the root ('Share').
     expect(document.activeElement).toBe(rowsIn(level2)[1]);
     expect(rowsIn(level2).map((el) => el.textContent!.trim())).toEqual(['Email', 'Social']);
+
+    // The assertions above would ALSO hold for one shared key manager spanning both panels, since
+    // the arrow reaches the topmost overlay either way (see `press`). This is the complement that
+    // only a per-level manager satisfies: close back to the root and its active row must still be
+    // 'Share' at index 1 — a shared manager would have advanced past it to index 2.
+    press(level2, LEFT_ARROW);
+    await settle();
+    expect(document.activeElement).toBe(share);
   });
 
   it('renders only the top level in the root panel — a branch does not flatten its children', async () => {
@@ -368,6 +393,33 @@ describe('CaeMenu tiered submenus (#150)', () => {
     expect(host.selected()?.value).toBe('email');
   });
 
+  it('emits exactly ONCE for a depth-3 leaf — the per-level relay does not re-broadcast', async () => {
+    // Every level binds (itemSelect)="itemSelect.emit($event)" on its child, so a leaf's event is
+    // re-emitted at each enclosing level on the way up. Nothing else in this file can tell one
+    // emission from three: every other arm reads `selected()`, which looks identical either way.
+    // If this ever regresses to a broadcast, a consumer's menu action runs once per level of depth.
+    const emissions: (string | undefined)[] = [];
+    host.selected.set(undefined);
+    const sub = fixture.debugElement
+      .query(By.directive(CaeMenu))
+      .componentInstance.itemSelect.subscribe((i: CaeMenuItem) => emissions.push(i.value));
+
+    await openRoot();
+    const share = rowNamed(rootPanel(), 'Share');
+    share.click();
+    await settle();
+    const social = rowNamed(panelOf(share), 'Social');
+    social.click();
+    await settle();
+    // Two branches activated, and neither is selectable.
+    expect(emissions).toEqual([]);
+
+    rowNamed(panelOf(social), 'Bluesky').click();
+    await settle();
+    expect(emissions).toEqual(['bsky']);
+    sub.unsubscribe();
+  });
+
   it('treats an EMPTY items array as a leaf — no dead-end panel', async () => {
     host.items.set([{ value: 'solo', label: 'Solo', items: [] }]);
     await openRoot();
@@ -400,11 +452,84 @@ describe('CaeMenu tiered submenus (#150)', () => {
     press(rowsIn(panelOf(share))[0], LEFT_ARROW);
     await settle();
     expect(share.getAttribute('aria-expanded')).toBe('false');
+    // ONE level, not the whole tree: the root stays open and focus lands back on the branch row.
+    // Without these two, any implementation that collapsed everything would pass.
+    expect(matTriggerOf(fixture).menuOpen).toBe(true);
+    expect(document.activeElement).toBe(share);
+  });
+
+  it('closes exactly one level on Escape, restoring focus to the branch row', async () => {
+    // Book 09 §3.4 names this a fixed menu invariant, so it is pinned here rather than trusted.
+    // Escape is a DIFFERENT switch case from the closing arrow, so the arm above does not cover it.
+    await openRoot();
+    const share = rowNamed(rootPanel(), 'Share');
+    press(share, RIGHT_ARROW);
+    await settle();
+    press(panelOf(share), ESCAPE);
+    await settle();
+    expect(share.getAttribute('aria-expanded')).toBe('false');
+    expect(matTriggerOf(fixture).menuOpen).toBe(true);
+    expect(document.activeElement).toBe(share);
+  });
+
+  it('opens a submenu on hover, without stealing focus into it', async () => {
+    // The one inherited behaviour that depends on THIS component's timing: Material wires
+    // hover-open once, in ngAfterContentInit, and it no-ops forever unless the branch row's
+    // `[matMenuTriggerFor]` is already set at that instant. Converting that binding to an effect
+    // (the shape CaeMenuTrigger itself uses) would kill hover-open with every other spec green.
+    await openRoot();
+    const share = rowNamed(rootPanel(), 'Share');
+    share.dispatchEvent(new MouseEvent('mouseenter')); // non-bubbling: dispatch on the row itself
+    await settle();
+    expect(share.getAttribute('aria-expanded')).toBe('true');
+    // Opened by mouse, so Material deliberately does NOT autofocus the submenu's first row.
+    expect(document.activeElement).not.toBe(rowsIn(panelOf(share))[0]);
+  });
+
+  it('names each submenu panel from its branch, and the root only when asked', async () => {
+    // A submenu is a NEW unnamed role="menu" without this — axe has no rule for it, so both axe
+    // arms pass while a screen-reader user hears a bare "menu" on entering level 2.
+    await openRoot();
+    const share = rowNamed(rootPanel(), 'Share');
+    expect(rootPanel().getAttribute('aria-label')).toBeNull(); // root: opt-in, unchanged default
+    share.click();
+    await settle();
+    expect(panelOf(share).getAttribute('aria-label')).toBe('Share');
+
+    // …and it recurses: level 3 is named by ITS branch, not by the root's.
+    const social = rowNamed(panelOf(share), 'Social');
+    social.click();
+    await settle();
+    expect(panelOf(social).getAttribute('aria-label')).toBe('Social');
+  });
+
+  it('marks a branch with the decorative submenu chevron, and a leaf without', async () => {
+    // Material latches this in its `menu` SETTER, which only fires once `child.getMenuPanel()`
+    // transitions undefined -> panel. That is a second change-detection pass this component's
+    // recursion depends on; if it ever stopped happening the chevron would vanish while
+    // `aria-haspopup` (a live binding) still read 'menu' — so the ARIA arm cannot cover this.
+    await openRoot();
+    const chevron = rowNamed(rootPanel(), 'Share').querySelector('.mat-mdc-menu-submenu-icon');
+    expect(chevron).not.toBeNull();
+    expect(chevron!.getAttribute('aria-hidden')).toBe('true');
+    expect(rowNamed(rootPanel(), 'New').querySelector('.mat-mdc-menu-submenu-icon')).toBeNull();
+  });
+
+  it('gives a submenu no backdrop of its own — only the root has one', async () => {
+    await openRoot();
+    expect(backdrops()).toBe(1);
+    rowNamed(rootPanel(), 'Share').click();
+    await settle();
+    // A second backdrop would swallow clicks aimed at the parent panel's rows.
+    expect(backdrops()).toBe(1);
   });
 
   it('keeps the consumer trigger pointed at the ROOT panel, not a submenu', async () => {
-    // Regression guard for the viewChild pin: nested <mat-menu>s now share this view, so a
-    // by-type query could hand the trigger whichever panel Angular happened to see first.
+    // A wiring assertion, NOT a guard against an ordering hazard — there isn't one. Each nested
+    // panel lives in a nested cae-menu's own view and a view query does not cross a component
+    // boundary, so `viewChild(MatMenu)` has exactly one candidate (menu.ts explains why the
+    // template-ref pin was dropped). Kept because it is the only arm that checks the seam still
+    // resolves to the root once branches exist alongside it.
     await openRoot();
     expect(rowsIn(rootPanel()).map((el) => el.textContent!.trim())).toContain('Share');
     const caeMenu = fixture.debugElement.query(By.directive(CaeMenu)).componentInstance as CaeMenu;
@@ -435,13 +560,95 @@ describe('CaeMenu tiered submenus (#150)', () => {
     host.items.set([exportBranch]);
     await settle();
     expect(document.getElementById(level2Id)).toBeNull();
+    // …and the SURVIVOR is coherent. Without these, an implementation that tore the whole menu
+    // down on any model change would pass, which is not the contract: the remaining branch is
+    // still rendered, and closed rather than inheriting the dead branch's open state.
+    expect(rowsIn(rootPanel()).map((el) => el.textContent!.trim())).toEqual(['Export']);
+    expect(rowNamed(rootPanel(), 'Export').getAttribute('aria-expanded')).toBe('false');
   });
 
   it('has no axe violations with a submenu open', async () => {
     await openRoot();
-    rowNamed(rootPanel(), 'Share').click();
+    const share = rowNamed(rootPanel(), 'Share');
+    share.click();
     await settle();
+    // Prove the submenu is OPEN and in the scanned container before scanning it. axe asserts only
+    // "no violations", so an empty container passes hardest of all: deleting the branch's
+    // [matMenuTriggerFor] would leave this green while the title claims a submenu was scanned
+    // (the #773/#785 pristine-state class this repo already mechanized against).
+    expect(share.getAttribute('aria-expanded')).toBe('true');
+    expect(rowsIn(panelOf(share)).length).toBe(2);
     await expectNoA11yViolations(overlayContainer.getContainerElement());
+  });
+});
+
+/**
+ * A born-RTL host. `MatMenuTrigger` reads its direction from the injected `Directionality`, so the
+ * RTL arm needs a REAL CDK `Dir` ancestor over the trigger — setting `document.dir` would not reach
+ * it (the `rtl-directionality-signal-read` recipe).
+ */
+@Component({
+  imports: [CaeMenu, CaeMenuTrigger, BidiModule],
+  template: `
+    <div dir="rtl">
+      <cae-menu #actions [items]="items" />
+      <button type="button" [caeMenuTriggerFor]="actions">Actions</button>
+    </div>
+  `,
+})
+class RtlSubmenuHost {
+  items: CaeMenuItem[] = [{ label: 'Share', items: [{ value: 'email', label: 'Email' }] }];
+}
+
+describe('CaeMenu submenu traversal in RTL (#150)', () => {
+  let fixture: ComponentFixture<RtlSubmenuHost>;
+  let overlayContainer: OverlayContainer;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({ imports: [RtlSubmenuHost] }).compileComponents();
+    fixture = TestBed.createComponent(RtlSubmenuHost);
+    overlayContainer = TestBed.inject(OverlayContainer);
+    fixture.detectChanges();
+    await fixture.whenStable();
+  });
+
+  afterEach(() => overlayContainer?.ngOnDestroy());
+
+  it('MIRRORS the arrows — Left opens, Right closes', async () => {
+    // The doc comment claims RTL-awareness; the LTR arm cannot show it, and a wrapper that
+    // hard-coded Right-opens would pass every other spec in this file.
+    fixture.debugElement.query(By.directive(CaeMenuTrigger)).injector.get(CaeMenuTrigger).open();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const branch = Array.from(document.querySelectorAll<HTMLElement>('[mat-menu-item]')).find(
+      (r) => r.textContent!.trim() === 'Share',
+    )!;
+
+    const press = (el: HTMLElement, keyCode: number): void => {
+      const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'keyCode', { get: () => keyCode });
+      el.dispatchEvent(event);
+    };
+    const LEFT = 37;
+    const RIGHT = 39;
+
+    // Right must NOT open in RTL — assert the negative first, so a direction-blind
+    // implementation fails here rather than sliding through on the positive below.
+    press(branch, RIGHT);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(branch.getAttribute('aria-expanded')).toBe('false');
+
+    press(branch, LEFT);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(branch.getAttribute('aria-expanded')).toBe('true');
+
+    const panel = document.getElementById(branch.getAttribute('aria-controls')!)!;
+    press(panel, RIGHT);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(branch.getAttribute('aria-expanded')).toBe('false');
   });
 });
 

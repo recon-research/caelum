@@ -25,8 +25,9 @@ import type { CaeItemIconContext } from 'caelum/icon';
 /**
  * A top-level group in a {@link CaeMenubar} — a labelled trigger that opens a flat dropdown of
  * actions. `items` reuses `cae-menu`'s {@link CaeMenuItem}; for per-item icons see
- * {@link CaeMenubar.iconTemplate}. Nested/tiered submenus and other rich items (router links,
- * commands) are follow-ups (`cae-tiered-menu` / #150).
+ * {@link CaeMenubar.iconTemplate}. **Nested/tiered submenus arrive for free** (#150): a group's
+ * dropdown is a `cae-menu`, so any item with non-empty `items` is a submenu branch. Other rich
+ * items (router links, commands) remain follow-ups on the model itself.
  */
 export interface CaeMenubarItem {
   /** Visible label on the bar; also the trigger's accessible name. */
@@ -92,7 +93,7 @@ export class MenubarTriggerItem implements FocusableOption {
  * dead-end empty menu). Name the bar with {@link ariaLabel}.
  *
  * **v1 scope** (#153): one level of dropdown (the common File▸/Edit▸ admin case). Follow-ups —
- * tiered/nested submenus (`cae-tiered-menu`), rich items (router links/commands, #150),
+ * rich items (router links/commands, #150),
  * responsive overflow collapse, RTL roving.
  *
  * Zoneless-compatible: `OnPush` + signal state (D-12).
@@ -144,11 +145,6 @@ export class MenubarTriggerItem implements FocusableOption {
     .cae-menubar__item {
       /* Snug menu-item hit area rather than the wide default button min-width. */
       min-width: 0;
-    }
-    /* Each dropdown panel lives in a CDK overlay; the cae-menu host is empty inline — hide it so
-       it never counts as a stray child of the role=menubar surface. */
-    cae-menu {
-      display: none;
     }
   `,
 })

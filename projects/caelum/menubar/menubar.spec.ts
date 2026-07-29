@@ -59,8 +59,11 @@ describe('CaeMenubar', () => {
   }
 
   // One <button> per top-level group: a cae-menu's panel is an overlay TEMPLATE, so it contributes
-  // no button inline, and the toolbar holds exactly one per group in model order. (It carries no
-  // display rule — #150 measured that its empty host contributes no box on its own.)
+  // no button inline, and the toolbar holds exactly one per group in model order. This component
+  // used to carry its own `cae-menu { display: none }` because mat-toolbar is a flex row with a gap
+  // and an empty inline host blockifies into a stray flex item; since #150 `cae-menu` owns that
+  // rule itself (`:host { display: none }`, measured in menu.browser.spec.ts at 48px vs 24px), so
+  // the local copy was removed rather than kept as a second home for the same fact.
   const triggers = () => Array.from(el.querySelectorAll('button'));
   const menuTriggerAt = (i: number): CaeMenuTrigger =>
     fixture.debugElement.queryAll(By.directive(CaeMenuTrigger))[i].injector.get(CaeMenuTrigger);
