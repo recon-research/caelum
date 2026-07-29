@@ -1,0 +1,98 @@
+// Drawer demo (#709) — per-demo card styles, token-driven (D-04). Only structural literals remain
+// (display/grid/height/flex); every colour/space resolves to `--cae-*` (a literal colour would be a
+// defect, Book 04 §3.6).
+
+.forge-drawer-card {
+  display: block;
+}
+.forge-drawer-card__title {
+  margin: 0 0 var(--cae-space-2);
+  color: var(--cae-color-on-surface);
+}
+.forge-drawer-card__lead {
+  margin: 0 0 var(--cae-space-4);
+  color: var(--cae-color-on-surface-variant);
+}
+.forge-drawer-card__lead code {
+  color: var(--cae-color-primary);
+}
+
+.forge-drawer-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cae-space-2);
+  margin-block-end: var(--cae-space-3);
+}
+
+.forge-drawer-contract {
+  margin: 0 0 var(--cae-space-4);
+  color: var(--cae-color-on-surface-variant);
+}
+.forge-drawer-contract code {
+  color: var(--cae-color-primary);
+}
+
+// The container needs a definite block size — a drawer container with no height collapses and the
+// drawer has nothing to slide across.
+.forge-drawer-container {
+  display: block;
+  block-size: 18rem;
+  border: 1px solid var(--cae-color-border);
+  border-radius: var(--cae-radius-md);
+  overflow: hidden;
+}
+
+.forge-drawer-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cae-space-3);
+  padding: var(--cae-space-4);
+  min-inline-size: 14rem;
+}
+.forge-drawer-nav__heading {
+  margin: 0;
+  color: var(--cae-color-on-surface-variant);
+}
+.forge-drawer-nav__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cae-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.forge-drawer-nav__link {
+  display: flex;
+  flex-direction: column;
+  padding: var(--cae-space-2);
+  border-radius: var(--cae-radius-sm);
+  color: var(--cae-color-on-surface);
+  text-decoration: none;
+}
+.forge-drawer-nav__link:hover {
+  color: var(--cae-color-primary);
+}
+// A colour shift alone is not a sufficient focus indicator, so keep a real outline on the
+// keyboard path — this demo exists partly to be tabbed through.
+.forge-drawer-nav__link:focus-visible {
+  color: var(--cae-color-primary);
+  outline: 2px solid var(--cae-color-primary);
+  outline-offset: 2px;
+}
+.forge-drawer-nav__hint {
+  color: var(--cae-color-on-surface-variant);
+}
+
+.forge-drawer-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cae-space-3);
+  padding: var(--cae-space-4);
+}
+.forge-drawer-content__body {
+  margin: 0;
+  color: var(--cae-color-on-surface-variant);
+}
+.forge-drawer-content__body code {
+  color: var(--cae-color-primary);
+}

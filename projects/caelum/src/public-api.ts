@@ -179,3 +179,8 @@ export * from 'caelum/confirm';
 // (p-popover, was p-overlaypanel; Book 09 §3.2 — the OTHER overlay family from centered cae-dialog).
 // Imports no optional peer, so it rides the barrel per D-652. ---
 export * from 'caelum/popover';
+
+// --- Drawer (M5 parity close, #709): off-canvas / nav drawer over MatDrawer + MatDrawerContainer
+// (p-drawer, was p-sidebar; Book 11 §3.1 — a layout panel as a Direct, token-skinned port). Supplies
+// the modal semantics Material omits (role=dialog + aria-modal, per D-826); start/end only (#854). ---
+export * from 'caelum/drawer';

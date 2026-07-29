@@ -316,7 +316,8 @@ A **☐ planned** row in COMPARISON means the target is mapped but not built. Ev
 
 | Kind | Where | What to do |
 |---|---|---|
-| **Tracked gaps** | `cae-drawer` [#709](https://github.com/recon-research/caelum/issues/709) · `cae-alert` [#710](https://github.com/recon-research/caelum/issues/710) · `cae-panel`/`cae-fieldset` [#711](https://github.com/recon-research/caelum/issues/711) | Common enough to be planned work. Comment with your usage to influence order. |
+| **Tracked gaps** | `cae-alert` [#710](https://github.com/recon-research/caelum/issues/710) · `cae-panel`/`cae-fieldset` [#711](https://github.com/recon-research/caelum/issues/711) | Common enough to be planned work. Comment with your usage to influence order. |
+| **Shipped with a stated edge** | `p-drawer` → `cae-drawer` ships (`caelum/drawer`), but `position` is `start`/`end` only — Material's `MatDrawer` has no top/bottom. A top or bottom drawer is [#854](https://github.com/recon-research/caelum/issues/854) | Migrate left/right drawers now. If you used `position="top"`/`"bottom"`, say so on #854. |
 | **On-demand** | [#667](https://github.com/recon-research/caelum/issues/667) (knob, org-chart, mega-menu, dock) · [#712](https://github.com/recon-research/caelum/issues/712) (standalone paginator, data-view, meter-group, cascade-select, mention, colour-picker, speed-dial, key-filter, inplace, block-UI, scroll-top, animate-on-scroll) | Built when someone asks. If you need one, say so on the issue. |
 | **Shipped, capability pending** | `p-tieredmenu` → `cae-menu` ships but renders one level and ignores nested `items` ([#150](https://github.com/recon-research/caelum/issues/150)) | Schedule the component; treat the nested case as a gap until #150 lands. |
 | **Adapters** | `cae-chart` [#233](https://github.com/recon-research/caelum/issues/233) · `cae-editor` [#232](https://github.com/recon-research/caelum/issues/232) | Third-party engines behind a neutral port; on-demand. |
