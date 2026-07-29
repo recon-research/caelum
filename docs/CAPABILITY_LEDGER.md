@@ -90,7 +90,7 @@ is the last one owing it, and is gated on #824.
 | `panel-menu` | adversarial-passed | ☑ | ☑ | — | — | PR #778 · `5be24f1` |
 | `password` | adversarial-passed | ☑ | ☑ | — | — | PR #313 · `1793231c` |
 | `pick-list` | adversarial-passed | ☑ | ☑ | — | — | PR #343 · `766931bb` |
-| `popover` | parity-verified | ☑ | ☑ | — | — | ~~PR #678 · `bfbb3bc1` †~~ **revoked** |
+| `popover` | parity-verified | ☑ | ☑ | ☑ | — | ~~PR #678 · `bfbb3bc1` †~~ **revoked** |
 | `progress-bar` | adversarial-passed | ☑ | ☑ | — | — | PR #89 · `11614941` |
 | `progress-spinner` | adversarial-passed | ☑ | ☑ | — | — | PR #89 · `11614941` |
 | `radio` | adversarial-passed | ☑ | ☑ | — | — | PR #37 · `5e53818` |
