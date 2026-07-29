@@ -369,3 +369,38 @@ sections open.
   template expression, or the panels re-stamp and expansion resets. Document it on the component.
 - **`$index` still has a job.** The D-596 icon context's `index` is genuinely positional; only the
   track key changes.
+
+## 14. A content query and a row's DI both key off the *declaration* site (#150 — `cae-menu`)
+
+Wrapping a 3p that finds its children by `@ContentChildren` **and** lets each child inject the
+parent: recursion has to be a **component**, not a recursive `<ng-template>` + `ngTemplateOutlet`.
+
+- **Why.** Both mechanisms follow where a template is *declared*, not where its view is inserted. A
+  recursive `ng-template` declared outside `<mat-menu>` put every row outside the panel's query
+  scope, so `MatMenu` matched **zero** items — `FocusKeyManager` empty, roving focus and typeahead
+  dead — while every would-be submenu trigger injected the *outer* panel and opened as a standalone
+  menu that closed its own parent.
+- **It renders perfectly.** The rows are in the DOM and every assertion about markup, ARIA,
+  emission and depth passes. The only observable symptom is **focus**, so that is where the guard
+  belongs: open the panel and assert arrow keys actually move `document.activeElement`.
+- **The `cae-panel-menu` idiom is not transferable.** Outlet recursion is fine *there* because
+  `cae-expansion-panel` needs neither mechanism. Ask what the wrapped 3p resolves by query or DI
+  before reusing a recursion shape.
+- **Corollary — don't credit the wrong mechanism.** Material *also* filters rows by injected parent
+  panel, but with a component boundary that filter is a no-op; naming it as the reason is worse than
+  silence, because it is exactly what would *not* have caught this.
+
+## 15. Prose inside a `template:` literal ships; JSDoc does not (#150)
+
+The per-entry-point size gate charges for HTML comments in a component's `template:` string.
+
+- **Why.** They are string *content* of a template literal, so the minifier cannot drop them — they
+  land in the published FESM. Verified by grepping a comment's text out of `dist/`, and by
+  `caelum-panel-menu` breaching its budget by 53 B on a **comment-only** edit.
+- **JSDoc is free** — it minifies away. So keep explanatory prose in the class doc and leave short
+  pointers in the template. Doing that took `caelum-menu` from **2779 B (90%) to 2099 B (68%)** with
+  no documentation lost, and let the budget land at 2560 instead of 3072.
+- **Triage rule.** `size-budget.json`'s own `$comment` said "prose is now free, so a breach IS code".
+  That is true for JS/JSDoc only; it has been corrected in place. On a breach, check *where* the
+  prose lives before bumping a row.
+

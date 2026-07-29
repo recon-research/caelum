@@ -197,13 +197,10 @@
       "quote": "ai/code/session_01VFguz4Q8QdTr9MGxKn8kwj * cae-listbox: apply 4-lens review fixes (0 MAJOR; MINOR/NIT) Adversarial 4-lens review returned 0 confirmed BLOCKER/MAJOR (the CVA core was actively falsified"
     },
     "menu": {
-      "pr": 42,
-      "commit": "9cc7141",
+      "pr": 876,
+      "commit": "7a8e5e7",
       "source": "commit",
-      "paths": [
-        "projects/caelum/src/lib/menu"
-      ],
-      "quote": "review: fix 8 adversarial-review findings (batch 3)"
+      "quote": "REVERSED a wrong call from the first pass. I had deleted `:host{display:none}`\nas provably inert after mutation-testing it INSIDE a menu panel, where a block\ncontainer absorbs an empty inline. That is the one context where it does not\nmatter."
     },
     "menubar": {
       "pr": 154,
