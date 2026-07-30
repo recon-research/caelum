@@ -276,8 +276,8 @@ The built-in registry is deliberately small and closed — `home` · `folder` ·
 
 §4 fails loudly: wrong names do not compile. **This section is the dangerous half** — the code looks migrated, compiles, and behaves differently. Review each against your app's actual expectations.
 
-### 5.1 `cae-autocomplete` requires choosing a suggestion
-v1 forces selection; free text is opt-in later ([#120](https://github.com/recon-research/caelum/issues/120)). A `p-autocomplete` used as a free-text field with hints will **reject the user's typed value** until that lands. This sits on two migration paths, because the `p-chips` form case routes here too (§5.9).
+### 5.1 `cae-autocomplete` requires choosing a suggestion **by default**
+The default is force-selection, which is the flip from `p-autocomplete` (whose `forceSelection` defaults to `false`): a typed value that matches no suggestion is **reverted on blur**. Add **`[freeText]`** to get the upstream behaviour back — blur then commits the trimmed text verbatim, so the model may hold a suggestion key *or* an arbitrary string. This sits on two migration paths, because the `p-chips` form case routes here too (§5.9).
 
 ### 5.2 `cae-table` single-select does not deselect on re-click
 Single-select is a native radio group, and ARIA gives a radio group no path back to the empty selection — so clicking the selected row again does nothing. Opt back in with **`[allowDeselect]`**, which restores it by mouse **and** by Space (never mouse-only — WCAG 2.1.1). A first-class `role=listbox` alternative is [#236](https://github.com/recon-research/caelum/issues/236).
@@ -303,7 +303,15 @@ The tag is non-focusable with `role: null` and no ripple. Severity reads from th
 Theming is token-bridge-only, so `matBadgeColor` is not exposed. Wrap any element with the `[caeBadge]` directive for the `pBadge` case. Both gaps are [#129](https://github.com/recon-research/caelum/issues/129).
 
 ### 5.9 There is no `cae-chips`
-`p-chips` was **removed** upstream in PrimeNG v20-rc, and its replacement is `p-autocomplete [multiple]`. Building a `cae-chips` would chase a deleted component, so Caelum routes the two cases separately ([D-549](ARCHITECTURE.md)): **display** → `<cae-chip-set [textEntry]>`; **form/CVA** → `<cae-autocomplete [multiple]>` free text, which is [#120](https://github.com/recon-research/caelum/issues/120) and not yet shipped.
+`p-chips` was **removed** upstream in PrimeNG v20-rc, and its replacement is `p-autocomplete [multiple]`. Building a `cae-chips` would chase a deleted component, so Caelum routes the two cases separately ([D-549](ARCHITECTURE.md)): **display** → `<cae-chip-set [textEntry]>`; **form/CVA** → `<cae-autocomplete [multiple] [freeText]>`, which binds `[formControl]`/`[(ngModel)]` to a `string[]` of tags.
+
+```html
+<!-- p-chips -->                          <!-- Caelum -->
+<p-chips [(ngModel)]="tags" />            <cae-autocomplete multiple freeText
+                                            [formControl]="tags" label="Tags" />
+```
+
+Enter and comma commit a tag; each renders as a removable chip. Duplicates are rejected (a repeat would throw NG0955 out of the `@for` that renders the chips), and `[options]` may still be supplied to offer suggestions alongside free entry — already-chosen options drop out of the panel. Without `[freeText]` the field becomes multi-select-from-suggestions only.
 
 ### 5.10 Other divergences worth a glance
 `cae-toggle-button` has one projected label for both states (no `onLabel`/`offLabel` — [#75](https://github.com/recon-research/caelum/issues/75)) · `cae-tab-menu` matches on `item.value` rather than an item reference, and owns its `mat-tab-nav-panel` so the bar renders the full ARIA tabs pattern · `cae-input-number`, `cae-input-mask`, `cae-input-otp` and `cae-password` are **components**, not directives, because each owns its own `mat-form-field` wrapper.
