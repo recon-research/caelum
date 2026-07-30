@@ -52,8 +52,8 @@ Below, the **current** selector is listed with the historical alias noted. Verif
 | `pInputText` (directive), `pTextarea` | `cae-input` / `cae-textarea` | `caelum/input` · `caelum/textarea` | ☑ | `matInput` + `mat-form-field` | Direct | 07 |
 | `p-select` (was `p-dropdown`) | `cae-select` | `caelum/select` | ☑ | `MatSelect` | Direct | 09 |
 | `p-multiselect` | `cae-multi-select` | `caelum/multi-select` | ☑ | `MatSelect[multiple]` + filter + chip summary | Compose | 09 |
-| `p-autocomplete` | `cae-autocomplete` | `caelum/autocomplete` | ☑ | `matAutocomplete` (v1 force-selection default, unlike `p-autocomplete`; free text → #120) | Direct | 09 |
-| `p-chips` **(REMOVED upstream in PrimeNG v20-rc)** | `cae-chip-set [textEntry]` for display; the **form/CVA** case → `cae-autocomplete [multiple]` free text (#120) | `caelum/chip-set` | ☑ display · ☐ **#120** form | `MatChipGrid` + `matChipInputFor` | Compose | 09 |
+| `p-autocomplete` | `cae-autocomplete` | `caelum/autocomplete` | ☑ | `matAutocomplete` (force-selection default, unlike `p-autocomplete`; `[freeText]` opts back in) | Direct | 09 |
+| `p-chips` **(REMOVED upstream in PrimeNG v20-rc)** | `cae-chip-set [textEntry]` for display; the **form/CVA** case → `cae-autocomplete [multiple] [freeText]` (**D-549**) | `caelum/chip-set` · `caelum/autocomplete` | ☑ display · ☑ form | `MatChipGrid` + `matChipInputFor` | Compose | 09 |
 | `p-checkbox` | `cae-checkbox` | `caelum/checkbox` | ☑ | `MatCheckbox` | Direct | 07 |
 | `p-radiobutton` | `cae-radio` | `caelum/radio` | ☑ | `MatRadioButton` | Direct | 07 |
 | `p-toggleswitch` (was `p-inputswitch`) | `cae-switch` | `caelum/switch` | ☑ | `MatSlideToggle` | Direct | 07 |
