@@ -133,10 +133,15 @@ run_if_node "format --check" npm run format:check
 run_if_node "lint (adapter isolation + angular-eslint)" npm run lint
 
 if [ "$QUICK" -eq 0 ]; then
-    # `npm run build:lib` = ng build caelum -> US-origin attestation -> per-entry gzip
-    # size gate. Called by name (like format/lint) so package.json stays the single
-    # source of truth and CI (`npm run build:lib`) can't drift from preflight.
-    run_if_node "build library (+ US-origin attestation + size budget)" npm run build:lib
+    # `npm run build:lib` = ng build caelum, then the post-build package gates:
+    # US-origin attestation -> per-entry gzip size budget -> exports completeness (#28)
+    # -> grid engine tree-shake (#182) -> package surface / installability (#851).
+    # Called by name (like format/lint) so package.json stays the single source of
+    # truth and CI (`npm run build:lib`) can't drift from preflight. The STAGE NAME is
+    # deliberately gate-list-agnostic: the chain is package.json's business, and naming
+    # its members here made the label go stale twice (it still said "size budget" three
+    # gates later). Adding a gate to build:lib must not force a four-file mirror edit.
+    run_if_node "build library (+ post-build package gates)" npm run build:lib
     # Forge in production config exercises the angular.json 400/600 kB budgets.
     run_if_node "build Forge (production budgets)" npx ng build forge
     # Vitest suite (caelum + Forge). No headless run-loop smoke: Caelum is a

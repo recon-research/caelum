@@ -40,6 +40,24 @@ Discovering a ☐ halfway through a migration wave is the single most expensive 
 
 ## 2. Install and theme
 
+```bash
+npm install @recon-research/caelum
+```
+
+Angular `^22.0.0 || ^23.0.0` is a peer (`core`, `common`, `forms`, `cdk`, `material`). Two peers are
+**optional** and only needed by the one entry point that uses each: `@angular/router` for
+`@recon-research/caelum/breadcrumb-router`, and `@tanstack/table-core` for
+`@recon-research/caelum/grid-tanstack`.
+
+> **Caelum is `0.x`, and that changes how you pin.** Until `1.0.0`, **breaking changes ship in
+> _minor_ bumps** (`0.1.0` → `0.2.0`), not majors — SemVer's `0.x` rule, chosen deliberately
+> ([D-850](ARCHITECTURE.md)) while the API is young enough that correcting a bad signature beats
+> promising a stability we would then break. This matters mid-migration: a range of `^0.1.0`
+> resolves as `>=0.1.0 <0.2.0`, so it already pins you inside one minor — which is what you want.
+> Moving to the next minor is a deliberate step, and every breaking change in it carries a
+> migration note in the [changelog](../CHANGELOG.md). `1.0.0` waits on a real application shipping
+> on Caelum. If you are migrating a large app, pin exactly and upgrade on your own schedule.
+
 Caelum's theming is a **token bridge**: you adopt one Sass entry point, and every component follows.
 
 ```scss

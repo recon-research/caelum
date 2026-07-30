@@ -1,6 +1,6 @@
 {
   "name": "@recon-research/caelum",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Comprehensive, accessible Angular component library on Material + CDK, with PrimeNG-parity breadth (p-* \u2192 cae-*), token-only theming, and a US-origin-clean supply chain.",
   "license": "MIT",
   "keywords": [

@@ -18,9 +18,10 @@
     "attest": "node scripts/emit-us-origin-attestation.mjs dist/caelum",
     "size:lib": "node scripts/check-lib-size.mjs",
     "check:grid-tree-shake": "node scripts/check-grid-tree-shake.mjs",
-    "build:lib": "ng build caelum && npm run attest && npm run size:lib && npm run check:exports && npm run check:grid-tree-shake",
+    "build:lib": "ng build caelum && npm run attest && npm run size:lib && npm run check:exports && npm run check:grid-tree-shake && npm run check:surface",
     "build:lib:fast": "ng build caelum",
-    "check:exports": "node scripts/check-lib-exports.mjs"
+    "check:exports": "node scripts/check-lib-exports.mjs",
+    "check:surface": "node scripts/check-package-surface.mjs"
   },
   "private": true,
   "packageManager": "npm@10.9.8",

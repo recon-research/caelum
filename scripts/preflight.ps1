@@ -152,10 +152,13 @@ Invoke-StageIfNode 'format --check' { npm run format:check }
 Invoke-StageIfNode 'lint (adapter isolation + angular-eslint)' { npm run lint }
 
 if (-not $Quick) {
-    # `npm run build:lib` = ng build caelum -> US-origin attestation -> per-entry gzip
-    # size gate. Called by name (like format/lint) so package.json stays the single
-    # source of truth; cmd.exe's && short-circuits, LASTEXITCODE catches a failure.
-    Invoke-StageIfNode 'build library (+ US-origin attestation + size budget)' { npm run build:lib }
+    # `npm run build:lib` = ng build caelum, then the post-build package gates:
+    # US-origin attestation -> per-entry gzip size budget -> exports completeness (#28)
+    # -> grid engine tree-shake (#182) -> package surface / installability (#851).
+    # Called by name (like format/lint) so package.json stays the single source of
+    # truth; cmd.exe's && short-circuits, LASTEXITCODE catches a failure. The STAGE
+    # NAME is deliberately gate-list-agnostic — see the note in preflight.sh.
+    Invoke-StageIfNode 'build library (+ post-build package gates)' { npm run build:lib }
     # Forge in production config exercises the angular.json 400/600 kB budgets.
     Invoke-StageIfNode 'build Forge (production budgets)' { npx ng build forge }
     # Vitest suite (caelum + Forge). No headless run-loop smoke: Caelum is a
