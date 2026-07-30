@@ -30,6 +30,10 @@ Coming from PrimeNG? The **[`p-*` → `cae-*` comparison map](textbooks/referenc
 
 **Live demo: [recon-research.github.io/caelum](https://recon-research.github.io/caelum/)** — Forge, redeployed on every merge to `main` (light/dark, density toggle, every shipped component).
 
+### Versioning
+
+Caelum releases as **`0.x`**, and until `1.0.0` **breaking changes ship in _minor_ bumps** (`0.1.0` → `0.2.0`) rather than majors — SemVer's `0.x` rule, chosen deliberately (`D-850`) while the API is young. `^0.1.0` already resolves as `>=0.1.0 <0.2.0`, so it holds you inside one minor. Every breaking change carries a migration note in the [changelog](CHANGELOG.md); `1.0.0` waits on a real app shipping on Caelum, not on a component count.
+
 Caelum isn't on npm yet. To run Forge locally instead:
 
 ```bash

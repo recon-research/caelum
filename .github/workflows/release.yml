@@ -1,0 +1,227 @@
+name: Release
+
+# Publishes @recon-research/caelum to npm (issue #851; the publish itself is #852).
+#
+# THE ONE IRREVERSIBLE ACTION IN THIS REPO. Everything else can be fixed forward with
+# another commit; a published version can only be deprecated or (briefly) unpublished, and
+# the version number is burned either way. So this workflow is built to REFUSE by default
+# and publish only when every one of these holds:
+#
+#   1. A `v*` tag was pushed (or an owner ran it manually) — never on a branch push.
+#   2. The run is on THIS repository — a fork that pushes a tag gets a no-op.
+#   3. `NPM_TOKEN` is present — no token, no publish. A fork has no access to the secret,
+#      so condition 3 is condition 2's belt-and-braces rather than a duplicate.
+#   4. The tag's version EXACTLY matches projects/caelum/package.json. Tagging v0.2.0 with
+#      the manifest still at 0.1.0 is the classic release-day miss; here it is a hard stop.
+#   5. `scripts/preflight.sh` — the project's own definition of "every merge-blocking gate,
+#      in CI order" — exits 0. Calling preflight rather than restating its stages is what
+#      keeps this workflow from drifting away from the gate set it claims to enforce; the
+#      package-surface gate (#851) rides inside it via `build:lib`.
+#   6. The build left the tracked tree clean. A build that rewrites a committed file (a
+#      regenerated index, a size budget) means the tag does not describe what would ship.
+#
+# Provenance: publishing with `--provenance` attaches a signed, publicly verifiable
+# statement linking the tarball to this workflow, this commit, and this repo. Caelum's
+# US-origin-clean supply chain is a stated selling point (D-05/D-10/D-11), so making the
+# chain machine-checkable is part of the product, not a nicety. It requires `id-token:
+# write` and a public repo.
+#
+# Owner setup, once (see #852): add the `NPM_TOKEN` secret (an npm **automation** token, so
+# it bypasses 2FA), and add required reviewers to the `npm-publish` environment below —
+# GitHub creates the environment on first run with NO protection rules, so until reviewers
+# are added, the tag alone is the human gate.
+#
+# Dry run: `workflow_dispatch` with `dry_run: true` (the default) runs conditions 4-6 and
+# `npm publish --dry-run`, proving the whole path without touching the registry.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Run every gate and pack the tarball, but do NOT publish'
+        type: boolean
+        default: true
+
+# Never let two releases race; and never cancel one mid-publish.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: verify the release candidate
+    # A fork that pushes a `v*` tag runs nothing. Checked here as well as at the publish
+    # step so a fork does not burn runner minutes proving a package it can never ship.
+    if: github.repository == 'recon-research/caelum'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      # fetch-depth: 0 buys two things — the on-main ancestry check below, and a real
+      # `origin/main` for preflight's `todo hygiene` / `commit-msg semantics` stages, which
+      # SKIP themselves (returning 0) when the ref is missing. A shallow checkout would
+      # quietly reduce the release gate to a weaker preflight than the merge gate.
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # A tag can be pushed at ANY commit, including one that never passed review. Publishing
+      # is the one thing here that escapes the repo, so require the tagged commit to be an
+      # ancestor of main — i.e. it actually went through the PR gates. This is the supply-chain
+      # half of the merge policy: branch protection guards main, and this guards what ships.
+      - name: Tagged commit is on main
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          set -euo pipefail
+          # Explicit refspec: a tag checkout does not guarantee `remote.origin.fetch` maps
+          # heads into refs/remotes, so a bare `git fetch origin main` can leave origin/main
+          # undefined and turn this check into an error about a missing ref rather than the
+          # verdict it exists to give. Writing the remote-tracking ref by hand is exact.
+          git fetch --quiet origin +refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::the tagged commit $(git rev-parse --short HEAD) is not an ancestor of origin/main —" \
+                 "it never went through the PR gates. Refusing to publish."
+            exit 1
+          fi
+          echo "tagged commit $(git rev-parse --short HEAD) is on main."
+
+      # Condition 4. On a tag run, the ref must equal `v<manifest version>`. On a manual
+      # run there is no tag to compare, so the manifest version is simply reported — the
+      # dispatch path is for dry runs and for re-driving a publish the owner already tagged.
+      - name: Tag matches the package version
+        id: version
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          IS_TAG: ${{ startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./projects/caelum/package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "manifest version: $version"
+          if [ "$IS_TAG" != "true" ]; then
+            echo "manual run — no tag to match against."
+            exit 0
+          fi
+          if [ "$REF_NAME" != "v$version" ]; then
+            echo "::error::tag '$REF_NAME' does not match projects/caelum/package.json ('v$version')." \
+                 "Publishing would ship a version the tag does not name. Fix the manifest or the tag."
+            exit 1
+          fi
+          echo "tag '$REF_NAME' matches the manifest."
+
+      # The real-browser and visual-regression stages inside preflight resolve Chromium or
+      # SKIP loudly. CI installs it explicitly so the release gate is the STRICT reading of
+      # preflight, never the reduced one a bare runner would produce.
+      - name: Install Chromium (so preflight's browser stages are real)
+        run: npx playwright install --with-deps chromium
+
+      # Condition 5. One command, because preflight IS the gate set — restating its stages
+      # here is how a release path silently diverges from the merge path. Its exit code is
+      # the verdict (#538: a preflight that SKIPS still prints PASS, so the browser install
+      # above matters as much as the exit code).
+      - name: Preflight (every merge-blocking gate, in CI order)
+        env:
+          CI: 'true'
+          CAELUM_TEST_BROWSER: chromium
+        run: bash scripts/preflight.sh
+
+      # Condition 6. The build must not have rewritten anything tracked.
+      - name: Tracked tree is clean after the build
+        run: |
+          set -euo pipefail
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::the build modified tracked files — the tag does not describe what would ship:"
+            git status --porcelain
+            git --no-pager diff --stat
+            exit 1
+          fi
+          echo "tracked tree clean."
+
+  publish:
+    name: publish to npm
+    needs: verify
+    if: github.repository == 'recon-research/caelum'
+    runs-on: ubuntu-latest
+    # Add required reviewers here in repo settings to make the publish owner-approved.
+    environment: npm-publish
+    permissions:
+      contents: read
+      id-token: write # required for --provenance (Sigstore OIDC)
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install
+        run: npm ci
+
+      # Rebuild rather than pass dist/ between jobs: an artifact upload/download round-trip
+      # is one more place the published bytes could differ from the verified ones. This runs
+      # the full post-build package-gate chain again, including the surface gate.
+      - name: Build library (+ post-build package gates)
+        run: npm run build:lib
+
+      # Condition 3. `secrets` is not usable in a job-level `if:`, so the token check is a
+      # step that sets an output the publish step reads. Absent token => the workflow
+      # reports success having published nothing, which is the correct no-op.
+      - name: Token present?
+        id: guard
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${NPM_TOKEN}" ]; then
+            echo "::warning::NPM_TOKEN is not set — skipping publish (no-op)."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # `--access public` is required for the FIRST publish of a scoped package; npm
+      # defaults a new scoped package to restricted, which would silently make 0.1.0
+      # invisible to everyone. Harmless on later publishes.
+      # No `--provenance` on the dry run: a provenance statement is an artifact of the real
+      # upload, and asking for one here only adds an OIDC/registry dependency to the path
+      # whose whole point is to need neither a token nor the network. The dry run proves the
+      # gates, the tag↔manifest match, the build, and the packed file list.
+      - name: Publish (dry run)
+        if: inputs.dry_run
+        run: npm publish ./dist/caelum --access public --dry-run
+
+      - name: Publish
+        if: steps.guard.outputs.publish == 'true' && !inputs.dry_run
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish ./dist/caelum --access public --provenance
+
+      - name: Summary
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+          PUBLISHED: ${{ steps.guard.outputs.publish == 'true' && !inputs.dry_run }}
+        run: |
+          {
+            echo "## Release ${VERSION}"
+            if [ "$PUBLISHED" = "true" ]; then
+              echo "Published \`@recon-research/caelum@${VERSION}\` with provenance."
+              echo "- https://www.npmjs.com/package/@recon-research/caelum/v/${VERSION}"
+            else
+              echo "No publish (dry run, or no \`NPM_TOKEN\`). Every gate above still ran."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

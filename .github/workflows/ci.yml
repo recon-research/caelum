@@ -355,11 +355,14 @@ jobs:
         run: npm ci
 
       # Build the publishable library FIRST — Forge consumes it through the
-      # `caelum -> ./dist/caelum` path map, so its build depends on dist/caelum.
-      # `build:lib` = ng build caelum -> emit US-origin attestation -> per-entry
-      # -point gzip size gate (issue #4). CI-enforcing the last two closes the #4
-      # gap where they ran only in the Node-gated preflight (see #6 scope comment).
-      - name: Build library (+ US-origin attestation + size gate)
+      # `@recon-research/caelum -> ./dist/caelum` path map, so its build depends on
+      # dist/caelum. `build:lib` = ng build caelum, then the post-build package gates:
+      # US-origin attestation -> per-entry gzip size budget (issue #4) -> exports
+      # completeness (#28) -> grid engine tree-shake (#182) -> package surface /
+      # installability (#851). CI-enforcing them closes the #4 gap where they ran only
+      # in the Node-gated preflight (see #6 scope comment). The step name stays
+      # gate-list-agnostic so adding a gate to build:lib is a one-file edit.
+      - name: Build library (+ post-build package gates)
         run: npm run build:lib
 
       # Forge in production config exercises the angular.json budgets (400/600 kB

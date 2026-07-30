@@ -58,7 +58,7 @@ if hasattr(sys.stdout, "reconfigure"):
 PREFLIGHT_TO_CI = {
     "format --check": "Format check",
     "lint (adapter isolation + angular-eslint)": "Lint (adapter isolation + angular-eslint)",
-    "build library (+ US-origin attestation + size budget)": "Build library (+ US-origin attestation + size gate)",
+    "build library (+ post-build package gates)": "Build library (+ post-build package gates)",
     "build Forge (production budgets)": "Build Forge (production budgets)",
     "test (caelum + Forge)": "Test (caelum + Forge)",
     "test scripts (node --test)": "Test scripts (node --test)",
