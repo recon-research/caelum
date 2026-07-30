@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { ServerGridAdapter, CaeDataGrid } from 'caelum/grid';
+import { ServerGridAdapter, CaeDataGrid } from '@recon-research/caelum/grid';
 
 import { OrdersGridDemo } from './orders-grid-demo';
 

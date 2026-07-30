@@ -8,8 +8,8 @@ import {
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { CdkContextMenuTrigger, CdkMenu, CdkMenuItem } from '@angular/cdk/menu';
-import type { CaeMenuItem } from 'caelum/menu';
-import { CaeIcon, caeItemIconContext, type CaeItemIconContext } from 'caelum/icon';
+import type { CaeMenuItem } from '@recon-research/caelum/menu';
+import { CaeIcon, caeItemIconContext, type CaeItemIconContext } from '@recon-research/caelum/icon';
 
 /**
  * `cae-context-menu` — a right-click (context) menu wrapper over the CDK Menu family

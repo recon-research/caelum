@@ -1,7 +1,11 @@
 import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
 
-import { CaeCard } from 'caelum/card';
-import { CaeFileUpload, CaeFileUploadError, CaeFileUploadFileDef } from 'caelum/file-upload';
+import { CaeCard } from '@recon-research/caelum/card';
+import {
+  CaeFileUpload,
+  CaeFileUploadError,
+  CaeFileUploadFileDef,
+} from '@recon-research/caelum/file-upload';
 
 /**
  * The deferred "File upload" `cae-file-upload` demo (#338) — the third and final drag-drop-cluster

@@ -1,8 +1,8 @@
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 
-import { CaeCard } from 'caelum/card';
-import type { CaeMenuItem } from 'caelum/menu';
-import { CaePanelMenu } from 'caelum/panel-menu';
+import { CaeCard } from '@recon-research/caelum/card';
+import type { CaeMenuItem } from '@recon-research/caelum/menu';
+import { CaePanelMenu } from '@recon-research/caelum/panel-menu';
 
 /**
  * The deferred "Navigation menu" demo (#665) — the accordion-composed nested nav (`p-panelmenu`

@@ -14,8 +14,9 @@
 // Barrel membership is DERIVED, not listed (issue #652, D-595/D-652). An entry point that
 // STATICALLY imports an OPTIONAL peerDependency must never be re-exported by the primary
 // barrel: a bundler resolves the whole import graph at scan time (before tree-shaking), so one
-// barrel re-export drags that "optional" peer into every `import … from 'caelum'` and makes it
-// de-facto required — measured in #652 (`import { CaeButton } from 'caelum'` failed to build
+// barrel re-export drags that "optional" peer into every `import … from '@recon-research/caelum'` and makes it
+// de-facto required — measured in #652, pre-#514 when the package was still unscoped (`import
+// { CaeButton } from 'caelum'` failed to build
 // with @tanstack absent). The pre-#652 guard kept a hand-maintained `BARREL_EXEMPT` allowlist,
 // which only checked the entries it LISTED — so a barrel-INCLUDED optional-peer importer passed
 // silently, which is exactly how `caelum/grid` slipped through from M2. This derives the truth
@@ -68,6 +69,11 @@ const errors = [];
 
 // --- Optional peers: the source of truth for barrel exemption (see the header note). ---
 const libPkg = JSON.parse(readFileSync(join(libDir, 'package.json'), 'utf8'));
+// The published package name, DERIVED — never hardcoded. It is what a consumer actually writes in
+// an import, and it is not the workspace folder (`projects/caelum/`) nor the Angular project name
+// (`ng build caelum`), both of which stay unscoped. #514 renamed this to `@recon-research/caelum`
+// (D-501) and a hardcoded literal here is exactly what made that rename expensive.
+const PKG = libPkg.name;
 const optionalPeers = Object.entries(libPkg.peerDependenciesMeta || {})
   .filter(([, meta]) => meta && meta.optional === true)
   .map(([peer]) => peer);
@@ -114,7 +120,9 @@ const peerOf = new Map(entryPoints.map((name) => [name, importsOptionalPeer(name
 // slip an optional-peer entry back into the barrel undetected; `name` is regex-escaped defensively
 // (kebab-case today, but a metachar would corrupt the test). #659 tracks stripping comments first.
 const inBarrel = (name) =>
-  new RegExp(`from\\s*['"]caelum/${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]`).test(barrel);
+  new RegExp(
+    `from\\s*['"]${PKG.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]`,
+  ).test(barrel);
 
 // 2. The barrel primary entry point must exist and resolve.
 const dot = exportsMap['.'];
@@ -143,11 +151,11 @@ for (const name of entryPoints) {
   const peer = peerOf.get(name);
   if (peer && inBarrel(name))
     errors.push(
-      `'caelum/${name}' imports the optional peer '${peer}' yet the barrel re-exports it — that drags '${peer}' into every \`import from 'caelum'\` and makes it de-facto required (#652). Drop the barrel re-export; consumers import 'caelum/${name}' directly.`,
+      `'${PKG}/${name}' imports the optional peer '${peer}' yet the barrel re-exports it — that drags '${peer}' into every \`import from '${PKG}'\` and makes it de-facto required (#652). Drop the barrel re-export; consumers import '${PKG}/${name}' directly.`,
     );
   if (!peer && !inBarrel(name))
     errors.push(
-      `barrel src/public-api.ts does not re-export 'caelum/${name}' — a bare \`import from 'caelum'\` would drop it (it imports no optional peer, so it must ride the barrel).`,
+      `barrel src/public-api.ts does not re-export '${PKG}/${name}' — a bare \`import from '${PKG}'\` would drop it (it imports no optional peer, so it must ride the barrel).`,
     );
 }
 
@@ -169,7 +177,7 @@ for (const name of entryPoints) {
   // contradicts the error list below trains you to skim it, so it reads from the same rule.
   const ok = Boolean(exportsMap[`./${name}`]) && (peer ? !inBarrel(name) : inBarrel(name));
   const note = peer ? `  (barrel-exempt: imports optional peer ${peer})` : '';
-  console.log(`  ${ok ? '\x1b[32mOK  \x1b[0m' : '\x1b[31mFAIL\x1b[0m'} caelum/${name}${note}`);
+  console.log(`  ${ok ? '\x1b[32mOK  \x1b[0m' : '\x1b[31mFAIL\x1b[0m'} ${PKG}/${name}${note}`);
 }
 
 if (errors.length) {

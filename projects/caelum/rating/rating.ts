@@ -22,7 +22,7 @@ import {
   caeItemIconContext,
   type CaeIconName,
   type CaeItemIconContext,
-} from 'caelum/icon';
+} from '@recon-research/caelum/icon';
 
 /**
  * Shape-normalise a value the form wrote. **Deliberately does NOT clamp to the star count** (#823,

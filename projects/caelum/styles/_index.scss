@@ -1,6 +1,6 @@
 // Public SCSS entry point for the Caelum theming token bridge.
 //
-//   @use 'caelum/styles' as cae;
+//   @use '@recon-research/caelum/styles' as cae;
 //   @include cae.theme();          // applies the bridge; tokens come with the @use
 //
 // The `@use` emits the `--cae-*` token layer (`theme` already `@use`s `tokens`);
@@ -10,6 +10,6 @@
 // `@include` leaves the tokens defined and Material untouched.
 //
 // Consumers that only want the raw token layer (e.g. to theme their own shell
-// before Material is present) can `@use 'caelum/styles/tokens'`.
+// before Material is present) can `@use '@recon-research/caelum/styles/tokens'`.
 @forward 'theme';
 @forward 'tokens';

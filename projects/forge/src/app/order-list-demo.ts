@@ -1,13 +1,13 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 
-import { CaeCard } from 'caelum/card';
+import { CaeCard } from '@recon-research/caelum/card';
 import {
   CaeOrderList,
   CaeOrderListHeaderDef,
   CaeOrderListItemDef,
   CaeOrderListReorderEvent,
-} from 'caelum/order-list';
+} from '@recon-research/caelum/order-list';
 
 interface Widget {
   id: string;

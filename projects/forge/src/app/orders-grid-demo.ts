@@ -10,8 +10,8 @@ import {
   viewChild,
 } from '@angular/core';
 
-import { CaeButton } from 'caelum/button';
-import { CaeCard } from 'caelum/card';
+import { CaeButton } from '@recon-research/caelum/button';
+import { CaeCard } from '@recon-research/caelum/card';
 // The SAME neutral grid surface the client + TanStack demos use. `provideServerGrid`/
 // `serverGridAdapterFactory`/`CAE_GRID` select the SERVER engine (#176) with no markup change — the
 // third engine behind the one port. `CaeGridDataRequest` is the vendor-free lazy-load descriptor.
@@ -21,7 +21,7 @@ import {
   serverGridAdapterFactory,
   type CaeColumn,
   type CaeGridDataRequest,
-} from 'caelum/grid';
+} from '@recon-research/caelum/grid';
 
 /** A row of the "Orders" server-side demo — a plain typed model (the grid generic is unconstrained). */
 interface Order {

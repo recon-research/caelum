@@ -5,8 +5,8 @@ import { OverlayContainer } from '@angular/cdk/overlay';
 import { CdkContextMenuTrigger, CdkMenuItem } from '@angular/cdk/menu';
 
 import { CaeContextMenu } from './context-menu';
-import type { CaeMenuItem } from 'caelum/menu';
-import { CAE_ICON_GLYPHS } from 'caelum/icon';
+import type { CaeMenuItem } from '@recon-research/caelum/menu';
+import { CAE_ICON_GLYPHS } from '@recon-research/caelum/icon';
 import { expectNoA11yViolations } from '../testing/a11y';
 
 @Component({

@@ -1,9 +1,9 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
 
-import { CaeButton } from 'caelum/button';
-import { CaeCard } from 'caelum/card';
-import { CaeConfirmService } from 'caelum/confirm';
-import { CaePopover, CaePopoverTrigger } from 'caelum/popover';
+import { CaeButton } from '@recon-research/caelum/button';
+import { CaeCard } from '@recon-research/caelum/card';
+import { CaeConfirmService } from '@recon-research/caelum/confirm';
+import { CaePopover, CaePopoverTrigger } from '@recon-research/caelum/popover';
 
 /**
  * The deferred "Popover & confirm-popup" demo (#664) — the command-overlay pair (`p-popover` /

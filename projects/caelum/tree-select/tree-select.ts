@@ -21,7 +21,7 @@ import type { ConnectedPosition } from '@angular/cdk/overlay';
 // Type-only (erased at runtime — no bundle coupling): tree-select reuses the tree node model
 // rather than re-declaring it, so a `cae-tree`/`cae-tree-select` consumer shares one node shape
 // (the "reuse the node model" goal, ROADMAP M3). A node's `value` is its selection KEY here.
-import type { CaeTreeNode } from 'caelum/tree';
+import type { CaeTreeNode } from '@recon-research/caelum/tree';
 
 /**
  * Node selection: `single` (one key), `multiple` (independent keys, no propagation), or `checkbox`

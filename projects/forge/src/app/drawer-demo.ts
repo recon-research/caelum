@@ -1,8 +1,8 @@
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 
-import { CaeButton } from 'caelum/button';
-import { CaeCard } from 'caelum/card';
-import { CaeDrawer, CaeDrawerContainer, CaeDrawerMode } from 'caelum/drawer';
+import { CaeButton } from '@recon-research/caelum/button';
+import { CaeCard } from '@recon-research/caelum/card';
+import { CaeDrawer, CaeDrawerContainer, CaeDrawerMode } from '@recon-research/caelum/drawer';
 
 /**
  * The deferred "Drawer" `cae-drawer` demo (#709, M5 parity close) — the off-canvas / nav drawer

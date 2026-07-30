@@ -14,7 +14,7 @@ import { _getFocusedElementPierceShadowDom } from '@angular/cdk/platform';
 import { Overlay } from '@angular/cdk/overlay';
 import type { ConnectedPosition } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { CaeButton, type CaeButtonVariant } from 'caelum/button';
+import { CaeButton, type CaeButtonVariant } from '@recon-research/caelum/button';
 import {
   CAE_DIALOG_DATA,
   CaeDialog,
@@ -22,7 +22,7 @@ import {
   CaeDialogContent,
   CaeDialogTitle,
   injectCaeDialogRef,
-} from 'caelum/dialog';
+} from '@recon-research/caelum/dialog';
 
 /**
  * Which action receives initial focus when a confirm opens. Defaults to `'reject'` — the

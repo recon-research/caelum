@@ -30,7 +30,7 @@ import {
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInput, MatInputModule } from '@angular/material/input';
 import { MatTimepickerModule } from '@angular/material/timepicker';
-import { CaeFormFieldControlBase } from 'caelum/form-field';
+import { CaeFormFieldControlBase } from '@recon-research/caelum/form-field';
 
 import { CaeMultiDateSelectionModel } from './multi-date-selection-model';
 

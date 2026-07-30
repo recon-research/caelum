@@ -2,7 +2,7 @@ import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 
-import type { CaeMenuItem } from 'caelum/menu';
+import type { CaeMenuItem } from '@recon-research/caelum/menu';
 import { CaePanelMenu } from './panel-menu';
 import { expectNoA11yViolations } from '../testing/a11y';
 

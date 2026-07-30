@@ -1,7 +1,7 @@
 import { ComponentRef } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import { CAE_GRID, CaeDataGrid, type CaeColumn, type CaeSort } from 'caelum/grid';
+import { CAE_GRID, CaeDataGrid, type CaeColumn, type CaeSort } from '@recon-research/caelum/grid';
 
 import {
   TanStackGridAdapter,

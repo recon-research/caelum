@@ -14,7 +14,7 @@
 - **◐ partial** — no dedicated `cae-*`, but an existing Material/CDK path covers the case; the row says which.
 - **☐ planned** — mapped target, no code. Every ☐ row names its tracking issue, so a migrating team always has something to point at — **enforced by `scripts/audit_comparison.py`** (a preflight/CI gate since #810, which found four rows that had gone untracked through a milestone exit). Hitting one means an explicit **build-or-drop** decision (Book 20 §6).
 
-**Import** — the **secondary entry point** to import from. Prefer it over the primary `caelum` barrel, which pulls the whole set. `—` on a ☐ row.
+**Import** — the **secondary entry point** to import from. Prefer it over the primary `@recon-research/caelum` barrel, which pulls the whole set. `—` on a ☐ row.
 
 **Tier** (from brief §3):
 
@@ -25,9 +25,9 @@
 
 The **Book** column points at the Caelum book that covers that component family (plain reference, no section — the book resolves the detail).
 
-### ⚠ Two entry points the `caelum` barrel deliberately cannot provide
+### ⚠ Two entry points the `@recon-research/caelum` barrel deliberately cannot provide
 
-`caelum/breadcrumb-router` (**D-595**, needs `@angular/router`) and `caelum/grid-tanstack` (**D-652**, needs `@tanstack/table-core`) import **optional** peer dependencies, so they are never re-exported from the barrel. A bundler resolves the static import graph *before* tree-shaking, so a single barrel re-export would make the "optional" peer mandatory for every consumer — measured in #652, where `import { CaeButton } from 'caelum'` failed to build with `@tanstack/table-core` absent. Import both by their own path; `import { provideTanStackGrid } from 'caelum'` is a resolution failure **by design**.
+`@recon-research/caelum/breadcrumb-router` (**D-595**, needs `@angular/router`) and `@recon-research/caelum/grid-tanstack` (**D-652**, needs `@tanstack/table-core`) import **optional** peer dependencies, so they are never re-exported from the barrel. A bundler resolves the static import graph *before* tree-shaking, so a single barrel re-export would make the "optional" peer mandatory for every consumer — measured in #652, where `import { CaeButton } from '@recon-research/caelum'` failed to build with `@tanstack/table-core` absent. Import both by their own path; `import { provideTanStackGrid } from '@recon-research/caelum'` is a resolution failure **by design**.
 
 ## ⚠ Source-selector versioning
 
@@ -49,96 +49,96 @@ Below, the **current** selector is listed with the historical alias noted. Verif
 
 | PrimeNG (`p-*`) | Caelum (`cae-*`) | Import | Status | Material / CDK basis | Tier | Book |
 |---|---|---|---|---|---|---|
-| `pInputText` (directive), `pTextarea` | `cae-input` / `cae-textarea` | `caelum/input` · `caelum/textarea` | ☑ | `matInput` + `mat-form-field` | Direct | 07 |
-| `p-select` (was `p-dropdown`) | `cae-select` | `caelum/select` | ☑ | `MatSelect` | Direct | 09 |
-| `p-multiselect` | `cae-multi-select` | `caelum/multi-select` | ☑ | `MatSelect[multiple]` + filter + chip summary | Compose | 09 |
-| `p-autocomplete` | `cae-autocomplete` | `caelum/autocomplete` | ☑ | `matAutocomplete` (force-selection default, unlike `p-autocomplete`; `[freeText]` opts back in) | Direct | 09 |
-| `p-chips` **(REMOVED upstream in PrimeNG v20-rc)** | `cae-chip-set [textEntry]` for display; the **form/CVA** case → `cae-autocomplete [multiple] [freeText]` (**D-549**) | `caelum/chip-set` · `caelum/autocomplete` | ☑ display · ☑ form | `MatChipGrid` + `matChipInputFor` | Compose | 09 |
-| `p-checkbox` | `cae-checkbox` | `caelum/checkbox` | ☑ | `MatCheckbox` | Direct | 07 |
-| `p-radiobutton` | `cae-radio` | `caelum/radio` | ☑ | `MatRadioButton` | Direct | 07 |
-| `p-toggleswitch` (was `p-inputswitch`) | `cae-switch` | `caelum/switch` | ☑ | `MatSlideToggle` | Direct | 07 |
-| `p-togglebutton`, `p-selectbutton` | `cae-toggle-button` / `cae-select-button` | `caelum/toggle-button` · `caelum/select-button` | ☑ | `MatButtonToggle` (group) | Direct | 11 |
-| `p-slider` | `cae-slider` | `caelum/slider` | ☑ | `MatSlider` | Direct | 07 |
-| `p-listbox` | `cae-listbox` | `caelum/listbox` | ☑ | `mat-selection-list` (or `cdkListbox`) | Direct | 06 |
-| `p-datepicker` (was `p-calendar`) | `cae-datepicker` | `caelum/datepicker` | ☑ | `MatDatepicker` + `mat-date-range-input` + `MatTimepicker` (time/datetime) + a custom multi-date `MatDateSelectionModel` (the one build) | Compose | 09 |
-| — (time-of-day) | `cae-datepicker [timeOnly]` / `[showTime]` | `caelum/datepicker` | ☑ | `MatTimepicker` — **first-party since Material 22**, so the "no time picker" R2 scar is closed (#666); no `matInput` mask, no standalone `cae-time-picker` needed | Compose | 09 |
-| `p-inputnumber` | `cae-input-number` | `caelum/input-number` | ☑ | `matInput` format/parse; `number\|null` CVA component | Build-S | 08 |
-| `p-inputmask` | `cae-input-mask` | `caelum/input-mask` | ☑ | fixed-template mask **component** (extends `CaeFormFieldControlBase`); **unmasked**-string CVA, live re-mask + caret discipline + paste-spread, no foreign mask lib | Build-S | 08 |
-| `p-inputotp` | `cae-input-otp` | `caelum/input-otp` | ☑ | N segmented native inputs; one `string` CVA (NG_VALUE_ACCESSOR), roving tabindex | Build-S | 08 |
-| `p-password` | `cae-password` | `caelum/password` | ☑ | `matInput[type=password]` component (extends `CaeFormFieldControlBase`) + inline-SVG visibility toggle + advisory token-styled strength meter (enforced policy stays a form `ValidatorFn`) | Build-S | 08 |
+| `pInputText` (directive), `pTextarea` | `cae-input` / `cae-textarea` | `@recon-research/caelum/input` · `@recon-research/caelum/textarea` | ☑ | `matInput` + `mat-form-field` | Direct | 07 |
+| `p-select` (was `p-dropdown`) | `cae-select` | `@recon-research/caelum/select` | ☑ | `MatSelect` | Direct | 09 |
+| `p-multiselect` | `cae-multi-select` | `@recon-research/caelum/multi-select` | ☑ | `MatSelect[multiple]` + filter + chip summary | Compose | 09 |
+| `p-autocomplete` | `cae-autocomplete` | `@recon-research/caelum/autocomplete` | ☑ | `matAutocomplete` (force-selection default, unlike `p-autocomplete`; `[freeText]` opts back in) | Direct | 09 |
+| `p-chips` **(REMOVED upstream in PrimeNG v20-rc)** | `cae-chip-set [textEntry]` for display; the **form/CVA** case → `cae-autocomplete [multiple] [freeText]` (**D-549**) | `@recon-research/caelum/chip-set` · `@recon-research/caelum/autocomplete` | ☑ display · ☑ form | `MatChipGrid` + `matChipInputFor` | Compose | 09 |
+| `p-checkbox` | `cae-checkbox` | `@recon-research/caelum/checkbox` | ☑ | `MatCheckbox` | Direct | 07 |
+| `p-radiobutton` | `cae-radio` | `@recon-research/caelum/radio` | ☑ | `MatRadioButton` | Direct | 07 |
+| `p-toggleswitch` (was `p-inputswitch`) | `cae-switch` | `@recon-research/caelum/switch` | ☑ | `MatSlideToggle` | Direct | 07 |
+| `p-togglebutton`, `p-selectbutton` | `cae-toggle-button` / `cae-select-button` | `@recon-research/caelum/toggle-button` · `@recon-research/caelum/select-button` | ☑ | `MatButtonToggle` (group) | Direct | 11 |
+| `p-slider` | `cae-slider` | `@recon-research/caelum/slider` | ☑ | `MatSlider` | Direct | 07 |
+| `p-listbox` | `cae-listbox` | `@recon-research/caelum/listbox` | ☑ | `mat-selection-list` (or `cdkListbox`) | Direct | 06 |
+| `p-datepicker` (was `p-calendar`) | `cae-datepicker` | `@recon-research/caelum/datepicker` | ☑ | `MatDatepicker` + `mat-date-range-input` + `MatTimepicker` (time/datetime) + a custom multi-date `MatDateSelectionModel` (the one build) | Compose | 09 |
+| — (time-of-day) | `cae-datepicker [timeOnly]` / `[showTime]` | `@recon-research/caelum/datepicker` | ☑ | `MatTimepicker` — **first-party since Material 22**, so the "no time picker" R2 scar is closed (#666); no `matInput` mask, no standalone `cae-time-picker` needed | Compose | 09 |
+| `p-inputnumber` | `cae-input-number` | `@recon-research/caelum/input-number` | ☑ | `matInput` format/parse; `number\|null` CVA component | Build-S | 08 |
+| `p-inputmask` | `cae-input-mask` | `@recon-research/caelum/input-mask` | ☑ | fixed-template mask **component** (extends `CaeFormFieldControlBase`); **unmasked**-string CVA, live re-mask + caret discipline + paste-spread, no foreign mask lib | Build-S | 08 |
+| `p-inputotp` | `cae-input-otp` | `@recon-research/caelum/input-otp` | ☑ | N segmented native inputs; one `string` CVA (NG_VALUE_ACCESSOR), roving tabindex | Build-S | 08 |
+| `p-password` | `cae-password` | `@recon-research/caelum/password` | ☑ | `matInput[type=password]` component (extends `CaeFormFieldControlBase`) + inline-SVG visibility toggle + advisory token-styled strength meter (enforced policy stays a form `ValidatorFn`) | Build-S | 08 |
 | `pKeyFilter` (directive) | `cae-key-filter` | — | ☐ **#712** | directive on `matInput` | Build-S | 08 |
-| `p-rating` | `cae-rating` | `caelum/rating` | ☑ | icon row + Aria | Build-S | 11 |
+| `p-rating` | `cae-rating` | `@recon-research/caelum/rating` | ☑ | icon row + Aria | Build-S | 11 |
 | `p-colorpicker` | `cae-color-picker` | — | ☐ **#712** | native `<input type=color>` / CDK overlay | Build-S | 08 |
 | `p-knob` | `cae-knob` | — | ☐ **#667** | SVG + CDK pointer | Build-M | 08 |
 | `p-cascadeselect` | `cae-cascade-select` | — | ☐ **#712** | nested `MatMenu` / CDK Menu | Build-M | 09 |
-| `p-treeselect` | `cae-tree-select` | `caelum/tree-select` | ☑ | `MatTree` in CDK overlay | Build-M | 09 |
+| `p-treeselect` | `cae-tree-select` | `@recon-research/caelum/tree-select` | ☑ | `MatTree` in CDK overlay | Build-M | 09 |
 | `p-mention` | `cae-mention` | — | ☐ **#712** | CDK overlay + `matAutocomplete` | Build-M | 09 |
 | `p-floatlabel`, `p-iconfield`, `p-iftalabel`, `p-inputgroup` | `mat-form-field`'s own label + `matPrefix` / `matSuffix` — **no `cae-input-group` ships**, and none is planned: every Caelum form control already wraps `mat-form-field` | (each control's own entry point) | ◐ | `mat-form-field` label + prefix/suffix | Direct / Compose | 07 |
 
-**Infra entry points a form migration also touches:** `caelum/shared` (type-only — `CaeFormFieldAppearance`, `CaeErrorMessages`, `CaeSortDirection`, `CaeTooltipPosition`, `CaeMenuPanelHost`) and `caelum/form-field` (`CaeFormFieldControlBase`, the shared CVA base — **experimental** for external subclassing, #54).
+**Infra entry points a form migration also touches:** `@recon-research/caelum/shared` (type-only — `CaeFormFieldAppearance`, `CaeErrorMessages`, `CaeSortDirection`, `CaeTooltipPosition`, `CaeMenuPanelHost`) and `@recon-research/caelum/form-field` (`CaeFormFieldControlBase`, the shared CVA base — **experimental** for external subclassing, #54).
 
 ## Buttons
 
 | PrimeNG (`p-*`) | Caelum (`cae-*`) | Import | Status | Material / CDK basis | Tier | Book |
 |---|---|---|---|---|---|---|
-| `p-button` (`pButton`) | `cae-button` | `caelum/button` | ☑ | `MatButton` variants | Direct | 04 |
-| `p-splitbutton` | `cae-split-button` | `caelum/split-button` | ☑ | `MatButton` + `MatMenu` (via `cae-menu`; v1 #148 = required label + shared variant + optional-submit primary + data-driven dropdown; the primary `[icon]` shipped with D-596/#644; per-half-appearance + `(dropdownClick)` → #149; **nested submenus ship at #150**, inherited via the embedded `cae-menu`; router-link/command items remain #150) | Compose | 09 |
+| `p-button` (`pButton`) | `cae-button` | `@recon-research/caelum/button` | ☑ | `MatButton` variants | Direct | 04 |
+| `p-splitbutton` | `cae-split-button` | `@recon-research/caelum/split-button` | ☑ | `MatButton` + `MatMenu` (via `cae-menu`; v1 #148 = required label + shared variant + optional-submit primary + data-driven dropdown; the primary `[icon]` shipped with D-596/#644; per-half-appearance + `(dropdownClick)` → #149; **nested submenus ship at #150**, inherited via the embedded `cae-menu`; router-link/command items remain #150) | Compose | 09 |
 | `p-speeddial` | `cae-speed-dial` | — | ☐ **#712** | CDK overlay + animation | Build-M | 09 |
 
 ## Data
 
 | PrimeNG (`p-*`) | Caelum (`cae-*`) | Import | Status | Material / CDK basis | Tier | Book |
 |---|---|---|---|---|---|---|
-| `p-table` (basic→mid) | `cae-table` | `caelum/table` | ☑ | `MatTable` + `MatSort` + `MatPaginator` (staged: v1 #141 = text columns + sort + paginate; selection + expandable rows → #144, custom cell templates → #143; expandable rows = project `<ng-template caeRowDetailDef>` for p-table `rowexpansion` parity, an accessible disclosure toggle + `[(expanded)]` model, #144; single-select is a native radio group — *not* deselectable by default per ARIA, opt into `[allowDeselect]` for p-table-style click/Space re-activation to clear #224; sticky header via `stickyHeader` + sticky columns via `CaeTableColumn.sticky`/`.stickyEnd`, covering p-table's frozen-header / frozen-column capability (exact p-table API names unverified — `primeng` is not installed; #253) — purely visual, needs a scrolling ancestor **and** a table wider than it, positioning verified in the M4 real-browser pass #240, #144; sticky **footer** awaits a footer content model → #251) | Compose | 10 |
-| `p-table` (advanced) | `cae-data-grid` | `caelum/grid` | ☑ | **TanStack Table** (headless) behind `CaeGridAdapter` | **Adapter** | 13 |
-| ↳ the TanStack engine itself | `provideTanStackGrid()` / `TanStackGridAdapter` | ⚠ `caelum/grid-tanstack` — **not in the barrel** (D-652) | ☑ | optional peer `@tanstack/table-core`; `caelum/grid` alone ships the client default + server adapter with **no** engine dependency | **Adapter** | 13 |
-| `p-tree` | `cae-tree` | `caelum/tree` | ☑ | `MatTree` | Direct | 10 |
-| `p-treetable` | `cae-tree-table` | `caelum/tree-table` | ☑ | `MatTable` + tree data source (`role=treegrid`) | Build-M | 10 |
+| `p-table` (basic→mid) | `cae-table` | `@recon-research/caelum/table` | ☑ | `MatTable` + `MatSort` + `MatPaginator` (staged: v1 #141 = text columns + sort + paginate; selection + expandable rows → #144, custom cell templates → #143; expandable rows = project `<ng-template caeRowDetailDef>` for p-table `rowexpansion` parity, an accessible disclosure toggle + `[(expanded)]` model, #144; single-select is a native radio group — *not* deselectable by default per ARIA, opt into `[allowDeselect]` for p-table-style click/Space re-activation to clear #224; sticky header via `stickyHeader` + sticky columns via `CaeTableColumn.sticky`/`.stickyEnd`, covering p-table's frozen-header / frozen-column capability (exact p-table API names unverified — `primeng` is not installed; #253) — purely visual, needs a scrolling ancestor **and** a table wider than it, positioning verified in the M4 real-browser pass #240, #144; sticky **footer** awaits a footer content model → #251) | Compose | 10 |
+| `p-table` (advanced) | `cae-data-grid` | `@recon-research/caelum/grid` | ☑ | **TanStack Table** (headless) behind `CaeGridAdapter` | **Adapter** | 13 |
+| ↳ the TanStack engine itself | `provideTanStackGrid()` / `TanStackGridAdapter` | ⚠ `@recon-research/caelum/grid-tanstack` — **not in the barrel** (D-652) | ☑ | optional peer `@tanstack/table-core`; `@recon-research/caelum/grid` alone ships the client default + server adapter with **no** engine dependency | **Adapter** | 13 |
+| `p-tree` | `cae-tree` | `@recon-research/caelum/tree` | ☑ | `MatTree` | Direct | 10 |
+| `p-treetable` | `cae-tree-table` | `@recon-research/caelum/tree-table` | ☑ | `MatTable` + tree data source (`role=treegrid`) | Build-M | 10 |
 | `p-paginator` (standalone) | `cae-paginator` | — | ☐ **#712** | `MatPaginator`. Pagination already ships **inside** `cae-table` / `cae-data-grid` (`[paginated]`, `[pageSize]`, `[pageSizeOptions]`) — only the detached case is missing | Direct | 10 |
 | `p-virtualscroller` (a.k.a. `p-scroller`) | `cdk-virtual-scroll-viewport` — **use the CDK directly**; no `cae-*` wrapper is planned (it would add a name over an already-ergonomic primitive, the same call as `pDraggable`→`cdkDrag`) | `@angular/cdk/scrolling` | ◐ | `cdk-virtual-scroll-viewport` | Direct | 10 |
 | `p-dataview` | `cae-data-view` | — | ☐ **#712** | layout + `MatPaginator` | Compose | 10 |
-| `p-orderlist` | `cae-order-list` | `caelum/order-list` | ☑ | keyboard-operable drag-reorderable multi-selectable `role=listbox` over `cdkDropList`; **multi-select** (`[(selection)]`; click/Ctrl/Shift-click, Space/Shift+Arrow/Ctrl+A) with block move up/top/down/bottom + roving tabindex (focus separate from selection), every move + selection announced via `LiveAnnouncer`; content-agnostic `caeOrderListItem` template (item/index/active/selected); **in-list filter** (`[filter]` + type-safe `[filterMatch]` predicate, labelled `type=search` box, empty-state + announced count, reorder disabled while filtering); **per-item disabling** via `[disabledMatch]` and **stable identity** via `[trackBy]` (p-orderList's `dataKey`); `[(value)]` model + `(reorder)`; no foreign drag lib; remaining deferred #341 (RTL) | Build-M | 11 |
-| `p-picklist` | `cae-pick-list` | `caelum/pick-list` | ☑ | two connected keyboard-operable multi-selectable `role=listbox` lists over `cdkDropList` + `cdkDropListConnectedTo`; **per-list multi-select** (`[(sourceSelection)]`/`[(targetSelection)]`; click/Ctrl/Shift-click, Space/Shift+Arrow/Ctrl+A/Escape) with block transfer of the selected set both directions + per-list roving tabindex (focus separate from selection), every transfer + selection announced via `LiveAnnouncer`; **per-list within-list reorder** (drag-sort + an outer up/top/down/bottom control column per pane acting on the selected block; emits `(reorder)` with the `side`); content-agnostic `caePickListItem` template (item/index/active/selected); **projected per-side header slots** (`caePickListSourceHeader`/`caePickListTargetHeader`, each becoming its listbox's `aria-labelledby` name; explicit `[…AriaLabelledby]` still wins); **per-side in-list filter** (`[filter]` + shared type-safe `[filterMatch]` predicate, a labelled `type=search` box per list, empty-state + announced count; reorder disabled on a filtering list while transfer stays live); `[(source)]`/`[(target)]` models + `(transfer)`; remaining deferred #342 (RTL); no foreign drag lib | Build-M | 11 |
-| `p-timeline` | `cae-timeline` | `caelum/timeline` | ☑ | CSS/flex + CDK | Build-S | 11 |
+| `p-orderlist` | `cae-order-list` | `@recon-research/caelum/order-list` | ☑ | keyboard-operable drag-reorderable multi-selectable `role=listbox` over `cdkDropList`; **multi-select** (`[(selection)]`; click/Ctrl/Shift-click, Space/Shift+Arrow/Ctrl+A) with block move up/top/down/bottom + roving tabindex (focus separate from selection), every move + selection announced via `LiveAnnouncer`; content-agnostic `caeOrderListItem` template (item/index/active/selected); **in-list filter** (`[filter]` + type-safe `[filterMatch]` predicate, labelled `type=search` box, empty-state + announced count, reorder disabled while filtering); **per-item disabling** via `[disabledMatch]` and **stable identity** via `[trackBy]` (p-orderList's `dataKey`); `[(value)]` model + `(reorder)`; no foreign drag lib; remaining deferred #341 (RTL) | Build-M | 11 |
+| `p-picklist` | `cae-pick-list` | `@recon-research/caelum/pick-list` | ☑ | two connected keyboard-operable multi-selectable `role=listbox` lists over `cdkDropList` + `cdkDropListConnectedTo`; **per-list multi-select** (`[(sourceSelection)]`/`[(targetSelection)]`; click/Ctrl/Shift-click, Space/Shift+Arrow/Ctrl+A/Escape) with block transfer of the selected set both directions + per-list roving tabindex (focus separate from selection), every transfer + selection announced via `LiveAnnouncer`; **per-list within-list reorder** (drag-sort + an outer up/top/down/bottom control column per pane acting on the selected block; emits `(reorder)` with the `side`); content-agnostic `caePickListItem` template (item/index/active/selected); **projected per-side header slots** (`caePickListSourceHeader`/`caePickListTargetHeader`, each becoming its listbox's `aria-labelledby` name; explicit `[…AriaLabelledby]` still wins); **per-side in-list filter** (`[filter]` + shared type-safe `[filterMatch]` predicate, a labelled `type=search` box per list, empty-state + announced count; reorder disabled on a filtering list while transfer stays live); `[(source)]`/`[(target)]` models + `(transfer)`; remaining deferred #342 (RTL); no foreign drag lib | Build-M | 11 |
+| `p-timeline` | `cae-timeline` | `@recon-research/caelum/timeline` | ☑ | CSS/flex + CDK | Build-S | 11 |
 | `p-organizationchart` | `cae-org-chart` | — | ☐ **#667** | SVG/CDK or vetted US lib | Build-L | 11 |
 
 ## Panel / layout
 
 | PrimeNG (`p-*`) | Caelum (`cae-*`) | Import | Status | Material / CDK basis | Tier | Book |
 |---|---|---|---|---|---|---|
-| `p-accordion` | `cae-accordion` + `cae-expansion-panel` | `caelum/accordion` | ☑ | `MatExpansionPanel` / `MatAccordion` | Direct | 11 |
-| `p-card` | `cae-card` | `caelum/card` | ☑ | `MatCard` | Direct | 11 |
-| `p-tabs` (was `p-tabview`) | `cae-tabs` + `cae-tab` | `caelum/tabs` | ☑ | `MatTabGroup` | Direct | 11 |
-| `p-stepper` (`p-steps`) | `cae-stepper` + `cae-step` | `caelum/stepper` | ☑ | `MatStepper` | Direct | 11 |
-| `p-toolbar` | `cae-toolbar` | `caelum/toolbar` | ☑ | `MatToolbar` (`caeToolbarStart`/`caeToolbarEnd` slots; no `role=toolbar` — needs roving tabindex; center group / rows → #127) | Direct | 11 |
-| `p-divider` | `cae-divider` | `caelum/divider` | ☑ | `MatDivider` | Direct | 11 |
-| `p-panel`, `p-fieldset` | `cae-panel` / `cae-fieldset` | `caelum/panel` | ☑ | `MatCard` (surface only — the header row is Caelum's, not `mat-card-header`) / a real `<fieldset>`+`<legend>`. Two components, not one flagged one: a `<legend>` NAMES the enclosed group natively, which no `MatCard` reproduces. Optional disclosure = the APG *Disclosure* pattern (`<button aria-expanded aria-controls>`), collapsing via `[hidden]` so projected form state survives | Compose | 11 |
-| `p-scrollpanel` | `cae-scroll-panel` | `caelum/scroll-panel` | ☑ | native `overflow` + token-styled scrollbars over `CdkScrollable`; keyboard-focusable `role=region` only while content overflows; no custom-scrollbar engine | Build-S | 11 |
-| `p-splitter` | `cae-splitter` + `cae-splitter-panel` | `caelum/splitter` | ☑ | multi-panel flex splitter; keyboard-resizable APG window-splitter dividers (`role=separator`), native pointer resize, RTL via `Directionality`, no foreign drag lib | Build-M | 11 |
+| `p-accordion` | `cae-accordion` + `cae-expansion-panel` | `@recon-research/caelum/accordion` | ☑ | `MatExpansionPanel` / `MatAccordion` | Direct | 11 |
+| `p-card` | `cae-card` | `@recon-research/caelum/card` | ☑ | `MatCard` | Direct | 11 |
+| `p-tabs` (was `p-tabview`) | `cae-tabs` + `cae-tab` | `@recon-research/caelum/tabs` | ☑ | `MatTabGroup` | Direct | 11 |
+| `p-stepper` (`p-steps`) | `cae-stepper` + `cae-step` | `@recon-research/caelum/stepper` | ☑ | `MatStepper` | Direct | 11 |
+| `p-toolbar` | `cae-toolbar` | `@recon-research/caelum/toolbar` | ☑ | `MatToolbar` (`caeToolbarStart`/`caeToolbarEnd` slots; no `role=toolbar` — needs roving tabindex; center group / rows → #127) | Direct | 11 |
+| `p-divider` | `cae-divider` | `@recon-research/caelum/divider` | ☑ | `MatDivider` | Direct | 11 |
+| `p-panel`, `p-fieldset` | `cae-panel` / `cae-fieldset` | `@recon-research/caelum/panel` | ☑ | `MatCard` (surface only — the header row is Caelum's, not `mat-card-header`) / a real `<fieldset>`+`<legend>`. Two components, not one flagged one: a `<legend>` NAMES the enclosed group natively, which no `MatCard` reproduces. Optional disclosure = the APG *Disclosure* pattern (`<button aria-expanded aria-controls>`), collapsing via `[hidden]` so projected form state survives | Compose | 11 |
+| `p-scrollpanel` | `cae-scroll-panel` | `@recon-research/caelum/scroll-panel` | ☑ | native `overflow` + token-styled scrollbars over `CdkScrollable`; keyboard-focusable `role=region` only while content overflows; no custom-scrollbar engine | Build-S | 11 |
+| `p-splitter` | `cae-splitter` + `cae-splitter-panel` | `@recon-research/caelum/splitter` | ☑ | multi-panel flex splitter; keyboard-resizable APG window-splitter dividers (`role=separator`), native pointer resize, RTL via `Directionality`, no foreign drag lib | Build-M | 11 |
 
 ## Overlay
 
 | PrimeNG (`p-*`) | Caelum (`cae-*`) | Import | Status | Material / CDK basis | Tier | Book |
 |---|---|---|---|---|---|---|
-| `p-dialog`, DynamicDialog | **`CaeDialog` service** — `open()` → `CaeDialogRef`; body directives `caeDialogTitle`/`caeDialogContent`/`caeDialogActions`/`caeDialogClose`. **Not** a `[(visible)]`-bound component (D-15) | `caelum/dialog` | ☑ | `MatDialog` (component injection) | Direct | 09 |
-| `p-confirmdialog` | **`CaeConfirmService.confirm()`** (centered modal) | `caelum/confirm` | ☑ | `MatDialog` + confirm wrapper (`role=alertdialog`) | Compose | 09 |
-| `p-confirmpopup` | **`CaeConfirmService.confirmAt(origin, …)`** — the *same service*, anchored presentation. There is **no `<cae-confirm-popup>` selector**: the `CaeConfirmPopup` body is internal, reachable only through the service | `caelum/confirm` | ☑ | CDK overlay | Build-S | 09 |
-| `p-drawer` (was `p-sidebar`) | `cae-drawer` + `cae-drawer-container` | `caelum/drawer` | ☑ | `MatDrawer` + `MatDrawerContainer` (#709). Supplies the modal semantics Material omits — `MatDrawer` sets no `role`/`aria-*` yet traps focus behind a backdrop in every mode but `side`, so a modal drawer gets `role="dialog"` + `aria-modal` per **D-826**. `position` is `start`/`end` only, matching `MatDrawer`; top/bottom → **#854** | Direct | 09 |
-| `pTooltip` (directive) | `[caeTooltip]` | `caelum/tooltip` | ☑ | `MatTooltip` | Direct | 09 |
-| `p-popover` (was `p-overlaypanel`) | `cae-popover` + `[caePopoverTriggerFor]` | `caelum/popover` | ☑ | CDK Overlay (imperative) | Build-S | 09 |
+| `p-dialog`, DynamicDialog | **`CaeDialog` service** — `open()` → `CaeDialogRef`; body directives `caeDialogTitle`/`caeDialogContent`/`caeDialogActions`/`caeDialogClose`. **Not** a `[(visible)]`-bound component (D-15) | `@recon-research/caelum/dialog` | ☑ | `MatDialog` (component injection) | Direct | 09 |
+| `p-confirmdialog` | **`CaeConfirmService.confirm()`** (centered modal) | `@recon-research/caelum/confirm` | ☑ | `MatDialog` + confirm wrapper (`role=alertdialog`) | Compose | 09 |
+| `p-confirmpopup` | **`CaeConfirmService.confirmAt(origin, …)`** — the *same service*, anchored presentation. There is **no `<cae-confirm-popup>` selector**: the `CaeConfirmPopup` body is internal, reachable only through the service | `@recon-research/caelum/confirm` | ☑ | CDK overlay | Build-S | 09 |
+| `p-drawer` (was `p-sidebar`) | `cae-drawer` + `cae-drawer-container` | `@recon-research/caelum/drawer` | ☑ | `MatDrawer` + `MatDrawerContainer` (#709). Supplies the modal semantics Material omits — `MatDrawer` sets no `role`/`aria-*` yet traps focus behind a backdrop in every mode but `side`, so a modal drawer gets `role="dialog"` + `aria-modal` per **D-826**. `position` is `start`/`end` only, matching `MatDrawer`; top/bottom → **#854** | Direct | 09 |
+| `pTooltip` (directive) | `[caeTooltip]` | `@recon-research/caelum/tooltip` | ☑ | `MatTooltip` | Direct | 09 |
+| `p-popover` (was `p-overlaypanel`) | `cae-popover` + `[caePopoverTriggerFor]` | `@recon-research/caelum/popover` | ☑ | CDK Overlay (imperative) | Build-S | 09 |
 
 ## Menu
 
 | PrimeNG (`p-*`) | Caelum (`cae-*`) | Import | Status | Material / CDK basis | Tier | Book |
 |---|---|---|---|---|---|---|
-| `p-menu` | `cae-menu` + `[caeMenuTriggerFor]` | `caelum/menu` | ☑ | `MatMenu` | Direct | 09 |
-| `p-menubar` | `cae-menubar` | `caelum/menubar` | ☑ | `MatToolbar` + `MatMenu` (via `cae-menu`; v1 #153 = one-level dropdowns + CDK `FocusKeyManager` roving + Down/Up-opens + skip-disabled + empty-items guard; rich items/responsive collapse/RTL/disabled-interactive → #155; **nested submenus inside a group dropdown ship at #150**, inherited via the embedded `cae-menu`) | Compose | 09 |
-| (TabMenu) | `cae-tab-menu` | `caelum/tab-menu` | ☑ | `mat-tab-nav-bar` + `mat-tab-link` (v1 #164 = manual-`active` mode; selection is VALUE-based — assign each item a `value` and bind `[(activeValue)]`, *not* p-tabMenu's reference-based `activeItem`; the wrapper owns the `mat-tab-nav-panel` internally for the ARIA tabs pattern; router-linked mode/icons/rich items/responsive/RTL/closable → #165) | Direct | 09 |
-| `p-contextmenu` | `cae-context-menu` | `caelum/context-menu` | ☑ | CDK Menu (`cdkContextMenuTriggerFor`; v1 #157 = flat `CaeMenuItem[]` right-click menu, token-styled overlay panel via `ViewEncapsulation.None`, empty-items disables trigger, a11y free from the CDK primitives; submenus/rich items/groups/global-open/per-target data → #158) | Compose | 09 |
-| `p-tieredmenu` | nested `items` on `cae-menu` — **no dedicated `cae-tiered-menu` is planned** | `caelum/menu` | ☑ | `MatMenu` nesting (#150). A branch (an item with non-empty `items`) stamps a nested `cae-menu` and opens it, to any depth; `cae-split-button` / `cae-menubar` inherit it because they *embed* `cae-menu`. A branch is navigational — `(itemSelect)` only ever emits a leaf. Submenu ARIA, hover-open, `Escape`, and RTL-aware right-opens/left-closes are Material's, verified against its source. **The recursion is the component, not an `ng-template`:** `MatMenu` resolves rows by content query and DI, both of which follow a template's *declaration* site, so an outlet-recursive draft left the panel with zero items — roving focus dead, nothing red. The menubar and context-menu arms of the same gap are **#155** / **#158** — they enrich *those* components, so they do not own this row. Open: whether a root `xPosition` should cascade (#875). | Compose | 09 |
-| `p-breadcrumb` | `cae-breadcrumb` | `caelum/breadcrumb` | ☑ | semantic `nav` + `<ol>` with `aria-current="page"` on the current page (non-link); silent `aria-hidden` token separators; data-driven `[items]`/`[home]`; no overlay | Build-S | 09 |
-| ↳ router-linked crumbs | `[caeBreadcrumbRouterLink]` | ⚠ `caelum/breadcrumb-router` — **not in the barrel** (D-595) | ☑ | optional peer `@angular/router`; without it, intercept via `(itemSelect)` | Build-S | 09 |
-| `p-panelmenu` | `cae-panel-menu` | `caelum/panel-menu` | ☑ | `MatExpansionPanel` + nav | Build-S | 09 |
+| `p-menu` | `cae-menu` + `[caeMenuTriggerFor]` | `@recon-research/caelum/menu` | ☑ | `MatMenu` | Direct | 09 |
+| `p-menubar` | `cae-menubar` | `@recon-research/caelum/menubar` | ☑ | `MatToolbar` + `MatMenu` (via `cae-menu`; v1 #153 = one-level dropdowns + CDK `FocusKeyManager` roving + Down/Up-opens + skip-disabled + empty-items guard; rich items/responsive collapse/RTL/disabled-interactive → #155; **nested submenus inside a group dropdown ship at #150**, inherited via the embedded `cae-menu`) | Compose | 09 |
+| (TabMenu) | `cae-tab-menu` | `@recon-research/caelum/tab-menu` | ☑ | `mat-tab-nav-bar` + `mat-tab-link` (v1 #164 = manual-`active` mode; selection is VALUE-based — assign each item a `value` and bind `[(activeValue)]`, *not* p-tabMenu's reference-based `activeItem`; the wrapper owns the `mat-tab-nav-panel` internally for the ARIA tabs pattern; router-linked mode/icons/rich items/responsive/RTL/closable → #165) | Direct | 09 |
+| `p-contextmenu` | `cae-context-menu` | `@recon-research/caelum/context-menu` | ☑ | CDK Menu (`cdkContextMenuTriggerFor`; v1 #157 = flat `CaeMenuItem[]` right-click menu, token-styled overlay panel via `ViewEncapsulation.None`, empty-items disables trigger, a11y free from the CDK primitives; submenus/rich items/groups/global-open/per-target data → #158) | Compose | 09 |
+| `p-tieredmenu` | nested `items` on `cae-menu` — **no dedicated `cae-tiered-menu` is planned** | `@recon-research/caelum/menu` | ☑ | `MatMenu` nesting (#150). A branch (an item with non-empty `items`) stamps a nested `cae-menu` and opens it, to any depth; `cae-split-button` / `cae-menubar` inherit it because they *embed* `cae-menu`. A branch is navigational — `(itemSelect)` only ever emits a leaf. Submenu ARIA, hover-open, `Escape`, and RTL-aware right-opens/left-closes are Material's, verified against its source. **The recursion is the component, not an `ng-template`:** `MatMenu` resolves rows by content query and DI, both of which follow a template's *declaration* site, so an outlet-recursive draft left the panel with zero items — roving focus dead, nothing red. The menubar and context-menu arms of the same gap are **#155** / **#158** — they enrich *those* components, so they do not own this row. Open: whether a root `xPosition` should cascade (#875). | Compose | 09 |
+| `p-breadcrumb` | `cae-breadcrumb` | `@recon-research/caelum/breadcrumb` | ☑ | semantic `nav` + `<ol>` with `aria-current="page"` on the current page (non-link); silent `aria-hidden` token separators; data-driven `[items]`/`[home]`; no overlay | Build-S | 09 |
+| ↳ router-linked crumbs | `[caeBreadcrumbRouterLink]` | ⚠ `@recon-research/caelum/breadcrumb-router` — **not in the barrel** (D-595) | ☑ | optional peer `@angular/router`; without it, intercept via `(itemSelect)` | Build-S | 09 |
+| `p-panelmenu` | `cae-panel-menu` | `@recon-research/caelum/panel-menu` | ☑ | `MatExpansionPanel` + nav | Build-S | 09 |
 | `p-megamenu`, `p-dock` | `cae-mega-menu` / `cae-dock` | — | ☐ **#667** | CDK overlay / build (niche) | Build-M | 09 |
 
 ## Charts
@@ -157,28 +157,28 @@ Below, the **current** selector is listed with the historical alias noted. Verif
 
 | PrimeNG (`p-*`) | Caelum (`cae-*`) | Import | Status | Material / CDK basis | Tier | Book |
 |---|---|---|---|---|---|---|
-| `p-toast` | **`CaeToast` service** — `open(message, action?, config?)` → `CaeToastRef` | `caelum/toast` | ☑ | `MatSnackBar` (extend for stacked/rich) | Direct | 09 |
-| `p-message` (inline) | `cae-alert` | `caelum/alert` | ☑ | Built from scratch (#710) — Material ships no first-party alert, and the wrap the row once suggested (`MatCard`) supplies none of the contract. Owns its live region: `role="alert"` for `danger`, `role="status"` otherwise, overridable via `[politeness]` (`'off'` = static furniture). The dismiss button sits **outside** the region — ARIA's alert pattern is for announced content, not focusable content — and `[dismissFocusTarget]` catches the focus a self-removing close button would drop (WCAG 2.4.3) | Build-S | 11 |
-| `p-progressbar` | `cae-progress-bar` | `caelum/progress-bar` | ☑ | `MatProgressBar` | Direct | 11 |
-| `p-progressspinner` | `cae-progress-spinner` | `caelum/progress-spinner` | ☑ | `MatProgressSpinner` | Direct | 11 |
-| `p-badge` (`pBadge`) | `[caeBadge]` **directive only** | `caelum/badge` | ☑ | `MatBadge` (forward `caeBadgeDescription` for a11y; no standalone component / severity colour → #129) | Direct | 11 |
+| `p-toast` | **`CaeToast` service** — `open(message, action?, config?)` → `CaeToastRef` | `@recon-research/caelum/toast` | ☑ | `MatSnackBar` (extend for stacked/rich) | Direct | 09 |
+| `p-message` (inline) | `cae-alert` | `@recon-research/caelum/alert` | ☑ | Built from scratch (#710) — Material ships no first-party alert, and the wrap the row once suggested (`MatCard`) supplies none of the contract. Owns its live region: `role="alert"` for `danger`, `role="status"` otherwise, overridable via `[politeness]` (`'off'` = static furniture). The dismiss button sits **outside** the region — ARIA's alert pattern is for announced content, not focusable content — and `[dismissFocusTarget]` catches the focus a self-removing close button would drop (WCAG 2.4.3) | Build-S | 11 |
+| `p-progressbar` | `cae-progress-bar` | `@recon-research/caelum/progress-bar` | ☑ | `MatProgressBar` | Direct | 11 |
+| `p-progressspinner` | `cae-progress-spinner` | `@recon-research/caelum/progress-spinner` | ☑ | `MatProgressSpinner` | Direct | 11 |
+| `p-badge` (`pBadge`) | `[caeBadge]` **directive only** | `@recon-research/caelum/badge` | ☑ | `MatBadge` (forward `caeBadgeDescription` for a11y; no standalone component / severity colour → #129) | Direct | 11 |
 | `p-metergroup` | `cae-meter-group` | — | ☐ **#712** | stacked `MatProgressBar` | Build-S | 11 |
-| `p-skeleton` | `cae-skeleton` | `caelum/skeleton` | ☑ | CSS shimmer | Build-S | 11 |
+| `p-skeleton` | `cae-skeleton` | `@recon-research/caelum/skeleton` | ☑ | CSS shimmer | Build-S | 11 |
 
 ## File
 
 | PrimeNG (`p-*`) | Caelum (`cae-*`) | Import | Status | Material / CDK basis | Tier | Book |
 |---|---|---|---|---|---|---|
-| `p-fileupload` | `cae-file-upload` | `caelum/file-upload` | ☑ | keyboard-reachable native `input[type=file]` + native `DataTransfer` dropzone (not `cdkDropList` — that transfers `cdkDrag` items, never OS file drops); trust-boundary type/size validation *before* upload; `HttpClient` `reportProgress` per-file progress + cancel/retry; request config (`withCredentials` / `headers` / `params`, Content-Type guarded); controlled CVA (value = accepted `File[]`), `LiveAnnouncer` announcements; no first-party uploader — built US-clean (Book 03) | Build-M | 11 |
+| `p-fileupload` | `cae-file-upload` | `@recon-research/caelum/file-upload` | ☑ | keyboard-reachable native `input[type=file]` + native `DataTransfer` dropzone (not `cdkDropList` — that transfers `cdkDrag` items, never OS file drops); trust-boundary type/size validation *before* upload; `HttpClient` `reportProgress` per-file progress + cancel/retry; request config (`withCredentials` / `headers` / `params`, Content-Type guarded); controlled CVA (value = accepted `File[]`), `LiveAnnouncer` announcements; no first-party uploader — built US-clean (Book 03) | Build-M | 11 |
 
 ## Media (a team priority)
 
 | PrimeNG (`p-*`) | Caelum (`cae-*`) | Import | Status | Material / CDK basis | Tier | Book |
 |---|---|---|---|---|---|---|
-| `p-carousel` | `cae-carousel` | `caelum/carousel` | ☑ | CDK drag + stepper index | Build-M | 11 |
-| `p-galleria` | `cae-galleria` | `caelum/galleria` | ☑ | overlay shell (Book 09) + drag-drop | Build-M | 11 |
-| `p-image` | `cae-image` | `caelum/image` | ☑ | overlay preview / lightbox | Build-S | 11 |
-| `p-imagecompare` | `cae-image-compare` | `caelum/image-compare` | ☑ | before/after reveal slider; APG window-splitter divider (`role=separator`, keyboard-resizable), RTL via `Directionality`, no foreign drag lib (niche) | Build-S | 11 |
+| `p-carousel` | `cae-carousel` | `@recon-research/caelum/carousel` | ☑ | CDK drag + stepper index | Build-M | 11 |
+| `p-galleria` | `cae-galleria` | `@recon-research/caelum/galleria` | ☑ | overlay shell (Book 09) + drag-drop | Build-M | 11 |
+| `p-image` | `cae-image` | `@recon-research/caelum/image` | ☑ | overlay preview / lightbox | Build-S | 11 |
+| `p-imagecompare` | `cae-image-compare` | `@recon-research/caelum/image-compare` | ☑ | before/after reveal slider; APG window-splitter divider (`role=separator`, keyboard-resizable), RTL via `Directionality`, no foreign drag lib (niche) | Build-S | 11 |
 
 ## Misc / directives
 
@@ -188,11 +188,11 @@ Below, the **current** selector is listed with the historical alias noted. Verif
 | `pFocusTrap` | `cdkTrapFocus` | `@angular/cdk/a11y` | ◐ | `@angular/cdk/a11y` | Direct | 05 |
 | `pAutoFocus` | `cdkFocusInitial` | `@angular/cdk/a11y` | ◐ | `@angular/cdk/a11y` | Direct | 05 |
 | `pRipple` | `matRipple` | `@angular/material/core` | ◐ | Material ripple | Direct | 11 |
-| `p-chip` | `cae-chip` | `caelum/chip` | ☑ | `MatChip` | Direct | 11 |
-| — (a set of chips) | `cae-chip-set` (`role=grid`, generic `T` + accessor inputs) | `caelum/chip-set` | ☑ | `MatChipGrid` | Compose | 11 |
-| `p-tag` | `cae-tag` | `caelum/tag` | ☑ | `MatChip` (static, non-focusable) | Compose | 11 |
-| `p-avatar` (`p-avatargroup`) | `cae-avatar` / `cae-avatar-group` | `caelum/avatar` | ☑ | small component (no first-party avatar) | Build-S | 11 |
-| — (D-596 glyphs) | `cae-icon [name]` + `CAE_ICON_GLYPHS` / `CaeIconName` | `caelum/icon` | ☑ | inline SVG, a closed library-owned registry (no icon font, no `iconUrl`) | Build-S | 11 |
+| `p-chip` | `cae-chip` | `@recon-research/caelum/chip` | ☑ | `MatChip` | Direct | 11 |
+| — (a set of chips) | `cae-chip-set` (`role=grid`, generic `T` + accessor inputs) | `@recon-research/caelum/chip-set` | ☑ | `MatChipGrid` | Compose | 11 |
+| `p-tag` | `cae-tag` | `@recon-research/caelum/tag` | ☑ | `MatChip` (static, non-focusable) | Compose | 11 |
+| `p-avatar` (`p-avatargroup`) | `cae-avatar` / `cae-avatar-group` | `@recon-research/caelum/avatar` | ☑ | small component (no first-party avatar) | Build-S | 11 |
+| — (D-596 glyphs) | `cae-icon [name]` + `CAE_ICON_GLYPHS` / `CaeIconName` | `@recon-research/caelum/icon` | ☑ | inline SVG, a closed library-owned registry (no icon font, no `iconUrl`) | Build-S | 11 |
 | `p-inplace`, `p-blockui`, `p-scrolltop`, `pAnimateOnScroll` | (build on demand) | — | ☐ **#712** | CDK | Build-S | — |
 
 ## Niche / out-of-scope tail
@@ -210,7 +210,7 @@ A migrating team that hits any of these makes an explicit **build-or-drop** deci
 1. **Inventory your app first.** Caelum ships the parity surface; *your* codebase decides priority (Book 20 §3.4 / R7). Grep the real `p-*` selector usage and worst-case data sizes, and enumerate the props each call site actually uses (not the PrimeNG docs — brief §6) — that ranking, not this table's order, drives the migration.
 2. **Check the Status column before planning a wave.** Every ☐ is a build-or-drop decision you must make *before* you schedule the work, not one you discover mid-migration. Sort your inventory by status first, frequency second.
 3. **Seed the capability ledger** from this map, sorted by that real usage. Drive each row through the Book-20 migration pre-states `untouched → mapped → renamed`, then into Book 16 §2.2's verification ledger (`scaffolded → implementer-passed → adversarial-passed`); a row is *migrated* only at **`adversarial-passed`**, never at a clean `renamed` (Book 20 §3.6 — the evidence-gated ledger idea is brief §7, the verification state names are Book 16 §2.2's).
-4. **Run the codemods** (Book 20 §3.3) for the mechanical `p-*`→`cae-*` renames; resolve every `TODO(caelum-migrate)` marker the codemod leaves for a semantic prop/event remap by hand. Import from the per-component entry point in the Import column, not the `caelum` barrel.
+4. **Run the codemods** (Book 20 §3.3) for the mechanical `p-*`→`cae-*` renames; resolve every `TODO(caelum-migrate)` marker the codemod leaves for a semantic prop/event remap by hand. Import from the per-component entry point in the Import column, not the `@recon-research/caelum` barrel.
 5. **Hold the line forward** with the erosion ratchet (Book 20 §3.5): no new `primeng/*` import, no new `<p-*>` tag; the falling count is the burndown to zero.
 
 *Living document — correct effort tiers against actuals, re-sweep the Status column when entry points land, and add rows as PrimeNG evolves. Source inventory: the PrimeNG showcase component list; targets from intake brief §3.*

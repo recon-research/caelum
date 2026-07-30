@@ -12,8 +12,8 @@ import {
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { MatMenu, MatMenuItem, MatMenuTrigger, type MatMenuPanel } from '@angular/material/menu';
-import type { CaeMenuPanelHost } from 'caelum/shared';
-import { CaeIcon, caeItemIconContext, type CaeItemIconContext } from 'caelum/icon';
+import type { CaeMenuPanelHost } from '@recon-research/caelum/shared';
+import { CaeIcon, caeItemIconContext, type CaeItemIconContext } from '@recon-research/caelum/icon';
 
 /** A single item in a `cae-menu`. */
 export interface CaeMenuItem {

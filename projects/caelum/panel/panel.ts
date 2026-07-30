@@ -13,7 +13,7 @@ import {
   model,
 } from '@angular/core';
 import { MatCard } from '@angular/material/card';
-import { CaeIcon } from 'caelum/icon';
+import { CaeIcon } from '@recon-research/caelum/icon';
 
 // Module-scoped id counter for the header/content ids the toggle's `aria-labelledby` and
 // `aria-controls` point at. Deterministic per load, and never collides across instances.

@@ -1,7 +1,7 @@
 import { DestroyRef, Directive, ErrorHandler, inject, isDevMode } from '@angular/core';
 import { LocationStrategy } from '@angular/common';
 import { Router } from '@angular/router';
-import { CaeBreadcrumb, type CaeBreadcrumbSelectEvent } from 'caelum/breadcrumb';
+import { CaeBreadcrumb, type CaeBreadcrumbSelectEvent } from '@recon-research/caelum/breadcrumb';
 
 /**
  * `caeBreadcrumbRouterLink` — opt-in SPA navigation for a `cae-breadcrumb` trail (#333, **D-595**).

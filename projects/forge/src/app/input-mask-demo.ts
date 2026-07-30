@@ -2,8 +2,8 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 
-import { CaeCard } from 'caelum/card';
-import { CaeInputMask } from 'caelum/input-mask';
+import { CaeCard } from '@recon-research/caelum/card';
+import { CaeInputMask } from '@recon-research/caelum/input-mask';
 
 /**
  * The deferred "Input mask" `cae-input-mask` demo (#302) — the input family's last member and

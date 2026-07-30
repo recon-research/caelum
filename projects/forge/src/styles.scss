@@ -1,7 +1,7 @@
 // Forge is the first consumer of Caelum. These two lines stand the whole theming
 // token bridge up — Material's `--mat-sys-*` seam and every `--cae-*` token in
 // lockstep, light + dark. (Book 04 §3.2; in a published app the `@use` would read
-// `@use 'caelum/styles/theme' as caelum`.)
+// `@use '@recon-research/caelum/styles/theme' as caelum`.)
 //
 // Forge takes the default comfortable baseline and drives density at RUNTIME via
 // the `[data-density]` toggle in the app shell (D-19), so it passes no arguments.

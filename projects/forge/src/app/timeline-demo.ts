@@ -1,12 +1,12 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 
-import { CaeCard } from 'caelum/card';
+import { CaeCard } from '@recon-research/caelum/card';
 import {
   CaeTimeline,
   CaeTimelineContent,
   CaeTimelineMarker,
   CaeTimelineOpposite,
-} from 'caelum/timeline';
+} from '@recon-research/caelum/timeline';
 
 interface Milestone {
   date: string;

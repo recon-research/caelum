@@ -1,8 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
 
-import { CaeButton } from 'caelum/button';
-import { CaeCard } from 'caelum/card';
-import { CaeGalleria, type CaeGalleriaItem } from 'caelum/galleria';
+import { CaeButton } from '@recon-research/caelum/button';
+import { CaeCard } from '@recon-research/caelum/card';
+import { CaeGalleria, type CaeGalleriaItem } from '@recon-research/caelum/galleria';
 
 /**
  * Build a self-contained SVG "photo" as a data URI — a coloured panel with a label. Authored inline so

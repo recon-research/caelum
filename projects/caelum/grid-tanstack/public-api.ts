@@ -7,7 +7,7 @@
  * that a consumer using the dependency-free client default (or the server adapter) — or no grid at
  * all — installs it never and ships zero engine bytes. But a bundler resolves the whole static import
  * graph at scan time, *before* tree-shaking, so any entry point that both imports the peer **and** is
- * re-exported by the primary `caelum` barrel forces every `import … from 'caelum'` to resolve it —
+ * re-exported by the primary `caelum` barrel forces every `import … from '@recon-research/caelum'` to resolve it —
  * making "optional" a fiction (measured in #652: with the peer absent, even `import { CaeButton } from
  * 'caelum'` failed to build). The fix is structural, mirroring `caelum/breadcrumb-router`'s
  * `@angular/router` split (D-595): the `@tanstack` adapter lives here, this entry point is deliberately

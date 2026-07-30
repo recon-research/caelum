@@ -3,6 +3,6 @@
  * passthrough in Caelum: an injectable `CaeToast` over Material's `MatSnackBar`
  * (`reference/COMPARISON.md`: `p-toast` → `cae-toast`). Tree-shakable on its own, mirroring
  * Angular Material's per-component entry points, and also re-exported from the primary `caelum`
- * barrel (the split is additive, #28 — a bare `import from 'caelum'` still resolves it).
+ * barrel (the split is additive, #28 — a bare `import from '@recon-research/caelum'` still resolves it).
  */
 export * from './toast';

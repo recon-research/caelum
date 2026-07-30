@@ -22,14 +22,14 @@ import {
   CaeGridAdapterFactory,
   compareValues,
   toCsvBlob,
-} from 'caelum/grid';
+} from '@recon-research/caelum/grid';
 import type {
   CaeColumn,
   CaeGridDataRequest,
   CaeGridExportFormat,
   CaeRow,
   CaeSort,
-} from 'caelum/grid';
+} from '@recon-research/caelum/grid';
 
 /**
  * `TanStackGridAdapter<T>` — the **headless-engine** implementation of the {@link CaeGridAdapter} port
@@ -43,7 +43,7 @@ import type {
  * (`eslint.config.js`, pinned to this exact path) fails any other file that does, and the neutral port
  * `grid-adapter.ts` (hyphen, in `caelum/grid`) stays engine-free. It lives in its own barrel-exempt
  * entry point `caelum/grid-tanstack` (D-652) so the optional `@tanstack` peer never leaks into a bare
- * `import … from 'caelum'`. No vendor type escapes this module: the public surface is entirely
+ * `import … from '@recon-research/caelum'`. No vendor type escapes this module: the public surface is entirely
  * `CaeGridAdapter`/`Cae*`.
  *
  * **The bridge.** table-core is an *imperative, memoized* store (`createTable` → `getRowModel()`), while

@@ -14,4 +14,4 @@
 // be `export`ed from menubar.ts for Angular to accept it in the component's `imports` — stays OUT of
 // the public API surface. Only the component and its item type are public.
 export { CaeMenubar, type CaeMenubarItem } from './menubar';
-export type { CaeMenuItem } from 'caelum/menu';
+export type { CaeMenuItem } from '@recon-research/caelum/menu';

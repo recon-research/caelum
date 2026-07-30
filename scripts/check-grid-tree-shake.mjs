@@ -34,15 +34,22 @@
 //
 // Usage: node scripts/check-grid-tree-shake.mjs [distDir]   (default: dist/caelum)
 import { createRequire } from 'node:module';
-import { writeFileSync, mkdtempSync, rmSync, existsSync } from 'node:fs';
+import { writeFileSync, mkdtempSync, rmSync, existsSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const distDir = process.argv[2] || join(ROOT, 'dist', 'caelum');
-const gridFesm = join(distDir, 'fesm2022', 'caelum-grid.mjs');
-const gridTanstackFesm = join(distDir, 'fesm2022', 'caelum-grid-tanstack.mjs');
+// ng-packagr names each FESM after the PACKAGE, not the folder: `@recon-research/caelum/grid`
+// emits `recon-research-caelum-grid.mjs` (#514/D-501). Derive the prefix so a future rename —
+// or a scope change — cannot leave this gate silently looking for a file that no longer exists.
+const libPkgName = JSON.parse(
+  readFileSync(join(ROOT, 'projects', 'caelum', 'package.json'), 'utf8'),
+).name;
+const fesmPrefix = libPkgName.replace(/^@/, '').replace(/\//g, '-');
+const gridFesm = join(distDir, 'fesm2022', `${fesmPrefix}-grid.mjs`);
+const gridTanstackFesm = join(distDir, 'fesm2022', `${fesmPrefix}-grid-tanstack.mjs`);
 
 function fail(msg) {
   console.error(`\x1b[31mFATAL\x1b[0m ${msg}`);

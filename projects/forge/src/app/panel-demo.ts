@@ -1,9 +1,9 @@
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
-import { CaeCard } from 'caelum/card';
-import { CaeInput } from 'caelum/input';
-import { CaeFieldset, CaePanel, CaePanelHeader } from 'caelum/panel';
+import { CaeCard } from '@recon-research/caelum/card';
+import { CaeInput } from '@recon-research/caelum/input';
+import { CaeFieldset, CaePanel, CaePanelHeader } from '@recon-research/caelum/panel';
 
 /**
  * The deferred "Panel & fieldset" demo (#711, M5 parity close) — the titled-container family

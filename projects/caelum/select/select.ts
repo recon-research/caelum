@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, input, viewChild } from '@angular/core';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatSelect, MatSelectModule } from '@angular/material/select';
-import { CaeFormFieldControlBase } from 'caelum/form-field';
+import { CaeFormFieldControlBase } from '@recon-research/caelum/form-field';
 
 /** A single option in a `cae-select`. */
 export interface CaeSelectOption {

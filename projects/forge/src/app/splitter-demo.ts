@@ -1,8 +1,8 @@
 import { DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 
-import { CaeCard } from 'caelum/card';
-import { CaeSplitter, CaeSplitterPanel } from 'caelum/splitter';
+import { CaeCard } from '@recon-research/caelum/card';
+import { CaeSplitter, CaeSplitterPanel } from '@recon-research/caelum/splitter';
 
 /**
  * The deferred "Splitter" `cae-splitter` demo (#323) — the Splitter family opener. It shows the component

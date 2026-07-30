@@ -4,7 +4,7 @@ import { Overlay, OverlayContainer, type OverlayRef } from '@angular/cdk/overlay
 import { MatDialog } from '@angular/material/dialog';
 import { of } from 'rxjs';
 
-import { CaeDialog } from 'caelum/dialog';
+import { CaeDialog } from '@recon-research/caelum/dialog';
 import { CaeConfirmService } from './confirm';
 import { expectNoA11yViolations } from '../testing/a11y';
 

@@ -8,7 +8,7 @@ import {
   signal,
   type TemplateRef,
 } from '@angular/core';
-import { CAE_DIALOG_DATA, injectCaeDialogRef } from 'caelum/dialog';
+import { CAE_DIALOG_DATA, injectCaeDialogRef } from '@recon-research/caelum/dialog';
 import type { CaeGalleriaItem } from './galleria';
 import type { CaeGalleriaTemplateContext } from './galleria-item';
 

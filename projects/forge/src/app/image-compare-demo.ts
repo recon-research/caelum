@@ -2,9 +2,9 @@ import { DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
-import { CaeCard } from 'caelum/card';
-import { CaeImageCompare } from 'caelum/image-compare';
-import { CaeSelectButton, CaeSelectButtonOption } from 'caelum/select-button';
+import { CaeCard } from '@recon-research/caelum/card';
+import { CaeImageCompare } from '@recon-research/caelum/image-compare';
+import { CaeSelectButton, CaeSelectButtonOption } from '@recon-research/caelum/select-button';
 
 /**
  * Build a self-contained SVG "photo" as a data URI — a coloured plate with a label. Authored inline so the

@@ -9,7 +9,7 @@ import {
   type TemplateRef,
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
-import { CaeIcon, caeItemIconContext, type CaeItemIconContext } from 'caelum/icon';
+import { CaeIcon, caeItemIconContext, type CaeItemIconContext } from '@recon-research/caelum/icon';
 
 /**
  * One crumb in a `cae-breadcrumb` trail. A crumb is a labelled ancestor; when it carries a `url` it

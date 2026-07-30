@@ -13,7 +13,7 @@ import {
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInput, MatInputModule } from '@angular/material/input';
 import { AbstractControl, ValidationErrors, ValidatorFn } from '@angular/forms';
-import { CaeFormFieldControlBase } from 'caelum/form-field';
+import { CaeFormFieldControlBase } from '@recon-research/caelum/form-field';
 
 /**
  * One parsed position of a mask template: either a fixed literal character or an editable

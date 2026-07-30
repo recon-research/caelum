@@ -7,4 +7,4 @@
 export * from './multi-select';
 // Re-exported so a consumer importing only `caelum/multi-select` can type its `appearance` and
 // `errorMessages` inputs without reaching back to the barrel (this control exposes both).
-export type { CaeErrorMessages, CaeFormFieldAppearance } from 'caelum/shared';
+export type { CaeErrorMessages, CaeFormFieldAppearance } from '@recon-research/caelum/shared';

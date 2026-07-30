@@ -1,8 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
-import { CaeCard } from 'caelum/card';
-import { CaeInputNumber } from 'caelum/input-number';
+import { CaeCard } from '@recon-research/caelum/card';
+import { CaeInputNumber } from '@recon-research/caelum/input-number';
 
 /**
  * The deferred "Numeric input" `cae-input-number` demo (#301) — the first member of the M3 input

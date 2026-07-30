@@ -22,7 +22,7 @@ import {
   viewChildren,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { CaeDialog, type CaeDialogRef } from 'caelum/dialog';
+import { CaeDialog, type CaeDialogRef } from '@recon-research/caelum/dialog';
 import { CaeGalleriaLightbox, type CaeGalleriaLightboxData } from './galleria-lightbox';
 import {
   CaeGalleriaItemDef,

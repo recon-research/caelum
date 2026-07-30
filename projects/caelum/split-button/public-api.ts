@@ -10,5 +10,5 @@
  * `itemSelect` are re-exported here so `caelum/split-button` is self-typing (no second import).
  */
 export * from './split-button';
-export type { CaeMenuItem } from 'caelum/menu';
-export type { CaeButtonVariant } from 'caelum/button';
+export type { CaeMenuItem } from '@recon-research/caelum/menu';
+export type { CaeButtonVariant } from '@recon-research/caelum/button';

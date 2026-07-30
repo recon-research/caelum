@@ -1,8 +1,8 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { FormControl, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 
-import { CaeCard } from 'caelum/card';
-import { CaeRating } from 'caelum/rating';
+import { CaeCard } from '@recon-research/caelum/card';
+import { CaeRating } from '@recon-research/caelum/rating';
 
 /**
  * The deferred "Rating" `cae-rating` demo (#663) — the keyboard-operable star rating as a form
