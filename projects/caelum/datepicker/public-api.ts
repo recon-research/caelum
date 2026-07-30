@@ -12,4 +12,4 @@ export * from './datepicker';
 export { CaeMultiDateSelectionModel } from './multi-date-selection-model';
 // Re-exported so a consumer importing only `caelum/datepicker` can type the inherited
 // `appearance` / `errorMessages` inputs without reaching back to the barrel.
-export type { CaeErrorMessages, CaeFormFieldAppearance } from 'caelum/shared';
+export type { CaeErrorMessages, CaeFormFieldAppearance } from '@recon-research/caelum/shared';

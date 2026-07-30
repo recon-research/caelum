@@ -1,7 +1,11 @@
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 
-import { CaeCard } from 'caelum/card';
-import { CaeBreadcrumb, CaeBreadcrumbItem, CaeBreadcrumbSelectEvent } from 'caelum/breadcrumb';
+import { CaeCard } from '@recon-research/caelum/card';
+import {
+  CaeBreadcrumb,
+  CaeBreadcrumbItem,
+  CaeBreadcrumbSelectEvent,
+} from '@recon-research/caelum/breadcrumb';
 
 /**
  * The deferred "Breadcrumb" `cae-breadcrumb` demo (#332) — the navigation-trail component. It shows a

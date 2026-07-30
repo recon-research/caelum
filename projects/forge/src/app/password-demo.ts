@@ -2,8 +2,8 @@ import { ChangeDetectionStrategy, Component, computed } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 
-import { CaeCard } from 'caelum/card';
-import { CaePassword } from 'caelum/password';
+import { CaeCard } from '@recon-research/caelum/card';
+import { CaePassword } from '@recon-research/caelum/password';
 
 /**
  * The deferred "Password" `cae-password` demo (#304) — the input family's component member with a

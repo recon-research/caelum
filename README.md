@@ -7,7 +7,7 @@
 
 Caelum pairs Material's foundation with a full application-UI surface, designed to be adopted incrementally — one component at a time — in new and existing Angular apps. Components are named and parity-mapped against their PrimeNG counterparts (`p-*` → `cae-*`), so a migrating team can swap them in at their own pace. Its canonical demo is **Forge**, an example admin console built only from Caelum components — [see it live](https://recon-research.github.io/caelum/).
 
-> **Status:** in active development and further along than you'd guess — 60+ components, 2,000+ tests, CI-gated a11y/theming/provenance invariants. Milestones M0–M4 are complete: every shipped entry point now carries an independently-reviewed sign-off in the [capability ledger](docs/CAPABILITY_LEDGER.md). **Not yet published to npm** — it will publish as **`@recon-research/caelum`** (D-501; the repo-wide rename lands pre-publish, [#514](https://github.com/recon-research/caelum/issues/514)). The live plan is [`docs/ROADMAP.md`](docs/ROADMAP.md).
+> **Status:** in active development and further along than you'd guess — 60+ components, 2,000+ tests, CI-gated a11y/theming/provenance invariants. Milestones M0–M4 are complete: every shipped entry point now carries an independently-reviewed sign-off in the [capability ledger](docs/CAPABILITY_LEDGER.md). **Not yet published to npm** — the package is named **`@recon-research/caelum`** (D-501; the repo-wide rename landed in [#514](https://github.com/recon-research/caelum/issues/514), so every import path below is already the published one). The live plan is [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Components
 

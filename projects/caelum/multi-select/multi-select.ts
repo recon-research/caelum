@@ -10,7 +10,7 @@ import {
 import { MatChipsModule } from '@angular/material/chips';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatSelect, MatSelectModule } from '@angular/material/select';
-import { CaeFormFieldControlBase } from 'caelum/form-field';
+import { CaeFormFieldControlBase } from '@recon-research/caelum/form-field';
 
 /** A single option in a `cae-multi-select`. */
 export interface CaeMultiSelectOption {

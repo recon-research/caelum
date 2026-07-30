@@ -6,7 +6,7 @@
 //
 // A consumer applies the whole theme with two lines (D-757):
 //
-//   @use 'caelum/styles/theme' as caelum;
+//   @use '@recon-research/caelum/styles/theme' as caelum;
 //   @include caelum.theme();
 //
 // This file is MIXIN-ONLY — `@use` alone emits the `--cae-*` token layer (via the

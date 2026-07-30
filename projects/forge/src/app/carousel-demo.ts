@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
 
-import { CaeCard } from 'caelum/card';
-import { CaeCarousel, CaeCarouselItem } from 'caelum/carousel';
+import { CaeCard } from '@recon-research/caelum/card';
+import { CaeCarousel, CaeCarouselItem } from '@recon-research/caelum/carousel';
 
 /** A "what's new" highlight tile — plain text content (no external image, so the demo stays provenance-clean and deterministic). */
 interface Highlight {

@@ -5,4 +5,4 @@
  * re-export dedupes in the primary `caelum` barrel (same pattern as `caelum/menubar`).
  */
 export * from './context-menu';
-export type { CaeMenuItem } from 'caelum/menu';
+export type { CaeMenuItem } from '@recon-research/caelum/menu';

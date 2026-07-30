@@ -2,7 +2,7 @@
 
 **A comprehensive, accessible Angular component library built on Angular Material and the CDK — with the breadth teams expect when they migrate off PrimeNG.**
 
-Caelum ships 50+ components, each as its own tree-shakable secondary entry point (`caelum/button`, `caelum/table`, `caelum/galleria`, …), parity-mapped against PrimeNG (`p-*` → `cae-*`) so existing apps can adopt it one component at a time.
+Caelum ships 50+ components, each as its own tree-shakable secondary entry point (`@recon-research/caelum/button`, `@recon-research/caelum/table`, `@recon-research/caelum/galleria`, …), parity-mapped against PrimeNG (`p-*` → `cae-*`) so existing apps can adopt it one component at a time.
 
 - **Token-only theming** — every color/space/radius/type value comes from the `--cae-*` design-token bridge, with light/dark parity and a density switch.
 - **Accessibility as a baseline** — explicit keyboard + ARIA behavior per component, axe-verified.
@@ -18,7 +18,7 @@ Caelum ships 50+ components, each as its own tree-shakable secondary entry point
 ## Usage
 
 ```ts
-import { CaeButton } from 'caelum/button';
+import { CaeButton } from '@recon-research/caelum/button';
 
 @Component({
   imports: [CaeButton],

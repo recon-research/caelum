@@ -16,7 +16,7 @@ import {
   CaeIcon,
   type CaeIconName,
   type CaeItemIconContext,
-} from 'caelum/icon';
+} from '@recon-research/caelum/icon';
 
 /**
  * Tag severity. Maps to the existing `--cae-color-*` tokens — `success`/`warn`/`danger` to

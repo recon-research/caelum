@@ -1,7 +1,7 @@
 import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, vi } from 'vitest';
-import { CAE_ICON_GLYPHS } from 'caelum/icon';
+import { CAE_ICON_GLYPHS } from '@recon-research/caelum/icon';
 
 import { CaeBreadcrumb, CaeBreadcrumbItem, CaeBreadcrumbSelectEvent } from './breadcrumb';
 import { expectNoA11yViolations } from '../testing/a11y';

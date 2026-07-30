@@ -9,7 +9,7 @@ import {
   numberAttribute,
   signal,
 } from '@angular/core';
-import { CaeIcon, type CaeIconName } from 'caelum/icon';
+import { CaeIcon, type CaeIconName } from '@recon-research/caelum/icon';
 
 /** Avatar outline. */
 export type CaeAvatarShape = 'circle' | 'square';

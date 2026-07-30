@@ -12,7 +12,7 @@ import {
 } from '@angular/core';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInput, MatInputModule } from '@angular/material/input';
-import { CaeFormFieldControlBase } from 'caelum/form-field';
+import { CaeFormFieldControlBase } from '@recon-research/caelum/form-field';
 
 /**
  * The four strength labels, weakest→strongest, shown beside the meter for scores 1–4 (score 0,

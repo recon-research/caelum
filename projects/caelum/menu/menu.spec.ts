@@ -4,7 +4,7 @@ import { By } from '@angular/platform-browser';
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { BidiModule } from '@angular/cdk/bidi';
 import { MatMenuTrigger } from '@angular/material/menu';
-import { CAE_ICON_GLYPHS } from 'caelum/icon';
+import { CAE_ICON_GLYPHS } from '@recon-research/caelum/icon';
 
 import { CaeMenu, CaeMenuItem, CaeMenuTrigger } from './menu';
 import { expectNoA11yViolations } from '../testing/a11y';

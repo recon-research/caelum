@@ -1,8 +1,8 @@
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 
-import { CaeAlert, CaeAlertSeverity } from 'caelum/alert';
-import { CaeButton } from 'caelum/button';
-import { CaeCard } from 'caelum/card';
+import { CaeAlert, CaeAlertSeverity } from '@recon-research/caelum/alert';
+import { CaeButton } from '@recon-research/caelum/button';
+import { CaeCard } from '@recon-research/caelum/card';
 
 /**
  * The deferred "Alert" `cae-alert` demo (#710, M5 parity close) — the inline status / validation

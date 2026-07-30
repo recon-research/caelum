@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 
-import { CaeCard } from 'caelum/card';
-import { CaeTag, CaeTagSeverity } from 'caelum/tag';
+import { CaeCard } from '@recon-research/caelum/card';
+import { CaeTag, CaeTagSeverity } from '@recon-research/caelum/tag';
 
 interface StatusRow {
   label: string;

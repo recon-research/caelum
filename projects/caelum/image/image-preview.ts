@@ -1,6 +1,6 @@
 import { hasModifierKey } from '@angular/cdk/keycodes';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
-import { CAE_DIALOG_DATA, injectCaeDialogRef } from 'caelum/dialog';
+import { CAE_DIALOG_DATA, injectCaeDialogRef } from '@recon-research/caelum/dialog';
 
 /** Accessible names for the preview toolbar — passed down from {@link CaeImage} so every control is nameable. */
 export interface CaeImagePreviewLabels {

@@ -44,7 +44,7 @@ Caelum's theming is a **token bridge**: you adopt one Sass entry point, and ever
 
 ```scss
 // styles.scss
-@use 'caelum/styles/theme' as caelum;
+@use '@recon-research/caelum/styles/theme' as caelum;
 
 @include caelum.theme();
 ```
@@ -68,18 +68,18 @@ Rename selectors and import paths using COMPARISON's **Caelum** and **Import** c
 **Import from the per-component entry point, not the barrel:**
 
 ```ts
-import { CaeSelect } from 'caelum/select';       // ✅ pulls one component
-import { CaeSelect } from 'caelum';              // ⚠ pulls the whole library
+import { CaeSelect } from '@recon-research/caelum/select';       // ✅ pulls one component
+import { CaeSelect } from '@recon-research/caelum';              // ⚠ pulls the whole library
 ```
 
 **Two entry points are not in the barrel at all, by design:**
 
 ```ts
-import { CaeBreadcrumbRouterLink } from 'caelum/breadcrumb-router';  // needs @angular/router
-import { provideTanStackGrid }     from 'caelum/grid-tanstack';      // needs @tanstack/table-core
+import { CaeBreadcrumbRouterLink } from '@recon-research/caelum/breadcrumb-router';  // needs @angular/router
+import { provideTanStackGrid }     from '@recon-research/caelum/grid-tanstack';      // needs @tanstack/table-core
 ```
 
-Both import **optional** peer dependencies. A bundler resolves the static import graph *before* tree-shaking, so re-exporting either from the barrel would make its peer mandatory for every consumer — which is why `import { provideTanStackGrid } from 'caelum'` is a resolution failure rather than an oversight ([D-595](ARCHITECTURE.md), [D-652](ARCHITECTURE.md)).
+Both import **optional** peer dependencies. A bundler resolves the static import graph *before* tree-shaking, so re-exporting either from the barrel would make its peer mandatory for every consumer — which is why `import { provideTanStackGrid } from '@recon-research/caelum'` is a resolution failure rather than an oversight ([D-595](ARCHITECTURE.md), [D-652](ARCHITECTURE.md)).
 
 Leave a `TODO(caelum-migrate)` marker anywhere the codemod cannot resolve a prop or event, and work the markers in §4.
 
@@ -324,9 +324,9 @@ A **☐ planned** row in COMPARISON means the target is mapped but not built. Ev
 
 | Kind | Where | What to do |
 |---|---|---|
-| **Shipped with a stated edge** | `p-panel`/`p-fieldset` → `cae-panel`/`cae-fieldset` ship (`caelum/panel`), with three deliberate divergences. `cae-fieldset`'s **`[legend]` is required** (`p-fieldset`'s is optional) — an unnamed group is the defect the component exists to prevent. `p-panel`'s `toggler="header"` (whole-header click) is **not ported**: it makes anything interactive in the header a nested interactive. There is no `onBeforeToggle`/`onAfterToggle` — `(collapsedChange)` is the after-toggle event. There is no `[disabled]`; disable the group through its form (`formGroup.disable()`). Shared with `p-fieldset`: when `[toggleable]`, the toggle lives inside the `<legend>`, so AT announces the group name twice on entry ("Billing details, grouping, Billing details, button"). | Bind `[legend]` on every fieldset. Replace `(onAfterToggle)` with `(collapsedChange)`, and a header-click toggle with the icon toggle. |
-| **Shipped with a stated edge** | `p-drawer` → `cae-drawer` ships (`caelum/drawer`), but `position` is `start`/`end` only — Material's `MatDrawer` has no top/bottom. A top or bottom drawer is [#854](https://github.com/recon-research/caelum/issues/854) | Migrate left/right drawers now. If you used `position="top"`/`"bottom"`, say so on #854. |
-| **Shipped with a stated edge** | `p-message` → `cae-alert` ships (`caelum/alert`); note `severity="error"` is **`"danger"`** here. A live region announces *changes*: a `role="alert"` node is announced when **inserted after load with new text**, but not when already present at first paint, not reliably when re-inserted with identical text, and `role="status"` insertion is AT-dependent. This is how live regions work, not a wrapper limitation ([#866](https://github.com/recon-research/caelum/issues/866) tracks the screen-reader verification) | Inserting a `danger` alert on submit announces. For a polite message that must be heard, keep the alert **mounted** — `visible` stays `true` and the *projected content* changes. Setting `visible="false"` destroys the live-region element, so re-showing it is an insertion, not an update. |
+| **Shipped with a stated edge** | `p-panel`/`p-fieldset` → `cae-panel`/`cae-fieldset` ship (`@recon-research/caelum/panel`), with three deliberate divergences. `cae-fieldset`'s **`[legend]` is required** (`p-fieldset`'s is optional) — an unnamed group is the defect the component exists to prevent. `p-panel`'s `toggler="header"` (whole-header click) is **not ported**: it makes anything interactive in the header a nested interactive. There is no `onBeforeToggle`/`onAfterToggle` — `(collapsedChange)` is the after-toggle event. There is no `[disabled]`; disable the group through its form (`formGroup.disable()`). Shared with `p-fieldset`: when `[toggleable]`, the toggle lives inside the `<legend>`, so AT announces the group name twice on entry ("Billing details, grouping, Billing details, button"). | Bind `[legend]` on every fieldset. Replace `(onAfterToggle)` with `(collapsedChange)`, and a header-click toggle with the icon toggle. |
+| **Shipped with a stated edge** | `p-drawer` → `cae-drawer` ships (`@recon-research/caelum/drawer`), but `position` is `start`/`end` only — Material's `MatDrawer` has no top/bottom. A top or bottom drawer is [#854](https://github.com/recon-research/caelum/issues/854) | Migrate left/right drawers now. If you used `position="top"`/`"bottom"`, say so on #854. |
+| **Shipped with a stated edge** | `p-message` → `cae-alert` ships (`@recon-research/caelum/alert`); note `severity="error"` is **`"danger"`** here. A live region announces *changes*: a `role="alert"` node is announced when **inserted after load with new text**, but not when already present at first paint, not reliably when re-inserted with identical text, and `role="status"` insertion is AT-dependent. This is how live regions work, not a wrapper limitation ([#866](https://github.com/recon-research/caelum/issues/866) tracks the screen-reader verification) | Inserting a `danger` alert on submit announces. For a polite message that must be heard, keep the alert **mounted** — `visible` stays `true` and the *projected content* changes. Setting `visible="false"` destroys the live-region element, so re-showing it is an insertion, not an update. |
 | **On-demand** | [#667](https://github.com/recon-research/caelum/issues/667) (knob, org-chart, mega-menu, dock) · [#712](https://github.com/recon-research/caelum/issues/712) (standalone paginator, data-view, meter-group, cascade-select, mention, colour-picker, speed-dial, key-filter, inplace, block-UI, scroll-top, animate-on-scroll) | Built when someone asks. If you need one, say so on the issue. |
 | **Shipped with a stated edge** | `p-tieredmenu` → **nested `items` on `cae-menu`** ([#150](https://github.com/recon-research/caelum/issues/150)); there is no separate `cae-tiered-menu`. Any item with a non-empty `items` array is a submenu branch, to any depth, and `cae-split-button` / `cae-menubar` inherit it. Two edges: a branch is **navigational**, so `(itemSelect)` only ever emits a leaf — a PrimeNG model that hung a `command` on a parent item must move it to a leaf; and `items` must be an acyclic tree held in a stable reference (a `signal` or `readonly` field), because rows track by item identity — rebuilding the array on every change detection now rebuilds every row. `cae-context-menu` submenus are separately tracked as [#158](https://github.com/recon-research/caelum/issues/158). | Nest `items` directly; no new component or import. Move any parent-item `command` down to leaves. |
 | **Adapters** | `cae-chart` [#233](https://github.com/recon-research/caelum/issues/233) · `cae-editor` [#232](https://github.com/recon-research/caelum/issues/232) | Third-party engines behind a neutral port; on-demand. |

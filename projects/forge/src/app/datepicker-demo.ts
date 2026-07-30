@@ -1,8 +1,8 @@
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
-import { CaeCard } from 'caelum/card';
-import { CaeDatepicker, type CaeDateRange } from 'caelum/datepicker';
+import { CaeCard } from '@recon-research/caelum/card';
+import { CaeDatepicker, type CaeDateRange } from '@recon-research/caelum/datepicker';
 
 /**
  * The deferred "Date picker" demo (#666) — `cae-datepicker` across its full-parity mode set:

@@ -7,9 +7,9 @@ import {
   type TemplateRef,
 } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
-import type { CaeButtonVariant } from 'caelum/button';
-import { CaeIcon, type CaeIconName, type CaeItemIconContext } from 'caelum/icon';
-import { CaeMenu, CaeMenuTrigger, type CaeMenuItem } from 'caelum/menu';
+import type { CaeButtonVariant } from '@recon-research/caelum/button';
+import { CaeIcon, type CaeIconName, type CaeItemIconContext } from '@recon-research/caelum/icon';
+import { CaeMenu, CaeMenuTrigger, type CaeMenuItem } from '@recon-research/caelum/menu';
 
 /**
  * `cae-split-button` — a **composed** default-command button joined to a dropdown of

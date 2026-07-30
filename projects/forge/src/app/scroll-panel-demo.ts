@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 
-import { CaeCard } from 'caelum/card';
-import { CaeScrollPanel } from 'caelum/scroll-panel';
+import { CaeCard } from '@recon-research/caelum/card';
+import { CaeScrollPanel } from '@recon-research/caelum/scroll-panel';
 
 /**
  * The deferred "Scroll panel" `cae-scroll-panel` demo (#328) — the Splitter family's ScrollPanel sibling. It

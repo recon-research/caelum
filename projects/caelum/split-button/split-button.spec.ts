@@ -2,8 +2,8 @@ import { Component, ComponentRef, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { OverlayContainer } from '@angular/cdk/overlay';
-import { CAE_ICON_GLYPHS } from 'caelum/icon';
-import { CaeMenuTrigger, type CaeMenuItem } from 'caelum/menu';
+import { CAE_ICON_GLYPHS } from '@recon-research/caelum/icon';
+import { CaeMenuTrigger, type CaeMenuItem } from '@recon-research/caelum/menu';
 
 import { CaeSplitButton } from './split-button';
 import { expectNoA11yViolations } from '../testing/a11y';

@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
-import { CaeButton } from 'caelum/button';
-import { CaeInput, type CaeErrorMessages } from 'caelum/input';
+import { CaeButton } from '@recon-research/caelum/button';
+import { CaeInput, type CaeErrorMessages } from '@recon-research/caelum/input';
 import {
   CAE_DIALOG_DATA,
   CaeDialogActions,
@@ -9,7 +9,7 @@ import {
   CaeDialogContent,
   CaeDialogTitle,
   injectCaeDialogRef,
-} from 'caelum/dialog';
+} from '@recon-research/caelum/dialog';
 
 /** The payload `CaeDialog.open` passes in, read back via {@link CAE_DIALOG_DATA}. */
 export interface RenameWorkspaceData {

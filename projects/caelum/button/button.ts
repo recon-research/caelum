@@ -9,7 +9,7 @@ import {
 import { MatButtonModule } from '@angular/material/button';
 import { MatMenuTrigger, type MatMenuPanel } from '@angular/material/menu';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import type { CaeMenuPanelHost, CaeTooltipPosition } from 'caelum/shared';
+import type { CaeMenuPanelHost, CaeTooltipPosition } from '@recon-research/caelum/shared';
 
 /** Appearance variants Caelum surfaces — 1:1 with Material's `matButton`. */
 export type CaeButtonVariant = 'filled' | 'tonal' | 'elevated' | 'outlined' | 'text';

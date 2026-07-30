@@ -10,7 +10,7 @@ import {
   numberAttribute,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { CaeDialog, type CaeDialogRef } from 'caelum/dialog';
+import { CaeDialog, type CaeDialogRef } from '@recon-research/caelum/dialog';
 import { CaeImagePreview, type CaeImagePreviewData } from './image-preview';
 
 /**

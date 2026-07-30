@@ -3,7 +3,7 @@ import { OverlayContainer } from '@angular/cdk/overlay';
 import { MatDialog } from '@angular/material/dialog';
 import { of, Subject } from 'rxjs';
 
-import { CaeDialog } from 'caelum/dialog';
+import { CaeDialog } from '@recon-research/caelum/dialog';
 import { CaeImage } from './image';
 import { expectNoA11yViolations } from '../testing/a11y';
 

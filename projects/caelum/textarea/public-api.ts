@@ -7,4 +7,4 @@
 export * from './textarea';
 // Re-exported so a consumer importing only `caelum/textarea` can type its `appearance` /
 // `errorMessages` inputs without reaching back to the barrel (this control exposes them).
-export type { CaeErrorMessages, CaeFormFieldAppearance } from 'caelum/shared';
+export type { CaeErrorMessages, CaeFormFieldAppearance } from '@recon-research/caelum/shared';

@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
 import { Dir } from '@angular/cdk/bidi';
 
-import { CaeCard } from 'caelum/card';
+import { CaeCard } from '@recon-research/caelum/card';
 import {
   CaePickList,
   CaePickListItemDef,
@@ -9,7 +9,7 @@ import {
   CaePickListSourceHeaderDef,
   CaePickListTargetHeaderDef,
   CaePickListTransferEvent,
-} from 'caelum/pick-list';
+} from '@recon-research/caelum/pick-list';
 
 interface Role {
   id: string;

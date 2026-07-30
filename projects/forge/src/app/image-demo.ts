@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 
-import { CaeCard } from 'caelum/card';
-import { CaeImage } from 'caelum/image';
+import { CaeCard } from '@recon-research/caelum/card';
+import { CaeImage } from '@recon-research/caelum/image';
 
 /**
  * Build a self-contained SVG "photo" as a data URI — a coloured plate with a label. Authored inline so the

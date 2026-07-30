@@ -3,8 +3,8 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { DOWN_ARROW, END, HOME, LEFT_ARROW, RIGHT_ARROW } from '@angular/cdk/keycodes';
-import { CaeMenuTrigger, type CaeMenuItem } from 'caelum/menu';
-import { CAE_ICON_GLYPHS } from 'caelum/icon';
+import { CaeMenuTrigger, type CaeMenuItem } from '@recon-research/caelum/menu';
+import { CAE_ICON_GLYPHS } from '@recon-research/caelum/icon';
 
 import { CaeMenubar, type CaeMenubarItem } from './menubar';
 import { expectNoA11yViolations } from '../testing/a11y';

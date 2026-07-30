@@ -1,7 +1,7 @@
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ENTER, SPACE } from '@angular/cdk/keycodes';
-import { CAE_ICON_GLYPHS } from 'caelum/icon';
+import { CAE_ICON_GLYPHS } from '@recon-research/caelum/icon';
 
 import { CaeTabMenu, type CaeTabMenuItem } from './tab-menu';
 import { expectNoA11yViolations } from '../testing/a11y';

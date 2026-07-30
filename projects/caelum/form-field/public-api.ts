@@ -35,11 +35,11 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { type AbstractControl, ControlValueAccessor, NgControl } from '@angular/forms';
 import { ErrorStateMatcher } from '@angular/material/core';
 import { Subscription } from 'rxjs';
-import type { CaeErrorMessages, CaeFormFieldAppearance } from 'caelum/shared';
+import type { CaeErrorMessages, CaeFormFieldAppearance } from '@recon-research/caelum/shared';
 
 // Re-exported so a consumer subclassing the base can type the inherited `appearance` /
 // `errorMessages` inputs without reaching to `caelum/shared` (matches the control entry points).
-export type { CaeErrorMessages, CaeFormFieldAppearance } from 'caelum/shared';
+export type { CaeErrorMessages, CaeFormFieldAppearance } from '@recon-research/caelum/shared';
 
 /**
  * `CaeFormFieldControlBase` — the abstract base for Caelum's `mat-form-field`-wrapping form

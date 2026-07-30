@@ -3,7 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { Directionality } from '@angular/cdk/bidi';
 
-import { CaeIcon } from 'caelum/icon';
+import { CaeIcon } from '@recon-research/caelum/icon';
 
 import { CaeRating } from './rating';
 import { expectNoA11yViolations } from '../testing/a11y';

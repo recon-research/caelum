@@ -1,8 +1,8 @@
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 
-import { CaeButton } from 'caelum/button';
-import { CaeCard } from 'caelum/card';
-import { CaeSkeleton } from 'caelum/skeleton';
+import { CaeButton } from '@recon-research/caelum/button';
+import { CaeCard } from '@recon-research/caelum/card';
+import { CaeSkeleton } from '@recon-research/caelum/skeleton';
 
 /**
  * The deferred "Skeleton" `cae-skeleton` demo (#662) — the loading placeholder. It shows a media-

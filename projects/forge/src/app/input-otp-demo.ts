@@ -1,8 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
-import { CaeCard } from 'caelum/card';
-import { CaeInputOtp } from 'caelum/input-otp';
+import { CaeCard } from '@recon-research/caelum/card';
+import { CaeInputOtp } from '@recon-research/caelum/input-otp';
 
 /**
  * The deferred "One-time code" `cae-input-otp` demo (#303) — the segmented member of the M3 input

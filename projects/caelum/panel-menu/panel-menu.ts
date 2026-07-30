@@ -12,9 +12,9 @@ import {
   type TemplateRef,
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
-import { CaeAccordion, CaeExpansionPanel } from 'caelum/accordion';
-import type { CaeMenuItem } from 'caelum/menu';
-import { CaeIcon, caeItemIconContext, type CaeItemIconContext } from 'caelum/icon';
+import { CaeAccordion, CaeExpansionPanel } from '@recon-research/caelum/accordion';
+import type { CaeMenuItem } from '@recon-research/caelum/menu';
+import { CaeIcon, caeItemIconContext, type CaeItemIconContext } from '@recon-research/caelum/icon';
 
 /**
  * Arrow-key roving over the leaf rows of ONE level (a panel's own item list, #665). Applied to every

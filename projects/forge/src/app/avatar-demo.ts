@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 
-import { CaeAvatar, CaeAvatarGroup } from 'caelum/avatar';
-import { CaeCard } from 'caelum/card';
+import { CaeAvatar, CaeAvatarGroup } from '@recon-research/caelum/avatar';
+import { CaeCard } from '@recon-research/caelum/card';
 
 /**
  * The deferred "Avatar" `cae-avatar` demo (#662) — the user/entity avatar. It shows the three

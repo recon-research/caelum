@@ -6,7 +6,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { By } from '@angular/platform-browser';
 import { of, Subject } from 'rxjs';
 
-import { CaeDialog } from 'caelum/dialog';
+import { CaeDialog } from '@recon-research/caelum/dialog';
 import { CaeGalleria, type CaeGalleriaItem, type CaeGalleriaResponsiveOption } from './galleria';
 import { CaeGalleriaItemDef, CaeGalleriaThumbnailDef } from './galleria-item';
 import { expectNoA11yViolations } from '../testing/a11y';

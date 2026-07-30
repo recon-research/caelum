@@ -8,7 +8,7 @@ import {
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { MatTabsModule } from '@angular/material/tabs';
-import { CaeIcon, caeItemIconContext, type CaeItemIconContext } from 'caelum/icon';
+import { CaeIcon, caeItemIconContext, type CaeItemIconContext } from '@recon-research/caelum/icon';
 
 /**
  * One item in a `cae-tab-menu` bar. Its `value` is the tab's identity — it is matched against

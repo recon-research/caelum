@@ -3,8 +3,8 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import { By } from '@angular/platform-browser';
 
-import { CaeInput } from 'caelum/input';
-import { CaeSelect } from 'caelum/select';
+import { CaeInput } from '@recon-research/caelum/input';
+import { CaeSelect } from '@recon-research/caelum/select';
 
 import { CaeFormFieldControlBase } from './public-api';
 import { expectNoA11yViolations } from '../testing/a11y';

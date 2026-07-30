@@ -7,7 +7,7 @@ import {
   isDevMode,
   model,
 } from '@angular/core';
-import { CaeIcon } from 'caelum/icon';
+import { CaeIcon } from '@recon-research/caelum/icon';
 
 // Module-scoped id counter for the `aria-controls` target. Deterministic per load, never collides.
 let nextUniqueId = 0;

@@ -5,7 +5,7 @@ import {
   CaeBreadcrumb,
   type CaeBreadcrumbItem,
   type CaeBreadcrumbSelectEvent,
-} from 'caelum/breadcrumb';
+} from '@recon-research/caelum/breadcrumb';
 
 import { CaeBreadcrumbRouterLink } from './breadcrumb-router';
 import { expectNoA11yViolations } from '../testing/a11y';

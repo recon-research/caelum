@@ -19,8 +19,8 @@ import { FocusableOption, FocusKeyManager } from '@angular/cdk/a11y';
 import { DOWN_ARROW, UP_ARROW } from '@angular/cdk/keycodes';
 import { MatButtonModule } from '@angular/material/button';
 import { MatToolbarModule } from '@angular/material/toolbar';
-import { CaeMenu, CaeMenuTrigger, type CaeMenuItem } from 'caelum/menu';
-import type { CaeItemIconContext } from 'caelum/icon';
+import { CaeMenu, CaeMenuTrigger, type CaeMenuItem } from '@recon-research/caelum/menu';
+import type { CaeItemIconContext } from '@recon-research/caelum/icon';
 
 /**
  * A top-level group in a {@link CaeMenubar} — a labelled trigger that opens a flat dropdown of

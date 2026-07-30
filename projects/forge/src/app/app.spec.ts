@@ -8,8 +8,8 @@ import { OverlayContainer } from '@angular/cdk/overlay';
 import { MatDialog } from '@angular/material/dialog';
 import { By } from '@angular/platform-browser';
 import { firstValueFrom } from 'rxjs';
-import { CaeDataGrid, ServerGridAdapter } from 'caelum/grid';
-import { TanStackGridAdapter } from 'caelum/grid-tanstack';
+import { CaeDataGrid, ServerGridAdapter } from '@recon-research/caelum/grid';
+import { TanStackGridAdapter } from '@recon-research/caelum/grid-tanstack';
 import { App } from './app';
 
 /**

@@ -2,9 +2,9 @@ import { ChangeDetectionStrategy, Component, computed } from '@angular/core';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { toSignal } from '@angular/core/rxjs-interop';
 
-import { CaeCard } from 'caelum/card';
-import { CaeTreeSelect } from 'caelum/tree-select';
-import type { CaeTreeNode } from 'caelum/tree';
+import { CaeCard } from '@recon-research/caelum/card';
+import { CaeTreeSelect } from '@recon-research/caelum/tree-select';
+import type { CaeTreeNode } from '@recon-research/caelum/tree';
 
 // A small, deterministic workspace-resource hierarchy (no Math.random / Date.now — the
 // reproducible-build rule). A node's `value` is its selection KEY; the group nodes carry keys too,

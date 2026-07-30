@@ -1,15 +1,15 @@
 import { DOCUMENT } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 
-import { CaeButton } from 'caelum/button';
-import { CaeCard } from 'caelum/card';
+import { CaeButton } from '@recon-research/caelum/button';
+import { CaeCard } from '@recon-research/caelum/card';
 // The neutral grid surface + the TanStack engine seam. `CaeDataGrid`/`CaeColumn` are the SAME neutral
 // symbols the client-default demo used; `provideTanStackGrid`/`tanStackGridAdapterFactory`/`CAE_GRID`
 // select the engine WITHOUT touching the component markup — that DI swap is the M2 isolation proof
 // (#171). Because this whole component is @defer'd from App, importing the TanStack factory keeps
 // `@tanstack/table-core` in this lazy chunk, off Forge's eager initial bundle.
-import { CaeDataGrid, CAE_GRID, type CaeColumn } from 'caelum/grid';
-import { tanStackGridAdapterFactory } from 'caelum/grid-tanstack';
+import { CaeDataGrid, CAE_GRID, type CaeColumn } from '@recon-research/caelum/grid';
+import { tanStackGridAdapterFactory } from '@recon-research/caelum/grid-tanstack';
 
 /** A row of the "Activity log" data-grid demo — a plain typed model (the grid generic is unconstrained). */
 interface ActivityEvent {

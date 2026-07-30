@@ -1,12 +1,12 @@
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 
-import { CaeCard } from 'caelum/card';
+import { CaeCard } from '@recon-research/caelum/card';
 import {
   CaeTreeCellDef,
   CaeTreeTable,
   type CaeTreeTableColumn,
   type CaeTreeTableNode,
-} from 'caelum/tree-table';
+} from '@recon-research/caelum/tree-table';
 
 /** A row of the workspace file tree — a plain typed model (the tree-table generic is unconstrained). */
 interface FileRow {

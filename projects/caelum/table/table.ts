@@ -20,7 +20,7 @@ import { MatPaginator, MatPaginatorModule } from '@angular/material/paginator';
 import { MatRadioModule } from '@angular/material/radio';
 import { MatSort, MatSortModule } from '@angular/material/sort';
 import { MatTableDataSource, MatTableModule } from '@angular/material/table';
-import type { CaeSortDirection } from 'caelum/shared';
+import type { CaeSortDirection } from '@recon-research/caelum/shared';
 import { CaeCellContext, CaeCellDef } from './cell-def';
 import { CaeRowDetailDef } from './row-detail-def';
 

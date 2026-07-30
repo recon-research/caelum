@@ -21,44 +21,44 @@ import {
 // "pay only for what you import" adoption pattern (Book 18 §3.3). The `caelum` barrel
 // still works unchanged (the split is additive; scripts/check-lib-exports.mjs gates that
 // every entry point is also re-exported by the barrel), but app code should prefer these paths.
-import { CaeAccordion, CaeExpansionPanel } from 'caelum/accordion';
-import { CaeBadge } from 'caelum/badge';
-import { CaeButton } from 'caelum/button';
-import { CaeCard } from 'caelum/card';
-import { CaeChipSet } from 'caelum/chip-set';
-import { CaeCheckbox } from 'caelum/checkbox';
-import { CaeAutocomplete, type CaeAutocompleteOption } from 'caelum/autocomplete';
-import { CaeInput, type CaeErrorMessages } from 'caelum/input';
-import { CaeListbox, type CaeListboxOption } from 'caelum/listbox';
-import { CaeMenu, CaeMenuItem } from 'caelum/menu';
-import { CaeMenubar, type CaeMenubarItem } from 'caelum/menubar';
-import { CaeContextMenu } from 'caelum/context-menu';
-import { CaeMultiSelect, type CaeMultiSelectOption } from 'caelum/multi-select';
-import { CaeRadio, CaeRadioOption } from 'caelum/radio';
-import { CaeSelect, CaeSelectOption } from 'caelum/select';
-import { CaeSelectButton, CaeSelectButtonOption } from 'caelum/select-button';
-import { CaeSlider } from 'caelum/slider';
-import { CaeSplitButton } from 'caelum/split-button';
-import { CaeStep, CaeStepper } from 'caelum/stepper';
-import { CaeSwitch } from 'caelum/switch';
-import { CaeTab, CaeTabs } from 'caelum/tabs';
-import { CaeTabMenu, type CaeTabMenuItem } from 'caelum/tab-menu';
-import { CaeCellDef, CaeTable, type CaeTableColumn } from 'caelum/table';
-import { CaeTextarea } from 'caelum/textarea';
-import { CaeToggleButton } from 'caelum/toggle-button';
-import { CaeToolbar } from 'caelum/toolbar';
-import { CaeTooltip } from 'caelum/tooltip';
+import { CaeAccordion, CaeExpansionPanel } from '@recon-research/caelum/accordion';
+import { CaeBadge } from '@recon-research/caelum/badge';
+import { CaeButton } from '@recon-research/caelum/button';
+import { CaeCard } from '@recon-research/caelum/card';
+import { CaeChipSet } from '@recon-research/caelum/chip-set';
+import { CaeCheckbox } from '@recon-research/caelum/checkbox';
+import { CaeAutocomplete, type CaeAutocompleteOption } from '@recon-research/caelum/autocomplete';
+import { CaeInput, type CaeErrorMessages } from '@recon-research/caelum/input';
+import { CaeListbox, type CaeListboxOption } from '@recon-research/caelum/listbox';
+import { CaeMenu, CaeMenuItem } from '@recon-research/caelum/menu';
+import { CaeMenubar, type CaeMenubarItem } from '@recon-research/caelum/menubar';
+import { CaeContextMenu } from '@recon-research/caelum/context-menu';
+import { CaeMultiSelect, type CaeMultiSelectOption } from '@recon-research/caelum/multi-select';
+import { CaeRadio, CaeRadioOption } from '@recon-research/caelum/radio';
+import { CaeSelect, CaeSelectOption } from '@recon-research/caelum/select';
+import { CaeSelectButton, CaeSelectButtonOption } from '@recon-research/caelum/select-button';
+import { CaeSlider } from '@recon-research/caelum/slider';
+import { CaeSplitButton } from '@recon-research/caelum/split-button';
+import { CaeStep, CaeStepper } from '@recon-research/caelum/stepper';
+import { CaeSwitch } from '@recon-research/caelum/switch';
+import { CaeTab, CaeTabs } from '@recon-research/caelum/tabs';
+import { CaeTabMenu, type CaeTabMenuItem } from '@recon-research/caelum/tab-menu';
+import { CaeCellDef, CaeTable, type CaeTableColumn } from '@recon-research/caelum/table';
+import { CaeTextarea } from '@recon-research/caelum/textarea';
+import { CaeToggleButton } from '@recon-research/caelum/toggle-button';
+import { CaeToolbar } from '@recon-research/caelum/toolbar';
+import { CaeTooltip } from '@recon-research/caelum/tooltip';
 // `CaeTreeNode` is inline-`type` so the runtime import of `caelum/tree` is CaeTree alone, used
 // only inside the deferred structure card (#85) — a value+type share on one import declaration
 // counts as an eager use and would keep cae-tree (MatTree) in the initial bundle.
-import { CaeTree, type CaeTreeNode } from 'caelum/tree';
+import { CaeTree, type CaeTreeNode } from '@recon-research/caelum/tree';
 // Display primitives (#88) — non-interactive Direct wrappers, no CVA.
-import { CaeDivider } from 'caelum/divider';
-import { CaeProgressBar } from 'caelum/progress-bar';
-import { CaeProgressSpinner } from 'caelum/progress-spinner';
+import { CaeDivider } from '@recon-research/caelum/divider';
+import { CaeProgressBar } from '@recon-research/caelum/progress-bar';
+import { CaeProgressSpinner } from '@recon-research/caelum/progress-spinner';
 // The first SERVICE passthrough (#96, D-15) — injected, not listed in `imports` (it's not a
 // component/directive). Its toasts carry their own aria-live region.
-import { CaeToast } from 'caelum/toast';
+import { CaeToast } from '@recon-research/caelum/toast';
 // The second SERVICE passthrough (#100, D-15) — CaeDialog over MatDialog. Loaded LAZILY: the service
 // (and MatDialog + the dialog-container machinery with it) plus the dialog body are dynamic-import()ed
 // on first open, so their ~40 kB stay OFF Forge's initial bundle (the #85 defer-before-raise policy —
@@ -959,7 +959,7 @@ export class App {
   protected async renameWorkspace(): Promise<void> {
     this.renameMessage.set('');
     const [{ CaeDialog }, { RenameWorkspaceDialog: dialogBody }] = await Promise.all([
-      import('caelum/dialog'),
+      import('@recon-research/caelum/dialog'),
       import('./rename-workspace-dialog'),
     ]);
     const dialog = this.injector.get(CaeDialog);
@@ -988,7 +988,7 @@ export class App {
    */
   protected async deleteWorkspace(): Promise<void> {
     this.deleteMessage.set('');
-    const { CaeConfirmService } = await import('caelum/confirm');
+    const { CaeConfirmService } = await import('@recon-research/caelum/confirm');
     const name = this.workspaceName();
     const confirmed = await this.injector.get(CaeConfirmService).confirm({
       header: 'Delete workspace?',
