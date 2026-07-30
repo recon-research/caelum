@@ -50,7 +50,21 @@ from datetime import datetime, timezone
 # caches without the banner saying so. Path-based exclusion can't tell the two apart,
 # and onboard step 3 reconciles docs against the tracker regardless -- a guard that
 # misses that case beats one that fires on every checkpoint and gets ignored.
-CHECKPOINT_DOCS = ["CLAUDE.md", "docs/ROADMAP.md", "docs/METRICS.md"]
+#
+# guard: #884 -- the last three paths, by that same rule. #860 found that a ledger
+# row cannot ride the PR of the code it signs off (squash rewrites the branch sha it
+# cites), so the row now ships in its OWN post-merge PR -- and that PR *is* the
+# checkpoint, writing Status + ROADMAP + METRICS + the two ledger files + PATTERNS in
+# one commit. prepare_compaction step 1 likewise routes reusable patterns into
+# docs/PATTERNS.md instead of letting them bloat Status. With only the first three
+# excluded, EVERY slice ended on a commit that cried STALE -- the #525 regression
+# again, by a different route. Calibrated over the 60 commits before the widening:
+# checkpoint-only 25 -> 34, and all 9 that flipped are checkpoints or ledger
+# sign-offs by title; no real-work commit flipped, and 35 of 60 still stale the
+# stamp. Revisit if the ledger stops being sha-based (#860's own retire-when).
+CHECKPOINT_DOCS = ["CLAUDE.md", "docs/ROADMAP.md", "docs/METRICS.md",
+                   "docs/PATTERNS.md", "docs/CAPABILITY_LEDGER.md",
+                   "docs/capability-ledger.json"]
 
 def log_event():
     try:
@@ -110,6 +124,15 @@ def selftest():
         ok = got == want
         failed += 0 if ok else 1
         print(f"{'PASS' if ok else 'FAIL'} banner-classify: {name} -> {got!r}" + ("" if ok else f" (want {want!r})"))
+    # #884: a CHECKPOINT_DOCS entry that no longer exists silently excludes nothing
+    # -- git takes an unmatched :!pathspec without complaint -- and the only symptom
+    # is the false STALE quietly returning. Resolve from __file__, not cwd: the audit
+    # runs this as a subprocess without setting one.
+    root = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, os.pardir)
+    for rel in CHECKPOINT_DOCS:
+        ok = os.path.exists(os.path.join(root, rel))
+        failed += 0 if ok else 1
+        print(f"{'PASS' if ok else 'FAIL'} banner-checkpoint-doc-exists: {rel}")
     return 1 if failed else 0
 
 
