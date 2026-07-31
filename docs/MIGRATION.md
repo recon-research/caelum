@@ -252,7 +252,8 @@ Caelum uses two shapes, and the difference decides whether a component self-upda
 
 | Component | Caelum value | Note |
 |---|---|---|
-| `cae-select` · `cae-autocomplete` · `cae-input` · `cae-textarea` | `string` | empty is `''` |
+| `cae-select` · `cae-input` · `cae-textarea` | `string` | empty is `''` |
+| `cae-autocomplete` | `string`, or `readonly string[]` with `[multiple]` | empty stays `''` in **both** modes, so `ctrl.reset()` leaves a chip-mode model holding a *string* (or `null`) and never an array, and a mid-life `[multiple]` flip leaves the model un-normalized until the first interaction — only the rendering is immune. A duplicate-bearing array is de-duplicated for **display** only: `['us','uk','us']` shows two chips while `control.value` stays three long, so a length validator grades the model, not the chips ([#901](https://github.com/recon-research/caelum/issues/901)) |
 | `cae-multi-select` | `string[]` | empty is `[]` |
 | `cae-listbox` · `cae-select-button` | `string`, or `string[]` with `[multiple]` | **`[multiple]` must be set at first render** — Material fixes the mode at init |
 | `cae-input-number` | `number \| null` | not a formatted string |
@@ -329,7 +330,7 @@ Theming is token-bridge-only, so `matBadgeColor` is not exposed. Wrap any elemen
                                             [formControl]="tags" label="Tags" />
 ```
 
-Enter and comma commit a tag; each renders as a removable chip. Duplicates are rejected (a repeat would throw NG0955 out of the `@for` that renders the chips), and `[options]` may still be supplied to offer suggestions alongside free entry — already-chosen options drop out of the panel. Without `[freeText]` the field becomes multi-select-from-suggestions only.
+Enter and comma commit a tag; each renders as a removable chip. Duplicates are rejected (a repeat would throw NG0955 out of the `@for` that renders the chips), and `[options]` may still be supplied to offer suggestions alongside free entry — already-chosen options drop out of the panel. Without `[freeText]` the field becomes multi-select-from-suggestions only. A duplicate arriving from the *form model* is de-duplicated for display but left in the model — the value shape caveats are in [§4.7](#47-value-shapes-that-changed).
 
 The chip keyboard model, for keyboard and screen-reader users: the chips share **one tab stop** (arrows walk them — Left/Right within a chip between its label and its remove button, Up/Down between chips) and the text input is the next tab stop. Deleting the newest tag from the input takes **two** Backspaces — the first, on an empty field, moves focus to the last chip; the second removes it. Every add and remove is announced to screen readers with the running count.
 
