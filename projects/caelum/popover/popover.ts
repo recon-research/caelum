@@ -318,8 +318,12 @@ export class CaePopoverTrigger {
     // `dispose()` re-enters here through `detachments()` and this call lands on a detached element — but
     // `.focus()` there is a silent no-op, so a guard would skip a call that already does nothing and
     // change no observable outcome. Mutation-tested: adding one killed zero tests, which is the
-    // definition of inert. The user really does end up on `<body>` in that case; where focus *should*
-    // go once the trigger is gone is a genuine question, filed as #841 rather than papered over here.
+    // definition of inert. The user really does end up on `<body>` in that case — and that is now the
+    // DECIDED behaviour, not an open gap: **D-854** (#841) chose to leave focus there and say so. The
+    // element the user was interacting with is genuinely gone, and any guess about where they "meant"
+    // to be (the nearest surviving ancestor, typically a layout `<div>` that announces nothing) can be
+    // more disorienting than the default. A consumer who needs a specific landing spot owns that
+    // choice today: move focus yourself from the same `@if` condition that removes the trigger.
     this.elementRef.nativeElement.focus();
   }
 
