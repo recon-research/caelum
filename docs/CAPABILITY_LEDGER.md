@@ -52,7 +52,7 @@ failed re-review gets recorded.
 |---|---|---|---|---|---|---|
 | `accordion` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #81 · `10b7ebe9` |
 | `alert` | adversarial-passed | ☑ | ☑ | ☑ | ☑ | PR #867 · `2a91731` |
-| `autocomplete` | adversarial-passed | ☑ | ☑ | — | — | PR #910 · `5737356d` † |
+| `autocomplete` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #910 · `5737356d` † |
 | `avatar` | adversarial-passed | ☑ | ☑ | — | — | PR #670 · `89f2560d` |
 | `badge` | adversarial-passed | ☑ | ☑ | — | — | PR #130 · `8cb47816` |
 | `breadcrumb` | adversarial-passed | ☑ | ☑ | — | — | PR #334 · `323efe6e` |

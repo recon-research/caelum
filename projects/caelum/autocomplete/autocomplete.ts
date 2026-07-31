@@ -119,7 +119,12 @@ export interface CaeAutocompleteOption {
  * own focus-the-LAST-chip Shift+Tab interception never fires here, because it listens on the grid
  * host and the input is the grid's DOM *sibling*. Removing the newest entry from the input takes
  * two Backspaces — the first (on an empty field) focuses the last chip, the second removes it;
- * focus then moves to a neighbouring chip, or back to the input when the last chip goes.
+ * focus then moves to a neighbouring chip, or back to the input when the last chip goes. A chip's
+ * × is floored at `--cae-target-min` (24px) for WCAG 2.5.8: Material sizes that trailing action from
+ * its own icon scale — 18px at EVERY density — and the floor token is density-invariant on purpose,
+ * because `--cae-space-*` collapses to 16px exactly where a dense admin table puts this control
+ * (measured in `autocomplete.browser.spec.ts`; jsdom lays nothing out, so the unit suite can only
+ * assert the button exists).
  *
  * No `color` input: theming comes through the `--cae-*`/`--mat-sys-*` token bridge, not Material's
  * palette input (the library's token-only discipline). Zoneless-compatible: `OnPush` + signal state
@@ -161,6 +166,7 @@ export interface CaeAutocompleteOption {
                 <button
                   matChipRemove
                   type="button"
+                  class="cae-autocomplete__remove"
                   [attr.aria-label]="chipRemoveAriaLabel()(chipLabel(chip))"
                 >
                   <svg
@@ -227,6 +233,20 @@ export interface CaeAutocompleteOption {
     :host,
     mat-form-field {
       display: block;
+    }
+    /* Material sizes the chip's trailing action from its own icon scale — 18x18 CSS px at EVERY
+       density, which is under WCAG 2.5.8's 24x24 minimum (measured in autocomplete.browser.spec.ts;
+       jsdom lays nothing out, so the unit suite could only ever assert the button exists). Floor it
+       on the density-INVARIANT --cae-target-min, never a --cae-space-* token: those shrink to 16px
+       at [data-density=compact], which is precisely where a dense admin table puts this control
+       (PATTERNS 10, the same floor cae-panel and cae-carousel use). */
+    .cae-autocomplete__remove.mat-mdc-chip-remove {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-inline-size: var(--cae-target-min);
+      min-block-size: var(--cae-target-min);
+      padding: 0;
     }
     .cae-autocomplete__remove-glyph {
       inline-size: 1em;
@@ -491,6 +511,10 @@ export class CaeAutocomplete extends CaeFormFieldControlBase<string | readonly s
    */
   private clearInput(element: HTMLInputElement): void {
     element.value = '';
+    // Belt-and-braces, and deliberately kept: the dispatch below re-enters `onType` through the
+    // template's own `(input)` binding, which would reset `query` anyway — so this line survives
+    // deletion (disclosed in #900's mutation table). It stays because it makes the method's own
+    // contract explicit rather than resting a second, unrelated effect on an incidental re-entry.
     this.query.set('');
     element.dispatchEvent(new Event('input', { bubbles: true }));
   }

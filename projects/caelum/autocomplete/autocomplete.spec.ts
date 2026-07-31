@@ -3,27 +3,90 @@ import { BACKSPACE, COMMA, DOWN_ARROW, ENTER, ESCAPE } from '@angular/cdk/keycod
 import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
+import { MatAutocompleteTrigger } from '@angular/material/autocomplete';
+import { MatChipInput, MatChipRow } from '@angular/material/chips';
+import { By } from '@angular/platform-browser';
 import { vi } from 'vitest';
 
 import { CaeAutocomplete, CaeAutocompleteOption } from './autocomplete';
 import { expectAnnouncedErrorState, expectNoA11yViolations } from '../testing/a11y';
 
 /**
- * Most tests here drive the CVA + the client-side filter at the component boundary: `writeValue` →
- * the rendered input display, the `(optionSelected)` handler → the committed value, `(input)` → the
- * filtered list, and the strict blur reconciliation. The error-forwarding bridge is exercised
- * through a host with a real `[formControl]`.
+ * Two kinds of test live here, and the distinction is the whole lesson of #900.
  *
- * The panel DOES attach in jsdom — the "#897 regression (real events)" block below opens it with
- * real focusin/input/keydown dispatches; this file's original header claimed the opposite ("needs
- * real focus/layout to attach") and that claim was what let #897 ship. Migrating the remaining
- * handler-call tests to real dispatched events is #900.
+ * **Real dispatched events** — the "#897 regression", "#899 a11y" and "template wiring" blocks — go
+ * through the DOM, so the full Material seam and the template's own bindings run. The panel DOES
+ * attach in jsdom; this file's original header claimed the opposite ("needs real focus/layout to
+ * attach"), and that false claim is what justified a suite of handler calls, which is what let #897
+ * and #898 ship green. Use `realEvents(() => fixture)` for anything whose wiring is at risk.
+ *
+ * **Direct handler calls** — most of the CVA and filter tests — are kept where the *handler body* is
+ * the subject and its binding is pinned elsewhere, plus two deliberate cases (the ours-first Enter
+ * ordering, which a dispatched event cannot produce). They are cheap and readable; what they must
+ * never be is the ONLY cover for a binding. Measured before this slice: 49 tests, 0 dispatched
+ * events, and deleting `(optionSelected)`, `(input)`, `(focusout)`, `[matAutocomplete]` or
+ * `[matChipInputSeparatorKeyCodes]` left every one of them passing.
+ *
+ * Layout and contrast claims live in `autocomplete.browser.spec.ts` (#240) — jsdom lays nothing out,
+ * so the chip ×'s WCAG 2.5.8 target box can only be measured against a real engine.
  */
 const OPTIONS: CaeAutocompleteOption[] = [
   { value: 'us', label: 'United States' },
   { value: 'uk', label: 'United Kingdom' },
   { value: 'de', label: 'Germany', disabled: true },
 ];
+
+/**
+ * The real-event helper set (#900). Three near-identical copies accumulated as the real-event blocks
+ * landed one slice at a time (#897, #899, #901); this is the single set they collapse into.
+ *
+ * These dispatch through the DOM rather than calling the component's protected handlers, so the whole
+ * Material seam runs — `MatChipInput._keydown`, `MatAutocompleteTrigger._handleKeydown`, `MatOption`'s
+ * click handling, and the CDK overlay panel, which attaches fine in jsdom. A handler call proves the
+ * handler body and says nothing about the binding that reaches it, which is exactly how #897 and #898
+ * shipped under a green suite.
+ *
+ * Takes a thunk, not a fixture: most blocks assign theirs in `beforeEach`, so a value captured when
+ * the describe body runs would be `undefined`.
+ */
+function realEvents(getFixture: () => ComponentFixture<unknown>) {
+  const inputEl = (): HTMLInputElement => getFixture().nativeElement.querySelector('input');
+
+  const settle = async (): Promise<void> => {
+    const fixture = getFixture();
+    fixture.detectChanges();
+    await fixture.whenStable();
+  };
+
+  /** Dispatch a real cancelable keydown; returns false iff something `preventDefault()`ed it. */
+  const keydownOn = (target: EventTarget, keyCode: number, key: string): boolean => {
+    const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'keyCode', { get: () => keyCode });
+    return target.dispatchEvent(event);
+  };
+
+  /** The same, aimed at the text input — the common case. */
+  const keydown = (keyCode: number, key: string): boolean => keydownOn(inputEl(), keyCode, key);
+
+  /** Real focus + focusin + input — the path that opens the panel and feeds the filter. */
+  const type = async (text: string): Promise<void> => {
+    const el = inputEl();
+    el.focus();
+    el.dispatchEvent(new Event('focusin', { bubbles: true }));
+    el.value = text;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    await settle();
+  };
+
+  /** The options of THIS input's open panel, resolved via aria-controls (a closed panel lingers). */
+  const panelOptions = (): NodeListOf<HTMLElement> => {
+    const panelId = inputEl().getAttribute('aria-controls');
+    expect(panelId).toBeTruthy(); // vacuity guard: no panel id means the panel never opened
+    return document.getElementById(panelId!)!.querySelectorAll('mat-option');
+  };
+
+  return { inputEl, settle, keydown, keydownOn, type, panelOptions };
+}
 
 describe('CaeAutocomplete', () => {
   let component: CaeAutocomplete;
@@ -82,8 +145,11 @@ describe('CaeAutocomplete', () => {
     expect(calls).toBe(0);
   });
 
-  it('filters the suggestions by the typed text (case-insensitive label match)', () => {
-    component['onType']('king'); // matches "United Kingdom"
+  it('filters case-insensitively and ignores surrounding whitespace', () => {
+    // '  KING  ', not 'king': the query is normalised by `query().trim().toLowerCase()`, and a
+    // lower-case probe with no padding exercises neither call — it matched incidentally and left
+    // both normalisations unpinned. Upper case kills the toLowerCase, the padding kills the trim.
+    component['onType']('  KING  '); // matches "United Kingdom"
     expect(component['filtered']().map((o) => o.value)).toEqual(['uk']);
   });
 
@@ -108,11 +174,17 @@ describe('CaeAutocomplete', () => {
     expect(component['filtered']().length).toBe(3); // full list again, not the stale [uk]
   });
 
-  it('clears whitespace-only text on blur even when the model is already empty', () => {
+  it('clears whitespace-only text on blur without committing over an already-empty model', () => {
+    // Two claims, and the second used to live only in a comment. The `singleValue() !== ''` guard
+    // is what stops a pristine field from emitting onChange('') on a mere tab-through — which marks
+    // the control dirty and trips a consumer's unsaved-changes prompt over an untouched form.
+    let calls = 0;
+    component.registerOnChange(() => calls++);
     const el = inputEl();
     el.value = '   ';
-    component['onBlur'](el); // model already '' → no commit fires, so onBlur must clear directly
-    expect(el.value).toBe('');
+    component['onBlur'](el);
+    expect(el.value).toBe(''); // onBlur clears directly, since no commit re-renders it
+    expect(calls).toBe(0);
   });
 
   it('honours a custom filterWith predicate', () => {
@@ -183,6 +255,27 @@ describe('CaeAutocomplete', () => {
     fixture.componentRef.setInput('required', true);
     fixture.detectChanges();
     expect(inputEl().required).toBe(true);
+  });
+
+  it('renders a list-valued model by its FIRST entry rather than as nonsense (#900)', async () => {
+    // singleValue()'s list coercion had no test. It exists for a mid-life [multiple] flip and for a
+    // model that was always an array; without it `selectedOption()` compares an option key against
+    // an ARRAY, matches nothing, and a freeText field would display '[object Object]'-grade text.
+    component.writeValue(['uk', 'us']);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(component['selectedOption']()?.label).toBe('United Kingdom');
+    expect(inputEl().value).toBe('United Kingdom');
+  });
+
+  it('renders BLANK for a value with no matching option in strict mode (#900)', async () => {
+    // The documented orphaned-value gap (#120), and the freeText test's exact counterpart: strict
+    // mode must not display an uncommittable string as though it were a chosen suggestion.
+    component.writeValue('Freedonia');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(component['selectedOption']()).toBeUndefined(); // vacuity guard: it really is an orphan
+    expect(inputEl().value).toBe('');
   });
 });
 
@@ -274,7 +367,7 @@ describe('CaeAutocomplete — multiple (chips)', () => {
   const chipEls = (): HTMLElement[] =>
     Array.from(fixture.nativeElement.querySelectorAll('mat-chip-row'));
   const chipText = (): string[] => chipEls().map((c) => c.textContent!.trim());
-  const inputEl = (): HTMLInputElement => fixture.nativeElement.querySelector('input');
+  const { inputEl, keydownOn } = realEvents(() => fixture);
 
   it('stamps the chip-grid arm and no bare matInput', () => {
     expect(fixture.nativeElement.querySelector('mat-chip-grid')).not.toBeNull();
@@ -337,14 +430,23 @@ describe('CaeAutocomplete — multiple (chips)', () => {
     expect(component['selectedOption']()).toBeUndefined();
   });
 
-  it('removes a chip and commits the shortened array', () => {
+  it('removes a chip and commits the shortened array, and no-ops on an absent one', () => {
     component.writeValue(['us', 'uk']);
     let latest: unknown;
-    component.registerOnChange((v) => (latest = v));
+    let calls = 0;
+    component.registerOnChange((v) => {
+      latest = v;
+      calls++;
+    });
     component['removeChip']('us');
     expect(latest).toEqual(['uk']);
-    component['removeChip']('nope'); // absent → no commit
-    expect(latest).toEqual(['uk']);
+    expect(calls).toBe(1);
+    // The absent-value guard needs the COUNT: `filter` returns a content-equal new array, so a
+    // redundant commit would leave `latest` deep-equal to ['uk'] and the value assertion alone
+    // passes with `if (next.length === current.length) return;` deleted. (Project lesson:
+    // self-heal launders mutation — assert the emission, not the settled state.)
+    component['removeChip']('nope');
+    expect(calls).toBe(1);
   });
 
   it('reads the shared empty value as no chips, and a stray string as one chip', () => {
@@ -374,6 +476,66 @@ describe('CaeAutocomplete — multiple (chips)', () => {
     component.writeValue(['de']);
     expect(component['query']()).toBe('king');
     expect(component['filtered']().map((o) => o.value)).toEqual(['uk']);
+  });
+
+  it('disables the whole chip surface, including KEYBOARD removal (#900)', async () => {
+    component.writeValue(['us', 'uk']);
+    component.setDisabledState(true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(inputEl().disabled).toBe(true);
+    expect(fixture.nativeElement.querySelectorAll('button[matChipRemove]').length).toBe(0);
+    // Hiding the × is only half of it. `[removable]="!isDisabled()"` is the ONLY guard on keyboard
+    // removal: MatChip._handleKeydown routes BACKSPACE/DELETE to remove() gated on `removable`,
+    // never on `disabled` — so a chip arm that merely dropped the button would still let a disabled
+    // control's chips be deleted from the keyboard.
+    const rows = fixture.debugElement.queryAll(By.directive(MatChipRow));
+    expect(rows.length).toBe(2); // vacuity guard: there are chips to refuse
+    for (const row of rows) expect(row.injector.get(MatChipRow).removable).toBe(false);
+    // ...and the real keystroke is refused, not merely the flag set. Via keydownOn, which defines
+    // `keyCode`: MatChip._handleKeydown branches on `event.keyCode === BACKSPACE`, and a
+    // KeyboardEvent built from `key` alone reports keyCode 0 — so a hand-rolled event walks
+    // straight past the handler and the assertion below passes against ANY removable value. (That
+    // draft was written, caught by neutralising the loop above, and fixed rather than kept.)
+    keydownOn(rows[1].nativeElement, BACKSPACE, 'Backspace');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(component['chipValues']()).toEqual(['us', 'uk']);
+  });
+
+  it('removes the LAST chip: commits [], drops the grid role, stays axe-clean (#900)', async () => {
+    fixture.componentRef.setInput('ariaLabel', 'Countries');
+    component.writeValue(['us']);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const grid = fixture.nativeElement.querySelector('mat-chip-grid') as HTMLElement;
+    expect(grid.getAttribute('role')).toBe('grid'); // vacuity guard: the role is on to begin with
+    let latest: unknown = 'unset';
+    component.registerOnChange((v) => (latest = v));
+    component['removeChip']('us');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    // The emptied chip model commits `[]`, NOT the shared `''` empty value — a required validator
+    // rejects both, but a consumer reading `.length` or spreading the value sees the difference.
+    expect(latest).toEqual([]);
+    expect(Array.isArray(latest)).toBe(true);
+    expect(chipEls().length).toBe(0);
+    // Emptying flips MatChipGrid's role back to null, so the #899 name gate must let go with it —
+    // a name on a role-less element is an ARIA violation (axe aria-prohibited-attr).
+    expect(grid.getAttribute('role')).toBeNull();
+    expect(grid.hasAttribute('aria-label')).toBe(false);
+    await expectNoA11yViolations(fixture.nativeElement);
+  });
+
+  it('honours a custom chipRemoveAriaLabel (#900)', async () => {
+    // The asymmetry the review named: filterWith's custom path is tested, this one was not — only
+    // the default "Remove <label>" was ever asserted.
+    fixture.componentRef.setInput('chipRemoveAriaLabel', (label: string) => `Drop ${label} tag`);
+    component.writeValue(['us']);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const remove = fixture.nativeElement.querySelector('button[matChipRemove]');
+    expect(remove.getAttribute('aria-label')).toBe('Drop United States tag');
   });
 
   it('leaves a partly-typed token alone when focus leaves the widget, but marks touched (#898)', () => {
@@ -450,6 +612,23 @@ describe('CaeAutocomplete — multiple + freeText', () => {
     expect(calls).toBe(0);
   });
 
+  it('unfilters the panel after a REAL token commit — the 4th commit site (#900)', async () => {
+    // #901 pinned the query reset on the pick and blur sites; the two TOKEN sites (COMMA via
+    // onTokenEnd, Enter via onEnterKey) had none. This asserts the OUTCOME rather than the line, so
+    // it holds whichever of clearInput's explicit `query.set('')` or the re-entrant `(input)`
+    // binding actually does the work — and it fails if a future edit drops both.
+    const { inputEl, keydown, type, settle } = realEvents(() => fixture);
+    await type('Ger'); // narrow to one suggestion first — an unfiltered panel proves nothing
+    expect(component['filtered']().map((o) => o.value)).toEqual(['de']); // setup guard
+    keydown(COMMA, ',');
+    await settle();
+    expect(component['chipValues']()).toEqual(['Ger']); // vacuity guard: the token committed
+    expect(inputEl().value).toBe('');
+    expect(component['query']()).toBe('');
+    // 'de' is now taken by nothing (the chip is the raw text 'Ger'), so all three remain on offer.
+    expect(component['filtered']().length).toBe(3);
+  });
+
   it('lists COMMA as the only separator, only under freeText — never ENTER (#897)', () => {
     // Material's separator path is key-agnostic and preventDefault()s unconditionally, so a listed
     // ENTER cannot be told apart from a COMMA when deciding whether the panel owns the keystroke
@@ -491,32 +670,7 @@ describe('CaeAutocomplete — #897 regression (real events, multiple mode)', () 
     await fixture.whenStable();
   });
 
-  const inputEl = (): HTMLInputElement => fixture.nativeElement.querySelector('input');
-
-  /** Dispatch a real cancelable keydown; returns false iff something preventDefault()ed it. */
-  const keydown = (keyCode: number, key: string): boolean => {
-    const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
-    Object.defineProperty(event, 'keyCode', { get: () => keyCode });
-    return inputEl().dispatchEvent(event);
-  };
-
-  /** Real focusin + input events — the path that opens the panel and feeds the filter. */
-  const type = async (text: string): Promise<void> => {
-    const el = inputEl();
-    el.focus();
-    el.dispatchEvent(new Event('focusin', { bubbles: true }));
-    el.value = text;
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-    fixture.detectChanges();
-    await fixture.whenStable();
-  };
-
-  /** The options of THIS input's open panel, resolved via aria-controls (a closed panel lingers). */
-  const panelOptions = (): NodeListOf<HTMLElement> => {
-    const panelId = inputEl().getAttribute('aria-controls');
-    expect(panelId).toBeTruthy(); // vacuity guard: no panel id means the panel never opened
-    return document.getElementById(panelId!)!.querySelectorAll('mat-option');
-  };
+  const { inputEl, keydown, type, panelOptions } = realEvents(() => fixture);
 
   it('clears the field on a mouse pick, so a later separator cannot commit the stale text', async () => {
     await type('Unit');
@@ -620,8 +774,6 @@ describe('CaeAutocomplete — #897 regression (real events, multiple mode)', () 
   });
 });
 
-// Real-event helpers duplicated from the #897 block above — #900 (the spec-wide real-event
-// migration) is where they consolidate to one shared set.
 describe('CaeAutocomplete — #899 a11y (real events, multiple mode)', () => {
   let component: CaeAutocomplete;
   let fixture: ComponentFixture<CaeAutocomplete>;
@@ -639,32 +791,7 @@ describe('CaeAutocomplete — #899 a11y (real events, multiple mode)', () => {
     await fixture.whenStable();
   });
 
-  const inputEl = (): HTMLInputElement => fixture.nativeElement.querySelector('input');
-
-  /** Dispatch a real cancelable keydown on `target` (the input, or a focused chip action). */
-  const keydownOn = (target: EventTarget, keyCode: number, key: string): void => {
-    const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
-    Object.defineProperty(event, 'keyCode', { get: () => keyCode });
-    target.dispatchEvent(event);
-  };
-
-  /** Real focusin + input events — the path that opens the panel and feeds the filter. */
-  const type = async (text: string): Promise<void> => {
-    const el = inputEl();
-    el.focus();
-    el.dispatchEvent(new Event('focusin', { bubbles: true }));
-    el.value = text;
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-    fixture.detectChanges();
-    await fixture.whenStable();
-  };
-
-  /** The options of THIS input's open panel, resolved via aria-controls (a closed panel lingers). */
-  const panelOptions = (): NodeListOf<HTMLElement> => {
-    const panelId = inputEl().getAttribute('aria-controls');
-    expect(panelId).toBeTruthy(); // vacuity guard: no panel id means the panel never opened
-    return document.getElementById(panelId!)!.querySelectorAll('mat-option');
-  };
+  const { inputEl, keydownOn, type, panelOptions } = realEvents(() => fixture);
 
   it('announces a real panel pick with the resolved label and the running count', async () => {
     await type('Unit');
@@ -1022,32 +1149,20 @@ describe('CaeAutocomplete — #901 review batch', () => {
     // reopens. Typing it back character by character self-heals, which is why this hid.
     const fixture = await makeBare({ multiple: true, freeText: true });
     const component = fixture.componentInstance;
-    const el = (): HTMLInputElement => fixture.nativeElement.querySelector('input');
-    const keydown = (keyCode: number, key: string): void => {
-      const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
-      Object.defineProperty(event, 'keyCode', { get: () => keyCode });
-      el().dispatchEvent(event);
-    };
-    el().focus();
-    el().dispatchEvent(new Event('focusin', { bubbles: true }));
-    el().value = 'United States';
-    el().dispatchEvent(new Event('input', { bubbles: true }));
-    fixture.detectChanges();
-    await fixture.whenStable();
+    const { inputEl, keydown, type, settle } = realEvents(() => fixture);
+    await type('United States');
     keydown(COMMA, ',');
-    fixture.detectChanges();
-    await fixture.whenStable();
+    await settle();
     expect(component['chipValues']()).toEqual(['United States']); // vacuity guard: it committed
-    expect(el().value).toBe('');
+    expect(inputEl().value).toBe('');
     // Close the panel WITHOUT leaving the field — a refocus would resync _previousValue by itself.
     keydown(ESCAPE, 'Escape');
-    fixture.detectChanges();
-    await fixture.whenStable();
+    await settle();
     expect(component['autocompleteTrigger']()!.panelOpen).toBe(false); // vacuity guard
-    el().value = 'United States';
-    el().dispatchEvent(new Event('input', { bubbles: true }));
-    fixture.detectChanges();
-    await fixture.whenStable();
+    // The one-shot re-entry: assign + a single input event, as a paste or autofill produces.
+    inputEl().value = 'United States';
+    inputEl().dispatchEvent(new Event('input', { bubbles: true }));
+    await settle();
     expect(component['autocompleteTrigger']()!.panelOpen).toBe(true);
   });
 
@@ -1120,5 +1235,108 @@ describe('CaeAutocomplete — #901 review batch', () => {
     await fixture.whenStable();
     expect(fixture.nativeElement.querySelectorAll('mat-chip-row').length).toBe(2);
     expect(host.ctrl.value).toEqual(['us', 'uk', 'us']);
+  });
+});
+
+// --- Template wiring: the half the handler-call suite could not see (#900) ---
+// A test that CALLS a protected handler proves the handler body and says nothing about the binding
+// that reaches it. Measured on the pre-#897 suite: 49 tests, 0 dispatched events, and deleting
+// `(optionSelected)`, `(input)`, `(focusout)`, `[matAutocomplete]` or
+// `[matChipInputSeparatorKeyCodes]` left every one of them green with the component fundamentally
+// dead — deleting `[matAutocomplete]` alone means the shipped single-select combobox has no
+// suggestion panel at all, and axe still passes. Each test here resolves the REAL directive or
+// drives a REAL event, one per load-bearing binding.
+describe('CaeAutocomplete — template wiring (#900)', () => {
+  let component: CaeAutocomplete;
+  let fixture: ComponentFixture<CaeAutocomplete>;
+  const { inputEl, settle, type, panelOptions } = realEvents(() => fixture);
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({ imports: [CaeAutocomplete] }).compileComponents();
+  });
+
+  /** A fresh fixture in the given mode. Callable twice in one test — the module is configured above. */
+  const make = async (inputs: Record<string, unknown> = {}): Promise<void> => {
+    fixture = TestBed.createComponent(CaeAutocomplete);
+    component = fixture.componentInstance;
+    fixture.componentRef.setInput('options', OPTIONS);
+    for (const [name, value] of Object.entries(inputs)) fixture.componentRef.setInput(name, value);
+    await fixture.whenStable();
+  };
+
+  it('feeds the filter from a REAL keystroke in single mode, not just from onType()', async () => {
+    // `(input)="onType(input.value)"` on the single arm is bound by nothing else in this file: every
+    // other filter test calls onType directly, so deleting the binding leaves typing inert — the
+    // panel would show all three suggestions forever — while the suite stays green.
+    await make();
+    expect(component['filtered']().length).toBe(3); // setup guard: unfiltered before the keystroke
+    await type('king');
+    expect(component['filtered']().map((o) => o.value)).toEqual(['uk']);
+    // ...and the PANEL reflects it, which is what the user actually sees.
+    const options = panelOptions();
+    expect(options.length).toBe(1);
+    expect(options[0].textContent).toContain('United Kingdom');
+  });
+
+  it('reconciles the display on a REAL focusout in single mode, not just an onBlur() call', async () => {
+    // `(focusout)="onBlur(input)"` likewise: every strict-revert test calls onBlur directly, so
+    // deleting the binding would leave un-picked text sitting in the field over a different model.
+    await make();
+    component.writeValue('us');
+    await settle();
+    const el = inputEl();
+    el.value = 'typed but never picked';
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    await settle();
+    expect(el.value).toBe('typed but never picked'); // setup guard: the field really diverged
+    el.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+    await settle();
+    expect(el.value).toBe('United States'); // reverted by the real event path
+    expect(component['value']()).toBe('us');
+  });
+
+  it('commits a REAL mouse pick in single mode and renders its label', async () => {
+    // `(optionSelected)` is one attribute on the shared <mat-autocomplete>, so the chip-mode pick
+    // test covers its deletion — but only chip mode drove it for real. This pins the single arm's
+    // full round trip: panel click → commit → the afterRenderEffect writing the label back.
+    await make();
+    let latest: unknown;
+    component.registerOnChange((v) => (latest = v));
+    await type('king');
+    panelOptions()[0].click();
+    await settle();
+    expect(latest).toBe('uk');
+    expect(component['value']()).toBe('uk');
+    expect(inputEl().value).toBe('United Kingdom');
+  });
+
+  it('binds the separator list onto the real MatChipInput — whose own default is ENTER', async () => {
+    // The existing assertion reads the component's `separatorKeyCodes()` computed, which survives
+    // deleting the [matChipInputSeparatorKeyCodes] binding entirely. What makes that deletion
+    // dangerous rather than merely untested is Material's DEFAULT: `separatorKeyCodes: [ENTER]`
+    // (chips.mjs:27). An unbound chip input therefore lands on exactly the key-agnostic ENTER
+    // separator #897 was fixed to avoid — the panel and the token commit fighting over one key.
+    await make({ multiple: true, freeText: true });
+    const chipInput = fixture.debugElement
+      .query(By.directive(MatChipInput))
+      .injector.get(MatChipInput);
+    expect(chipInput.separatorKeyCodes).toEqual([COMMA]);
+    fixture.componentRef.setInput('freeText', false);
+    await settle();
+    expect(chipInput.separatorKeyCodes).toEqual([]);
+  });
+
+  // No test for `[matChipInputFor]="grid"`: it is COMPILER-enforced, not test-enforced. Deleting it
+  // unmatches the `input[matChipInputFor]` selector, so the sibling
+  // `[matChipInputSeparatorKeyCodes]` and `(matChipInputTokenEnd)` stop resolving and the build
+  // fails NG8002 before any test runs. A drafted `chipInput.chipGrid === chipGrid()` assertion was
+  // written, mutation-tested, and DELETED as inert — its only "kill" was that compile error, and
+  // with a single grid in the template no reachable mutation can misroute the registration.
+  it('stamps a MatAutocompleteTrigger on BOTH mode arms', async () => {
+    // Each arm carries its own [matAutocomplete]; the single arm's had no direct cover.
+    await make();
+    expect(fixture.debugElement.query(By.directive(MatAutocompleteTrigger))).not.toBeNull();
+    await make({ multiple: true });
+    expect(fixture.debugElement.query(By.directive(MatAutocompleteTrigger))).not.toBeNull();
   });
 });
