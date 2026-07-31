@@ -61,6 +61,15 @@ sk_disk={p.replace("\\","/") for p in glob.glob("../.claude/skills/*/SKILL.md")}
 if sk_disk:
     sk_fails += [f"MANIFEST skills[] path missing on disk -> {p}" for p in sorted(sk_listed) if p.startswith("../.claude/") and not os.path.exists(p)]
     sk_fails += [f"skill on disk not in MANIFEST skills[] -> {p}" for p in sorted(sk_disk - sk_listed)]
+    # Flat .md under skills/ is a mis-placed skill: Agent Skills load only from
+    # <name>/SKILL.md directories. By-name exemptions single-homed HERE (#369) --
+    # ci.yml's inline step was dropped; this audit runs in both worlds via the
+    # library-audits stage. README.md = the human catalog; EVALS.md = the
+    # eval-golden contract (#302).
+    FLAT_EXEMPT={"README.md","EVALS.md"}
+    sk_fails += [f"flat file under .claude/skills/ (git mv it to <name>/SKILL.md) -> {p}"
+                 for p in sorted(q.replace("\\","/") for q in glob.glob("../.claude/skills/*.md"))
+                 if os.path.basename(p) not in FLAT_EXEMPT]
     # Frontmatter must PARSE (#48): a SKILL.md whose YAML breaks silently falls out
     # of routing -- Claude Code then shows the bare title instead of the description,
     # and conversational activation dies. Known-fatal shape caught live in #52's

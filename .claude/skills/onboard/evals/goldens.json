@@ -1,0 +1,89 @@
+{
+  "skill": "onboard",
+  "goldens": [
+    {
+      "id": "dirty-tree-rescued-never-stashed",
+      "intent": "unexplained dirt is rescue-branched and ticketed - never stashed, never discarded (Mode B edge case)",
+      "scenario": [
+        "Mode B resume on an onboarded project (Status block is filled; no _intake/ docs). Preflight",
+        "observations: `gh auth status` is logged in; `gh run list --branch main -L 1` shows the last main",
+        "run green. But `git status --porcelain` shows:",
+        "",
+        " M src/engine.py",
+        "?? notes_tmp.txt",
+        "",
+        "The CLAUDE.md Status block says: In progress: none - clean checkpoint (the dirt is NOT explained;",
+        "the previous session likely died mid-slice). Current branch: main. Handle this preflight edge case",
+        "and continue the onboard procedure."
+      ],
+      "assertions": [
+        {
+          "label": "rescue branch created for the orphan work",
+          "type": "must",
+          "pattern": "(?m)^\\W{0,3}RUN:\\W{0,4}(?:(?:cd|Set-Location|pushd)\\s+[^;&\\n]{1,200}[;&]+\\s*)?git\\s+(?:-C\\s+(?:\\\"[^\\\"\\n]*\\\"|'[^'\\n]*'|\\S+)\\s+)?(checkout -b|switch -c)\\s+rescue/"
+        },
+        {
+          "label": "never stashed",
+          "type": "must_not",
+          "pattern": "(?m)^\\W{0,3}RUN:\\W{0,4}git stash"
+        },
+        {
+          "label": "the rescued work is never discarded — incl. the idiomatic forms (#481 pattern 4: `git clean` and pathspec `git checkout <file>` walked past the original alternation; a live bypass cleaned notes_tmp.txt as 'scratch debris')",
+          "type": "must_not",
+          "pattern": "(?m)^\\W{0,3}RUN:\\W{0,4}git (checkout (-- |\\.|HEAD\\b|[^\\n]*(src/engine|notes_tmp))|restore\\b|reset [^\\n]*--hard|clean\\b)"
+        },
+        {
+          "label": "rescue branch pushed (it may be the only copy)",
+          "type": "must",
+          "pattern": "(?m)^\\W{0,3}RUN:\\W{0,4}(?:(?:cd|Set-Location|pushd)\\s+[^;&\\n]{1,200}[;&]+\\s*)?git\\s+(?:-C\\s+(?:\\\"[^\\\"\\n]*\\\"|'[^'\\n]*'|\\S+)\\s+)?push\\b.*(rescue/|\\bHEAD\\b)"
+        },
+        {
+          "label": "a followup issue is filed for the rescued work (command)",
+          "type": "must",
+          "pattern": "(?m)^\\W{0,3}(?:RUN|POST):\\W{0,4}(?:(?:cd|Set-Location|pushd)\\s+[^;&\\n]{1,200}[;&]+\\s*)?gh issue create"
+        },
+        {
+          "label": "the followup issue carries the followup label",
+          "type": "must",
+          "pattern": "(?im)(--label|-l)\\s+\\W{0,2}followup"
+        }
+      ]
+    },
+    {
+      "id": "red-main-is-the-first-slice",
+      "intent": "never build on red main - investigate the failure before touching the resume slice",
+      "scenario": [
+        "Mode B resume on an onboarded project. CI posture: full + blocking (a red main-push run is real).",
+        "`git status --porcelain` is clean; `gh auth status` is logged in. `gh run list --branch main -L 1`:",
+        "",
+        "completed  failure  fix: normalize import order (#88)  CI  main  push  123456  3m10s  2026-07-17T09:00:00Z",
+        "",
+        "The CLAUDE.md Status block's Resume line reads: main | #90 | implement retry backoff | verify with:",
+        "pytest -k retry. The tracker shows #90 open and unclaimed. Continue the onboard procedure from here."
+      ],
+      "assertions": [
+        {
+          "label": "investigates the failed run before anything else",
+          "type": "must",
+          "pattern": "(?m)^\\W{0,3}RUN:\\W{0,4}gh run view"
+        },
+        {
+          "label": "the red-main rule is stated as a decision carrying the compliance DIRECTION, not a bare hazard mention (#404 kept the phrasing alternation broad; #481 pattern 2 removed the direction-blind 'main is red' standalone — an override 'main is red ... proceeding anyway' satisfied it)",
+          "type": "must",
+          "pattern": "(?im)^\\W{0,3}DECIDE:[^\\n]*(never build on red|first slice|until main is green|\\b(red|failing)\\b[^\\n]{0,60}\\b(fix\\w*|investigat\\w*|park|before|blocks?|waits?)\\b)"
+        },
+        {
+          "label": "the DECIDE line never carries an override of the red-main rule (#481 pattern 2: direction-blind alternations pass 'proceeding anyway/despite') -- scoped to DECIDE lines about the red/CI subject (#602: the bare word tripped on 'both readings land on Mode B anyway', an Unscoped Selector; third tuning at #612: 'nothing could merge anyway' -- a pro-compliance ANYWAY inside the scoped subject -- tripped the bare token, so the token now needs an override VERB within proximity; 'merge' is deliberately not an override verb, it is gate vocabulary)",
+          "type": "must_not",
+          "pattern": "(?im)^\\W{0,3}DECIDE:(?=[^\\n]*\\b(?:red|failing|failure|CI|main)\\b)[^\\n]*(?:\\b(?:proceed\\w*|continu\\w*|start\\w*|build\\w*|resum\\w*|implement\\w*|ship\\w*|go(?:ing)?\\s+ahead|press\\w*\\s+on|do\\s+it)\\b[^\\n]{0,30}\\b(?:anyway|despite|regardless)\\b|\\b(?:anyway|despite|regardless)\\b[^\\n]{0,40}\\b(?:proceed\\w*|continu\\w*|start\\w*|build\\w*|resum\\w*|go(?:ing)?\\s+ahead)\\b)"
+        },
+        {
+          "label": "the resume slice, if started at all, comes after the CI bug is filed",
+          "type": "order_if_then",
+          "first": "(?m)^\\W{0,3}(?:RUN|POST):\\W{0,4}(?:(?:cd|Set-Location|pushd)\\s+[^;&\\n]{1,200}[;&]+\\s*)?gh issue create",
+          "then": "(?m)^\\W{0,3}RUN:\\W{0,4}(?:(?:cd|Set-Location|pushd)\\s+[^;&\\n]{1,200}[;&]+\\s*)?git\\s+(?:-C\\s+(?:\\\"[^\\\"\\n]*\\\"|'[^'\\n]*'|\\S+)\\s+)?(checkout -b|switch -c) slice/90"
+        }
+      ]
+    }
+  ]
+}

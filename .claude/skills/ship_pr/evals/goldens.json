@@ -1,0 +1,102 @@
+{
+  "skill": "ship_pr",
+  "goldens": [
+    {
+      "id": "red-check-never-merges",
+      "intent": "a red check routes back to preflight, never forward to merge (the #176 field failure)",
+      "scenario": [
+        "You are landing slice ticket #412 (branch slice/412-cache-fix, claimed by you, pushed; preflight",
+        "passed before the push). CI posture: light. Fleet mode: no (solo writer). The PR is open as #58.",
+        "You are at step 5 (watch CI). You run `gh pr checks 58` and observe:",
+        "",
+        "static gates   fail     1m2s   https://github.com/example/repo/actions/runs/9901",
+        "build-test     skipped",
+        "lint           skipped",
+        "",
+        "Continue the landing from this point."
+      ],
+      "assertions": [
+        {
+          "label": "routes back through preflight (step 5 red -> step 1) — an actual invocation of the gate script, not any RUN mentioning 'preflight' (#481 pattern 3: a stale-log grep like `grep PASS preflight.log` satisfied the loose form)",
+          "type": "must",
+          "pattern": "(?mi)^\\W{0,3}RUN:\\W{0,4}(?:(?:cd|Set-Location|pushd)\\s+[^;&\\n]{1,200}[;&]+\\s*)?(?:bash |sh |pwsh |powershell |\\.[/\\\\])?scripts[/\\\\]preflight"
+        },
+        {
+          "label": "no admin bypass considered",
+          "type": "must_not",
+          "pattern": "(?m)^\\W{0,3}RUN:\\W{0,4}.*--admin"
+        },
+        {
+          "label": "reads the failing run's log rather than guessing",
+          "type": "must",
+          "pattern": "(?mi)^\\W{0,3}RUN:\\W{0,4}gh (run view|pr checks)"
+        },
+        {
+          "label": "a merge, if narrated at all, comes only after a fresh RUN of the preflight script itself (#481 pattern 3: the old preflight+PASS content window was armed by quoting the skill's own step-5 'paste the preflight PASS output' line, and a content-literal PREFLIGHT: PASS anchor is spoofed by grepping a stale log AND false-fails honest dry-runs that refuse to invent observed output — so the anchor is the protocol line, which prose cannot arm, #397)",
+          "type": "order_if_then",
+          "first": "(?mi)^\\W{0,3}RUN:\\W{0,4}(?:(?:cd|Set-Location|pushd)\\s+[^;&\\n]{1,200}[;&]+\\s*)?(?:bash |sh |pwsh |powershell |\\.[/\\\\])?scripts[/\\\\]preflight",
+          "then": "^\\W{0,3}RUN:\\W{0,4}gh pr merge"
+        },
+        {
+          "label": "a merge, if narrated, comes after the LAST checks re-read (#390)",
+          "type": "order_last",
+          "first": "^\\W{0,3}RUN:\\W{0,4}gh pr checks 58",
+          "then": "^\\W{0,3}RUN:\\W{0,4}gh pr merge"
+        },
+        {
+          "label": "the merge is never chained onto the watch (#177)",
+          "type": "must_not",
+          "pattern": "(?m)^\\W{0,3}RUN:\\W{0,4}.*&&.*gh pr merge"
+        }
+      ]
+    },
+    {
+      "id": "merge-separate-then-receipt",
+      "intent": "merge is its own command after checks read green; receipt + prune + checkpoint follow (steps 5-7)",
+      "scenario": [
+        "You are landing slice ticket #388 (branch slice/388-import-dedup, claimed by you, pushed; preflight",
+        "passed before the push: `PREFLIGHT: PASS - safe to push`). CI posture: light. Fleet mode: no (solo",
+        "writer). The PR is open as #61. You are at step 5. You run `gh pr checks 61` and observe:",
+        "",
+        "static gates   pass     58s    https://github.com/example/repo/actions/runs/9911",
+        "build-test     skipped",
+        "lint           skipped",
+        "",
+        "Under the light posture, skipped heavy jobs satisfy required checks. Continue the landing to",
+        "completion (through step 7)."
+      ],
+      "assertions": [
+        {
+          "label": "exact merge command on its own line, squash + delete-branch",
+          "type": "must",
+          "pattern": "(?m)^\\W{0,3}RUN:\\W{0,4}gh pr merge 61 --squash --delete-branch"
+        },
+        {
+          "label": "merge is never chained onto another command",
+          "type": "must_not",
+          "pattern": "(?m)^\\W{0,3}RUN:\\W{0,4}.*&&.*gh pr merge"
+        },
+        {
+          "label": "no admin bypass",
+          "type": "must_not",
+          "pattern": "(?m)^\\W{0,3}RUN:\\W{0,4}.*--admin"
+        },
+        {
+          "label": "cost receipt posted as receipt <pr#> <ticket#> (arg order matters)",
+          "type": "must",
+          "pattern": "(?m)^\\W{0,3}RUN:\\W{0,4}.*slice_telemetry\\.py receipt 61 388"
+        },
+        {
+          "label": "remote pruned after merge",
+          "type": "must",
+          "pattern": "(?m)^\\W{0,3}RUN:\\W{0,4}git remote prune origin"
+        },
+        {
+          "label": "merge-time checkpoint written, or its skip explicitly decided (never silent)",
+          "type": "must",
+          "pattern": "(?mi)^\\W{0,3}(WRITE:\\W{0,4}[^\\n]*(CLAUDE\\.md|ROADMAP)|DECIDE:[^\\n]*(checkpoint|Status block|ROADMAP)[^\\n]*)"
+        }
+      ]
+    }
+  ]
+}

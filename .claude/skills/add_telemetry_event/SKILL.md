@@ -26,16 +26,16 @@ description: Add a typed telemetry event with schema, sampling, privacy review, 
      ```
    - **Quantize / bucket** sensitive fields (coarse location, ages to ranges, exact values to buckets); never raw identifying detail.
 
-3. **Register the schema with the ingest server.**
-   - Update `services/ingest/schemas.yaml` to whitelist this event.
-   - Without this, the ingest will reject the event.
+3. **Register the schema with the ingest layer.**
+   - Update the project's ingest allowlist (path per `PROJECT_CONVENTIONS.md` › Agent / Tooling; e.g. `services/ingest/schemas.yaml`) to whitelist this event — an unregistered event is rejected at ingest.
+   - No ingest layer yet? Skip with a note in the PR; don't invent the file.
 
 4. **Add the client-side emit.**
    - Use the project's telemetry emit API (e.g. `telemetry_.Emit(events::<Name>{ ... });`).
    - Sampling: for high-frequency events, use the sampled-emit form (e.g. `EmitSampled(rate, ...)`).
 
 5. **Add to the privacy disclosure.**
-   - Update `docs/privacy_disclosure.md` with the new event category and purpose.
+   - Update the project's privacy disclosure (e.g. `docs/privacy_disclosure.md`) with the new event category and purpose — create it if the project has none; the disclosure is a non-negotiable, not optional.
 
 6. **Add an opt-in toggle** if it's an opt-in category — wire to settings UI.
 
@@ -45,10 +45,10 @@ description: Add a typed telemetry event with schema, sampling, privacy review, 
    - Consent: with opt-in off, no events fire
 
 8. **Add to the analytics dashboard.**
-   - Update Grafana / Looker / Metabase queries to include the new event.
+   - Update the project's analytics layer (e.g. Grafana / Looker / Metabase queries) to include the new event — skip with a note if the project has none.
 
 9. **(Optional, but encouraged) Add training-data extract.**
-   - If this event is candidate ML training data, register an extract job in `services/training/extracts.yaml`.
+   - If this event is candidate ML training data and the project has an extract pipeline, register an extract job in its config (e.g. `services/training/extracts.yaml`).
 
 ## Verification
 

@@ -1,0 +1,93 @@
+{
+  "skill": "understand_intent",
+  "goldens": [
+    {
+      "id": "brief-carries-six-artifacts",
+      "intent": "a genuine knowledge-gap ask produces the full intent brief - all six forced artifacts, asking before teaching (EXP-06 leg-2 ordering, #414)",
+      "scenario": [
+        "The owner says: 'help me figure out how users should be able to export their data - CSV? PDF?",
+        "some API? I don't really know what's normal here or what matters.' The project is a small",
+        "SaaS-style web app with ~200 users; nothing about export exists yet. Interpretations genuinely",
+        "diverge (one-off download vs recurring feed vs compliance dump), so the entropy gate does not",
+        "apply. Run the procedure and produce the intent brief."
+      ],
+      "protocol_extra": [
+        "This dry run has no live owner: where the procedure awaits owner answers, note that you are",
+        "awaiting them and continue. Keep internal working notes as brief prose only -- do NOT render",
+        "an artifact (map, grid, table, headed section) while it is still a working note. Render each",
+        "artifact verbatim and in full exactly once, at the point the procedure delivers it to the",
+        "owner, in whatever order the procedure delivers."
+      ],
+      "assertions": [
+        {
+          "label": "artifact 1: job restatement in the When/you want/so that shape (gaps are paragraph-scale: a restatement may enumerate circumstances inside the shape; anti-hollow floors per #424 — gap minimums exclude ellipsis echoes of the template, and excluding angle brackets kills placeholder echoes, so a meta-mention cannot arm it)",
+          "type": "must",
+          "pattern": "(?is)when\\b[^<>]{4,500}?\\byou want\\b[^<>]{4,500}?\\bso that\\b"
+        },
+        {
+          "label": "artifact 2: dimensions map present as a delivered label line, not a vocabulary hit (#481 pattern 5: `(?i)dimension` passed a grid-less lecture; label-line anchoring per #397's prose-cannot-arm principle)",
+          "type": "must",
+          "pattern": "(?im)^[ \\t>#*\\d.-]{0,8}(?:\\*\\*)?dimensions?(?:\\s+map)?(?:\\*\\*)?\\s*[:—–-]"
+        },
+        {
+          "label": "artifact 3: criteria named as the mandated one-line labeled form, before options (#481 pattern 5: `(?i)criteri` passed 'on criteria, I'd weigh...' prose)",
+          "type": "must",
+          "pattern": "(?im)^[ \\t>#*\\d.-]{0,8}(?:\\*\\*)?criteria(?:\\*\\*)?\\s*[:—–-]"
+        },
+        {
+          "label": "artifact 4: consequence grid present as a delivered label line (#481 pattern 5: `(?i)consequence` passed 'the consequences differ sharply' prose; the compound label at line start is the delivery marker)",
+          "type": "must",
+          "pattern": "(?im)^[ \\t>#*\\d.-]{0,8}(?:\\*\\*)?consequence grid\\b"
+        },
+        {
+          "label": "artifact 5: the what-matters-most elicitation",
+          "type": "must",
+          "pattern": "(?i)what matters most"
+        },
+        {
+          "label": "artifact 6: dissolve check in its mandated line form",
+          "type": "must",
+          "pattern": "(?i)dissolve check:"
+        },
+        {
+          "label": "ask precedes the teach (EXP-06 leg 2, #414): the what-matters-most elicitation precedes the delivered brief, anchored on the mandated announce line 'intent brief — ...' — the narration medium cannot distinguish a working-note map from a delivered one by content, so the gate arms on the delivery marker (#397's prose-cannot-arm principle, marker form); the marker's existence is enforced by this same assertion",
+          "type": "order",
+          "first": "(?i)what matters most",
+          "then": "(?im)^[ \\t>#*]*intent brief\\s*[—–-]"
+        }
+      ]
+    },
+    {
+      "id": "low-entropy-gates-off",
+      "intent": "interpretations that converge mean proceed - the ceremony is skipped with the mandated gate line; lecturing is this skill's own failure mode",
+      "scenario": [
+        "The owner says: 'help me figure out the right name for this small helper that formats ISO-8601",
+        "dates for the UI - formatIsoDate or isoDateFormat?' The helper is private to one module; either",
+        "name works with the codebase's camelCase convention; nothing else depends on the choice. Run the",
+        "procedure."
+      ],
+      "assertions": [
+        {
+          "label": "the mandated gate-off line is stated",
+          "type": "must",
+          "pattern": "(?i)intent brief: gated off"
+        },
+        {
+          "label": "proceeds to the action - a concrete recommendation",
+          "type": "must",
+          "pattern": "(formatIsoDate|isoDateFormat)"
+        },
+        {
+          "label": "no consequence grid was produced (structural: prose can name a grid, it cannot be one)",
+          "type": "must_not",
+          "pattern": "(?m)^\\s*\\|.*\\|.*\\|"
+        },
+        {
+          "label": "ceremony artifacts were not produced as sections (a skipped-artifact list is prose, not a heading)",
+          "type": "must_not",
+          "pattern": "(?im)^#{1,4}\\s*(?:artifact\\s*\\d|dimensions map|consequence grid|criteria before options)\\b"
+        }
+      ]
+    }
+  ]
+}

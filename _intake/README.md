@@ -13,7 +13,7 @@ Anything that describes what you're building. The richer this is, the better the
 - **Decisions already made** — anything settled, so onboarding records it instead of re-asking.
 - **Open questions** — forks you want to decide together; onboarding will surface them as `D-NN` decisions.
 
-Markdown, PDFs, text, images — whatever you have. No particular structure is required; onboarding will read across all of it.
+Markdown, PDFs, text, images — whatever you have. No particular structure is required; onboarding will read across all of it — except `archive/`, which onboarding never reads (Mode A step 1): that's where consumed docs get parked, and on a fresh copy it starts with the template's own archived provenance docs, not your brief.
 
 ## What onboarding does with it
 

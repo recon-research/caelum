@@ -1,0 +1,77 @@
+{
+  "skill": "understand_intent",
+  "skill_md_sha256": "8f0206fe2edd76f4d905fea1b86c8acba8cd7a638b8cf0e0765acea5c0eb5839",
+  "goldens_sha256": "2735fd1f76216e4deddf7f9992a45efad3ffe21dca73633ee7df1159311ecf5a",
+  "model": "claude-opus-5",
+  "graded_utc": "2026-07-25T01:33:10Z",
+  "pass": true,
+  "goldens": [
+    {
+      "id": "brief-carries-six-artifacts",
+      "pass": true,
+      "assertions": [
+        {
+          "label": "artifact 1: job restatement in the When/you want/so that shape (gaps are paragraph-scale: a restatement may enumerate circumstances inside the shape; anti-hollow floors per #424 — gap minimums exclude ellipsis echoes of the template, and excluding angle brackets kills placeholder echoes, so a meta-mention cannot arm it)",
+          "pass": true,
+          "evidence": "matched: When one of your ~200 users wants their data out of the app — and today the honest answer is \"we don't have that\" — you want to be able to hand their data back to them in a form they can actually use ..."
+        },
+        {
+          "label": "artifact 2: dimensions map present as a delivered label line, not a vocabulary hit (#481 pattern 5: `(?i)dimension` passed a grid-less lecture; label-line anchoring per #397's prose-cannot-arm principle)",
+          "pass": true,
+          "evidence": "matched: **2. dimensions:"
+        },
+        {
+          "label": "artifact 3: criteria named as the mandated one-line labeled form, before options (#481 pattern 5: `(?i)criteri` passed 'on criteria, I'd weigh...' prose)",
+          "pass": true,
+          "evidence": "matched: **3. criteria:"
+        },
+        {
+          "label": "artifact 4: consequence grid present as a delivered label line (#481 pattern 5: `(?i)consequence` passed 'the consequences differ sharply' prose; the compound label at line start is the delivery marker)",
+          "pass": true,
+          "evidence": "matched: **4. consequence grid"
+        },
+        {
+          "label": "artifact 5: the what-matters-most elicitation",
+          "pass": true,
+          "evidence": "matched: what matters most"
+        },
+        {
+          "label": "artifact 6: dissolve check in its mandated line form",
+          "pass": true,
+          "evidence": "matched: dissolve check:"
+        },
+        {
+          "label": "ask precedes the teach (EXP-06 leg 2, #414): the what-matters-most elicitation precedes the delivered brief, anchored on the mandated announce line 'intent brief — ...' — the narration medium cannot distinguish a working-note map from a delivered one by content, so the gate arms on the delivery marker (#397's prose-cannot-arm principle, marker form); the marker's existence is enforced by this same assertion",
+          "pass": true,
+          "evidence": "order ok (5304 < 6871)"
+        }
+      ]
+    },
+    {
+      "id": "low-entropy-gates-off",
+      "pass": true,
+      "assertions": [
+        {
+          "label": "the mandated gate-off line is stated",
+          "pass": true,
+          "evidence": "matched: intent brief: gated off"
+        },
+        {
+          "label": "proceeds to the action - a concrete recommendation",
+          "pass": true,
+          "evidence": "matched: formatIsoDate"
+        },
+        {
+          "label": "no consequence grid was produced (structural: prose can name a grid, it cannot be one)",
+          "pass": true,
+          "evidence": "no match (good)"
+        },
+        {
+          "label": "ceremony artifacts were not produced as sections (a skipped-artifact list is prose, not a heading)",
+          "pass": true,
+          "evidence": "no match (good)"
+        }
+      ]
+    }
+  ]
+}

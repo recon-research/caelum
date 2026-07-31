@@ -282,7 +282,7 @@ All notable changes to the library. Newest first. Add an entry whenever you add/
 
 ### Added
 - **Book 01 — Angular 22 Architecture for a Component Library** (Volume I): standalone components as the unit of distribution; zoneless + OnPush change detection a library can rely on; signals & DI; the Material→Aria→CDK reach-for ladder; the Caelum+Forge workspace shape; version lockstep. (+16 sections)
-- **Research note** `research/notes/angular-22-platform.md` — web-sourced, tiered, dated version specifics for Angular 22 / Material 22 / CDK 22 / Angular Aria (release 2026-06-03; Node/TS/RxJS floors; zoneless+OnPush defaults and the stable `provideZonelessChangeDetection()`; stable signal/resource/Signal-Forms APIs; CVA-still-the-bridge; the MIT + Google provenance of the core stack). Grounds Book 01's frontier claims; cited as `research/notes/...`, never as a `Book §`.
+- **Research note** `research/notes/angular-22-platform.md` — web-sourced, tiered, dated version specifics for Angular 22 / Material 22 / CDK 22 / Angular Aria (release 2026-06-03; Node/TS/RxJS floors; zoneless+OnPush defaults and the stable `provideZonelessChangeDetection()`; stable signal/resource/Signal-Forms APIs; CVA-still-the-bridge; the MIT + Google provenance of the core stack). Grounds Book 01's frontier claims; cited by its `research/notes/` path, never as a `Book §`.
 
 ### Changed
 - MANIFEST lifted out of template state: identity filled (series_title; system_name=Forge; primary_assumptions); `total_books` 1→2, `total_volumes` 1→2; `book_01` entry + `topic_to_books`/`rag_hints` routes; `coverage_gaps` rewritten honestly (Books 02–20 still missing/partial).

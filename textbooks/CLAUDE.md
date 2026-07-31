@@ -59,3 +59,5 @@ Where the agent is high-multiplier vs ~1× (stop and ask): the canonical list is
 ## Style notes
 
 When citing the library: quote sparingly and summarize; link with relative paths; cite at the most specific level; acknowledge when the library's opinion is one of several valid approaches. If you find an error, flag it and suggest a fix — this is a living document.
+
+When editing `MANIFEST.json` (hand-maintained, unlike tool-written `SECTIONS.json`): **keep its existing indent and edit entries in place** — never round-trip the whole file through `json.dump`, whose default indent re-serializes every line (a sync's 6-entry change produced a 578-line diff and erased blame history). The rule is also stamped in the file's own `$comment`, which is the copy an agent doing mechanical bookkeeping actually reads, since nothing routes it through this doc first — keep the two in step. (Adopted at the 2026-07-30 template sync; upstream #483/#644/#694.)

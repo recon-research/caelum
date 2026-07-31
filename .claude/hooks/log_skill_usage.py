@@ -10,7 +10,8 @@
 # session_id, plus agent_type when fired inside a subagent. PostToolUse cannot
 # block (the tool already ran) and stdout goes only to the debug log.
 #
-# Wiring (see docs/AUTOMATION.md §1 — settings.json changes are owner-applied):
+# Wiring (see docs/AUTOMATION.md §1, or your project's automation-policy home —
+# settings.json changes are owner-applied):
 #   "PostToolUse": [ { "matcher": "Skill", "hooks": [ { "type": "command",
 #     "command": "python3 \"${CLAUDE_PROJECT_DIR}/.claude/hooks/log_skill_usage.py\"" } ] } ]
 #

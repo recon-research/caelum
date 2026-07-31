@@ -16,7 +16,8 @@
 # #125). A local first-party datum would be stronger; classifier reasons may
 # arrive unnamed like that, so the defensive probing stays.
 #
-# Wiring (docs/AUTOMATION.md §1 — settings.json changes are owner-applied):
+# Wiring (docs/AUTOMATION.md §1, or your project's automation-policy home —
+# settings.json changes are owner-applied):
 #   "PermissionDenied": [ { "hooks": [ { "type": "command",
 #     "command": "python3 \"${CLAUDE_PROJECT_DIR}/.claude/hooks/log_permission_denials.py\"" } ] } ]
 #

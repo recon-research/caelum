@@ -148,9 +148,88 @@
       "topics": ["packaging", "ng-packagr", "library build", "angular package format", "exports map", "secondary entry points", "peer dependencies", "lockstep versioning", "semver", "release policy", "deprecation policy", "npm provenance", "slsa attestation", "trusted publishing", "ng update migrations", "distribution", "d-06"],
       "consumers": ["Book 19", "M0-1", "M0-4", "D-06"],
       "summary": "Web-sourced, tiered grounding for Book 19 (Packaging, Versioning & Distribution — OPENS Volume V), gathered via a 5-facet research fan-out fetched this session from angular.dev (v22.0.4 footers), the ng-packagr repo/schema, the angular-cli spec, docs.npmjs.com, and slsa.dev. (1) LIBRARY BUILD — the v22 library builder is @angular/build:ng-packagr (always AOT), distinct from the esbuild application builder; partial compilation ('compilationMode':'partial') is mandatory; ng-package.json config (dest/lib.entryFile/...); ng-packagr 22.0.0 MIT released 2026-06-03 (Angular GA day), main on 22.1.0-next.2, a DEV/build-tier tool; publish flow is ng build --configuration production -> cd dist/<lib> -> npm publish. (2) CONSUMER CONTRACT — APF emits 'type':'module' + a conditional 'exports' map keyed ONLY by 'types' + 'default' per entry point (CORRECTION: the widely-blogged 'esm2022' condition is NOT in the v22 spec), fesm2022/*.mjs, bundled types/*.d.ts, 'sideEffects':false; SECONDARY ENTRY POINTS are separate top-level exports keys (independently importable + tree-shakable, Material ships each component this way), discovered by ng-packagr via an ng-package.json (can be '{}') in a subdirectory; a 'sass' condition exposes theme sub-paths. (3) DEPENDENCY DECLARATION — @angular/* as peerDependencies NOT dependencies (else duplicate-Angular-instance breakage); angular.dev prescribes NO range syntax in prose — the observed convention from Angular's own CDK/Material (22.0.2) is the multi-major caret-OR '^22.0.0 || ^23.0.0' (Material pins @angular/cdk exactly = one unit); ship an 'ng-update' block (migrations/packageGroup/requirements; per-migration version+factory) so consumers auto-migrate. (4) VERSIONING — Angular semver (breaking only in major), major every 6 months, 1-3 minors/major, 18-month support (6 active + 12 LTS), deprecation survives >=2 majors (>=12 months), peer-dep carve-out (minors widen ranges, require only at next major), Developer-Preview/experimental APIs exempt (can break in a patch). (5) DISTRIBUTION — npm publish --provenance / Trusted Publishing from GitHub Actions (OIDC id-token:write, ubuntu-latest; auto-provenance for public repo+package, no flag needed) attests source repo/commit/workflow/CI/digest, signed by Sigstore (Fulcio cert + Rekor log) = SLSA Build L2 + npm badge, verify via npm audit signatures. KEYSTONE: npm/SLSA provenance attests BUILD origin (which repo/commit/CI produced the tarball) — ORTHOGONAL to Caelum's US-ORIGIN claim (who authored/owns the code + transitive tree); provenance is necessary-but-not-sufficient, so the US-origin attestation (Book 03 §3.3) ships as a SEPARATE artifact in the package. Caveats: 'esm2022' not a v22 key; peer-range is convention not doc-guidance; ng-update schema is from the (undated) angular-cli spec repo not a v22-tagged page; manual --provenance on private packages unconfirmed; SLSA predicate version emitted today unconfirmed; Material-per-component package.json not re-fetched (403). Grounds Book 19; feasibility path + 3 candidate experiments (packaging-shape / provenance / ng-update) recorded."
+    },
+    {
+        "id": "intent-elicitation",
+        "path": "notes/intent-elicitation.md",
+        "status": "reported",
+        "topics": [
+              "intent elicitation",
+              "understand_intent",
+              "elicitation ordering",
+              "ask-first"
+        ],
+        "consumers": [
+              "understand_intent skill",
+              "research_topic skill",
+              ".claude/skills/README.md",
+              "docs/AUTOMATION.md"
+        ],
+        "summary": "Template-machinery grounding note (adopted wholesale at the 2026-07-30 sync, #903 — cited-artifact rule): landscape-first intent elicitation research + practitioner disciplines; grounds the understand_intent skill. Pyxis-domain; its RR-01 cite is softened to prose per the report-cite port rule.",
+        "reviewed": "2026-07-24"
+    },
+    {
+        "id": "agent-project-systems",
+        "path": "notes/agent-project-systems.md",
+        "status": "surveyed",
+        "topics": [
+              "agent project systems",
+              "spec-driven",
+              "agent memory",
+              "sop frameworks"
+        ],
+        "consumers": [
+              "12+ template skills (adversarial_review, plan_work, retrospective, track_followups, ...)",
+              "docs/AUTOMATION.md"
+        ],
+        "summary": "Template-machinery grounding note (adopted wholesale at the 2026-07-30 sync, #903 — the D-615 expiry case): external landscape of agent-operated project systems; grounds the template's #301 harvest program. Pyxis-domain.",
+        "reviewed": "2026-07-17"
+    },
+    {
+        "id": "parallel-builder-fleet",
+        "path": "notes/parallel-builder-fleet.md",
+        "status": "surveyed",
+        "topics": [
+              "parallel builders",
+              "fleet sizing",
+              "concurrent writers",
+              "worktree isolation"
+        ],
+        "consumers": [
+              "fleet_size skill",
+              "PROJECT_CONVENTIONS.md > Concurrent writers",
+              ".claude/skills/README.md"
+        ],
+        "summary": "Template-machinery grounding note (adopted wholesale at the 2026-07-30 sync, #903): N concurrent builder sessions on one repo — isolation, merge topology, scoped claims/leases, sizing; grounds D-330 upstream and the conventions' fleet protocol. Pyxis-domain.",
+        "reviewed": "2026-07-17"
+    },
+    {
+        "id": "cli-output-compression",
+        "path": "notes/cli-output-compression.md",
+        "status": "reported",
+        "topics": [
+              "cli output compression",
+              "token economics",
+              "wrapper spelling",
+              "billed tokens"
+        ],
+        "consumers": [
+              "textbooks/reference/ANTI_PATTERNS.md (Spelling-Changing Wrapper, Char-Count Savings Illusion)"
+        ],
+        "summary": "Template-machinery grounding note (adopted wholesale at the 2026-07-30 sync, #903 — cited by two ported universal anti-patterns): CLI-output compression measurements refuting the 60-90% savings claim; wrapper spelling collisions with permission/guard stacks. Pyxis-domain.",
+        "reviewed": "2026-07-30"
     }
   ],
-  "experiments": [],
+  "experiments": [
+    {
+      "id": "EXP-02",
+      "path": "experiments/EXP-02_two-writer-protocol/EXPERIMENT.md",
+      "status": "reported",
+      "outcome": "Template experiment (pyxis-domain), adopted wholesale at the 2026-07-30 sync (#903) as fleet_size's grounding tree — the cited-artifact rule: the skill cites it to justify its sizing formula. Run 1 (2026-07-17, two-machine arm, protocol v3): INCONCLUSIVE vs the pre-registered bar, informatively — validated the two-writer claim protocol at N=2.",
+      "ticket": "#903",
+      "grounds": "fleet_size skill; PROJECT_CONVENTIONS.md > Concurrent writers (fleet protocol)"
+    }
+  ],
   "reports": [],
   "banked": []
 }

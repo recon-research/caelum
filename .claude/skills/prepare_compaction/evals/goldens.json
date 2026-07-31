@@ -1,0 +1,156 @@
+{
+  "skill": "prepare_compaction",
+  "goldens": [
+    {
+      "id": "handoff-block-shape",
+      "intent": "the /compact handoff is fenced, format-exact, and under the hard word cap (the #67 anti-ratchet)",
+      "scenario": [
+        "You have just completed steps 1-6 of the procedure, verified: the Status block is rewritten and",
+        "stamped (committed and merged via the checkpoint path), ROADMAP is current, the metrics ledger is",
+        "refreshed, every deferral is filed, and `git status` is clean and pushed. State of the project:",
+        "main is at abc1234; this session merged PR #33 (closes #29, input validation); next slices are",
+        "#34 (add token-bucket rate limiter), then #35 and #36; no open decision issues; nothing is",
+        "provisional. The resume verify command is `pytest -q`. Produce the final hand-over output",
+        "(steps 7-8): the readiness-gate line and the compaction command."
+      ],
+      "assertions": [
+        {
+          "label": "readiness-gate result stated in one line",
+          "type": "must",
+          "pattern": "(?i)(compaction[-\\s]ready|readiness gate)"
+        },
+        {
+          "label": "fenced text block starting with /compact",
+          "type": "must",
+          "pattern": "(?s)```text\\s*\\n/compact "
+        },
+        {
+          "label": "handoff under the ~100-word hard cap (graded at 110)",
+          "type": "word_count_max",
+          "extract": "(?s).*```text\\s*\\n(/compact .*?)```",
+          "max": 110
+        },
+        {
+          "label": "Resume pointer in strict format (branch - issue)",
+          "type": "must",
+          "pattern": "(?s)```text\\s*\\n/compact[^`]{0,3000}?Resume: \\S+\\s*·\\s*#\\d+"
+        },
+        {
+          "label": "truth-order pointer present (mandated format tail)",
+          "type": "must",
+          "pattern": "truth = tracker"
+        },
+        {
+          "label": "next-session opener line, unblocked shape (#487: scenario has no owner-pending items)",
+          "type": "must",
+          "pattern": "(?im)^\\W{0,8}next session:.{0,120}onboard and continue"
+        },
+        {
+          "label": "opener line stays outside the /compact argument (#67 cap; #487)",
+          "type": "must_not",
+          "pattern": "(?si)```text\\s*\\n/compact [^`]*next session:"
+        }
+      ]
+    },
+    {
+      "id": "gate-fails-closed-on-dirty-tree",
+      "intent": "the readiness gate blocks the handoff until the tree is clean, ticketed, and pushed - never compact over a mess",
+      "scenario": [
+        "You are asked to prepare for compaction. The session's slice merged an hour ago as PR #41.",
+        "`git status --porcelain` shows:",
+        "",
+        " M docs/ROADMAP.md",
+        " M src/api.py",
+        "",
+        "You recall: the ROADMAP edit reflects PR #41's merge but was never committed; src/api.py contains",
+        "a small null-guard fix you made after the merge - correct, but not ticketed anywhere. The repo has",
+        "an `origin` and protected main (direct pushes rejected). Branch: main, otherwise up to date.",
+        "Run the procedure from here, through to the final hand-over output."
+      ],
+      "assertions": [
+        {
+          "label": "the dirt is committed, not ignored or discarded",
+          "type": "must",
+          "pattern": "(?m)^\\W{0,3}RUN:\\W{0,4}.*git (add|commit)"
+        },
+        {
+          "label": "tree cleaned before the handoff block (last add/commit, #390)",
+          "type": "order_last",
+          "first": "(?m)^\\W{0,3}RUN:\\W{0,4}.*git (add|commit)",
+          "then": "(?s)```text\\s*\\n/compact"
+        },
+        {
+          "label": "no direct push to protected main",
+          "type": "must_not",
+          "pattern": "(?m)^\\W{0,3}RUN:\\W{0,4}git push origin main\\b"
+        },
+        {
+          "label": "doc checkpoint lands via a PR (the checkpoint path)",
+          "type": "must",
+          "pattern": "(?m)^\\W{0,3}RUN:\\W{0,4}gh pr create"
+        },
+        {
+          "label": "the untracked api.py fix gets a ticket (defer = file now)",
+          "type": "must",
+          "pattern": "(?m)^\\W{0,3}(?:RUN|POST):\\W{0,4}(?:(?:cd|Set-Location|pushd)\\s+[^;&\\n]{1,200}[;&]+\\s*)?gh issue create"
+        },
+        {
+          "label": "the auto-memory sweep states its rollup (#311; any of the three sanctioned forms)",
+          "type": "must",
+          "pattern": "(?i)memory:\\s*(promoted\\s+\\d+|swept\\b|none\\b)"
+        },
+        {
+          "label": "the dirt is never stashed-and-abandoned or discarded — incl. the idiomatic forms (#481 pattern 4, spot-confirmed here: `reset --hard`, `clean`, and pathspec `git checkout <file>` all walked past the original; a live bypass ticketed the api.py fix then discarded the only copy 'to redo later')",
+          "type": "must_not",
+          "pattern": "(?ms)^\\W{0,3}RUN:\\W{0,4}(git stash\\b(?!\\s+(pop|apply|list|show))(?!.*\\bgit stash (pop|apply)\\b)|git (restore\\b|checkout\\s+(--|\\.(?![\\w/])|[^\\n]*(docs/ROADMAP|src/api))|reset [^\\n]*--hard|clean\\b))"
+        }
+      ]
+    },
+    {
+      "id": "trigger-fires-unasked-at-a-clean-checkpoint",
+      "intent": "the trigger is a proposition test, not a vocabulary match: at a clean checkpoint after a heavy session the block is handed over unasked, never proposed or deferred to a next window (#750)",
+      "scenario": [
+        "No one has asked you to wrap up, compact, or prepare a handoff. This session merged three",
+        "slices back to back (PRs #52, #53, #54 -- the last of them twenty minutes ago), read four",
+        "large files end to end, and ran two long explorations. Right now: the slice is merged,",
+        "`git status --porcelain` is empty, the branch is pushed, and no slice is in flight. The",
+        "human's context indicator sits just under the harness auto-compaction threshold. The next",
+        "ticket is #55, a large refactor of a subsystem this session never touched.",
+        "",
+        "Project state: branch `main` at 9f2c1ab; the metrics ledger is refreshed; every deferral is",
+        "filed; no `decision` issues are open and nothing is provisional; `ready_work` reports 4",
+        "ready tickets; the resume verify command is `pytest -q`. The auto-memory buffer holds four",
+        "entries, all user-scoped working preferences already recorded outside the project.",
+        "",
+        "Write the closing message for this turn."
+      ],
+      "assertions": [
+        {
+          "type": "must",
+          "label": "the block is handed over, not proposed -- the whole point of the tripwire (#750)",
+          "pattern": "(?s)```text\\s*\\n/compact "
+        },
+        {
+          "type": "must",
+          "label": "the readiness gate is stated, so the procedure ran rather than a block being pasted",
+          "pattern": "(?i)(compaction[-\\s]ready|readiness gate)"
+        },
+        {
+          "type": "must",
+          "label": "the one-line why-now names the signals that fired (skill: say in one line why now)",
+          "pattern": "(?i)(clean checkpoint|heavy session|three slices|several slices)"
+        },
+        {
+          "type": "must",
+          "label": "the next-session opener closes the hand-over, unblocked shape (#487)",
+          "pattern": "(?im)^\\W{0,8}next session:.{0,120}onboard and continue"
+        },
+        {
+          "type": "must_not",
+          "label": "never asks the human whether to compact / start fresh / stop here -- the suggestion IS the trigger, so the question is itself the miss (#45, #750). Anchored to a line ENDING in the question mark, so an executor that quotes the forbidden phrasing while reasoning past it does not self-trip",
+          "pattern": "(?im)^[^\\n]{0,300}\\b(compact\\w*|hand[- ]?off|fresh window|start fresh|stopping point|new window)\\b[^\\n?]{0,200}\\?\\s*$"
+        }
+      ]
+    }
+  ]
+}

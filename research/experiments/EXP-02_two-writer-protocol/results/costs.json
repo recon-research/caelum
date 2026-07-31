@@ -1,0 +1,39 @@
+{
+  "_meta": {
+    "metric": 3,
+    "collected": "2026-07-17",
+    "definition": "pair $/merged-PR = (writer A run delta + writer B session total incl. bootstrap) / 4, per the run declaration. solo $/merged-PR = baseline session cost / merges within its span (the metrics.py operationalization the pre-registration cites)."
+  },
+  "writer_A": {
+    "identity": "linux/f77917c4 (recon-research/f77917c4 on receipts)",
+    "cost_at_first_claim_usd": 971.19,
+    "cost_post_last_merge_usd": 983.39,
+    "run_delta_usd": 12.20,
+    "source": "slice_telemetry claim snapshot (#345) + .claude/metrics/sessions ledger read a few tool-calls after the last merge; both values posted live on #93 at run time",
+    "caveats": ["long-running session: delta excludes A's own bootstrap (declared pre-run)", "warm context on all four tickets (A authored them at triage; declared pre-run)", "post-last-merge measurement point makes this a slight upper bound"]
+  },
+  "writer_B": {
+    "identity": "LAPTOP-0TDQ755V/* (e7229768 claims / 657d5645 ledger -- #357 relaunch churn, same physical session)",
+    "session_total_usd": 19.02,
+    "source": "harness UI /cost, hand-read by owner 2026-07-17T23:51Z (laptop client report pasted to writer A) -- the laptop's sessions-ledger writer was never wired, so the machine ledger has no row (sourced absence, reported by B on #93; receipt on PR 354 reads usd=n/a for the same reason)",
+    "bootstrap_included": true,
+    "supplementary": {"api_minutes": 20, "wall_minutes": 23, "note": "B wall 23m vs the 15m12s batch window: the excess is bootstrap before B's first claim"}
+  },
+  "per_pr_receipts_usd": {
+    "352": 9.15, "353": 8.65, "354": null, "355": 8.13,
+    "note": "A's three receipt windows overlap (claims posted early, receipts late), so their sum (25.93) exceeds the true run delta (12.20); results use the session delta. 354's null is B's sourced ledger absence."
+  },
+  "solo_baseline": {
+    "session": "27d2b380",
+    "session_started": "2026-07-08T02:44:11Z",
+    "session_cost_usd": 109.02,
+    "merges_in_span": 13,
+    "merged_prs": [80, 82, 83, 84, 85, 88, 89, 91, 92, 98, 99, 100, 102],
+    "usd_per_merged_pr": 8.39
+  },
+  "metric3_bands_usd": {
+    "supported_iff_B_total_lte": 29.74,
+    "refuted_iff_B_total_gt": 38.12,
+    "derivation": "pair/PR = (12.20 + B)/4 vs solo 8.39: supported <= 1.25x (10.48/PR), refuted > 1.5x (12.58/PR)"
+  }
+}

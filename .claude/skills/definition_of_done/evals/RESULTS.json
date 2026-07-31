@@ -1,0 +1,88 @@
+{
+  "skill": "definition_of_done",
+  "skill_md_sha256": "defeb3a2e1898536d976bc8501a6c218c8c9c0dd0def717044e61bf7e5531150",
+  "goldens_sha256": "4ebc00697e3e533583aec8b55371299f382722045587c28fa40d21a4d31d23bd",
+  "model": "claude-opus-5",
+  "graded_utc": "2026-07-29T02:46:04Z",
+  "pass": true,
+  "goldens": [
+    {
+      "id": "no-evidence-no-done",
+      "pass": true,
+      "assertions": [
+        {
+          "label": "the mechanical gate is actually run, not assumed",
+          "pass": true,
+          "evidence": "matched: RUN: bash scripts/preflight"
+        },
+        {
+          "label": "verdict is not-done while evidence is absent",
+          "pass": true,
+          "evidence": "matched: VERDICT: not-done"
+        },
+        {
+          "label": "never declares done on trust",
+          "pass": true,
+          "evidence": "no match (good)"
+        },
+        {
+          "label": "gates are marked UNRUN/UNVERIFIED rather than passed on assertion — the marker must sit on a gate-report line (a named gate + the marker, same line); #481 pattern 1: the bare-word form was satisfied by free prose ('the claim is unverified') while every gate line read PASS-on-the-implementer's-word",
+          "pass": true,
+          "evidence": "matched: **Anticipated shape of that verdict, given what the script actually contains:** with `build`/`test`/`format`/`lint`/`smoke` as `skip_stage` placeholders, the best case here is line 202 — `PREFLIGHT: P..."
+        }
+      ]
+    },
+    {
+      "id": "inert-feature-hard-blocks",
+      "pass": true,
+      "assertions": [
+        {
+          "label": "verdict is not-done despite green build and tests",
+          "pass": true,
+          "evidence": "matched: VERDICT: not-done"
+        },
+        {
+          "label": "the liveness gate is marked FAIL, not merely named",
+          "pass": true,
+          "evidence": "matched: | 6 | **Liveness** | **FAIL — hard block** | `src/router.py` untouched by the diff; no registration, no import of the handler module, no `/export` route string anywhere. Nothing in the system can reac..."
+        },
+        {
+          "label": "the chat-only deferral is routed to a ticket",
+          "pass": true,
+          "evidence": "matched: RUN: gh issue create"
+        },
+        {
+          "label": "never declares done with a failing applicable gate",
+          "pass": true,
+          "evidence": "no match (good)"
+        }
+      ]
+    },
+    {
+      "id": "evidence-does-not-carry-the-defect",
+      "pass": true,
+      "assertions": [
+        {
+          "label": "the PR-body evidence block was actually produced (the forced artifact this golden grades)",
+          "pass": true,
+          "evidence": "matched: EVIDENCE-START"
+        },
+        {
+          "label": "the codename never reaches the PR body — region-scoped to the evidence block on purpose, so quoting the scenario while reasoning is not penalized; only committing it is (#728 Output carve-out)",
+          "pass": true,
+          "evidence": "no match (good)"
+        },
+        {
+          "label": "the safe half is still cited — the carve-out trades the echoed matches for the summary line and counts, it does not excuse dropping the evidence",
+          "pass": true,
+          "evidence": "matched: EVIDENCE-START ## Definition of done — evidence Gate runner: `bash scripts/preflight.sh` (every merge-blocking gate, locally, in CI order), plus the guard's own red→green pair. Every verdict below is ..."
+        },
+        {
+          "label": "the liveness gate carries a verdict on its own report line, not just a mention",
+          "pass": true,
+          "evidence": "matched: **Liveness (gate 6).** The pair is the evidence: the guard driven through its real entry point (the preflight stage / the CI step — not only its selftest) went **red on a real offender in this tree**,..."
+        }
+      ]
+    }
+  ]
+}

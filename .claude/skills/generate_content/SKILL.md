@@ -27,6 +27,7 @@ The pipeline shape is domain-agnostic; the content types, MCP servers, and valid
    - Few-shot examples from existing content
    - The user's brief
    - Output format constraint (JSON matching the schema)
+   - The ask-don't-guess line (#309): a specific the brief doesn't give (an entity name, a constraint, a tone call) comes back as a question in the output, never invented — worth Quality 0.31→0.40 on its own in ChatDev's ablation (`research/notes/agent-project-systems.md`)
 
 5. **Call the LLM with constrained decoding** if the platform supports it (e.g. tool use / JSON mode). Otherwise validate after.
 

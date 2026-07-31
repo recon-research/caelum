@@ -14,13 +14,13 @@ The intake lane for collaborators without Claude Code: they file the "Request / 
 ## Procedure
 
 1. **List** open inbox tickets: `gh issue list --label inbox --state open`; read each fully (`gh issue view <n> --comments`).
-2. **Investigate — bounded.** Just enough to judge: search the tracker for duplicates (**`--state all`** — the ask may already be done), grep the code where the claim is checkable, route via the library only where domain judgment is needed. Vague input is the design, not a defect.
+2. **Investigate — bounded.** Just enough to judge: search the tracker for duplicates (**`--state all`** — the ask may already be done), grep the code where the claim is checkable, route via the library only where domain judgment is needed. Vague input is the design, not a defect. **A claim that is a *number about the reporter's own corpus* gets recomputed here, never sent back as a re-measure request** — the method, its permission caveat, and the field case where the relay would have "corrected" a correct measurement are single-homed in [`harvest_downstream`](../harvest_downstream/SKILL.md) › step 5 (#707). This is the decision point where that goes wrong, because "ask one clarifying question" is a sanctioned disposition below and it looks like the cheap move.
 3. **Route each to exactly one disposition:**
    - **Duplicate / already done** → comment linking the canonical ticket (or the merge that shipped it), close.
    - **Actionable defect or work** → file `bug`/`slice`/`followup` with full rigor (labels, grounding, milestone placement, right-sizing), close the original.
    - **Worth keeping, not scheduled** → file `idea`, close the original.
    - **A real fork** → file a `decision` issue per `CLAUDE.md` §3 (options, recommended default first, objection window; reversible may proceed provisionally, hard-to-reverse waits for the owner), close the original noting the owner decides.
-   - **Too vague to judge** → ask ONE clarifying question in a comment and leave open — the only non-close path. Still unclear at the next triage pass ⇒ close kindly, inviting a fresh ticket.
+   - **Too vague to judge** → ask ONE clarifying question in a comment and leave open — the only non-close path, and the question *is* the disposition: **file nothing yet**. A derived ticket here would invent scope the reporter hasn't given (the dispositions are one-per-ticket, and "vague" means you don't yet know which one applies). Still unclear at the next triage pass ⇒ close kindly, inviting a fresh ticket.
    - **Out of scope / mistaken / declined** → close kindly with the honest why; never silently.
 4. **Receipt on every close** — reply to the human: what was understood, the disposition and its reasoning in plain words, links to every derived ticket, and where to follow progress. Derived tickets carry an `intake: #<n>` back-reference for provenance.
 5. **Only files, never builds.** Even a trivial ask gets a ticket, not an immediate fix — the build loop prioritizes work through the normal roadmap; triage stays a pure reader-plus-tracker-writer lane (safe concurrently, like a reviewer).

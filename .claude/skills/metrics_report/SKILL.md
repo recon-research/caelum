@@ -9,11 +9,11 @@ Narrates the quantitative ledger for the owner, phone-first. It exists for the q
 
 ## Procedure
 
-1. **Refresh**: `python3 scripts/metrics.py` (fail-soft: if `gh` is unreachable it says so — narrate the committed file and mark it stale). **Don't commit here** — the refreshed `docs/METRICS.md` rides the next real PR or checkpoint (the #220 stamp-only precedent).
+1. **Refresh**: `python3 scripts/metrics.py` (fail-soft: if `gh` is unreachable it says so — narrate the committed file and mark it stale). It writes **two** artifacts (#589): `docs/METRICS.md`, committed and `gh`-derived so every machine regenerates it identically, and `.claude/metrics/LOCAL.md`, gitignored and this box only. **Don't commit here** — the refreshed `docs/METRICS.md` rides the next real PR or checkpoint (the #220 stamp-only precedent); the local file is never committed at all.
 2. **Narrate, phone-length, plain words** — from `docs/METRICS.md`:
    - the five process metrics vs their thresholds;
    - **Per-slice cost & pace**: medians by slice type, the drift verdict, receipt coverage, the fastest-growing docs;
-   - local telemetry with its one-machine caveat stated (other boxes see their own ledgers or nothing);
+   - then from `.claude/metrics/LOCAL.md`, the local telemetry with its one-machine caveat stated (other boxes see their own ledgers or nothing) — and **never compare its rows against a committed history**: that series is only a trend within one producer (#589);
    - **every `:warning:`** with a one-line root-cause hypothesis and its route (a `retrospective` that leaves a guard — never just "noted").
 3. **Forced line** — the report must carry this sentence verbatim: **"These are tripwires, not targets."** Cost rising *with* matching churn/quality is not a finding; cost rising without them is an investigate signal, and the fix is never to split slices to beat the number.
 4. **Plots on request**: `python3 scripts/metrics.py --plot <scratchpad-dir>` → send `per_slice_trend.svg` phone-readable (SendUserFile / a private artifact). Plot files are never committed.

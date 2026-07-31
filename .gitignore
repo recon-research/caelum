@@ -61,3 +61,4 @@ yarn-error.log
 # attachments; both are per-run diagnostics, never sources.
 __screenshots__/
 /.vitest-attachments
+.claude/worktrees/
