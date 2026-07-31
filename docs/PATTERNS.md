@@ -412,6 +412,15 @@ The per-entry-point size gate charges for HTML comments in a component's `templa
 - **Triage rule.** `size-budget.json`'s own `$comment` said "prose is now free, so a breach IS code".
   That is true for JS/JSDoc only; it has been corrected in place. On a breach, check *where* the
   prose lives before bumping a row.
+- **Any shipped *string* is charged, not just template prose** — same mechanism, other locations.
+  A `console.warn` argument is the common one: it survives minification like template content does,
+  even inside `if (isDevMode())`. #855's four-line warning cost ~300 B and trimming it to one line
+  recovered 84 B of a 216 B breach. Prose in a comment is free; the same sentence in a string is not.
+- **A bump is still legitimate when the growth is code.** After the trim, #855's drawer was +132 B
+  from three real behaviours, and `size-budget.json`'s stated policy is that real growth bumps the
+  row deliberately with 15-30% headroom. Trim what is prose, then bump for what is not — the
+  anti-pattern is bumping *first*, which bakes the waste in ([[repeated-gate-bumps-mean-wrong-units]]
+  is the same error one level up).
 
 
 ## 16. Parity or deviation? Measure upstream before classifying a "bug" (#919)
@@ -438,3 +447,25 @@ A ticket that reports wrong behaviour may be reporting *correct parity*. The cla
   happened to be an option label — incidental. Updating its expectation would have been wrong twice
   (a resolved key is *taken*, so `filtered()` empties and `panelOpen` reads false for an unrelated
   reason). Re-key the fixture to something the new rule cannot touch, and comment why.
+
+
+## 17. A component `effect` runs *before* its own template bindings reach a 3p (#857)
+
+When you reconcile a third party's internal state against a value your own template binds to it, the
+reconcile has to run in the **after-render** phase. A component `effect` does not.
+
+- **The failure is silent.** `cae-drawer-container` binds `[hasBackdrop]` to `<mat-drawer-container>`
+  and then re-pokes Material so its focus trap and `inert` recompute. Written as `effect(() => …)`
+  the poke fired *before* the binding reached Material, so it asked Material to recompute from the
+  value it already had — a fix that ran, touched the right object, and changed nothing. The tests
+  went green on the *other* half of the slice; only the reproduction showed it.
+- **Use `afterRenderEffect`** for this shape: it runs after the DOM write, so the 3p has the new
+  input. Reserve plain `effect` for reconciling your *own* signals, where no binding is in the path.
+- **How to tell them apart before writing either.** Ask: does the code I am about to run read state
+  that a *template binding in this same component* just wrote? If yes, a plain `effect` is racing
+  its own template. The dependency is invisible in the effect body — it reads `hasBackdrop()`, not
+  the Material instance — which is why this survives review.
+- **Verify the lever separately from the wiring.** The poke itself (re-assigning an unguarded 3p
+  setter its current value) was proven in isolation *first* — `beforePoke=true` → `afterPoke=null`
+  — which is what made "the lever works, the timing does not" a two-minute diagnosis instead of a
+  rewrite. Related: [[probe-by-failing-assertion]] for getting real runtime values out of vitest.
