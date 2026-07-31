@@ -651,6 +651,202 @@ describe('CaeAutocomplete — multiple + freeText', () => {
   });
 });
 
+// --- #919: a typed exact-label match commits the option KEY, not the label ---
+// Real events throughout: the subject is what a *user* typing a label ends up with, and the whole
+// defect lived in the gap between the two commit routes (pick → key, type → label). Provisional on
+// #931, which owns the deviation from p-autocomplete (verbatim outside forceSelection).
+describe('CaeAutocomplete — typed label resolution, chip mode (#919)', () => {
+  let component: CaeAutocomplete;
+  let fixture: ComponentFixture<CaeAutocomplete>;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({ imports: [CaeAutocomplete] }).compileComponents();
+    fixture = TestBed.createComponent(CaeAutocomplete);
+    component = fixture.componentInstance;
+    fixture.componentRef.setInput('options', OPTIONS);
+    fixture.componentRef.setInput('multiple', true);
+    fixture.componentRef.setInput('freeText', true);
+    await fixture.whenStable();
+  });
+
+  const { inputEl, keydown, type, settle, panelOptions } = realEvents(() => fixture);
+
+  it('commits the KEY when a typed token names an option — the COMMA route', async () => {
+    await type('United States');
+    expect(component['filtered']().map((o) => o.value)).toEqual(['us']); // setup guard: it was offered
+    keydown(COMMA, ',');
+    await settle();
+    expect(component['chipValues']()).toEqual(['us']);
+    expect(inputEl().value).toBe('');
+  });
+
+  it('commits the KEY on the ENTER route too — the other token site', async () => {
+    // autoActiveFirstOption defaults to false, so nothing is highlighted and the panel does NOT own
+    // this Enter: it falls through to the component's own token commit. That is the default config,
+    // which is what made the defect reachable without any opt-in.
+    await type('United States');
+    expect(component['autocompleteTrigger']()!.activeOption).toBeFalsy(); // setup guard
+    keydown(ENTER, 'Enter');
+    await settle();
+    expect(component['chipValues']()).toEqual(['us']);
+  });
+
+  it('matches case-insensitively, as the panel that offered the row did', async () => {
+    await type('united states');
+    expect(component['filtered']().map((o) => o.value)).toEqual(['us']); // the row WAS offered
+    keydown(COMMA, ',');
+    await settle();
+    expect(component['chipValues']()).toEqual(['us']);
+  });
+
+  it('renders the canonical label for a token typed in another case', async () => {
+    // The user's casing does not leak into the chip: the value is the key, so chipLabel() resolves it.
+    await type('united states');
+    keydown(COMMA, ',');
+    await settle();
+    const chips = fixture.nativeElement.querySelectorAll('mat-chip-row');
+    expect(chips.length).toBe(1);
+    expect(chips[0].textContent.trim()).toBe('United States');
+  });
+
+  it('closes the identical-chip hole — type-then-pick can no longer produce a twin', async () => {
+    // Direction 1 of the #919 collision. Before the resolver this typed 'United States' verbatim,
+    // leaving option 'us' un-taken and still on offer; picking it then gave two chips reading
+    // "United States" over ['United States', 'us'].
+    await type('United States');
+    keydown(COMMA, ',');
+    await settle();
+    expect(component['chipValues']()).toEqual(['us']); // vacuity guard: something committed
+    await type('Unit');
+    expect(component['filtered']().map((o) => o.value)).toEqual(['uk']); // 'us' is taken, so it is gone
+  });
+
+  it('closes the other direction — a picked option rejects its own label as a token', async () => {
+    // Direction 2: pick first, then type the label. The resolver turns the token into the taken key,
+    // so addChip's duplicate guard — which is value-keyed and could never see 'United States' as a
+    // duplicate of 'us' — now catches it.
+    await type('Unit');
+    panelOptions()[0].click();
+    await settle();
+    expect(component['chipValues']()).toEqual(['us']); // setup guard
+    let calls = 0;
+    component.registerOnChange(() => calls++);
+    await type('United States');
+    keydown(COMMA, ',');
+    await settle();
+    expect(component['chipValues']()).toEqual(['us']);
+    expect(calls).toBe(0);
+  });
+
+  it("leaves a DISABLED option's label verbatim — typing must not backdoor an unpickable key", async () => {
+    // 'de' (Germany) is disabled: it cannot be chosen from the panel, so resolving its label would
+    // hand the model a key the user was never allowed to select.
+    await type('Germany');
+    keydown(COMMA, ',');
+    await settle();
+    expect(component['chipValues']()).toEqual(['Germany']);
+  });
+
+  it('leaves an AMBIGUOUS label verbatim — two options wearing it name no single key', async () => {
+    fixture.componentRef.setInput('options', [
+      { value: 'us', label: 'United States' },
+      { value: 'usa', label: 'United States' },
+    ]);
+    await fixture.whenStable();
+    await type('United States');
+    keydown(COMMA, ',');
+    await settle();
+    // Not 'us' — picking the first by declaration order would be a silent coin-flip.
+    expect(component['chipValues']()).toEqual(['United States']);
+  });
+
+  it('still commits genuine free text untouched', async () => {
+    // The tag-entry case D-549 routes here (p-chips): text matching no option must survive verbatim.
+    await type('Freedonia');
+    keydown(COMMA, ',');
+    await settle();
+    expect(component['chipValues']()).toEqual(['Freedonia']);
+  });
+
+  it('requires the WHOLE label — a token matching part of one option stays verbatim', async () => {
+    // Guards the match against loosening to a substring/prefix test, which every other case here
+    // tolerates: 'Unit' is ambiguous (two labels contain it) and 'Freedonia' matches nothing, so both
+    // fall back to verbatim for the wrong reason. 'States' is contained by exactly ONE label, so only
+    // a whole-label comparison keeps it a free tag. Loosening it would quietly turn a user typing a
+    // partial word into the key of whichever suggestion happened to contain it.
+    await type('States');
+    expect(component['filtered']().map((o) => o.value)).toEqual(['us']); // it IS the sole match
+    keydown(COMMA, ',');
+    await settle();
+    expect(component['chipValues']()).toEqual(['States']);
+  });
+
+  it('announces the resolved label, not the raw token', async () => {
+    const announcer = TestBed.inject(LiveAnnouncer);
+    const spy = vi.spyOn(announcer, 'announce');
+    await type('united states');
+    keydown(COMMA, ',');
+    await settle();
+    expect(spy).toHaveBeenCalledWith('United States added, 1 selected');
+  });
+});
+
+describe('CaeAutocomplete — typed label resolution, single mode (#919)', () => {
+  let component: CaeAutocomplete;
+  let fixture: ComponentFixture<CaeAutocomplete>;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({ imports: [CaeAutocomplete] }).compileComponents();
+    fixture = TestBed.createComponent(CaeAutocomplete);
+    component = fixture.componentInstance;
+    fixture.componentRef.setInput('options', OPTIONS);
+    fixture.componentRef.setInput('freeText', true);
+    await fixture.whenStable();
+  });
+
+  const { inputEl, type, settle } = realEvents(() => fixture);
+  const blur = async (): Promise<void> => {
+    inputEl().dispatchEvent(new Event('focusout', { bubbles: true }));
+    await settle();
+  };
+
+  it('commits the KEY when blurred text names an option — the third commit site', async () => {
+    // Not in #919's report, which named the chip sites only; the same rule reaches onBlur, and a
+    // single-mode model holding 'United States' is just as unresolvable as a chip one.
+    let latest: unknown = 'unset';
+    component.registerOnChange((v) => (latest = v));
+    await type('United States');
+    await blur();
+    expect(latest).toBe('us');
+    expect(component['value']()).toBe('us');
+  });
+
+  it('rewrites the field to the canonical label after resolving', async () => {
+    await type('united states');
+    await blur();
+    expect(inputEl().value).toBe('United States');
+  });
+
+  it('does not re-emit when the resolved value is the one already held', async () => {
+    // Re-typing a committed option's label in another case resolves back to 'us'. Without the
+    // equality guard that would fire onChange with an unchanged value on every focus change.
+    await type('United States');
+    await blur();
+    let calls = 0;
+    component.registerOnChange(() => calls++);
+    await type('united states');
+    await blur();
+    expect(component['value']()).toBe('us');
+    expect(calls).toBe(0);
+  });
+
+  it('still commits genuine free text untouched', async () => {
+    await type('Freedonia');
+    await blur();
+    expect(component['value']()).toBe('Freedonia');
+  });
+});
+
 // --- #897 regression: REAL dispatched events, not handler calls ---
 // Every event here goes through the DOM, so the full Material seam runs — MatChipInput._keydown,
 // MatAutocompleteTrigger._handleKeydown, MatOption's click handling, and the CDK overlay panel,
@@ -1150,17 +1346,22 @@ describe('CaeAutocomplete — #901 review batch', () => {
     const fixture = await makeBare({ multiple: true, freeText: true });
     const component = fixture.componentInstance;
     const { inputEl, keydown, type, settle } = realEvents(() => fixture);
-    await type('United States');
+    // The token is a PREFIX ('Unit'), never a whole option label, and that is load-bearing twice
+    // over: an exact label now commits the option's key (#919), and a committed key is *taken*, so
+    // `filtered()` would drop the only row the re-entry could match and `panelOpen` would read false
+    // for a reason that has nothing to do with the trigger sync under test. A prefix commits verbatim
+    // and leaves the matching options on offer, which keeps this test about `_previousValue` alone.
+    await type('Unit');
     keydown(COMMA, ',');
     await settle();
-    expect(component['chipValues']()).toEqual(['United States']); // vacuity guard: it committed
+    expect(component['chipValues']()).toEqual(['Unit']); // vacuity guard: it committed
     expect(inputEl().value).toBe('');
     // Close the panel WITHOUT leaving the field — a refocus would resync _previousValue by itself.
     keydown(ESCAPE, 'Escape');
     await settle();
     expect(component['autocompleteTrigger']()!.panelOpen).toBe(false); // vacuity guard
     // The one-shot re-entry: assign + a single input event, as a paste or autofill produces.
-    inputEl().value = 'United States';
+    inputEl().value = 'Unit';
     inputEl().dispatchEvent(new Event('input', { bubbles: true }));
     await settle();
     expect(component['autocompleteTrigger']()!.panelOpen).toBe(true);
