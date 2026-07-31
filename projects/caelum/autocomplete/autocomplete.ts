@@ -54,10 +54,11 @@ export interface CaeAutocompleteOption {
  *
  * **{@link freeText} — the value may be what was typed.** Opt in (`p-autocomplete`'s
  * `forceSelection=false`, Material's `requireSelection=false`) and blur commits the trimmed text
- * verbatim instead of reverting it, so the model may hold a key OR an arbitrary string. Committing is
+ * instead of reverting it, so the model may hold a key OR an arbitrary string. Committing is
  * keyed off the *displayed* text, not the model, so blurring an untouched picked suggestion cannot
  * clobber its key with its own label. A value with no matching option displays as itself rather than
- * blanking.
+ * blanking. Text that exactly names one enabled option commits that option's KEY, so typing a
+ * suggestion and picking it agree — see {@link resolveTypedValue} for the rule and its limits (#919).
  *
  * **{@link multiple} — the tag-entry form control (`p-chips`' replacement).** `p-chips` was REMOVED in
  * PrimeNG v20-rc and upstream's blessed replacement is `p-autocomplete [multiple]`, so **D-549** routes
@@ -397,6 +398,41 @@ export class CaeAutocomplete extends CaeFormFieldControlBase<string | readonly s
   }
 
   /**
+   * A typed token read as a model value: text that unambiguously names a suggestion commits that
+   * suggestion's **key**, everything else commits verbatim (#919, provisional on #931).
+   *
+   * Without this, typing an option's label produced a chip holding the *label* while picking the same
+   * row from the panel produced its *key* — so `['United States', 'us']` was reachable, rendering two
+   * chips with identical text ({@link chipLabel} resolves a key to its label) over distinct model
+   * values. That mixed model is unresolvable by anyone downstream, us included: given `'United
+   * States'`, nothing can tell a stray key from a label, which is exactly why {@link chipLabel},
+   * {@link displayText} and {@link filtered}'s taken-set already read a value as a key-when-it-matches.
+   * Resolving here also closes the duplicate hole in both directions for free — the taken key is now
+   * rejected by {@link addChip}, and its option drops out of the panel.
+   *
+   * A deliberate deviation from `p-autocomplete`, which resolves a typed label to its key only under
+   * `forceSelection` (`updateInputWithForceSelection` → `onOptionSelect`) and otherwise pushes the raw
+   * string — measured from source, since its docs don't cover the case. Caelum already deviates on
+   * this control's headline default (force-selection, MIGRATION §5.1), so the posture is consistent.
+   *
+   * Narrow on purpose. **Exactly one** match, else the text stands: two options wearing one label
+   * name no single key, and guessing would silently pick by declaration order. **Non-disabled only**:
+   * a disabled option cannot be picked, so typing its label must not backdoor the key. And
+   * case-insensitive to match {@link filtered}, which lowercases — the user saw that row offered
+   * precisely because the comparison ignored case.
+   */
+  private resolveTypedValue(text: string): string {
+    const typed = text.toLowerCase();
+    let match: CaeAutocompleteOption | undefined;
+    for (const option of this.options()) {
+      if (option.disabled || option.label.toLowerCase() !== typed) continue;
+      if (match) return text;
+      match = option;
+    }
+    return match ? match.value : text;
+  }
+
+  /**
    * Chip separators — COMMA only, and only under {@link freeText}. ENTER is deliberately absent in
    * BOTH modes: Material's separator path is key-agnostic and `preventDefault()`s unconditionally
    * (`_emitChipEnd`), so a listed ENTER cannot be told apart from a COMMA when deciding whether the
@@ -487,7 +523,7 @@ export class CaeAutocomplete extends CaeFormFieldControlBase<string | readonly s
   protected onTokenEnd(event: MatChipInputEvent): void {
     const value = event.value.trim();
     this.clearInput(event.input);
-    if (value) this.addChip(value);
+    if (value) this.addChip(this.resolveTypedValue(value));
   }
 
   /**
@@ -540,7 +576,7 @@ export class CaeAutocomplete extends CaeFormFieldControlBase<string | readonly s
     event.preventDefault();
     const value = input.value.trim();
     this.clearInput(input);
-    if (value) this.addChip(value);
+    if (value) this.addChip(this.resolveTypedValue(value));
   }
 
   /**
@@ -572,7 +608,13 @@ export class CaeAutocomplete extends CaeFormFieldControlBase<string | readonly s
       // Keyed off the DISPLAYED text, not the model: blurring an untouched picked suggestion leaves
       // its label in the field, and comparing that against the key would clobber 'us' with
       // 'United States'.
-      this.commitValue(text);
+      //
+      // Single mode reaches the same defect as the chip sites (#919) — typing a label and blurring
+      // committed the label as the value — so it resolves through the same rule. The equality guard
+      // mirrors the empty branch above: re-typing a committed option's label in a different case
+      // resolves back to the key already held, and that must not emit a change.
+      const resolved = this.resolveTypedValue(text);
+      if (resolved !== this.singleValue()) this.commitValue(resolved);
     }
     const next = this.displayText();
     if (input.value !== next) input.value = next;
