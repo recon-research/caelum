@@ -1,6 +1,6 @@
 # <Topic — the frontier question this note answers>
 
-> reviewed: YYYY-MM-DD · tier legend: production-proven | published | experimental
+> reviewed: YYYY-MM-DD · tiers: the closed vocabulary in README rule 2 (the audit prints it on error)
 
 <2–3 sentences of framing: what this is, and why **this project** cares — the decision (`D-NN`), slice, or experiment this survey informs. Research without a consumer is an `idea` ticket, not a note.>
 

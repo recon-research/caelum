@@ -35,6 +35,7 @@ Set-Location (Split-Path -Parent $PSScriptRoot)
 
 $script:Failed = $false
 $script:Skipped = 0
+$script:Unwired = 0
 $Watch = [System.Diagnostics.Stopwatch]::new()
 $Total = [System.Diagnostics.Stopwatch]::StartNew()
 
@@ -62,11 +63,45 @@ if (-not $py3ok) {
     exit 1
 }
 
+# Declared-unwired stages (#612): a project declines a conditionally-applicable
+# gate with ONE line in UNWIRED_STAGES (scripts/audit_ops_config.py); both
+# runners read that list here and report the stage UNWIRED -- a third state,
+# distinct from FAIL and from the unconfigured SKIP placeholder. Fail-soft
+# toward RUNNING: if the query dies, nothing is unwired and every gate runs.
+# Non-generic Hashtable ctor is case-SENSITIVE (@{} is not), matching sh's
+# awk exactness; exit-code gate mirrors sh's `|| UNWIRED_TSV=""` -- partial
+# stdout from a dying query must unwire nothing.
+$script:UnwiredStages = New-Object System.Collections.Hashtable
+try {
+    $unwiredLines = @(python3 scripts/audit_ops_config.py --unwired-stages 2>$null)
+    if ($LASTEXITCODE -eq 0) {
+        foreach ($line in $unwiredLines) {
+            $parts = "$line" -split "`t", 2
+            if ($parts.Count -eq 2) { $script:UnwiredStages[$parts[0]] = $parts[1] }
+        }
+    }
+}
+catch { $script:UnwiredStages = New-Object System.Collections.Hashtable }
+$global:LASTEXITCODE = 0
+
+function Test-Unwired {
+    # Reports UNWIRED and returns $true iff $Name is declared unwired (#612).
+    param([string]$Name)
+    if (-not $script:UnwiredStages.ContainsKey($Name)) { return $false }
+    Write-Host "==> $Name" -ForegroundColor Cyan
+    Write-Host "UNWIRED  $Name ($($script:UnwiredStages[$Name]))" -ForegroundColor Yellow
+    $script:Unwired++
+    return $true
+}
+
 function Skip-Stage {
     # An unconfigured placeholder: reports SKIP (counted in the summary) instead
     # of a hollow PASS. configure_project replaces these with real Invoke-Stage bodies.
+    # A DECLINED placeholder reports UNWIRED instead: declined is not
+    # unconfigured, and configure_project must never "fill" it (#612).
     param([string]$Name, [string]$Reason)
     if ($script:Failed) { return }
+    if (Test-Unwired $Name) { return }
     Write-Host "==> $Name" -ForegroundColor Cyan
     Write-Host "SKIP  $Name ($Reason)" -ForegroundColor Yellow
     $script:Skipped++
@@ -75,6 +110,7 @@ function Skip-Stage {
 function Invoke-Stage {
     param([string]$Name, [scriptblock]$Body)
     if ($script:Failed) { return }
+    if (Test-Unwired $Name) { return }
     Write-Host "==> $Name" -ForegroundColor Cyan
     $Watch.Restart()
     # Reset so a body that runs no native command can't inherit a stale exit
@@ -245,21 +281,70 @@ Invoke-Stage 'parity map (COMPARISON tracking refs)' { python3 scripts/audit_com
 # mirroring ci.yml's static-gates steps and preflight.sh (same stage names).
 Invoke-Stage 'doc budgets' { python3 scripts/audit_docs.py }
 Invoke-Stage 'ops-config audit' { python3 scripts/audit_ops_config.py }
+
+# Shellcheck (#643, the guard behind #642) - shebang-discovered shell at default
+# severity. On Windows the binary is usually absent: the stage SKIPs loudly
+# rather than failing (it hard-fails only in CI). Mirrors ci.yml's
+# "Shellcheck (shebang-discovered shell)" step.
+Invoke-Stage 'shellcheck' { python3 scripts/audit_shell.py }
+
+# Repo-docs link audit (#73) - root/docs/.claude/.github/_intake relative links;
+# textbooks/ and research/ have their own checkers. Mirrors ci.yml's "Repo-docs link audit" step.
 Invoke-Stage 'repo-docs links' { python3 scripts/audit_repo_links.py }
+
+# Name-leak audit (#363; D-455 accepted 2026-07-18: registry-fed runtime list
+# over structural heuristics/hybrid) - shipped machinery carries no project codenames;
+# the name list is fetched at run time from the pinned registry issue, never
+# embedded (a shipped denylist would itself leak, #343). No reachable registry
+# (downstream copy, offline) -> loud SKIP. Mirrors ci.yml's "Name-leak audit" step.
+Invoke-Stage 'name-leak audit' { python3 scripts/audit_name_leaks.py }
+
+# Secret-scan gate (#221) - tracked files carry no live credentials; named
+# provider patterns with full random tails (redacted/prefix-only mentions are
+# inert), private-key headers. Deliberate fixture? `secret-scan:allow` on the
+# line. Mirrors ci.yml's "Secret scan" step.
+Invoke-Stage 'secret scan' { python3 scripts/audit_secrets.py }
+
+# Closing-keyword audit (#727) - GitHub's parser reads no context, so a negated,
+# qualified, quoted, or past-tense mention beside a live issue number retires that
+# ticket. Set equality: every closing ref must also appear in a subject line or a
+# trailer line. Locally this sees the branch's commits (no PR context pre-push);
+# CI adds the PR title/body and the closingIssuesReferences oracle. Mirrors
+# ci.yml's "Closing-keyword audit" step.
+Invoke-Stage 'closing keywords' { python3 scripts/audit_closing_keywords.py }
 
 # Content-drift staleness (#222) - claim-heavy docs (research notes + ARCHITECTURE) whose
 # referenced files changed after the doc's last commit. WARN-ONLY: the script always
 # exits 0; warnings are re-verify prompts. Mirrors ci.yml's "Staleness audit" step.
 Invoke-Stage 'staleness audit (warn-only)' { python3 scripts/audit_staleness.py }
 
-Invoke-Stage 'todo hygiene (vs origin/main)' {
+# Skill eval admission gate (#302) - every gated skill's goldens parse and its
+# eval stamp is green AND fresh (hashes match the current SKILL.md + goldens).
+# Static only: agents never run here - the suite itself runs session-side
+# (.claude/skills/EVALS.md). Mirrors ci.yml's "Skill evals" step.
+Invoke-Stage 'skill evals' { python3 scripts/skill_evals.py audit }
+
+Invoke-Stage 'todo hygiene (merge-base->worktree)' {
     # Mirrors ci.yml's hygiene step (same pathspecs, same regex - change both together).
+    # Local window is merge-base->WORKTREE plus untracked files (#556): the uncommitted
+    # tree is exactly where a formatter can create a naked marker; CI keeps the
+    # committed PR range (tree == HEAD there, so the two windows gate the same set).
     $null = git rev-parse --verify -q origin/main
     if ($LASTEXITCODE -ne 0) { $global:LASTEXITCODE = 0; Write-Host '(no origin/main yet - skipped)'; return }
-    $diffLines = git diff origin/main...HEAD -- . ':!*.md' ':!.github' ':!textbooks' ':!scripts/preflight.sh' ':!scripts/preflight.ps1' ':!.claude' ':!scripts/audit_ops_config.py'
+    $exempt = @(':!*.md', ':!.github', ':!textbooks', ':!scripts/preflight.sh', ':!scripts/preflight.ps1', ':!.claude', ':!scripts/audit_ops_config.py', ':!research/experiments/*/prompts/*')
+    $mergeBase = "$(git merge-base origin/main HEAD)".Trim()
+    $diffLines = git diff $mergeBase -- . @exempt
     $naked = @($diffLines | Where-Object { $_ -match '^\+' -and $_ -notmatch '^\+\+\+' -and $_ -match '(?i)\b(todo|fixme)\b(?!\(#\d+\))' })
-    if ($naked.Count -gt 0) {
+    $untracked = @()
+    foreach ($f in @(git ls-files --others --exclude-standard -- . @exempt)) {
+        $hits = @(Get-Content -LiteralPath $f -ErrorAction SilentlyContinue |
+            Where-Object { $_ -match '(?i)\b(todo|fixme)\b(?!\(#\d+\))' })
+        if ($hits.Count -gt 0) { $untracked += "+(untracked) $f" }
+    }
+    $global:LASTEXITCODE = 0
+    if ($naked.Count -gt 0 -or $untracked.Count -gt 0) {
         $naked | ForEach-Object { Write-Host $_ }
+        $untracked | ForEach-Object { Write-Host $_ }
         Write-Host 'naked TODO/FIXME - file a ticket and write TODO(#NN)'
         $global:LASTEXITCODE = 1
     }
@@ -282,6 +367,9 @@ try {
 catch {}
 $global:LASTEXITCODE = 0
 
+if ($script:Unwired -gt 0) {
+    Write-Host "note: $($script:Unwired) stage(s) declared unwired (UNWIRED_STAGES, scripts/audit_ops_config.py) - declined, not unconfigured"
+}
 if ($script:Failed) {
     Write-Host 'PREFLIGHT: FAIL - do not push' -ForegroundColor Red
     exit 1

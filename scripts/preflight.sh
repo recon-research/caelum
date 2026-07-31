@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2034  # SKIP_SMOKE: documented no-op flag (no run-loop smoke gate), kept for CLI compat
 # preflight.sh — every merge-blocking gate, locally, in CI order.
 # TEMPLATE: replace each `skip_stage` placeholder with a real `stage` body from
 # PROJECT_CONVENTIONS.md › Build & Test (the same commands .github/workflows/ci.yml
@@ -22,7 +23,10 @@
 #
 # Flags: --quick (skip build/test; audits + hygiene always run) · --skip-smoke (no-op — kept for CLI compatibility; Caelum has no run-loop smoke gate)
 set -u
-cd "$(dirname "$0")/.."
+# `|| exit` is load-bearing, not lint appeasement (SC2164): there is no `set -e`
+# here, so a failed cd would run every stage against whatever tree the caller
+# happened to be in — a verdict about the wrong repo (#642).
+cd "$(dirname "$0")/.." || exit 1
 
 QUICK=0
 SKIP_SMOKE=0
@@ -56,9 +60,36 @@ fi
 
 FAILED=0
 SKIPPED=0
+UNWIRED=0
+# Declared-unwired stages (#612): a project declines a conditionally-applicable
+# gate with ONE line in UNWIRED_STAGES (scripts/audit_ops_config.py); both
+# runners read that list here and report the stage UNWIRED — a third state,
+# distinct from FAIL and from the unconfigured SKIP placeholder. Fail-soft
+# toward RUNNING: if the query dies, nothing is unwired and every gate runs.
+UNWIRED_TSV=$(python3 scripts/audit_ops_config.py --unwired-stages 2>/dev/null) || UNWIRED_TSV=""
+unwired_reason() {
+    # Prints the declared reason and succeeds iff "$1" is declared unwired.
+    # Name passes via ENVIRON (-v escape-processes backslashes); trailing CR
+    # stripped for Git-Bash-on-Windows query output.
+    [ -n "$UNWIRED_TSV" ] && printf '%s\n' "$UNWIRED_TSV" \
+        | UNWIRED_NAME="$1" awk -F'\t' \
+            '$1==ENVIRON["UNWIRED_NAME"]{sub(/\r$/,"",$2); print $2; found=1} END{exit !found}'
+}
+mark_unwired() {
+    echo "==> $1"
+    echo "UNWIRED  $1 ($2)"
+    UNWIRED=$((UNWIRED + 1))
+}
+# Full output, unconditionally -- this matches Invoke-Stage in preflight.ps1.
+# Don't re-add a log-and-print-a-pointer mode: EXP-09 refuted it (#691).
 stage() {
     local name="$1"; shift
     [ "$FAILED" -ne 0 ] && return 0
+    local why
+    if why=$(unwired_reason "$name"); then
+        mark_unwired "$name" "$why"
+        return 0
+    fi
     echo "==> $name"
     local t0=$SECONDS
     if "$@"; then
@@ -71,8 +102,15 @@ stage() {
 skip_stage() {
     # An unconfigured placeholder: reports SKIP (counted in the summary) instead
     # of a hollow PASS. configure_project replaces these with real `stage` bodies.
+    # A DECLINED placeholder reports UNWIRED instead: declined is not
+    # unconfigured, and configure_project must never "fill" it (#612).
     local name="$1"; shift
     [ "$FAILED" -ne 0 ] && return 0
+    local why
+    if why=$(unwired_reason "$name"); then
+        mark_unwired "$name" "$why"
+        return 0
+    fi
     echo "==> $name"
     echo "SKIP  $name ($*)"
     SKIPPED=$((SKIPPED + 1))
@@ -199,25 +237,78 @@ stage "parity map (COMPARISON tracking refs)" python3 scripts/audit_comparison.p
 # mirroring ci.yml's static-gates steps and preflight.ps1 (same stage names).
 stage "doc budgets" python3 scripts/audit_docs.py
 stage "ops-config audit" python3 scripts/audit_ops_config.py
+
+# Shellcheck (#643, the guard behind #642) — this very script is the most-copied
+# shell in the template's blast radius, and it was linted by nothing until a
+# downstream's linter found the bug. Shebang-discovered, default severity;
+# SKIPs loudly when the binary is absent locally, hard-fails when absent in CI.
+# Mirrors ci.yml's "Shellcheck (shebang-discovered shell)" step.
+stage "shellcheck" python3 scripts/audit_shell.py
+
+# Repo-docs link audit (#73) — root/docs/.claude/.github/_intake relative links;
+# textbooks/ and research/ have their own checkers. Mirrors ci.yml's "Repo-docs link audit" step.
 stage "repo-docs links" python3 scripts/audit_repo_links.py
+
+# Name-leak audit (#363; D-455 accepted 2026-07-18: registry-fed runtime list
+# over structural heuristics/hybrid) — shipped machinery carries no project codenames;
+# the name list is fetched at run time from the pinned registry issue, never
+# embedded (a shipped denylist would itself leak, #343). No reachable registry
+# (downstream copy, offline) → loud SKIP. Mirrors ci.yml's "Name-leak audit" step.
+stage "name-leak audit" python3 scripts/audit_name_leaks.py
+
+# Secret-scan gate (#221) — tracked files carry no live credentials; named
+# provider patterns with full random tails (redacted/prefix-only mentions are
+# inert), private-key headers. Deliberate fixture? `secret-scan:allow` on the
+# line. Mirrors ci.yml's "Secret scan" step.
+stage "secret scan" python3 scripts/audit_secrets.py
 
 # Content-drift staleness (#222) — claim-heavy docs (research notes + ARCHITECTURE) whose
 # referenced files changed after the doc's last commit. WARN-ONLY: the script always
 # exits 0; warnings are re-verify prompts. Mirrors ci.yml's "Staleness audit" step.
 stage "staleness audit (warn-only)" python3 scripts/audit_staleness.py
 
+# Skill eval admission gate (#302) — every gated skill's goldens parse and its
+# eval stamp is green AND fresh (hashes match the current SKILL.md + goldens).
+# Static only: agents never run here — the suite itself runs session-side
+# (.claude/skills/EVALS.md). Mirrors ci.yml's "Skill evals" step.
+stage "skill evals" python3 scripts/skill_evals.py audit
+
+# Closing-keyword audit (#727) — GitHub's parser reads no context, so a negated,
+# qualified, quoted, or past-tense mention beside a live issue number retires that
+# ticket. Set equality: every closing ref must also appear in a subject line or a
+# trailer line. Locally this sees the branch's commits (no PR context pre-push);
+# CI adds the PR title/body and the closingIssuesReferences oracle. Mirrors
+# ci.yml's "Closing-keyword audit" step.
+stage "closing keywords" python3 scripts/audit_closing_keywords.py
+
 todo_hygiene() {
     # Mirrors ci.yml's hygiene step (same pathspecs, same regex — change both together).
+    # Local window is merge-base→WORKTREE plus untracked files (#556): the uncommitted
+    # tree is exactly where a formatter can create a naked marker (a downstream's ruff
+    # format merged adjacent string literals into one — the committed-range form stayed
+    # green on a tree whose commit would go red). CI keeps the committed PR range:
+    # tree == HEAD there, so the two windows gate the same set.
     git rev-parse --verify -q origin/main >/dev/null 2>&1 \
         || { echo "(no origin/main yet — skipped)"; return 0; }
-    local naked
-    naked=$(git diff origin/main...HEAD -- . ':!*.md' ':!.github' ':!textbooks' \
-        ':!scripts/preflight.sh' ':!scripts/preflight.ps1' ':!.claude' ':!scripts/audit_ops_config.py' \
+    strip_ticketed() { sed -E 's/([Tt][Oo][Dd][Oo]|[Ff][Ii][Xx][Mm][Ee])\(#[0-9]+\)//g'; }
+    local exempt=(':!*.md' ':!.github' ':!textbooks' \
+        ':!scripts/preflight.sh' ':!scripts/preflight.ps1' ':!.claude' \
+        ':!scripts/audit_ops_config.py' \
+        ':!research/experiments/*/prompts/*')
+    local naked untracked fail=0
+    naked=$(git diff "$(git merge-base origin/main HEAD)" -- . "${exempt[@]}" \
         | grep -E '^\+' | grep -vE '^\+\+\+' \
-        | sed -E 's/(todo|fixme)\(#[0-9]+\)//gI' | grep -iE '\b(todo|fixme)\b' || true)
-    [ -z "$naked" ] || { echo "$naked"; echo "naked TODO/FIXME — file a ticket and write TODO(#NN)"; return 1; }
+        | strip_ticketed | grep -iE '\b(todo|fixme)\b' || true)
+    untracked=$(git ls-files --others --exclude-standard -- . "${exempt[@]}" \
+        | while IFS= read -r f; do
+            strip_ticketed <"$f" 2>/dev/null | grep -qiE '\b(todo|fixme)\b' \
+                && echo "+(untracked) $f"
+        done || true)
+    [ -z "$naked" ] || { echo "$naked"; fail=1; }
+    [ -z "$untracked" ] || { echo "$untracked"; fail=1; }
+    [ "$fail" -eq 0 ] || { echo "naked TODO/FIXME — file a ticket and write TODO(#NN)"; return 1; }
 }
-stage "todo hygiene (vs origin/main)" todo_hygiene
+stage "todo hygiene (merge-base->worktree)" todo_hygiene
 
 # Commit-message semantics (#591) — a closing keyword under a negation ("not
 # fixed: #580") closes the ticket it documents as deferred. Pre-push is the only
@@ -231,6 +322,9 @@ stage "commit-msg semantics (vs origin/main)" python3 scripts/check_commit_msgs.
 # suite-growth lens. Never blocks: any failure here is swallowed.
 python3 scripts/slice_telemetry.py preflight "$SECONDS" "$FAILED" "$SKIPPED" >/dev/null 2>&1 || true
 
+if [ "$UNWIRED" -gt 0 ]; then
+    echo "note: $UNWIRED stage(s) declared unwired (UNWIRED_STAGES, scripts/audit_ops_config.py) — declined, not unconfigured"
+fi
 if [ "$FAILED" -ne 0 ]; then
     echo "PREFLIGHT: FAIL — do not push"
     exit 1

@@ -19,6 +19,11 @@ docs/
 .claude/
 .github/
 
+# Template-owned machinery synced WHOLESALE from pyxis (#903): reformatting it
+# turns every future sync into a fake "downstream edit" hand-judge. Keep
+# byte-identical to upstream; upstream owns its style.
+scripts/capture_ui/
+
 # Root project prose (documentation, not code).
 README.md
 CLAUDE.md

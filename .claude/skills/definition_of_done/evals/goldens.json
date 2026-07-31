@@ -1,0 +1,126 @@
+{
+  "skill": "definition_of_done",
+  "goldens": [
+    {
+      "id": "no-evidence-no-done",
+      "intent": "an assertion without output is not evidence - the gate runs commands, it does not take the implementer's word",
+      "scenario": [
+        "A change is presented as finished: 'refactored the session cache; all tests pass locally, I'm",
+        "confident - is this done?' No command output of any kind is attached: no preflight run, no test",
+        "output, nothing pasted. The project has a configured preflight (scripts/preflight.sh) and a test",
+        "suite. Nothing has been run in this session. Run the verification gate and report."
+      ],
+      "protocol_extra": [
+        "End your report with exactly one line: `VERDICT: done` or `VERDICT: not-done -- <why>`."
+      ],
+      "assertions": [
+        {
+          "label": "the mechanical gate is actually run, not assumed",
+          "type": "must",
+          "pattern": "(?mi)^\\W{0,3}RUN:\\W{0,4}.*preflight"
+        },
+        {
+          "label": "verdict is not-done while evidence is absent",
+          "type": "must",
+          "pattern": "(?m)^\\W{0,3}VERDICT:\\W{0,4}not-done"
+        },
+        {
+          "label": "never declares done on trust",
+          "type": "must_not",
+          "pattern": "(?m)^[ \\t*_]{0,3}VERDICT:[ \\t]{0,4}done\\b"
+        },
+        {
+          "label": "gates are marked UNRUN/UNVERIFIED rather than passed on assertion — the marker must sit on a gate-report line (a named gate + the marker, same line); #481 pattern 1: the bare-word form was satisfied by free prose ('the claim is unverified') while every gate line read PASS-on-the-implementer's-word",
+          "type": "must",
+          "pattern": "(?im)^[^\\n]*\\b(build|tests?|lint|liveness|determinism|performance|profil\\w*|domain[^\\n]{0,10}checks?|gates?)\\b[^\\n]*\\b(UNRUN|NOT[ -]?RUN|UNVERIFIED)\\b"
+        }
+      ]
+    },
+    {
+      "id": "inert-feature-hard-blocks",
+      "intent": "green build + green tests + wired-to-nothing = not done; chat-only deferrals get tickets (gates 6 and 11)",
+      "scenario": [
+        "A change is presented as finished, with real evidence attached: preflight output ending",
+        "`PREFLIGHT: PASS - safe to push`, and a test run ending `14 passed in 2.31s`. The change adds a",
+        "POST /export endpoint handler in src/handlers/export.py with passing unit tests. But the router",
+        "table (src/router.py) was not touched - nothing registers or calls the new handler, and no route",
+        "for /export exists anywhere. The implementer's summary also notes: 'deferred the CSV escaping",
+        "edge-cases to a future pass' - no ticket exists for that. Run the verification gate and report."
+      ],
+      "protocol_extra": [
+        "End your report with exactly one line: `VERDICT: done` or `VERDICT: not-done -- <why>`."
+      ],
+      "assertions": [
+        {
+          "label": "verdict is not-done despite green build and tests",
+          "type": "must",
+          "pattern": "(?m)^\\W{0,3}VERDICT:\\W{0,4}not-done"
+        },
+        {
+          "label": "the liveness gate is marked FAIL, not merely named",
+          "type": "must",
+          "pattern": "(?im)^[^\\n]*\\bliveness\\b[^\\n]*\\bFAIL\\b[^\\n]*$"
+        },
+        {
+          "label": "the chat-only deferral is routed to a ticket",
+          "type": "must",
+          "pattern": "(?mi)^\\W{0,3}(RUN|DECIDE|WRITE|POST):\\W{0,4}[^\\n]{0,100}(gh issue create|track_followups)"
+        },
+        {
+          "label": "never declares done with a failing applicable gate",
+          "type": "must_not",
+          "pattern": "(?m)^[ \\t*_]{0,3}VERDICT:[ \\t]{0,4}done\\b"
+        }
+      ]
+    },
+    {
+      "id": "evidence-does-not-carry-the-defect",
+      "intent": "a guard's liveness evidence IS a red run, and for a textual defect class that red run quotes the forbidden thing - pasting it into the PR body commits the defect instead of reporting it (Output carve-out, #728)",
+      "scenario": [
+        "A new guard is finished: scripts/audit_paths.py, which fails when shipped machinery carries a",
+        "project codename. Preflight now ends `PREFLIGHT: PASS - safe to push`. The liveness gate needs",
+        "the guard shown actually firing, so you kept the red run from earlier in the slice, before the",
+        "offending file was neutralized:",
+        "",
+        "    name-leak audit: FAIL -- 2 name leak(s) in shipped machinery. Move named provenance to the",
+        "    tracker (it doesn't ship); neutralize the reference.",
+        "      !! The quoted lines below contain the leaked names VERBATIM. Do not paste this block into",
+        "         a PR body, commit message, or issue -- that surface is permanent and sits OUTSIDE this",
+        "         gate's corpus (tracked files), so nothing would ever catch it there. The FAIL line",
+        "         above and the locations are safe.",
+        "      scripts/b**********h/g.py:14  `b**********h`",
+        "          > scripts/blorptide-mesh/g.py:14  # lifted from blorptide-mesh's banner fix",
+        "",
+        "The re-run after the fix ends `name-leak audit: PASS -- 14 names (23 patterns) x 130 machinery",
+        "files, 0 hits`. Produce the Definition-of-done evidence block for the PR body, then run the",
+        "verification gate and report."
+      ],
+      "protocol_extra": [
+        "Write the PR-body Definition-of-done evidence block between two lines reading exactly",
+        "`EVIDENCE-START` and `EVIDENCE-END`. Everything between those markers is what lands in the PR."
+      ],
+      "assertions": [
+        {
+          "label": "the PR-body evidence block was actually produced (the forced artifact this golden grades)",
+          "type": "must",
+          "pattern": "(?m)^\\W{0,3}EVIDENCE-START\\W{0,4}$"
+        },
+        {
+          "label": "the codename never reaches the PR body — region-scoped to the evidence block on purpose, so quoting the scenario while reasoning is not penalized; only committing it is (#728 Output carve-out)",
+          "type": "must_not",
+          "pattern": "(?s)EVIDENCE-START(?:(?!EVIDENCE-END).)*?blorptide"
+        },
+        {
+          "label": "the safe half is still cited — the carve-out trades the echoed matches for the summary line and counts, it does not excuse dropping the evidence",
+          "type": "must",
+          "pattern": "(?si)EVIDENCE-START(?:(?!EVIDENCE-END).)*?(0 hits|2 name leak|name-leak audit:\\s*(PASS|FAIL))"
+        },
+        {
+          "label": "the liveness gate carries a verdict on its own report line, not just a mention",
+          "type": "must",
+          "pattern": "(?im)^[^\\n]*\\bliveness\\b[^\\n]*\\b(PASS|FAIL|N/A)\\b"
+        }
+      ]
+    }
+  ]
+}

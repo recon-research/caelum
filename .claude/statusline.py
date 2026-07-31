@@ -1,5 +1,5 @@
-#!/usr/bin/env python
-"""Pyxis statusline: `<model> | ctx NN% used | $X.XX` (+ a compaction nudge at >=80%).
+#!/usr/bin/env python3
+"""Template statusline: `<model> | ctx NN% used | $X.XX` (+ a compaction nudge at >=80%).
 
 Claude Code pipes session JSON to this script on every status update (after each
 assistant message, after /compact, on permission-mode changes; 300ms debounce) and
@@ -14,7 +14,8 @@ displays whatever it prints. Docs: https://code.claude.com/docs/en/statusline.md
      statusline fires all session long, so the last write is the session's final
      totals: a zero-infra per-session ledger for scripts/metrics.py's local section.
 
-Contract, matching the hooks' design (docs/AUTOMATION.md s1):
+Contract, matching the hooks' design (docs/AUTOMATION.md s1, or your project's
+automation-policy home):
   - NEVER raises: display errors print a plain fallback; ledger errors are swallowed
     (telemetry must never break the UI or the loop).
   - Ledger writes are atomic (tmp file + os.replace) because Claude Code cancels an

@@ -4,6 +4,33 @@
 # template from `sha` to its HEAD to know what changed — without this stamp, every
 # template update is hand archaeology.
 #
+# NOTE (2026-07-30, #903): sync 79fdfbe->7faba3c (269 commits) -- largest window yet;
+# ran upstream's NEW procedure (SKILL+SYNC_REFERENCE @ pinned target). Classification:
+# 23 at-target / 28 take / 68 new / 16 hand-merge (3-way) / 1 dirty-copy recovered
+# (definition_of_done SKILL). ADOPTED: design_review (old #298 gate satisfied by M4/#240;
+# Angular capture wiring still open) · fleet_size · skill-evals FILES · capture_ui ·
+# hooks block_commit_rules (wired on measured 0/20 recent over cap-100) +
+# session_close_contract (#749 landing block) + log_agent_dispatch + Edit-matcher reminder ·
+# gates audit_shell/audit_secrets/audit_closing_keywords · ready_work/project_posture/
+# skill_evals scripts · .claude/rules · request.yml · 4 grounding notes + EXP-02 tree
+# (cited-artifact rule; RESOLVES #519 -- the D-615-class expiry caught by --cited-artifacts) ·
+# 12 universal anti-patterns + 10 SYMPTOMS rows · UNWIRED_STAGES/MIRROR_DIVERGENCES ·
+# content ports (pipe rule, closing-keyword rule, #708 --repo carve-out, AUTOMATION §7/§8,
+# fleet protocol, hot-reload fix). DECLINED: audit_name_leaks.py (leaf, #469 -> project.json
+# unadopted + UNWIRED) · skill-evals STAGE (#472 text-coupled goldens -> UNWIRED, re-author
+# #904) · Ruff step (upstream-only #684) · pyxis EXPs beyond EXP-02 + RR-01 chain (cite
+# softened to prose per #627) · template-README prose · decision-flow template carve-out.
+# KEPT-LOCAL through hand-merges: check_commit_msgs.py gate (#591, subject-line-negation
+# residue) beside the adopted positional gate · Lens C #845 sub-bullet · heavy matrix gate
+# name (#407) · CHECKPOINT_PREFIXES (#642) · CHECKPOINT_TRIO 6-path + measured subject
+# prefixes ("docs: checkpoint"/"docs: compaction checkpoint", 125/300, 0 FP) · EXEMPT
+# pathspecs (+ upstream's research/experiments/*/prompts/* reconciled at all 4 sites).
+# NEW: .prettierignore carves out scripts/capture_ui/ (wholesale stays byte-identical).
+# Settings: 4 hook wirings only; allow/deny untouched (upstream diff carried no allow change).
+# FINDINGS -> pyxis inbox (one issue per sync): subject-line-negation residue in
+# audit_closing_keywords · capture_ui vs downstream formatters (hit live) · #737 gate
+# message misdiagnoses URL+prose as a filesystem path; plus D-615/#610 confirmations.
+#
 # NOTE (2026-07-17, #518): sync d04440a→79fdfbe (8 commits). REFLUX-HEAVY — most
 # upstream commits fix intakes Caelum itself filed (pyxis#287/#288/#289, all CLOSED),
 # and Caelum's PR #507 (a7823dd) had independently fixed the SAME encoding + banner
@@ -115,8 +142,9 @@
 # (jsdom can't render, so its pixel-evidence gate would be permanently degraded);
 # re-evaluate at that milestone. Also not taken: pyxis-domain content
 # (research/banked/register-game-engine, EXP-03/04/05, docs/METRICS numbers).
-source: https://github.com/recon-research/pyxis (upstream identified + first synced 2026-07-08, template-sync #245)
-sha: 79fdfbe69d4acea904048cd204e58275b7c043f2 (template sync d04440a→79fdfbe, #518; synced 2026-07-17)
+source: https://github.com/recon-research/pyxis
+source_path: /home/connor/claude/pyxis (this box's checkout; resolve per the #737 ladder elsewhere. Upstream identified + first synced 2026-07-08, template-sync #245)
+sha: 7faba3c9e5452a52b2b08f6cf1a7b242a06c2fb6 (template sync 79fdfbe->7faba3c, #903; synced 2026-07-30)
 baseline: 276a2d6 (reconstructed — the copy-day HEAD; the original copy recorded no sha, see #245)
 copied: 2026-06-25
-last_update: 2026-07-17
+last_update: 2026-07-30

@@ -1,0 +1,50 @@
+{
+  "_meta": {
+    "metric": 2,
+    "collected": "2026-07-17",
+    "commands": "gh pr view <n> --json createdAt,mergedAt · claim ts from claims.json",
+    "definition": "pair: first claim -> last merge (pre-registered). solo: no claim comments existed on 2026-07-08 (claims shipped later), so three tracker-derivable readings are reported; the decomposition of the 03:37:35Z..04:41:59Z tracker-silent window (pause vs unrecorded #86/#87 build) is NOT recoverable from any ledger, so Metric 2 is judged across all readings, tie rule applied."
+  },
+  "pair": {
+    "date": "2026-07-17",
+    "prs": [
+      {"pr": 352, "issue": 345, "writer": "A", "created": "2026-07-17T23:12:10Z", "merged": "2026-07-17T23:21:39Z"},
+      {"pr": 353, "issue": 341, "writer": "A", "created": "2026-07-17T23:14:50Z", "merged": "2026-07-17T23:22:28Z"},
+      {"pr": 354, "issue": 340, "writer": "B", "created": "2026-07-17T23:18:02Z", "merged": "2026-07-17T23:25:58Z"},
+      {"pr": 355, "issue": 342, "writer": "A", "created": "2026-07-17T23:19:09Z", "merged": "2026-07-17T23:26:00Z"}
+    ],
+    "first_claim": "2026-07-17T23:10:48Z",
+    "last_merge": "2026-07-17T23:26:00Z",
+    "wallclock_s": 912,
+    "pauses_over_30min_s": 0,
+    "includes": "4 builds + 4 cross-reviews + 3 strict-landing loops (review overhead did not exist in the solo arm)"
+  },
+  "solo_baseline": {
+    "date": "2026-07-08",
+    "session": "27d2b380",
+    "declared_batch": [
+      {"pr": 84, "issue": 72, "created": "2026-07-08T03:19:11Z", "merged": "2026-07-08T03:21:54Z", "marginal_window_s": 339},
+      {"pr": 85, "issue": 73, "created": "2026-07-08T03:24:26Z", "merged": "2026-07-08T03:24:56Z", "marginal_window_s": 182},
+      {"pr": 89, "issue": 75, "created": "2026-07-08T03:36:37Z", "merged": "2026-07-08T03:37:10Z", "marginal_window_s": 178},
+      {"pr": 91, "issue": 87, "created": "2026-07-08T04:41:59Z", "merged": "2026-07-08T04:42:30Z", "marginal_window_s": 3920,
+       "confound": "window contains the unmerged demo PR 90 (03:37:35Z), a 3864s tracker-silent stretch, and possibly #86 build time"}
+    ],
+    "interleaved_non_batch": [
+      {"pr": 83, "issue": 71, "merged": "2026-07-08T03:16:15Z"},
+      {"pr": 88, "issue": 74, "merged": "2026-07-08T03:34:12Z"},
+      {"pr": 92, "issue": 86, "merged": "2026-07-08T04:47:47Z"},
+      {"pr": 90, "issue": null, "merged": null, "note": "deliberate red demo for #75's gate, never merged"}
+    ],
+    "readings": {
+      "naive_span_s": {"value": 4999, "definition": "first batch-PR created -> last batch merge; includes interleaved non-batch work (inflates solo, flatters pair)"},
+      "marginal_sum_s": {"value": 4619, "definition": "sum of prev-any-merge -> batch-slice-merge windows; #87's window un-decomposable"},
+      "active_floor_s": {"value": 755, "definition": "marginal_sum minus the full 3864s silent window treated as pause (pre-reg >30min rule, maximal subtraction; floors solo, hardest on the pair)"}
+    }
+  },
+  "metric2_ratios": {
+    "pair_vs_naive": 0.18,
+    "pair_vs_marginal": 0.20,
+    "pair_vs_active_floor": 1.21,
+    "verdict_input": "spans supported (<=0.7) through refuted (>=1.0) across defensible readings -> indeterminate; tie rule applies"
+  }
+}

@@ -133,6 +133,17 @@ jobs:
   # advisory gating — it is the fast honesty layer; only the heavy matrix defers.
   static-gates:
     name: static gates
+    # Job-level token grant (#363): the name-leak audit reads the pinned
+    # registry issue via gh; the repo's restricted default token has no
+    # `issues` scope, and GraphQL HIDES unreadable objects ("could not
+    # resolve") rather than 403ing -- observed live on this job's first
+    # run, where the guard loudly SKIPped instead of running. A job-level
+    # `permissions:` block REPLACES the default set, so it must list
+    # everything this job's steps use (checkout needs contents).
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read   # #727: the closing-keyword audit's second oracle
     if: >-
       github.event_name == 'workflow_dispatch' ||
       startsWith(github.ref, 'refs/tags/') ||
@@ -223,13 +234,40 @@ jobs:
         env: { PYTHONIOENCODING: utf-8, PYTHONUTF8: "1" }
         run: python3 scripts/audit_ops_config.py
 
-      # Repo-docs link audit (#73): the relative links agents navigate every session
-      # (root docs, docs/, .claude skills->agents/docs, _intake) were checked by
-      # nothing; textbooks/ and research/ own their own link audits. Mirrored by the
-      # `repo-docs links` stage in scripts/preflight.{sh,ps1}.
+      # Shellcheck (#643, the guard behind #642): scripts/preflight.sh is the
+      # most-copied shell in the template's blast radius — every downstream runs
+      # it as its merge gate — and upstream linted no shell at all, so a
+      # DOWNSTREAM's linter was the first thing in the world to catch an
+      # SC2164/SC2155 pair in it (intake #641). Shebang-discovered, default
+      # severity. The script SKIPs when the binary is missing on a dev box but
+      # hard-fails here (CI sets CI=true): a gate that skips itself in the one
+      # environment we control protects nothing. ShellCheck ships preinstalled
+      # on the ubuntu-latest image — if that ever stops being true, this step
+      # says so in one line and the fix is an install step, not a skip.
+      - name: Shellcheck (shebang-discovered shell)
+        env: { PYTHONIOENCODING: utf-8, PYTHONUTF8: "1" }
+        run: python3 scripts/audit_shell.py
+
+      # Repo-docs link audit (#73): the links agents navigate by every session
+      # (root docs, docs/, skills->agents/docs, _intake) were checked by nothing;
+      # textbooks/ and research/ are owned by their own audits.
       - name: Repo-docs link audit (root/docs/.claude/_intake)
         env: { PYTHONIOENCODING: utf-8, PYTHONUTF8: "1" }
         run: python3 scripts/audit_repo_links.py
+
+      # Name-leak audit: DECLINED at the 2026-07-30 sync -- leaf downstream, no
+      # Downstream registry (#469 adoption note). UNWIRED_STAGES + .claude/project.json
+      # unadopted carry the decline; re-read at every sync.
+
+      # Secret-scan gate (#221): tracked files carry no live credentials.
+      # Named provider patterns with full random tails — redacted or
+      # prefix-only mentions are inert; findings print REDACTED. GitHub-native
+      # scanning is unavailable on a personal-plan private repo, so this
+      # stdlib gate is #221's first available ladder rung; downstreams
+      # inherit it regardless of plan or visibility.
+      - name: Secret scan (tracked files, named patterns)
+        env: { PYTHONIOENCODING: utf-8, PYTHONUTF8: "1" }
+        run: python3 scripts/audit_secrets.py
 
       # Content-drift staleness (#222): claim-heavy docs (research notes +
       # ARCHITECTURE) whose referenced files changed after the doc's last commit
@@ -242,27 +280,57 @@ jobs:
         env: { PYTHONIOENCODING: utf-8, PYTHONUTF8: "1" }
         run: python3 scripts/audit_staleness.py
 
-      # Skills load ONLY as .claude/skills/<name>/SKILL.md directories — a flat
-      # .md file in skills/ silently fails to load (the layer becomes inert docs).
-      - name: Skills are directories
-        run: |
-          flat=$(find .claude/skills -maxdepth 1 -name '*.md' ! -name 'README.md' 2>/dev/null || true)
-          if [ -n "$flat" ]; then
-            echo "$flat"
-            echo "::error::Flat skill file(s) under .claude/skills/ — Agent Skills load only from <name>/SKILL.md directories. git mv each to <name>/SKILL.md."
-            exit 1
-          fi
-          echo "Skills structure OK."
+      # Skill evals: DECLINED at the 2026-07-30 sync -- goldens are skill-text-coupled
+      # and Caelum carries local edits to gated skills (#472 adoption note); re-authoring
+      # tracked in Caelum #904. UNWIRED_STAGES carries the decline.
+
+      # Closing-keyword audit (#727, intake #723): GitHub's parser reads no
+      # context, so a negated / qualified / quoted / past-tense mention beside a
+      # live issue number creates a real closing link and merging it retires that
+      # ticket. Set equality — every closing ref must also appear in a subject
+      # line or a trailer line. THIS is where the gate earns its keep: only here
+      # does it see the PR title/body (the preflight run happens pre-push, with
+      # no PR to read) and the closingIssuesReferences oracle, which needs the
+      # job-level `pull-requests: read` grant above. Mirrors the preflight
+      # "closing keywords" stage.
+      - name: Closing-keyword audit (undeclared closing refs)
+        env:
+          PYTHONIOENCODING: utf-8
+          PYTHONUTF8: "1"
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/audit_closing_keywords.py
+
+      # Ruff step NOT TAKEN at the 2026-07-30 sync: upstream-only by its own design
+      # (#684 -- lints the machinery the TEMPLATE ships; a downstream's lint stage is
+      # its own stack's). Caelum's angular-eslint lint stage is the local equivalent.
+
+      # RELOCATED, not dropped (#647, #687): the flat-skill-file guard — skills load
+      # ONLY as .claude/skills/<name>/SKILL.md directories, and a flat .md there
+      # silently fails to load — moved out of this workflow in ff071b7 and now runs
+      # in textbooks/tools/_audit_routing.py, i.e. in the `library audits` stage,
+      # so it fires in BOTH preflight and CI instead of CI alone. Its comment was
+      # left behind here reading as a preamble to the step below. Breadcrumb kept
+      # rather than deleted: a diff that shows enforcement leaving and never shows
+      # it arriving is exactly how a downstream reads a move as a weakening and
+      # re-adds a second home for it (#647's case study is this very commit).
 
       # Tracker hygiene: added code must not contain a naked TODO/FIXME — every
       # deferral carries a filed ticket, written as TODO(#NN). Docs (*.md),
       # .github/, textbooks/ and .claude/ are exempt (they *talk about* TODOs —
       # .claude holds the very hook that enforces this rule and the settings
       # $comment that documents it; its only non-doc files are that machinery).
-      # scripts/preflight.{sh,ps1} stay exempt PERMANENTLY (not just as templates):
-      # they IMPLEMENT the mirrored `todo hygiene` stage, so the literal words
-      # todo/fixme live in them by necessity — scanning their own diff would
-      # false-positive on the very gate they run (#6 kept these two on purpose).
+      # scripts/preflight.{sh,ps1} are PERMANENTLY exempt — not just while they
+      # are TODO-placeholder templates: their todo-hygiene stages IMPLEMENT this
+      # detector (the sed+grep carries the literal words), so un-exempting them
+      # after configure_project fills the stage bodies false-positives forever
+      # (a downstream proved it live → #205). audit_ops_config.py check 4 also pins
+      # all four exemption sites to an identical list — dropping them here
+      # alone trips that audit.
+      # research/experiments/*/prompts are exempt: pre-registered prompt files
+      # are frozen experiment data (they may *instruct* writers about marker
+      # tokens), and rewording them post-run would falsify the registration.
+      # scripts/audit_ops_config.py is exempt: its canonical stage<->step map
+      # must name this very gate literally (same reason .claude is exempt).
       # The sed strips ticketed TODO(#NN)/FIXME(#NN) forms first, so EVERY
       # remaining occurrence is naked — a `(#NN)` elsewhere on the line no
       # longer whitewashes one. (sed+grep, not grep -P: PCRE dies on
@@ -274,8 +342,9 @@ jobs:
           git fetch origin "${{ github.base_ref }}" --quiet
           naked=$(git diff "origin/${{ github.base_ref }}...HEAD" -- . ':!*.md' ':!.github' ':!textbooks' \
             ':!scripts/preflight.sh' ':!scripts/preflight.ps1' ':!.claude' ':!scripts/audit_ops_config.py' \
+            ':!research/experiments/*/prompts/*' \
             | grep -E '^\+' | grep -vE '^\+\+\+' \
-            | sed -E 's/(todo|fixme)\(#[0-9]+\)//gI' | grep -iE '\b(todo|fixme)\b' || true)
+            | sed -E 's/([Tt][Oo][Dd][Oo]|[Ff][Ii][Xx][Mm][Ee])\(#[0-9]+\)//g' | grep -iE '\b(todo|fixme)\b' || true)
           if [ -n "$naked" ]; then
             echo "$naked"
             echo "::error::Naked TODO/FIXME in the diff — file a ticket first and annotate as TODO(#NN). See PROJECT_CONVENTIONS.md, Tracker & Hygiene."

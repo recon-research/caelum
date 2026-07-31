@@ -1,0 +1,42 @@
+# The capture contract — what any screenshot command must deliver (#202, D-217)
+
+[`design_review`](SKILL.md) gate mode needs pixels; the [Screenshot capture knob](../../../PROJECT_CONVENTIONS.md) names *your project's* command, geometries, themes, and cadence. This doc is the layer between them: the **contract** any capture command must satisfy, and the **recipe** for building one on each stack family. It exists because the demand recurred — four downstreams on three different stacks hit the same wall (harvest → #202) — and three stacks can't share a harness, but they can share a contract. React projects skip all of this: the bundled [`scripts/capture_ui/`](../../../scripts/capture_ui/README.md) harness (#150) already implements the contract and `configure_project` wires it.
+
+**Ownership:** synced machinery, like the rest of this skill dir — downstream edits are overwritten on sync; improvements go upstream via the inbox lane. Your project's *choices* (command, sizes, themes, cadence) live in the knob, never here.
+
+## The contract
+
+A capture command wired into the knob MUST:
+
+1. **Render the touched surface with real content.** Component, screen, or route — composed with real props and real copy (the Pass-1 discipline; no lorem, no empty stubs). A capture of a placeholder reviews nothing.
+2. **Produce one image per geometry × theme the knob declares.** File names must map back to surface × theme × width without opening them — the shipped harness's `<specimen>-<theme>-<width>.png` shape is the reference.
+3. **Fail honestly.** Exit non-zero when any surface fails to render, and never count a blank or error-state render as a shot — the #150 harness fails any capture whose root never mounted children *because* its first version happily screenshotted vite's error overlay as a "success". Port that property, whatever your stack's equivalent is.
+4. **Be deterministic enough to re-review.** Fixed viewport/window sizes from the knob; no dependence on ambient window-manager state where avoidable; two runs of the same commit should produce reviewably-identical pixels (animations parked, clocks/randomness frozen or masked — the project's determinism conventions apply to capture too).
+5. **Install user-space.** No root, no CI-only environment — the gate runs per-diff on the dev machine (the `capture_ui` bootstrap discipline: user-space node tarball + `npx playwright install chromium`). Capture infra that only runs in CI silently stops gating local work.
+6. **Assert with owning-element, exact-match oracles.** Where the command (or its verification beats) asserts on rendered content, scope each assertion to the element that *owns* the value and exact-match it — a substring over aggregate text is satisfiable by the wrong value (`includes("involved")` is satisfied by "uninvolved"; a `"0 m²"` substring matches any area ending in 0). Pair zero/absence-assertions with a positive proving the machinery ran; prefer identity pins over counts; a beat family cloned from a sibling inherits its **strongest** oracle form, not its oldest (`textbooks/reference/ANTI_PATTERNS.md` "The Satisfiable-by-Anything Assertion", #518).
+
+## Recipes by stack family
+
+### Browser-rendered (Angular, Svelte, Vue, vanilla, server-rendered — anything a real browser can load)
+
+The bundled React harness's shape generalizes; only its vite-root + JSX mounting are React-specific. The recipe: serve the surface — **your existing dev server is fine** (Angular's esbuild server, `vite`, a static file server; the ephemeral-root trick in `capture.mjs` matters only for component-wise specimens) — then a small playwright script shoots it: loop the knob's widths (fixed viewport when wide, full-page when narrow, `<500px` is the shipped cutoff), loop themes via `data-theme` attribute / query param / whatever the project's theming reads, verify the app actually mounted before shooting (contract item 3), exit non-zero on any failure. Adapt the playwright loop in [`capture.mjs`](../../../scripts/capture_ui/capture.mjs) — it is ~40 lines of the file and stack-agnostic. A shipped, parameterized multi-framework harness stays demand-gated (D-217 option 2): if you build this recipe and it wasn't enough, say so in a sync report — that's the trigger.
+
+### Native / desktop offscreen (egui/wgpu, Qt, GTK, …)
+
+The contract implementation is the toolkit's offscreen path: render-to-texture + readback (wgpu), `QWidget::grab` / `QScreen::grabWindow` (Qt), or the equivalent — written to PNG at the knob's declared window size(s) and theme(s). **Field caveat (#168): offscreen renders can lie** about DPI scaling, native styling, and system theme. When yours does, the fix lives in the knob's *cadence* answer, not in more automation: **batched-attended capture** (a human-attended capture pass per batch/milestone, on-screen, real DPI) is a legitimate contract implementation, and per-diff automation is not required where its pixels would misrepresent the shipped surface. State which cadence the project runs in the knob; `design_review` defers to it.
+
+### JVM-offscreen Android (Compose)
+
+Compose renders deterministically on the JVM via **Paparazzi** — no emulator, no device, no display server. The worked example ships in this skill: [`references/exemplars/mobile-register/capture/SextantGoldensTest.kt`](references/exemplars/mobile-register/capture/SextantGoldensTest.kt) regenerated every SEXTANT golden on a bare Linux box with zero pre-installed toolchain (verified 2026-07-14, #250: user-space JDK 17 + Android cmdline-tools + Gradle 8.11.1 — contract item 5 holds; cold first render 1m51s, iterations 5–8s).
+
+The recipe: **(1)** an `com.android.library` module pinned to Paparazzi's tested era, not latest-everything — AGP 8.7.3 / Kotlin 2.0.21 / Compose BOM 2024.12.01 / Paparazzi 1.3.5 was the verified matrix (Paparazzi hooks AGP internals; chasing a 2026 AGP it never met is how this recipe breaks). **(2)** One test class per geometry, themes as composable params: `DeviceConfig.PIXEL_6` (412×915dp portrait), `.copy(screenWidth = 720, screenHeight = 1560, density = XHIGH)` for the 360dp compact floor, `.copy(2400×1080, LANDSCAPE)` for game surfaces. **(3)** `gradle recordPaparazziDebug` writes PNGs under `src/test/snapshots/images/`; copy out under the contract's `<specimen>-<theme>-<width>.png` shape (item 2). Fonts: OFL TTFs curl'd into `res/font` at bootstrap (google/fonts raw URLs), never committed. Determinism (item 4): Paparazzi renders a single frame — animations freeze at t=0; seed any generated data and the same commit renders to the pixel. Honest failure (item 3): a throwing composable fails the test, but a *blank* composition does not — eyeball the first capture of any new surface. Known caveats, stated not hidden: **no system bars or display cutout are drawn**, so inset-dependent composition is reviewed against the safe-rect rule rather than pixels (the #168 offscreen-renders-can-lie family — batched-attended on-device passes remain the legitimate cadence answer for what offscreen can't show); the report writer caps images at ~1000px on the long edge — reference-anchor grade, which is what goldens are. **Roborazzi** (Robolectric-based) is the drop-in alternative when tests need real Android framework classes; same contract, heavier runtime. **Engine-rendered game UI (Unity/Godot/libGDX) is not this family** — that's the native-offscreen family above, batched-attended cadence and all; only Compose-drawn HUDs and menus capture this way.
+
+### Unit-only (jsdom / Vitest, no browser runner)
+
+No implementation is possible — jsdom computes no layout and renders no pixels. Gate mode is degraded-only here (SKILL.md › gate-mode prerequisite): manual captures + a filed capture-infra ticket per run, or defer `design_review` adoption entirely with a ticket — the documented-legitimate call, not a skipped gate. The exit from this family is adding a browser runner (playwright/chromium installs user-space), which moves the project to the browser recipe above.
+
+## Wiring order (non-React stacks)
+
+1. Pick the family above; write the command against the contract items above (all of them — the list has grown before, #518, and a count here would drift).
+2. Fill the knob: the command, the geometries/themes it shoots (platform-appropriate — the knob text carries the defaults), and the cadence (per-diff, or batched-attended with the stated reason).
+3. Run it once and attach the output to the wiring PR — a capture command that has never produced a PNG is `manual` with extra steps.

@@ -27,7 +27,7 @@ they churn at every checkpoint BY DESIGN, and their churn is not evidence a
 claim staled -- drift is measured against implementation artifacts. Policy-
 home docs (docs/AUTOMATION.md here) are exempt for the single-home reason:
 claim docs cite them as pointers ("the policy lives there"), and a policy
-edit is a decision, not drift evidence (#228, surfaced by moonlight-engine's
+edit is a decision, not drift evidence (#228, surfaced by a downstream's
 first run). REF_EXEMPT is project-mirrored -- see the constant's comment.
 
 WARN-ONLY: exits 0 always. Promotion to a failing gate (or a wider scope) is
@@ -93,8 +93,11 @@ def norm(path):
 def git_last_commit_dates():
     """One-pass path -> last-commit unix time map, or None when history is unusable."""
     def run(*args):
-        return subprocess.run(["git", *args], capture_output=True, text=True,
-                              encoding="utf-8", errors="replace")
+        try:
+            return subprocess.run(["git", *args], capture_output=True, text=True,
+                                  encoding="utf-8", errors="replace")
+        except OSError:   # git missing/unspawnable -> the loud-SKIP path, not a crash (#341)
+            return subprocess.CompletedProcess(args, 1, "", "")
     shallow = run("rev-parse", "--is-shallow-repository")
     if shallow.returncode != 0 or shallow.stdout.strip() == "true":
         return None
@@ -115,7 +118,10 @@ def referenced_paths(doc):
     """Existing repo files referenced by markdown links or path-shaped code spans."""
     refs = set()
     in_fence = False
-    for line in open(doc, encoding="utf-8"):
+    # errors="replace": a stray non-UTF-8 byte must not crash a warn-only gate
+    # (#341); the doc is still fully evaluated (replacement chars can only make
+    # a token less path-shaped, never invent a reference).
+    for line in open(doc, encoding="utf-8", errors="replace"):
         if line.lstrip().startswith(FENCE):
             in_fence = not in_fence
             continue
@@ -149,35 +155,42 @@ def day(ts):
     return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d")
 
 
-dates = git_last_commit_dates()
-if dates is None:
-    print(f"Staleness scope: {SCOPE_NOTE}")
-    print("SKIP -- no usable git history (shallow clone or git unavailable); "
-          "content drift not evaluated. Full-history checkouts evaluate it for real.")
-    sys.exit(0)
+# Outer fail-soft guard (#341, metrics.py's contract): warn-only means NOTHING
+# in here may exit non-zero -- an unexpected crash degrades to a loud SKIP.
+# SystemExit is BaseException, so the clean sys.exit(0) paths pass through.
+try:
+    dates = git_last_commit_dates()
+    if dates is None:
+        print(f"Staleness scope: {SCOPE_NOTE}")
+        print("SKIP -- no usable git history (shallow clone or git unavailable); "
+              "content drift not evaluated. Full-history checkouts evaluate it for real.")
+        sys.exit(0)
 
-warns = []
-compared = 0
-uncommitted = 0
-for doc in SCOPE:
-    doc_ts = dates.get(norm(doc))
-    if doc_ts is None:          # brand-new, uncommitted doc: nothing committed to drift against
-        uncommitted += 1
-        continue
-    for ref in sorted(referenced_paths(doc)):
-        ref_ts = dates.get(ref)
-        if ref_ts is None:      # uncommitted ref: in-flight work, not committed drift
+    warns = []
+    compared = 0
+    uncommitted = 0
+    for doc in SCOPE:
+        doc_ts = dates.get(norm(doc))
+        if doc_ts is None:      # brand-new, uncommitted doc: nothing committed to drift against
+            uncommitted += 1
             continue
-        compared += 1
-        if ref_ts > doc_ts:
-            warns.append((norm(doc), ref, ref_ts, doc_ts))
+        for ref in sorted(referenced_paths(doc)):
+            ref_ts = dates.get(ref)
+            if ref_ts is None:  # uncommitted ref: in-flight work, not committed drift
+                continue
+            compared += 1
+            if ref_ts > doc_ts:
+                warns.append((norm(doc), ref, ref_ts, doc_ts))
 
-note = f" | uncommitted docs skipped: {uncommitted}" if uncommitted else ""
-print(f"Staleness scope: {SCOPE_NOTE}")
-print(f"Claim-docs checked: {len(SCOPE)} | referenced paths date-compared: {compared} | drift warnings: {len(warns)}{note}")
-for doc, ref, ref_ts, doc_ts in warns:
-    print(f"  WARN  {doc} (last commit {day(doc_ts)})  ->  {ref} changed {day(ref_ts)}")
-if warns:
-    print("warn-only (#222): drift is a re-verify prompt, not a gate -- "
-          "re-check the doc's claims against the changed file, then touch or supersede the doc.")
+    note = f" | uncommitted docs skipped: {uncommitted}" if uncommitted else ""
+    print(f"Staleness scope: {SCOPE_NOTE}")
+    print(f"Claim-docs checked: {len(SCOPE)} | referenced paths date-compared: {compared} | drift warnings: {len(warns)}{note}")
+    for doc, ref, ref_ts, doc_ts in warns:
+        print(f"  WARN  {doc} (last commit {day(doc_ts)})  ->  {ref} changed {day(ref_ts)}")
+    if warns:
+        print("warn-only (#222): drift is a re-verify prompt, not a gate -- "
+              "re-check the doc's claims against the changed file, then touch or supersede the doc.")
+except Exception as e:
+    print(f"SKIP -- staleness audit crashed ({type(e).__name__}: {e}); "
+          "warn-only contract (#222) preserved -- content drift not evaluated this run.")
 sys.exit(0)

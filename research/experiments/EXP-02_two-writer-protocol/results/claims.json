@@ -1,0 +1,24 @@
+{
+  "_meta": {
+    "metric": 1,
+    "collected": "2026-07-17",
+    "commands": "gh issue view <n> --comments (claim/unclaim log) · gh pr list --state all --search <n> (PR count)",
+    "identity_note": "writer B is one physical session with two session-ids from relaunch churn (#357): claim comments say e7229768, ledger/receipt rows say 657d5645. Keyed as LAPTOP-0TDQ755V/* -- both resolve to writer B."
+  },
+  "slices": [
+    {"issue": 345, "claims": [{"by": "linux/f77917c4", "ts": "2026-07-17T23:10:48Z", "branch": "slice/345-e741-checkpoint-nudge"}], "unclaims": 0, "prs": [352]},
+    {"issue": 340, "claims": [{"by": "LAPTOP-0TDQ755V/e7229768", "ts": "2026-07-17T23:12:40Z", "branch": "slice/340-banner-checkpoint-prefix"}], "unclaims": 0, "prs": [354]},
+    {"issue": 341, "claims": [{"by": "linux/f77917c4", "ts": "2026-07-17T23:12:41Z", "branch": "slice/341-staleness-failsoft"}], "unclaims": 0, "prs": [353]},
+    {"issue": 342, "claims": [{"by": "linux/f77917c4", "ts": "2026-07-17T23:15:23Z", "branch": "slice/342-ghexe-guard-evasion"}], "unclaims": 0, "prs": [355]}
+  ],
+  "duplicated_claims": 0,
+  "duplicated_prs": 0,
+  "near_contention_note": "claims on #340 (writer B) and #341 (writer A) landed 1s apart on DIFFERENT tickets -- natural lane divergence, no collision.",
+  "reviews": [
+    {"pr": 352, "review_by": "LAPTOP-0TDQ755V/e7229768", "verdict": "LGTM"},
+    {"pr": 353, "review_by": "LAPTOP-0TDQ755V/e7229768", "verdict": "LGTM"},
+    {"pr": 354, "review_by": "recon-research/f77917c4", "verdict": "LGTM"},
+    {"pr": 355, "review_by": "LAPTOP-0TDQ755V/e7229768", "verdict": "LGTM"}
+  ],
+  "landing_race": {"pr_354_merged": "2026-07-17T23:25:58Z", "pr_355_merged": "2026-07-17T23:26:00Z", "note": "354 landed between writer A's main-position check and A's 355 merge -- 2s window, disjoint files, clean result; the bounded-race class D-330 accepted in rejecting a merge queue."}
+}

@@ -13,7 +13,8 @@ This seed is domain-agnostic. Wherever it says "the subject" or "&lt;example-sys
 A finished library is a folder containing:
 
 ```
-README.md  CLAUDE.md  AGENT_GUIDE.md  LIBRARY_SEED.md  CHANGELOG.md   — entry points & meta (root)
+README.md  CLAUDE.md  AGENT_GUIDE.md  LIBRARY_SEED.md  CHANGELOG.md   — entry points & meta (root;
+                            + CONTRACT_FACTS.md once the first errata pass emits it, §3 step 10)
 MANIFEST.json  SECTIONS.json  ROUTING_EVAL.json                        — machine indexes for RAG (root)
 books/NN_title.md         — the curriculum, numbered, grouped into volumes
 reference/                — lookup docs: GLOSSARY INDEX PATTERNS ANTI_PATTERNS DECISION_TREES
@@ -121,7 +122,7 @@ Produce the library in this order (each step sets up the next):
 7. **Write `CLAUDE.md`, `AGENT_GUIDE.md`, `README.md`** (templates in §6.3–6.4) using the now-real structure.
 8. **Finish `ROUTING_EVAL.json`**: per-book cases were seeded eval-first during the spec pass (§2.7); extend to ~30–60 realistic queries spanning every volume + reference doc, each with expected target(s) (§6.5). `_audit_routing.py` fails any covered book no case routes to (#68).
 9. **Validate to green**: run `_audit_refs.py` (0 misses) and `_audit_routing.py` (all pass). Fix what they flag — broken citations in the books; routing gaps by adding `topic_to_books`/`rag_hints` entries or enriching a book's `topics`/`summary`.
-10. **Adversarial content review (the errata pass)**: the audits prove *consistency*, not *truth*. Fan out parallel read-only reviewers (one per volume / topic cluster; lenses: math/units, API-and-version reality — incl. the executable import-check: every library the text names must resolve in the project's locked env (#126) — security claims, cross-book contradictions, staleness) mandated to falsify the books' technical claims; severity-tag (Crit = following it would ship a defect or waste a milestone · High = materially wrong · Med = unlikely to bite · Low = imprecision), fix in one coordinated pass, commit a ledger (`docs/notes/LIBRARY_REVIEW_<date>.md`: verdict counts, the Criticals named, a `file | locator | edit` table), regenerate SECTIONS and re-audit. Repeat after major growth passes. (Orchestration recipe: the `build_library` + `adversarial_review` skills.)
+10. **Adversarial content review (the errata pass)**: the audits prove *consistency*, not *truth*. Fan out parallel read-only reviewers (one per volume / topic cluster; lenses: math/units, API-and-version reality — incl. the executable import-check: every library the text names must import in the project's locked env (#126) — security claims, cross-book contradictions, staleness) mandated to falsify the books' technical claims; severity-tag (Crit = following it would ship a defect or waste a milestone · High = materially wrong · Med = unlikely to bite · Low = imprecision), fix in one coordinated pass, commit a ledger (`docs/notes/LIBRARY_REVIEW_<date>.md`: verdict counts, the Criticals named, a `file | locator | edit` table) **plus the contract-facts table** — one row per fact stated in more than one place, `fact · owning § · restating §§`, committed to `textbooks/CONTRACT_FACTS.md` as standing review input every later slice diffs against (#494; root-level, so `_audit_refs.py` governs its rows) — then regenerate SECTIONS and re-audit. Repeat after major growth passes. (Orchestration recipe: the `build_library` + `adversarial_review` skills.)
 11. **Write `CHANGELOG.md`** (initial entry) and a final consistency sweep (counts, JSON validity, 0 leftover placeholder / example-system names).
 
 ---
@@ -145,6 +146,7 @@ A library that passes all four is internally consistent. Make passing them a rel
 - **Add depth to an existing book** → use the **deep-dive letter convention** (§2.1): a new `## 3B.` after `## 3.` adds material without renumbering, so no existing citation breaks.
 - **Close a coverage gap** → write the content, flip the `coverage_gaps` entry to `covered`, and point any prose "we don't cover X" at the new section.
 - **Rename the example system** → a scripted case-aware global replace across `*.md` + `MANIFEST.json`, then regenerate SECTIONS and run the audits (no section numbers change, so refs stay intact).
+- **Every growth pass closes with the root-docs refresh (#494)** — this pass's `CHANGELOG.md` entry (unconditional), README/MANIFEST counts and claims re-derived from the tree, and the edit diffed against `textbooks/CONTRACT_FACTS.md` where it exists (a touched fact updates every sibling site in its row). Six downstream errata findings traced to skipping exactly this step.
 
 ---
 
@@ -457,7 +459,7 @@ raise SystemExit(1 if broken else 0)
 - [ ] No leftover placeholder names; the example-system name is consistent everywhere; `PROJECT_CONVENTIONS.md` carries it as the default.
 - [ ] `CHANGELOG.md` has an initial entry; `README.md` has reading paths + stats.
 - [ ] A grep for the old/placeholder counts returns nothing.
-- [ ] An **adversarial content review** (errata pass, §3 step 10) ran once the library stabilized; its ledger is committed and every Critical is fixed.
+- [ ] An **adversarial content review** (errata pass, §3 step 10) ran once the library stabilized; its ledger is committed, every Critical is fixed, and `textbooks/CONTRACT_FACTS.md` is committed alongside it.
 
 ---
 
