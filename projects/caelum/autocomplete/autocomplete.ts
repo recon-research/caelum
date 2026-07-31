@@ -6,6 +6,7 @@ import {
   Component,
   computed,
   ElementRef,
+  inject,
   input,
   signal,
   viewChild,
@@ -119,6 +120,7 @@ export interface CaeAutocompleteOption {
           [required]="required()"
           [disabled]="isDisabled()"
           [errorStateMatcher]="errorStateMatcher"
+          (focusout)="onChipFocusout($event)"
         >
           @for (chip of chipValues(); track chip) {
             <mat-chip-row [removable]="!isDisabled()" (removed)="removeChip(chip)">
@@ -153,7 +155,7 @@ export interface CaeAutocompleteOption {
           (input)="onType(input.value)"
           (matChipInputTokenEnd)="onTokenEnd($event)"
           (keydown.enter)="onEnterKey($event, input)"
-          (focusout)="onBlur(input)"
+          (focusout)="onChipFocusout($event)"
         />
       } @else {
         <input
@@ -237,6 +239,7 @@ export class CaeAutocomplete extends CaeFormFieldControlBase<string | readonly s
     (option, query) => option.label.toLowerCase().includes(query),
   );
 
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly inputRef = viewChild<ElementRef<HTMLInputElement>>('input');
   /**
    * The inner Material control the base pokes to recompute its (bridged) error state. Exactly one of
@@ -433,15 +436,25 @@ export class CaeAutocomplete extends CaeFormFieldControlBase<string | readonly s
     if (value) this.addChip(value);
   }
 
+  /**
+   * Chip-mode touched semantics (#898): `onTouched` fires only when focus actually LEAVES the
+   * widget — the `relatedTarget` gate. Bound on BOTH `<mat-chip-grid>` (chips live inside it, and a
+   * chip-only interaction never focuses the input; Material's own `MatChipGrid._markAsTouched` is
+   * disconnected by design — the grid deliberately has no `NgControl`, #46) and the chip input (a
+   * DOM *sibling* of the grid here, so the grid binding alone would miss it). Moves *within* the
+   * composite widget — Backspace into the chips, Shift+Tab back, chip→chip, chip→input — must not
+   * flip the field into its error presentation mid-interaction. A leftover token stays in the
+   * field untouched: it is visibly uncommitted (`p-autocomplete [multiple]` has no addOnBlur).
+   */
+  protected onChipFocusout(event: FocusEvent): void {
+    const next = event.relatedTarget;
+    if (next instanceof Node && this.host.nativeElement.contains(next)) return;
+    this.onTouched();
+  }
+
   protected onBlur(input: HTMLInputElement): void {
-    if (this.multiple()) {
-      // The value is the chips; a leftover token is visibly uncommitted, so it is left alone for the
-      // user to finish (p-autocomplete [multiple] has no addOnBlur). Clearing it here would also fire
-      // on focus moving to a chip's own remove button, which is not the user leaving the field.
-      this.onTouched();
-      return;
-    }
-    // Single mode: reconcile the input against the model on blur. Strict reverts un-picked text;
+    // Single mode only — the chip arm binds onChipFocusout instead (#898).
+    // Reconcile the input against the model on blur. Strict reverts un-picked text;
     // freeText commits it. Either way the display is then written directly rather than left to the
     // afterRenderEffect, which does not run when the committed value did not actually change.
     const display = this.displayText();
