@@ -713,6 +713,111 @@ describe('CaeChipSet', () => {
     }
   });
 
+  // The next two tests are decision #944's two halves, and only mean something together: a blanket
+  // "drop preventScroll everywhere" edit passes the first and fails the second; a full revert does
+  // the opposite. Split into two `it`s only because TestBed allows one configureTestingModule per
+  // test.
+  //
+  // Why the sites differ — and it is NOT "the component picked it": measured, every in-component
+  // site restores focus to somewhere the user *demonstrably already was* a moment earlier (the
+  // #556/#551 anti-steal witnesses capture `document.activeElement`; cae-grid's pager sibling sits
+  // next to the button they just pressed). That is direct evidence the element is on screen, so
+  // suppressing the scroll jump is right. A [emptyFocusTarget] is named by the consumer sight-unseen
+  // and may sit far above the fold, where suppressing the scroll leaves focus with no perceivable
+  // focus indicator anywhere on screen (WCAG 2.4.7).
+  it('scrolls a consumer-named [emptyFocusTarget] into view (#944)', async () => {
+    const f = await makeTarget();
+    const target = f.componentInstance.statusRef()!.nativeElement;
+    const consumerNamed = vi.spyOn(target, 'focus');
+
+    const soloRemove = removeBtn(rows(f)[0])!;
+    soloRemove.focus();
+    soloRemove.click();
+    await settle(f);
+
+    expect(consumerNamed).toHaveBeenCalledWith();
+    expect(consumerNamed).not.toHaveBeenCalledWith({ preventScroll: true });
+  });
+
+  it('still suppresses the scroll when restoring to where the user WAS (#944)', async () => {
+    // The #556 anti-steal restore, reusing that test's arrangement: the user gives up waiting on an
+    // async drop and moves to an unrelated button, Material grabs focus into a surviving sibling
+    // when the drop lands, and the component puts them back. The witness IS `document.activeElement`
+    // captured a moment earlier — the strongest possible evidence the element is on screen — so this
+    // call keeps `preventScroll`.
+    const f = await makeAsyncTarget();
+    f.componentInstance.items.set(['a', 'b', 'c']);
+    await settle(f);
+    const aRemove = removeBtn(rows(f)[0])!;
+    aRemove.focus();
+    aRemove.click(); // request only — two enabled siblings remain, so the drop is still in flight
+    await settle(f);
+    const extBtn = f.componentInstance.extRef()!.nativeElement;
+    extBtn.focus(); // the user gives up waiting and moves away
+
+    // Spy installed AFTER the user's own focus call, so the only call it can see is the restore.
+    const restore = vi.spyOn(extBtn, 'focus');
+    f.componentInstance.pendingDrop!(); // the drop lands → Material grabs → the component restores
+    await settle(f);
+
+    expect(document.activeElement).toBe(extBtn); // the restore really happened...
+    expect(restore).toHaveBeenCalledWith({ preventScroll: true }); // ...and kept the suppression
+  });
+
+  it('does not throw when [emptyFocusTarget] is bound to the viewChild SIGNAL (#865)', async () => {
+    // The un-typechecked shape: `[emptyFocusTarget]="statusRef"` instead of `"statusRef()"`. The
+    // cast stands in for a consumer app without strictTemplates (Caelum itself has it since #858,
+    // so the binding cannot be written honestly here) or a JavaScript consumer with no checking.
+    // Unguarded, `el.focus()` throws TypeError inside an afterNextRender focus-restore callback,
+    // where it surfaces as an unhandled rejection rather than anything a consumer can catch.
+    @Component({
+      imports: [CaeChipSet],
+      template: `
+        <cae-chip-set
+          [items]="items()"
+          [emptyFocusTarget]="badTarget()"
+          (removed)="onRemoved($event)"
+        />
+        <p #status tabindex="-1">status</p>
+      `,
+    })
+    class SignalTargetHost {
+      items = signal<readonly string[]>(['solo']);
+      readonly statusRef = viewChild<ElementRef<HTMLElement>>('status');
+      protected badTarget(): HTMLElement {
+        return this.statusRef as unknown as HTMLElement;
+      }
+      onRemoved(e: CaeChipRemoveEvent<string>): void {
+        this.items.update((l) => l.filter((t) => t !== e.item));
+      }
+    }
+    const warnings: string[] = [];
+    const realWarn = console.warn;
+    console.warn = (m?: unknown) => warnings.push(String(m));
+    try {
+      await TestBed.configureTestingModule({ imports: [SignalTargetHost] }).compileComponents();
+      const f = TestBed.createComponent(SignalTargetHost);
+      el = f.nativeElement as HTMLElement;
+      document.body.appendChild(el);
+      f.detectChanges();
+      await f.whenStable();
+      const soloRemove = removeBtn(rows(f)[0])!;
+      soloRemove.focus();
+      soloRemove.click();
+      await settle(f);
+
+      // The removal completed — the claim is that a bad binding degrades to a warning, not that it
+      // aborts the interaction. Asserting only "no throw" would pass against a swallowed exception.
+      expect(rows(f).length).toBe(0);
+      expect(warnings.some((w) => w.includes('[emptyFocusTarget] is not an element'))).toBe(true);
+      // The focusability nudge must NOT also fire: it would tell the developer to add tabindex="-1"
+      // to fix a binding that was never an element.
+      expect(warnings.some((w) => w.includes('did not receive focus'))).toBe(false);
+    } finally {
+      console.warn = realWarn;
+    }
+  });
+
   it('names the set via aria-label', async () => {
     const f = await makeString((h) => (h.ariaLabel = 'Workspace tags'));
     expect(grid(f).getAttribute('aria-label')).toBe('Workspace tags');

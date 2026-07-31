@@ -17,8 +17,11 @@ const compiledStyles = (): string =>
 const ruleFor = (selector: string, body: string): RegExp =>
   new RegExp(`${selector.replace(/[.]/g, '\\.')}(\\[[^\\]]*\\])?\\s*\\{[^}]*${body}`);
 
-/** Which shape of focus target to bind — the input documents three, so all three are exercised. */
-type TargetMode = 'element' | 'elementRef' | 'none';
+/**
+ * Which shape of focus target to bind — the input documents three, so all three are exercised, plus
+ * `'signal'`: the one shape the input does NOT document and cannot type-check (#865).
+ */
+type TargetMode = 'element' | 'elementRef' | 'signal' | 'none';
 
 @Component({
   imports: [CaeAlert],
@@ -54,11 +57,20 @@ class AlertHost {
   visibleAtEmit: boolean | null = null;
   changeCount = 0;
 
-  /** The landing element in whichever of the three documented shapes the test asked for. */
+  /** The landing element in whichever shape the test asked for. */
   protected target(): HTMLElement | ElementRef<HTMLElement> | null {
     const ref = this.landingQuery();
     if (!ref || this.targetMode() === 'none') return null;
-    return this.targetMode() === 'elementRef' ? ref : ref.nativeElement;
+    if (this.targetMode() === 'elementRef') return ref;
+    if (this.targetMode() === 'signal') {
+      // The un-typechecked shape (#865): a consumer binding the viewChild SIGNAL rather than its
+      // result. The cast is load-bearing, not laziness — Caelum compiles with strictTemplates since
+      // #858, so this binding CANNOT be written honestly in this repo. What it stands in for is a
+      // consumer app with strictTemplates off, or a JavaScript consumer with no checking at all,
+      // which is the only population the runtime guard exists to protect.
+      return this.landingQuery as unknown as HTMLElement;
+    }
+    return ref.nativeElement;
   }
 
   onVisibleChange(): void {
@@ -409,7 +421,14 @@ describe('CaeAlert', () => {
       expect(document.activeElement).toBe(landing());
     });
 
-    it('focuses without scrolling the target into view', async () => {
+    it('lets the browser scroll a consumer-named target into view (#944)', async () => {
+      // The inverse of what this test asserted before decision #944. `preventScroll` is right only
+      // where the COMPONENT chose the target and therefore knows it was on screen — cae-chip-set
+      // restoring to an adjacent chip, cae-grid to the neighbouring pager, both of which keep it.
+      // [dismissFocusTarget] is by definition an element the consumer named, which may sit far
+      // above the fold; suppressing the scroll there lands focus with no perceivable focus
+      // indicator anywhere on screen (WCAG 2.4.7). jsdom cannot scroll, so the ARGUMENT is the
+      // only observable: `focus()` with no options lets the platform do its default thing.
       await set(() => host.dismissible.set(true));
       const spy = vi.spyOn(landing(), 'focus');
       const btn = closeBtn()!;
@@ -417,7 +436,36 @@ describe('CaeAlert', () => {
       btn.click();
       await fixture.whenStable();
 
-      expect(spy).toHaveBeenCalledWith({ preventScroll: true });
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(spy).toHaveBeenCalledWith();
+      // Teeth against a partial revert that passes an empty options object instead of removing the
+      // argument: `toHaveBeenCalledWith()` alone would still fail on `{}`, but this names the value
+      // that must not come back.
+      expect(spy).not.toHaveBeenCalledWith({ preventScroll: true });
+    });
+
+    it('does not throw when the consumer binds the viewChild SIGNAL instead of its result (#865)', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      await set(() => {
+        host.dismissible.set(true);
+        host.targetMode.set('signal');
+      });
+      const btn = closeBtn()!;
+      btn.focus();
+      btn.click();
+      // The claim is that the dismissal completes. Before the guard, `el.focus()` threw TypeError
+      // from inside placeFocus — which runs BEFORE `visible.set(false)` — so the alert stayed open
+      // and the user's click did nothing at all. Asserting the model write is what proves the
+      // dismissal survived; asserting only "no throw" would pass against a swallowed exception.
+      await fixture.whenStable();
+
+      expect(host.visible()).toBe(false);
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('cae-alert: [dismissFocusTarget] is not an element'),
+      );
+      // Exactly one warning: the focusability nudge must NOT also fire, or the developer is told
+      // to add tabindex="-1" to fix a binding that was never an element.
+      expect(warn).toHaveBeenCalledTimes(1);
     });
 
     it('still lands focus when the consumer UNMOUNTS the alert on dismissal', async () => {
@@ -536,6 +584,80 @@ describe('CaeAlert', () => {
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('cae-alert:'));
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('WCAG 1.4.1'));
       empty.destroy();
+    });
+
+    it('warns when the message empties at runtime with the alert still mounted (#863)', async () => {
+      // The shape the class doc RECOMMENDS — `<cae-alert>{{ errorText() }}</cae-alert>`, kept
+      // mounted while its content changes. Projected content is not a signal, so the guard's own
+      // effect (deps: visible, severity) cannot see this; a MutationObserver is what does.
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      // Start non-empty and assert the silence: without this the test could pass on a guard that
+      // warns unconditionally at first render, which is the opposite of the fix.
+      expect(host.message()).toBe('Something happened.');
+      expect(warn).not.toHaveBeenCalled();
+
+      await set(() => host.message.set(''));
+
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('WCAG 1.4.1'));
+    });
+
+    it('re-arms after the message comes back, and does not repeat while it stays empty (#863)', async () => {
+      // Two claims in one arrangement because they are the same latch seen from both sides. The
+      // observer fires per mutation BATCH, not per empty-transition, so an unlatched guard would
+      // re-warn on any unrelated projected change while the message stayed empty — a console that
+      // repeats itself is one a developer learns to scroll past. A latch that never cleared would
+      // be the opposite defect: the second real emptying would go unreported.
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      await set(() => host.message.set(''));
+      expect(warn).toHaveBeenCalledTimes(1);
+
+      // A mutation that does not change emptiness must not re-warn.
+      await set(() => host.message.set('   '));
+      expect(warn).toHaveBeenCalledTimes(1);
+
+      await set(() => host.message.set('Back.'));
+      await set(() => host.message.set(''));
+      expect(warn).toHaveBeenCalledTimes(2);
+    });
+
+    it('still sees a runtime emptying after the alert was hidden and re-shown (#863)', async () => {
+      // `.cae-alert__content` lives inside @if (visible()), so hiding and re-showing DESTROYS the
+      // node the observer was watching and renders a fresh one. An observer attached once at first
+      // render would be left watching a detached node and silently never fire again — and `visible`
+      // toggling is the alert's normal life, not an edge case.
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      await set(() => host.visible.set(false));
+      await set(() => host.visible.set(true));
+      expect(warn).not.toHaveBeenCalled(); // the message is still 'Something happened.'
+
+      await set(() => host.message.set(''));
+
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('WCAG 1.4.1'));
+    });
+
+    it('stops observing the message once the alert is destroyed (#863)', async () => {
+      // The observer outlives the component unless something disconnects it: MutationObserver holds
+      // a strong reference to its callback, which closes over the component. Asserting on a warning
+      // AFTER destroy is what makes the DestroyRef teardown falsifiable — deleting it leaves this
+      // green only if the observer really stopped.
+      const own = TestBed.createComponent(AlertHost);
+      document.body.appendChild(own.nativeElement);
+      await own.whenStable();
+      const content = own.nativeElement.querySelector('.cae-alert__content') as HTMLElement;
+
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      own.destroy();
+
+      // Mutate the detached content directly — after destroy there is no change detection left to
+      // route a signal write through, so poking the DOM is the only way to ask the question.
+      content.textContent = '';
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(warn).not.toHaveBeenCalled();
+      own.nativeElement.remove();
     });
 
     it('does NOT warn when a message is projected — with the guard actually running', async () => {

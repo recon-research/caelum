@@ -21,6 +21,7 @@ import {
   MatChipRow,
 } from '@angular/material/chips';
 import { COMMA, ENTER } from '@angular/cdk/keycodes';
+import type { CaeFocusTarget } from '@recon-research/caelum/shared';
 
 /** Payload of {@link CaeChipSet.removed} — the item whose remove affordance was activated, and its index. */
 export interface CaeChipRemoveEvent<T> {
@@ -294,8 +295,11 @@ export class CaeChipSet<T = string> implements OnInit {
    * second time when focus lands — a plain heading/container avoids that. Accepts a raw `HTMLElement` (a
    * `#ref` template variable), an `ElementRef`, or a `viewChild()` result (bind it directly — `undefined`
    * is tolerated). Unset ⇒ unchanged: the consumer owns the empty case.
+   *
+   * The two rules that govern how the target is focused — no `preventScroll`, and a callable-focus
+   * guard — live once on {@link CaeFocusTarget}, not per component.
    */
-  readonly emptyFocusTarget = input<HTMLElement | ElementRef<HTMLElement> | null | undefined>(null);
+  readonly emptyFocusTarget = input<CaeFocusTarget>(null);
 
   /**
    * Opt into the **text-entry tag field** (`p-chips` parity, #201): renders a bare `<input>` after the chips
@@ -515,18 +519,35 @@ export class CaeChipSet<T = string> implements OnInit {
     if (!ownsFocus) return; // focus moved away — don't steal it (WCAG 3.2.5)
     const target = this.emptyFocusTarget();
     const el = target instanceof ElementRef ? target.nativeElement : target;
-    el?.focus({ preventScroll: true });
-    // Dev-only DX nudge (zero prod cost): a non-focusable target (a non-interactive element missing
-    // tabindex="-1") or one detached from the DOM makes .focus() a silent no-op, dropping the keyboard user to
-    // <body> — the same as no redirect at all, but hidden. Unlike validateConfig (own inputs, knowable at init)
-    // an EXTERNAL element's focusability is only knowable here, after the call — so the guard lives here (#206).
-    // Only nudge when a target was actually bound. The activeElement compare assumes the documented light-DOM
-    // target (a heading / status region); a shadow-DOM or focus-forwarding target can retarget activeElement to
-    // its host, a benign dev-only false positive — accepted rather than shipping an untestable shadow-walk.
-    if (isDevMode() && el && document.activeElement !== el) {
-      console.warn(
-        'cae-chip-set: [emptyFocusTarget] did not receive focus after the set emptied — the element is likely not focusable (a non-interactive target needs tabindex="-1") or is detached from the DOM.',
-      );
+    // No preventScroll (unlike the #551/#556 anti-steal restores above) and a callable-focus guard:
+    // both are the shared CaeFocusTarget convention, whose rationale lives once on that type. In
+    // short — those restores replay a `heldBy` we captured from document.activeElement, so the
+    // element was provably on screen a moment ago; THIS one the consumer named sight-unseen, and we
+    // know nothing about it, including whether `.focus` is even a function (#944, #865).
+    const focusable = el && typeof el.focus === 'function' ? el : null;
+    focusable?.focus();
+
+    // Dev-only DX nudges (zero prod cost), as one chain so a wrongly-shaped binding reports its own
+    // cause instead of also tripping the focusability nudge below with a misleading second message.
+    // Only nudge when a target was actually bound.
+    //
+    // The second branch: a non-focusable target (a non-interactive element missing tabindex="-1") or
+    // one detached from the DOM makes .focus() a silent no-op, dropping the keyboard user to <body> —
+    // the same as no redirect at all, but hidden. Unlike validateConfig (own inputs, knowable at init)
+    // an EXTERNAL element's focusability is only knowable here, after the call — so the guard lives
+    // here (#206). Its activeElement compare assumes the documented light-DOM target (a heading /
+    // status region); a shadow-DOM or focus-forwarding target can retarget activeElement to its host,
+    // a benign dev-only false positive — accepted rather than shipping an untestable shadow-walk.
+    if (isDevMode() && el) {
+      if (!focusable) {
+        console.warn(
+          'cae-chip-set: [emptyFocusTarget] is not an element — bind the viewChild RESULT, not the signal itself ([emptyFocusTarget]="ref()", not "ref"). Focus was not moved.',
+        );
+      } else if (document.activeElement !== el) {
+        console.warn(
+          'cae-chip-set: [emptyFocusTarget] did not receive focus after the set emptied — the element is likely not focusable (a non-interactive target needs tabindex="-1") or is detached from the DOM.',
+        );
+      }
     }
   }
 

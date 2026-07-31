@@ -469,3 +469,26 @@ reconcile has to run in the **after-render** phase. A component `effect` does no
   setter its current value) was proven in isolation *first* — `beforePoke=true` → `afterPoke=null`
   — which is what made "the lever works, the timing does not" a two-minute diagnosis instead of a
   rewrite. Related: [[probe-by-failing-assertion]] for getting real runtime values out of vitest.
+
+## 18. A guard that reads *projected* content is not reactive (#863)
+
+Projected content is not a signal. A dev guard that inspects `<ng-content>`'s rendered text runs when
+its own signal deps change — and a consumer changing the message changes none of them.
+
+- **The blind spot lands on the recommended path.** `cae-alert`'s WCAG 1.4.1 "no message" guard is an
+  `afterRenderEffect` keyed on `visible()`/`severity()`, reading `.cae-alert__content`'s `textContent`.
+  It fired on mount and on toggles, but never on `<cae-alert>{{ errorText() }}</cae-alert>` going
+  `'Boom'` → `''` — which is precisely the arrangement the class doc *recommends*. A guard is worth
+  least exactly where the docs send people.
+- **The fix is a dev-only `MutationObserver`**, disposed via `DestroyRef.onDestroy`. Observe
+  `{ subtree: true, childList: true, characterData: true }`: interpolation updates arrive as
+  `characterData` on a text node *below* the queried element, so dropping `subtree` silently loses
+  them (mutation-tested — it kills the runtime-emptying specs).
+- **Re-point the observer from the render effect, not once at init**, whenever the observed node
+  lives inside an `@if`. Hiding and re-showing destroys it and renders a fresh one; an observer
+  attached only at first render is left watching a detached node forever.
+- **Latch the warning.** The callback fires per mutation *batch*, not per empty-transition, so an
+  unlatched guard re-warns on unrelated projected churn. Clear the latch when the content is
+  non-empty again, or the *second* real emptying goes unreported — both directions want a spec.
+- **Same trap, other components:** any `querySelector` + `textContent` check inside a projection
+  boundary (`cae-tag`'s #669 convention, and anything copying it) inherits it.
