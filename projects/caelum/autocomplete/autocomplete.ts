@@ -1,3 +1,4 @@
+import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { COMMA } from '@angular/cdk/keycodes';
 import {
   afterRenderEffect,
@@ -93,6 +94,24 @@ export interface CaeAutocompleteOption {
  * declaratively as `cae-listbox` does) — the chosen value is still announced via the input text
  * (tracked with the async/dynamic gaps in #120).
  *
+ * **Chip-mode accessibility (#899).** Every add and removal is announced via `LiveAnnouncer`
+ * (`"<label> added, N selected"` / `"<label> removed, N selected"`) — chip mode has no
+ * self-announcing surface (see the `announcer` field). The `role=grid` is named by
+ * `aria-labelledby` → the floating label (`MatFormField.getLabelId()`), or by `ariaLabel` when
+ * set — the visible label's `for` natively names only the *input* (`MatChipGrid.id` proxies to
+ * it). Both name bindings are gated on a chip existing: while the grid is empty its `role` is
+ * `null`, and a name on a role-less element is an ARIA violation (axe `aria-prohibited-attr`) —
+ * the gate is one-directional-safe because a chip forces the role on ('grid' whenever the grid OR
+ * its input is non-empty). Keyboard model: the chips share ONE tab stop and the input is the
+ * next; Left/Right walk a chip's label and its × (continuing across chips), Up/Down move between
+ * chips column-wise.
+ * Tabbing onto the grid from EITHER direction lands on the last-active chip (else the first) —
+ * native tab order into the grid host, which forwards focus via `MatChipGrid.focus()`; Material's
+ * own focus-the-LAST-chip Shift+Tab interception never fires here, because it listens on the grid
+ * host and the input is the grid's DOM *sibling*. Removing the newest entry from the input takes
+ * two Backspaces — the first (on an empty field) focuses the last chip, the second removes it;
+ * focus then moves to a neighbouring chip, or back to the input when the last chip goes.
+ *
  * No `color` input: theming comes through the `--cae-*`/`--mat-sys-*` token bridge, not Material's
  * palette input (the library's token-only discipline). Zoneless-compatible: `OnPush` + signal state
  * (provisional on #9; Book 01 §3.2).
@@ -110,7 +129,7 @@ export interface CaeAutocompleteOption {
     MatChipRow,
   ],
   template: `
-    <mat-form-field [appearance]="appearance()">
+    <mat-form-field #formField [appearance]="appearance()">
       @if (label()) {
         <mat-label>{{ label() }}</mat-label>
       }
@@ -120,6 +139,10 @@ export interface CaeAutocompleteOption {
           [required]="required()"
           [disabled]="isDisabled()"
           [errorStateMatcher]="errorStateMatcher"
+          [attr.aria-label]="chipValues().length && ariaLabel() ? ariaLabel() : null"
+          [attr.aria-labelledby]="
+            chipValues().length && !ariaLabel() ? formField.getLabelId() : null
+          "
           (focusout)="onChipFocusout($event)"
         >
           @for (chip of chipValues(); track chip) {
@@ -240,6 +263,15 @@ export class CaeAutocomplete extends CaeFormFieldControlBase<string | readonly s
   );
 
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  /**
+   * Polite announcer for chip adds/removes (#899). Chip mode has no self-announcing surface: the
+   * combobox's own value stays permanently empty ({@link displayFn} returns `''` by design), the
+   * free-text commit moves focus nowhere, and after a removal the screen reader reads the
+   * NEIGHBOUR chip focus lands on — so every mutation path is silent without this. The
+   * tree-select escape clause ("the trigger's new value is announced when focus returns to it",
+   * a11y F6, #281) is exactly what chip mode cannot satisfy.
+   */
+  private readonly announcer = inject(LiveAnnouncer);
   private readonly inputRef = viewChild<ElementRef<HTMLInputElement>>('input');
   /**
    * The inner Material control the base pokes to recompute its (bridged) error state. Exactly one of
@@ -390,12 +422,15 @@ export class CaeAutocomplete extends CaeFormFieldControlBase<string | readonly s
     const current = this.chipValues();
     if (current.includes(value)) return;
     this.commitValue([...current, value]);
+    this.announcer.announce(`${this.chipLabel(value)} added, ${current.length + 1} selected`);
   }
 
   protected removeChip(value: string): void {
     const current = this.chipValues();
     const next = current.filter((chip) => chip !== value);
-    if (next.length !== current.length) this.commitValue(next);
+    if (next.length === current.length) return;
+    this.commitValue(next);
+    this.announcer.announce(`${this.chipLabel(value)} removed, ${next.length} selected`);
   }
 
   /**
