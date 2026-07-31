@@ -1,6 +1,6 @@
 import { LiveAnnouncer } from '@angular/cdk/a11y';
-import { BACKSPACE, COMMA, DOWN_ARROW, ENTER } from '@angular/cdk/keycodes';
-import { Component } from '@angular/core';
+import { BACKSPACE, COMMA, DOWN_ARROW, ENTER, ESCAPE } from '@angular/cdk/keycodes';
+import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import { vi } from 'vitest';
@@ -87,12 +87,15 @@ describe('CaeAutocomplete', () => {
     expect(component['filtered']().map((o) => o.value)).toEqual(['uk']);
   });
 
-  it('shows all suggestions when nothing is typed, or when the input still shows the chosen label', () => {
+  it('shows all suggestions when nothing is typed, and filters as soon as something is', () => {
     expect(component['filtered']().length).toBe(3); // empty query → all
     component.writeValue('us');
     fixture.detectChanges();
-    component['onType']('United States'); // equals the chosen label → not a filter, show all
-    expect(component['filtered']().length).toBe(3);
+    // Typing the chosen label back IS typing: it filters (#901). "Nothing typed since a selection"
+    // is no longer inferred from the query matching the chosen label — the commit sites clear the
+    // query outright, which is what the pick/blur tests below assert.
+    component['onType']('United States');
+    expect(component['filtered']().map((o) => o.value)).toEqual(['us']);
   });
 
   it('resets the filter query on a programmatic write so the panel is not stale-filtered (#121 review)', () => {
@@ -135,6 +138,10 @@ describe('CaeAutocomplete', () => {
     component['onBlur'](el);
     expect(el.value).toBe('United States'); // reverted to the committed label
     expect(calls).toBe(0); // model unchanged — no spurious commit
+    // Blur is a commit site in BOTH modes, so it clears the filter query here too (#901) — without
+    // this the strict half of that contract is pinned by nothing and a freeText-only clear passes.
+    expect(component['query']()).toBe('');
+    expect(component['filtered']().length).toBe(3);
   });
 
   it('commits the empty selection when the input is cleared then blurred', () => {
@@ -319,9 +326,11 @@ describe('CaeAutocomplete — multiple (chips)', () => {
   });
 
   it('keeps filtering when the query equals an existing chip label', () => {
-    // selectedOption() must read as "no single pick" in chip mode. Otherwise the first chip's option
-    // answers it, the query trips filtered()'s "the input still shows the chosen label" early-return,
-    // and the panel silently stops filtering for that one query.
+    // Both halves of the panel contract at once: the taken option drops out AND the typed text
+    // still filters. (Before #901 this also defended filtered()'s coupling to selectedOption() —
+    // the first chip's option could answer it and trip a "shows the chosen label" early-return.
+    // That proxy is gone; selectedOption() keeps its chip-mode guard because the value seam has no
+    // single pick in this mode, which the second assertion pins.)
     component['onSelected']('us');
     component['onType']('United States');
     expect(component['filtered']()).toEqual([]);
@@ -915,5 +924,201 @@ describe('CaeAutocomplete — validation-error forwarding', () => {
     fixture.detectChanges();
 
     await expectAnnouncedErrorState(fixture.nativeElement, 'Pick a country');
+  });
+});
+
+// --- #901: the batched small findings from the #889 independent review ---
+
+@Component({
+  imports: [CaeAutocomplete, ReactiveFormsModule],
+  template: `
+    <cae-autocomplete
+      [formControl]="ctrl"
+      [multiple]="multi()"
+      [options]="opts"
+      [errorMessages]="{ required: 'Pick at least one' }"
+      label="Modes"
+      ariaLabel="Modes"
+    />
+  `,
+})
+class ModeFlipHostCmp {
+  readonly ctrl = new FormControl<string | string[]>('', { validators: [Validators.required] });
+  readonly opts = OPTIONS;
+  // A signal, not a plain field: under zoneless a plain host property is not guaranteed to push
+  // into a child signal input on a bare detectChanges().
+  readonly multi = signal(false);
+}
+
+describe('CaeAutocomplete — #901 review batch', () => {
+  const makeBare = async (
+    inputs: Record<string, unknown>,
+  ): Promise<ComponentFixture<CaeAutocomplete>> => {
+    await TestBed.configureTestingModule({ imports: [CaeAutocomplete] }).compileComponents();
+    const fixture = TestBed.createComponent(CaeAutocomplete);
+    fixture.componentRef.setInput('options', OPTIONS);
+    for (const [name, value] of Object.entries(inputs)) fixture.componentRef.setInput(name, value);
+    await fixture.whenStable();
+    return fixture;
+  };
+
+  it('coerces a non-string, non-array form value at the trust boundary (#901)', async () => {
+    // A number or object reaching writeValue from a form model passed straight through: the base
+    // accepts anything non-nullish, chipValues() returns it verbatim, and `@for (chip of
+    // chipValues())` throws NG02200 "not iterable" — a crashed view, not a rejected value.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const fixture = await makeBare({ multiple: true });
+    const component = fixture.componentInstance;
+    component.writeValue(42 as unknown as string);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(component['chipValues']()).toEqual([]);
+    expect(fixture.nativeElement.querySelectorAll('mat-chip-row').length).toBe(0);
+    // The warn names the offending type — a guard narrowed to `typeof === 'number'` would pass a
+    // one-probe test, so the object case is exercised too: it is the likelier mis-mapped model.
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('"number"'));
+    component.writeValue({ tags: ['us'] } as unknown as string);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(component['chipValues']()).toEqual([]);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('"object"'));
+    warn.mockRestore();
+  });
+
+  it('recomputes the bridged error state when [multiple] flips mid-life (#901)', async () => {
+    const fixture = TestBed.createComponent(ModeFlipHostCmp);
+    await fixture.whenStable();
+    const host = fixture.componentInstance;
+    const field = (): HTMLElement => fixture.nativeElement.querySelector('.mat-mdc-form-field');
+    host.ctrl.markAsTouched();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(field().classList.contains('mat-form-field-invalid')).toBe(true); // single arm bridged
+    // The base recomputes from ngDoCheck, a hook of the PARENT view: on the flip pass it runs
+    // BEFORE the @if stamps the chip arm, so the incoming chipGrid() is still undefined. Nothing
+    // repairs it afterwards — MatChipGrid.ngDoCheck self-updates only when it owns an NgControl,
+    // which by design it never does here (#46) — so the field renders valid over an invalid model
+    // until some unrelated CD pass, which zoneless may never schedule.
+    host.multi.set(true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('mat-chip-grid')).not.toBeNull(); // vacuity guard
+    expect(field().classList.contains('mat-form-field-invalid')).toBe(true);
+    // And back again: MatInput.ngDoCheck gates its self-update on owning an NgControl exactly as
+    // MatChipGrid does, so the freshly-stamped input latches valid the same way. A recompute
+    // restricted to the chip arm would pass the leg above and fail here.
+    host.ctrl.setValue('');
+    host.multi.set(false);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('mat-chip-grid')).toBeNull(); // vacuity guard
+    expect(field().classList.contains('mat-form-field-invalid')).toBe(true);
+  });
+
+  it('re-syncs the trigger after a token commit so the same token can be re-entered (#901)', async () => {
+    // MatChipInput.clear() assigns inputElement.value = '' with no `input` event, so the trigger's
+    // _previousValue keeps the committed token. Re-entering that identical token in ONE shot — a
+    // paste, an autofill — then trips _handleInput's no-change early-return and the panel never
+    // reopens. Typing it back character by character self-heals, which is why this hid.
+    const fixture = await makeBare({ multiple: true, freeText: true });
+    const component = fixture.componentInstance;
+    const el = (): HTMLInputElement => fixture.nativeElement.querySelector('input');
+    const keydown = (keyCode: number, key: string): void => {
+      const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'keyCode', { get: () => keyCode });
+      el().dispatchEvent(event);
+    };
+    el().focus();
+    el().dispatchEvent(new Event('focusin', { bubbles: true }));
+    el().value = 'United States';
+    el().dispatchEvent(new Event('input', { bubbles: true }));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    keydown(COMMA, ',');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(component['chipValues']()).toEqual(['United States']); // vacuity guard: it committed
+    expect(el().value).toBe('');
+    // Close the panel WITHOUT leaving the field — a refocus would resync _previousValue by itself.
+    keydown(ESCAPE, 'Escape');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(component['autocompleteTrigger']()!.panelOpen).toBe(false); // vacuity guard
+    el().value = 'United States';
+    el().dispatchEvent(new Event('input', { bubbles: true }));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(component['autocompleteTrigger']()!.panelOpen).toBe(true);
+  });
+
+  it('clears the filter query when a suggestion is picked, rather than proxying it (#901)', async () => {
+    const fixture = await makeBare({});
+    const component = fixture.componentInstance;
+    // Type FIRST. On a fresh fixture `query` is already '', so a test that picks straight away
+    // passes even with the clear deleted — the set would be writing the value it already holds.
+    component['onType']('States'); // 'Unit' would match United Kingdom too — no narrowing proved
+    expect(component['filtered']().map((o) => o.value)).toEqual(['us']); // setup guard
+    component['onSelected']('us');
+    expect(component['query']()).toBe('');
+    expect(component['filtered']().length).toBe(3);
+  });
+
+  it('unfilters the panel after committing an ORPHAN free-text value (#901)', async () => {
+    // The replaced proxy compared the query against the chosen option's label, which a value with
+    // no matching option can never satisfy (selectedOption() is undefined). Committing free text
+    // therefore left the panel filtered by that same text — in practice, filtered to nothing.
+    const fixture = await makeBare({ freeText: true });
+    const component = fixture.componentInstance;
+    const el: HTMLInputElement = fixture.nativeElement.querySelector('input');
+    el.value = 'Freedonia';
+    component['query'].set('Freedonia');
+    component['onBlur'](el);
+    expect(component['value']()).toBe('Freedonia'); // vacuity guard: the commit happened
+    expect(component['query']()).toBe('');
+    expect(component['filtered']().length).toBe(3);
+  });
+
+  it('shows every suggestion when nothing is typed, without consulting filterWith (#901)', async () => {
+    // The empty-query early return is a contract, not an optimization: a consumer predicate is free
+    // to demand a minimum length, and without the guard the panel would come up EMPTY on focus.
+    // (Found by a surviving mutation — the default substring predicate accepts '' and matches
+    // everything, so deleting the guard is invisible to every test that uses the default.)
+    const fixture = await makeBare({});
+    const asked: string[] = [];
+    fixture.componentRef.setInput('filterWith', (o: CaeAutocompleteOption, q: string) => {
+      asked.push(q);
+      return q.length >= 2 && o.label.toLowerCase().includes(q);
+    });
+    fixture.detectChanges();
+    expect(fixture.componentInstance['filtered']().length).toBe(3);
+    expect(asked).toEqual([]); // never consulted for an empty query
+  });
+
+  it('forwards autoActiveFirstOption to the panel — a public input with no other cover (#901)', async () => {
+    const fixture = await makeBare({});
+    const auto = fixture.componentInstance['autocompleteTrigger']()!.autocomplete;
+    expect(auto.autoActiveFirstOption).toBe(false); // the documented default: Enter cannot commit
+    fixture.componentRef.setInput('autoActiveFirstOption', true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(auto.autoActiveFirstOption).toBe(true);
+  });
+
+  it('de-duplicates the rendered chips without echoing a correction to the model (#901)', async () => {
+    // The documented asymmetry: writeValue sanitizes what it RENDERS (a repeat throws NG0955 out
+    // of the @for) but must not write back — echoing on writeValue would break the CVA no-echo
+    // invariant this suite pins. So a duplicate-bearing model stays 3 long under 2 visible chips,
+    // and a length validator grades the model, not the chips. MIGRATION §4.7 carries the caveat.
+    const fixture = TestBed.createComponent(ModeFlipHostCmp);
+    await fixture.whenStable();
+    const host = fixture.componentInstance;
+    host.multi.set(true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    host.ctrl.setValue(['us', 'uk', 'us']);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelectorAll('mat-chip-row').length).toBe(2);
+    expect(host.ctrl.value).toEqual(['us', 'uk', 'us']);
   });
 });

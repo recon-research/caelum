@@ -9,6 +9,7 @@ import {
   ElementRef,
   inject,
   input,
+  isDevMode,
   signal,
   viewChild,
 } from '@angular/core';
@@ -73,6 +74,14 @@ export interface CaeAutocompleteOption {
  * which also makes the control immune to a mid-life `[multiple]` flip. Duplicate chips are rejected on
  * add and de-duplicated in `writeValue`: the value array is external data, and a repeated key would
  * throw NG0955 out of the `@for … track chip` that renders it.
+ *
+ * That de-duplication sanitizes what is **rendered**, not the model — writing a correction back from
+ * `writeValue` would break the CVA no-echo invariant. A model of `['us','uk','us']` therefore shows two
+ * chips while `control.value` stays three long, so a length validator grades the model, not the chips
+ * (#901; also in `docs/MIGRATION.md` §4.7). Widening the value type to `string | readonly string[]`
+ * for chip mode is source-compatible for template and forms binding, but a caller passing an
+ * explicitly-typed `registerOnChange((v: string) => …)` is a compile break under `strictFunctionTypes`
+ * — the parameter is contravariant. That is harness-level code, not app code.
  *
  * Chips are hand-rolled here rather than reusing `cae-chip-set` for two reasons: `mat-form-field`
  * resolves its `MatFormFieldControl` by content query, which does not cross a nested component's
@@ -330,9 +339,15 @@ export class CaeAutocomplete extends CaeFormFieldControlBase<string | readonly s
   });
 
   /**
-   * The suggestions to show: everything while the input still shows the chosen label (nothing typed
-   * since a selection), otherwise the `filterWith` matches for the typed query. Chip mode additionally
-   * drops options already taken — they are rejected as duplicates, so offering them is a dead click.
+   * The suggestions to show: everything until something is typed, otherwise the `filterWith` matches
+   * for the typed query. Chip mode additionally drops options already taken — they are rejected as
+   * duplicates, so offering them is a dead click.
+   *
+   * "Nothing typed since a selection" is said directly — every commit site resets {@link query} — and
+   * not, as it once was, inferred by comparing the query against the chosen option's label. That proxy
+   * could not recognise a value with no matching option (`selectedOption()` is `undefined` for one), so
+   * under {@link freeText} committing an orphan value left the panel filtered by that very text, i.e.
+   * filtered to nothing (#901).
    */
   protected readonly filtered = computed<readonly CaeAutocompleteOption[]>(() => {
     const query = this.query().trim().toLowerCase();
@@ -340,7 +355,7 @@ export class CaeAutocomplete extends CaeFormFieldControlBase<string | readonly s
     const base = taken
       ? this.options().filter((option) => !taken.has(option.value))
       : this.options();
-    if (!query || query === this.selectedOption()?.label.toLowerCase()) return base;
+    if (!query) return base;
     const predicate = this.filterWith();
     return base.filter((option) => predicate(option, query));
   });
@@ -381,6 +396,14 @@ export class CaeAutocomplete extends CaeFormFieldControlBase<string | readonly s
     // when value()/options() change (never mid-typing — typing changes `query`, not `value` — so it
     // won't clobber in-progress text); the guard makes an already-correct value a no-op.
     afterRenderEffect(() => {
+      // Recompute the bridged error state once the mode arm has actually stamped (#901). The base
+      // drives it from `ngDoCheck`, a hook of the PARENT view, so on the pass that flips [multiple]
+      // it runs BEFORE the @if swaps arms and finds the incoming control still undefined. Nothing
+      // repairs that afterwards: `MatChipGrid.ngDoCheck` self-updates only when it owns an
+      // `NgControl`, which by design it never does here (#46) — leaving the field rendered valid
+      // over an invalid model until some unrelated CD pass, which zoneless may never schedule.
+      // Reading the viewChild signals (inside the call) makes the arm swap itself the trigger.
+      this.updateInnerErrorState();
       // Chip mode has no committed text to mirror — the value is the chips, and the field holds only
       // the in-progress token, which this must never clobber.
       if (this.multiple()) return;
@@ -414,7 +437,9 @@ export class CaeAutocomplete extends CaeFormFieldControlBase<string | readonly s
       return;
     }
     this.commitValue(value);
-    this.query.set(this.displayFn(value));
+    // Nothing has been typed since this pick — say so, rather than parking the label in `query` for
+    // filtered() to recognise later (#901). The input still DISPLAYS the label; the effect owns that.
+    this.query.set('');
   }
 
   /** Append a chip unless it is already present — a repeat would throw NG0955 out of the `@for`. */
@@ -441,9 +466,33 @@ export class CaeAutocomplete extends CaeFormFieldControlBase<string | readonly s
    */
   protected onTokenEnd(event: MatChipInputEvent): void {
     const value = event.value.trim();
-    event.chipInput.clear();
-    this.query.set('');
+    this.clearInput(event.input);
     if (value) this.addChip(value);
+  }
+
+  /**
+   * Empty the token field and tell Material we did. Both `MatChipInput.clear()` and a bare
+   * `element.value = ''` assign the property with no `input` event, so
+   * `MatAutocompleteTrigger._previousValue` goes on holding the committed token: re-entering that
+   * identical token in ONE shot — a paste, an autofill — then trips the trigger's no-change
+   * early-return and the panel never reopens (#901). Typing it back a character at a time
+   * self-heals, which is why this hid. Dispatching the event the assignment skipped puts the
+   * trigger back in sync; the component's own `(input)` binding re-runs harmlessly, setting
+   * {@link query} to the `''` it is being set to anyway.
+   *
+   * Not needed on the pick path ({@link onSelected}): the trigger's own `_assignOptionValue` runs
+   * there and syncs `_previousValue` to {@link displayFn}'s `''` itself — and dispatching would
+   * reopen the panel Material has just deliberately closed. (The same sync is why an Enter that the
+   * panel consumed stays closed when this method runs on the fall-through path.)
+   *
+   * One accepted behaviour delta: committing a token immediately after Escape now reopens the panel,
+   * because Material treats the reported clear as it treats any other — the state it is told about is
+   * the state the field is actually in. Escape-then-commit-without-typing is the only flow affected.
+   */
+  private clearInput(element: HTMLInputElement): void {
+    element.value = '';
+    this.query.set('');
+    element.dispatchEvent(new Event('input', { bubbles: true }));
   }
 
   /**
@@ -466,8 +515,7 @@ export class CaeAutocomplete extends CaeFormFieldControlBase<string | readonly s
     // form submission is not what a tag-entry Enter means.
     event.preventDefault();
     const value = input.value.trim();
-    input.value = '';
-    this.query.set('');
+    this.clearInput(input);
     if (value) this.addChip(value);
   }
 
@@ -504,7 +552,7 @@ export class CaeAutocomplete extends CaeFormFieldControlBase<string | readonly s
     }
     const next = this.displayText();
     if (input.value !== next) input.value = next;
-    this.query.set(next);
+    this.query.set('');
     this.onTouched();
   }
 
@@ -516,10 +564,31 @@ export class CaeAutocomplete extends CaeFormFieldControlBase<string | readonly s
   //
   // De-duplicate an incoming array at this trust boundary: the form model is external data, and a
   // repeated key throws NG0955 out of the `@for … track chip` that renders the chips. The spread also
-  // copies, so later mutation of the caller's array cannot desync the signal. A nullish or string
-  // value falls through to the base's empty-value normalization.
+  // copies, so later mutation of the caller's array cannot desync the signal.
+  //
+  // Anything that is neither a string nor an array is rejected to the empty value (#901). The base
+  // accepts whatever is non-nullish, and a number or object then reached `@for (chip of chipValues())`
+  // verbatim and threw NG02200 "not iterable" — a crashed view rather than a refused value. The
+  // rejection is silent to the form (echoing a correction here would break the CVA no-echo invariant)
+  // so it warns in dev instead: an empty field with no explanation is the worse failure.
+  //
+  // The guard is deliberately the TOP-LEVEL shape only. A non-string *element* renders as its own
+  // text and speaks as itself — junk in, junk shown — which needs no rescue; dropping such entries
+  // would silently discard model data, a worse answer than displaying it. The crash was the defect.
   override writeValue(value: string | readonly string[]): void {
-    super.writeValue(Array.isArray(value) ? [...new Set<string>(value)] : value);
+    let incoming = value;
+    if (Array.isArray(value)) {
+      incoming = [...new Set<string>(value)];
+    } else if (value != null && typeof value !== 'string') {
+      if (isDevMode()) {
+        console.warn(
+          `cae-autocomplete: ignoring a form value of type "${typeof value}" — expected a string, ` +
+            'or an array with [multiple]. Rendering the empty value instead.',
+        );
+      }
+      incoming = this.emptyValue();
+    }
+    super.writeValue(incoming);
     // Chip mode excepted: there the field holds the user's in-progress token, which no effect
     // rewrites and a form write does not own. Clearing the query alone would unfilter the panel
     // underneath text still on screen.
