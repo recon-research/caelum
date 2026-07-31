@@ -365,13 +365,14 @@ describe('CaeAutocomplete — multiple (chips)', () => {
     expect(component['filtered']().map((o) => o.value)).toEqual(['uk']);
   });
 
-  it('leaves a partly-typed token alone on blur, but marks touched', () => {
+  it('leaves a partly-typed token alone when focus leaves the widget, but marks touched (#898)', () => {
     let touched = false;
     component.registerOnTouched(() => (touched = true));
     const el = inputEl();
     el.value = 'Free';
-    component['onBlur'](el);
-    expect(el.value).toBe('Free'); // visibly uncommitted; clearing would fire on focusing a chip
+    // A real focusout with no relatedTarget (focus went to nothing focusable) = leaving the widget.
+    el.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+    expect(el.value).toBe('Free'); // visibly uncommitted; the chip arm must never blur-reconcile
     expect(touched).toBe(true);
   });
 });
@@ -710,6 +711,52 @@ describe('CaeAutocomplete — multiple, inside a real form field', () => {
     await fixture.whenStable();
     const remove = fixture.nativeElement.querySelector('[matChipRemove]') as HTMLElement;
     expect(remove.getAttribute('aria-label')).toBe('Remove United States');
+  });
+
+  // --- #898 regression: touched semantics via real dispatched focusout, never onBlur calls ---
+  it('surfaces the required error after chip-only interaction, once focus leaves (#898 under-fire)', async () => {
+    // The shipped bug: onTouched was reachable only from the input's focusout, chips are the
+    // grid's children, and Material's own _markAsTouched is disconnected by design (#46) — so a
+    // user emptying the field by clicking × alone was dirty-but-never-touched and <mat-error>
+    // (trigger: invalid && touched) never rendered.
+    const host = fixture.componentInstance;
+    host.ctrl.setValue(['us', 'uk']);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    let remove: HTMLElement | null;
+    while ((remove = fixture.nativeElement.querySelector('[matChipRemove]'))) {
+      remove.click(); // the × alone — the input is never focused
+      fixture.detectChanges();
+      await fixture.whenStable();
+    }
+    expect(host.ctrl.value).toEqual([]);
+    expect(host.ctrl.valid).toBe(false); // required rejects []
+    expect(host.ctrl.touched).toBe(false); // still inside the widget — not yet an error moment
+    const grid = fixture.nativeElement.querySelector('mat-chip-grid') as HTMLElement;
+    grid.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: document.body }));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(host.ctrl.touched).toBe(true);
+    const error = fixture.nativeElement.querySelector('mat-error') as HTMLElement;
+    expect(error).not.toBeNull();
+    expect(error.textContent).toContain('Add at least one tag');
+  });
+
+  it('does not mark touched on focus moves within the widget (#898 over-fire)', async () => {
+    const host = fixture.componentInstance;
+    host.ctrl.setValue(['us']);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const input = fixture.nativeElement.querySelector('input') as HTMLElement;
+    const chip = fixture.nativeElement.querySelector('mat-chip-row') as HTMLElement;
+    // Backspace-into-chips / Shift+Tab: input → chip.
+    input.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: chip }));
+    // chip → input: the input is a DOM SIBLING of <mat-chip-grid>, so a grid-scoped containment
+    // check would wrongly fire here — the gate must test the component host.
+    chip.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: input }));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(host.ctrl.touched).toBe(false);
   });
 });
 
