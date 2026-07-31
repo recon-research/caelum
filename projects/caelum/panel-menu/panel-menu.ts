@@ -111,8 +111,8 @@ export class CaePanelMenuLeaf {
  * expanded (#774). `cae-menu` joined the same rule at #150, when its branches gained submenus (a
  * `MatMenuTrigger`'s open state is unbound in exactly the same way). Family audit, so the next
  * reader need not redo it: `cae-context-menu` is genuinely exempt (flat rows, no trigger per row,
- * until #158 gives it submenus), but **`cae-menubar` stamps a trigger per group and still tracks
- * `$index`**, so it carries this defect today — ticketed as **#879**, not silently excused.
+ * until #158 gives it submenus), and **`cae-menubar` joined the rule at #879** — it stamps a trigger
+ * per group, so it carried this defect until that slice moved it to `track group`.
  *
  * Router-linked leaves (`routerLink`/`routerLinkActive`) are the optional-peer follow-up from D-595
  * (#150/#165); per-item disabled decorations and badges/suffixes are follow-ups too. Token-only
