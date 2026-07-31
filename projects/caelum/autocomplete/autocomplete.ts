@@ -1,4 +1,4 @@
-import { COMMA, ENTER } from '@angular/cdk/keycodes';
+import { COMMA } from '@angular/cdk/keycodes';
 import {
   afterRenderEffect,
   booleanAttribute,
@@ -152,6 +152,7 @@ export interface CaeAutocompleteOption {
           [attr.aria-label]="ariaLabel() || label() || null"
           (input)="onType(input.value)"
           (matChipInputTokenEnd)="onTokenEnd($event)"
+          (keydown.enter)="onEnterKey($event, input)"
           (focusout)="onBlur(input)"
         />
       } @else {
@@ -250,8 +251,8 @@ export class CaeAutocomplete extends CaeFormFieldControlBase<string | readonly s
   }
   /**
    * The autocomplete trigger on whichever input is stamped. In chip mode Enter is ambiguous — it is
-   * both the panel's "select the highlighted option" key and a chip separator — and the two host
-   * listeners live on the same element, so {@link onTokenEnd} consults this to tell them apart.
+   * both the panel's "select the highlighted option" key and the token-commit key — and the panel
+   * state is the only way to tell whose keystroke it was, so {@link onEnterKey} consults this.
    */
   private readonly autocompleteTrigger = viewChild(MatAutocompleteTrigger);
 
@@ -311,9 +312,11 @@ export class CaeAutocomplete extends CaeFormFieldControlBase<string | readonly s
 
   /**
    * Maps a suggestion's `value` key → its label for the input display (Material's `displayWith`).
-   * Chip mode returns `''` so the trigger *clears* the field on a pick instead of leaving the label
-   * behind: the pick becomes a chip, and a cleared field is also what makes a same-keystroke
-   * `matChipInputTokenEnd` read empty and fall into {@link onTokenEnd}'s blank guard.
+   * Chip mode returns `''` — but NOT because the trigger clears the field with it: inside a
+   * `mat-form-field` the trigger writes the display text to the field's *control*
+   * (`_updateNativeInputValue`), and in this mode that is `MatChipGrid.value`, an inert property
+   * nowhere near the DOM input (#897). The real clear lives in {@link onSelected}; the `''` here
+   * keeps the trigger's `_previousValue` bookkeeping consistent with the cleared element.
    */
   protected readonly displayFn = (value: string): string =>
     this.multiple() ? '' : (this.options().find((option) => option.value === value)?.label ?? '');
@@ -324,12 +327,16 @@ export class CaeAutocomplete extends CaeFormFieldControlBase<string | readonly s
   }
 
   /**
-   * Chip separators. Empty unless {@link freeText} — Material's `_emitChipEnd` calls `preventDefault()`
-   * on any separator key, so listing ENTER in strict mode would silently swallow the Enter that submits
-   * the surrounding form while never being able to add a chip.
+   * Chip separators — COMMA only, and only under {@link freeText}. ENTER is deliberately absent in
+   * BOTH modes: Material's separator path is key-agnostic and `preventDefault()`s unconditionally
+   * (`_emitChipEnd`), so a listed ENTER cannot be told apart from a COMMA when deciding whether the
+   * panel owns the keystroke — Enter goes through {@link onEnterKey}, which sees the panel state
+   * (#897: the key-agnostic guard dead-keyed COMMA whenever a suggestion was highlighted). In
+   * strict mode a listed ENTER would also swallow the Enter that submits the surrounding form
+   * while never being able to add a chip.
    */
   protected readonly separatorKeyCodes = computed<readonly number[]>(() =>
-    this.freeText() ? [ENTER, COMMA] : [],
+    this.freeText() ? [COMMA] : [],
   );
 
   constructor() {
@@ -361,7 +368,12 @@ export class CaeAutocomplete extends CaeFormFieldControlBase<string | readonly s
 
   protected onSelected(value: string): void {
     if (this.multiple()) {
-      // The trigger clears the field itself (displayFn returns '' in this mode).
+      // Clear the field ourselves (what Material's own chips-autocomplete example does): the
+      // trigger cannot — inside a mat-form-field it writes the display text to the field's
+      // control, and in this mode that is MatChipGrid.value, an inert property nowhere near the
+      // DOM input (#897). Clearing before addChip also makes a same-keystroke token read blank.
+      const element = this.inputRef()?.nativeElement;
+      if (element) element.value = '';
       this.addChip(value);
       this.query.set('');
       return;
@@ -384,22 +396,39 @@ export class CaeAutocomplete extends CaeFormFieldControlBase<string | readonly s
   }
 
   /**
-   * A separator key ({@link freeText} only) committed the typed token. Clears first, per the
-   * `cae-chip-set` #556 lesson: Material's blur path can re-enter this synchronously, and a field still
-   * holding the text would commit the same entry twice.
+   * A COMMA ({@link freeText} only) committed the typed token — Enter arrives via {@link onEnterKey}
+   * instead, so no panel arbitration is needed here: the panel never consumes COMMA. Clears first,
+   * per the `cae-chip-set` #556 lesson: Material's blur path can re-enter this synchronously, and a
+   * field still holding the text would commit the same entry twice.
    */
   protected onTokenEnd(event: MatChipInputEvent): void {
-    const trigger = this.autocompleteTrigger();
-    if (trigger?.panelOpen && trigger.activeOption) {
-      // This Enter belongs to the panel: it selects the highlighted suggestion, which arrives
-      // separately through onSelected. Both host listeners fire — the trigger calls preventDefault()
-      // but never stopPropagation() — so without this the same keystroke would add two chips. The
-      // guard is order-independent: if the trigger ran first the field is already cleared and the
-      // blank guard below catches it instead.
-      return;
-    }
     const value = event.value.trim();
     event.chipInput.clear();
+    this.query.set('');
+    if (value) this.addChip(value);
+  }
+
+  /**
+   * Enter in chip mode, from the template's own `(keydown.enter)` — deliberately not Material's
+   * separator path, which is key-agnostic (#897). Commits the typed token ({@link freeText} only)
+   * unless the keystroke belongs to the panel: with a *selectable* suggestion highlighted,
+   * `MatAutocompleteTrigger` consumes Enter to select it, and the pick arrives separately through
+   * {@link onSelected}. The check is order-independent across the two directives' host listeners:
+   * if the trigger ran first, the selection closed the panel AND {@link onSelected} cleared the
+   * field, so the blank guard below catches it. A *disabled* highlighted option is not the
+   * panel's: the trigger swallows the Enter but its selection no-ops
+   * (`MatAutocomplete._skipPredicate` keeps disabled options highlightable), so the token commits.
+   */
+  protected onEnterKey(event: Event, input: HTMLInputElement): void {
+    // `(keydown.enter)`'s $event is typed Event by the template checker; it is a KeyboardEvent.
+    if (!this.freeText() || (event as KeyboardEvent).repeat) return;
+    const trigger = this.autocompleteTrigger();
+    if (trigger?.panelOpen && trigger.activeOption && !trigger.activeOption.disabled) return;
+    // Swallow the Enter even when blank (parity with Material's separator behaviour): mid-entry
+    // form submission is not what a tag-entry Enter means.
+    event.preventDefault();
+    const value = input.value.trim();
+    input.value = '';
     this.query.set('');
     if (value) this.addChip(value);
   }
