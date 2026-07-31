@@ -11,12 +11,12 @@ The few metrics that each change a decision when they cross a threshold -- not a
 | Metric | Value | Target | What it means |
 |---|---|---|---|
 | Throughput | 23.3/wk | trend only | Merged PRs per week. A trend line, not a target -- a sudden drop flags a blocker. |
-| Defect escape rate | 19% | &lt; 15% · alarm &gt; 25% | `bug`s filed / slices merged. Measures gate + review effectiveness; each escape should leave a guard (retrospective, #31). |
-| Rework rate | 12% | &lt; 20% · alarm &gt; 30% | Merged PRs that are themselves fixes. High = slices too big or review too shallow. |
+| Defect escape rate | 20% | &lt; 15% · alarm &gt; 25% | `bug`s filed / slices merged. Measures gate + review effectiveness; each escape should leave a guard (retrospective, #31). |
+| Rework rate | 13% | &lt; 20% · alarm &gt; 30% | Merged PRs that are themselves fixes. High = slices too big or review too shallow. |
 | Decision latency | 1 d | &le; objection window · alarm &gt; 5 d | Median days a `decision` issue stays open. Measures the human-in-loop bottleneck. |
 | Preflight&harr;CI divergence | 3% | ~0% · alarm &gt; 15% | Fraction of PR CI runs that went red. A faithful preflight keeps this ~0; a climb means preflight was skipped or isn't mirroring CI. |
 
-*Sample this window: 300 PR(s) merged, 58 `bug`(s) filed, 400 PR CI run(s), 27 decision(s) closed. Small samples are noisy -- treat single-digit windows as directional, not controlled.*
+*Sample this window: 300 PR(s) merged, 59 `bug`(s) filed, 400 PR CI run(s), 27 decision(s) closed. Small samples are noisy -- treat single-digit windows as directional, not controlled.*
 
 ## Per-slice cost & pace (#255)
 
@@ -24,21 +24,20 @@ Receipts (`cost:` PR comments, posted at merge by `ship_pr` via `scripts/slice_t
 
 | Type | n | med wall | med usd | med tok-out | med Δlines | med agents | med CI runs |
 |---|---|---|---|---|---|---|---|
-| docs | 24 | 1m (n=23) | $4.27 (n=1) | 4.6k (n=1) | 12 | 0 (n=1) | 1 (n=1) |
-| fix | 8 | 18m | $14.66 (n=6) | 66.3k (n=6) | 128 | 0 (n=6) | 1 (n=7) |
-| feat | 4 | 1.2h (n=2) | $45.53 | n/a | 1338 | n/a | 2 |
-| (other) | 4 | 31m | $11.89 | n/a | 818 | 0 (n=1) | 1 |
+| docs | 25 | 1m (n=24) | $4.27 (n=1) | 4.6k (n=1) | 12 | 0 (n=1) | 1 (n=1) |
+| fix | 9 | 23m | $13.91 (n=8) | 62.2k (n=8) | 171 | 0 (n=8) | 1 |
+| (other) | 6 | 37m (n=5) | $26.05 | n/a | 938 | 0 (n=1) | 1 |
 
-Merge-order trend (oldest→newest): usd `▆··▄··▅··█·····▂·▂·▂··▇··▂·▂·▁·▃·▂··▃··▂` · tok-out `·························▅·▂·▁·▅·▁··█··▆` · wall-h `▅▁▁▂▁▁▃▁▁█▁▁▁▁▁▂▁▁▁▂▁▁▂▁▁▁▁▁▁▁▁▂▁▁▁▄▂▁▁▂` · Δlines `▁▁▁▂▁▁▂▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁█▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁`
+Merge-order trend (oldest→newest): usd `··▅··█·····▂·▂·▂··▇··▂·▂·▁·▃·▂··▃··▂·▂·▁` · tok-out `·····················▅·▂·▁·▅·▁··█··▆·▅·▂` · wall-h `▁▁▃▁▁█▁▁▁▁▁▂▁▁▁▂▁▁▂▁▁▁▁▁▁▁▁▂▁▁▁▄▂▁▁▂▁▁▁▁` · Δlines `▁▁▂▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁█▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁`
 
-Drift check (newer-half / older-half medians): usd 0.42 · tok-out n/a · wall 1.65 · churn 0.31 · fan-out n/a · 3 parked row(s) (wall >2h: crash/overnight/decision-wait) excluded from wall · 20 checkpoint row(s) (receipt-less by design, #269: wall is the pr-open->merge fallback and churn a doc touch, #624) excluded from wall+churn -- alarm at >=2.0 on cost/wall while BOTH churn and fan-out stay <1.5.
+Drift check (newer-half / older-half medians): usd 0.52 · tok-out n/a · wall 1.33 · churn 0.23 · fan-out 1.00 · 2 parked row(s) (wall >2h: crash/overnight/decision-wait) excluded from wall · 20 checkpoint row(s) (receipt-less by design, #269: wall is the pr-open->merge fallback and churn a doc touch, #624) excluded from wall+churn -- alarm at >=2.0 on cost/wall while BOTH churn and fan-out stay <1.5.
 
-:warning: **Receipt-less merges since receipts began** -- #868 (branch `slice/710-ledger-checkpoint`), #869 (branch `docs/metrics-refresh-710`), #873 (branch `docs/711-checkpoint`), #874 (branch `docs/711-status-fix`) carry no `cost:` comment. Either a session drove gh below `ship_pr` (steps 0/7 skipped, checkpoint at risk too), or a checkpoint merged from a branch outside `CHECKPOINT_PREFIXES` (convention drift) -- the printed branch says which. Route to a retrospective -- the guard is skill-layer, not a backfilled receipt.
+:warning: **Receipt-less merges since receipts began** -- #873 (branch `docs/711-checkpoint`), #874 (branch `docs/711-status-fix`) carry no `cost:` comment. Either a session drove gh below `ship_pr` (steps 0/7 skipped, checkpoint at risk too), or a checkpoint merged from a branch outside `CHECKPOINT_PREFIXES` (convention drift) -- the printed branch says which. Route to a retrospective -- the guard is skill-layer, not a backfilled receipt.
 
 Review pickup (PR open→merge): median 1m over 40 merge(s) · halves 1m → 2m -- alarm: newer half ≥2× older and ≥1h (saturation shows here first).
 
 Fleet-mode review: n/a -- no overlapping writer identities in scope (solo mode; the adversarial_review cadence governs review here).
 
-Fastest-growing docs (net lines this window): `docs/PATTERNS.md` +409 · `docs/MIGRATION.md` +378 · `.claude/skills/EVALS.md` +294 · `.claude/skills/design_review/references/house-style.md` +275 · `docs/AUTOMATION.md` +155 *(a process doc growing with no matching slices is the journaling smell -- eyeball it)*
+Fastest-growing docs (net lines this window): `docs/PATTERNS.md` +412 · `docs/MIGRATION.md` +378 · `.claude/skills/EVALS.md` +294 · `.claude/skills/design_review/references/house-style.md` +275 · `docs/AUTOMATION.md` +155 *(a process doc growing with no matching slices is the journaling smell -- eyeball it)*
 
 *Local telemetry (skill usage, session cost, compactions, guard hits, preflight duration) is machine-local and deliberately NOT committed -- it lives in `.claude/metrics/LOCAL.md` on the machine that produced it (#589). Everything above is `gh`-derived, so every machine regenerates it identically.*
