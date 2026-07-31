@@ -1,21 +1,28 @@
 import {
+  afterNextRender,
+  afterRenderEffect,
   booleanAttribute,
   ChangeDetectionStrategy,
   Component,
   computed,
   contentChildren,
+  DestroyRef,
   effect,
+  ElementRef,
   inject,
   InjectionToken,
+  Injector,
   input,
   isDevMode,
   model,
   output,
   TemplateRef,
+  untracked,
   viewChild,
+  viewChildren,
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
-import { MatSidenavModule } from '@angular/material/sidenav';
+import { MatDrawer, MatSidenavModule } from '@angular/material/sidenav';
 
 /** Which edge the drawer is attached to. Material supports these two only — see `CaeDrawer`. */
 export type CaeDrawerPosition = 'start' | 'end';
@@ -29,6 +36,20 @@ export type CaeDrawerPosition = 'start' | 'end';
 export type CaeDrawerMode = 'over' | 'push' | 'side';
 
 /**
+ * The parent/child seam {@link CAE_DRAWER_CONTAINER} carries.
+ *
+ * @internal An interface rather than the container class so the token stays free of a forward
+ * reference; `stripInternal` keeps it out of the published typings.
+ */
+export interface CaeDrawerHost {
+  /**
+   * Called by a {@link CaeDrawer} as it is destroyed — early enough that the `<mat-drawer>` stamped
+   * for it is still alive. See {@link CaeDrawerContainer.releaseDrawer}.
+   */
+  releaseDrawer(drawer: CaeDrawer): void;
+}
+
+/**
  * Identifies the owning {@link CaeDrawerContainer} to its projected {@link CaeDrawer} children.
  *
  * A token rather than the class itself, to avoid a forward reference, and DI rather than "nearest
@@ -36,7 +57,7 @@ export type CaeDrawerMode = 'over' | 'push' | 'side';
  * {@link CaeDrawerContainer.ownDrawers}. Material solves the identical problem the identical way
  * (`MAT_DRAWER_CONTAINER`).
  */
-export const CAE_DRAWER_CONTAINER = new InjectionToken<unknown>('CAE_DRAWER_CONTAINER');
+export const CAE_DRAWER_CONTAINER = new InjectionToken<CaeDrawerHost>('CAE_DRAWER_CONTAINER');
 
 /**
  * `cae-drawer` — one drawer inside a {@link CaeDrawerContainer}
@@ -58,8 +79,9 @@ export const CAE_DRAWER_CONTAINER = new InjectionToken<unknown>('CAE_DRAWER_CONT
  * **Positions are `start`/`end` only.** `MatDrawer.position` is typed `'start' | 'end'`, so a
  * top/bottom drawer has no Material basis and is not offered here (#854 tracks the gap). `start`
  * and `end` are direction-relative: they flip under RTL, which is why they are not named
- * left/right. (The RTL flip is Material's own behaviour — `sidenav.mjs` `_validateDrawers` — and is
- * not separately pinned by Caelum's specs; #858.)
+ * left/right. The flip is Material's own behaviour (`sidenav.mjs` `_validateDrawers` plus its
+ * `[dir=rtl]` rules), but the claim is Caelum's, so it is pinned in `drawer.browser.spec.ts` —
+ * geometry, and therefore unfalsifiable in jsdom (#858).
  *
  * Zoneless-compatible: `OnPush` + signal state (Book 01 §3.2).
  */
@@ -132,6 +154,15 @@ export class CaeDrawer {
   readonly ariaLabelledby = input('');
 
   constructor() {
+    const container = this.container;
+    if (container) {
+      // #855 — a drawer removed while open (`@if (showNav) { <cae-drawer …> }`, an ordinary thing
+      // to write) leaves `inert` stranded on the content: `MatDrawer.ngOnDestroy` tears down its
+      // focus trap but never re-runs `MatDrawerContent._updateInert`, so the page behind stays
+      // non-interactive and hidden from AT with nothing on screen to explain it. This hook fires
+      // while the `<mat-drawer>` is still alive — measured, and it is the whole window the fix has.
+      inject(DestroyRef).onDestroy(() => container.releaseDrawer(this));
+    }
     if (isDevMode()) {
       effect(() => {
         if (!this.container) {
@@ -211,6 +242,27 @@ export class CaeDrawer {
  * `role` is *not* gated on `opened`: a hidden dialog that keeps its role is conventional, and
  * removing it would churn the a11y tree on every toggle.
  *
+ * ## Keeping the label and Material's machinery in step
+ *
+ * The modal *labelling* above is per-drawer; Material's modal *machinery* — the focus trap and the
+ * `inert` it puts on `<mat-drawer-content>` — is container-wide and is recomputed only from a
+ * drawer's own open/close or `mode` change. Wherever those two disagree the component announces one
+ * thing and behaves as another, which is the whole failure class this container has to close:
+ *
+ * 1. **A drawer destroyed while open** stranded `inert` on the content, freezing the page behind a
+ *    drawer that no longer exists — `MatDrawer.ngOnDestroy` never re-runs `_updateInert` (#855). The
+ *    container closes such a drawer first; see {@link releaseDrawer}.
+ * 2. **`hasBackdrop` changed while a drawer is open** moved the label and nothing else, so the
+ *    drawer was announced as a dialog over a reachable page, or (worse) held focus while presented
+ *    as ordinary content (#857). The container re-syncs Material, and pulls focus into a drawer that
+ *    has just become modal — Material's own `_takeFocus` fires on open only.
+ * 3. **Two drawers open behind a backdrop** is where Material itself is incoherent, and
+ *    order-dependently so. That configuration is dev-warned rather than modelled, and no drawer
+ *    claims `aria-modal` in it (#856; see {@link ariaModalFor}).
+ *
+ * `position` is the one modality-adjacent input with no such hazard — it is direction-relative and
+ * flips under RTL, pinned in `drawer.browser.spec.ts` (#858).
+ *
  * Zoneless-compatible: `OnPush` + signal state (Book 01 §3.2); the container is published to its
  * children through DI (Book 01 §3.3).
  */
@@ -228,14 +280,14 @@ export class CaeDrawer {
           [opened]="drawer.opened()"
           [disableClose]="drawer.disableClose()"
           [attr.role]="roleFor(drawer)"
-          [attr.aria-modal]="isModal(drawer) && drawer.opened() ? 'true' : null"
+          [attr.aria-modal]="ariaModalFor(drawer)"
           [attr.aria-label]="roleFor(drawer) ? drawer.ariaLabel() || null : null"
           [attr.aria-labelledby]="roleFor(drawer) ? drawer.ariaLabelledby() || null : null"
           (openedStart)="drawer.opened.set(true)"
           (closedStart)="drawer.opened.set(false)"
           (openedChange)="drawer.opened.set($event)"
         >
-          <div class="cae-drawer__panel" [attr.tabindex]="isModal(drawer) ? 0 : null">
+          <div #panel class="cae-drawer__panel" [attr.tabindex]="isModal(drawer) ? 0 : null">
             <ng-container [ngTemplateOutlet]="drawer.content()" />
           </div>
         </mat-drawer>
@@ -295,6 +347,26 @@ export class CaeDrawerContainer {
     this.allDrawers().filter((drawer) => drawer.container === this),
   );
 
+  /** The owned drawers that are currently open — the container-wide view modality depends on. */
+  private readonly openDrawers = computed(() => this.ownDrawers().filter((d) => d.opened()));
+
+  private readonly matDrawers = viewChildren(MatDrawer);
+  private readonly panels = viewChildren<ElementRef<HTMLElement>>('panel');
+  private readonly injector = inject(Injector);
+
+  /**
+   * Last rendered `CaeDrawer` → `<mat-drawer>` pairing, refreshed on every render.
+   *
+   * Needed because the two lists are aligned at render time and **not** at destroy time: when a
+   * drawer is removed, the content query has already dropped it while its `<mat-drawer>` is still
+   * in the DOM (measured — `matDrawersInDom=1 ownDrawersLen=0`), so {@link releaseDrawer} cannot
+   * recover the pairing by index and has to have cached it.
+   */
+  private readonly stamped = new WeakMap<CaeDrawer, MatDrawer>();
+
+  /** Per-drawer `{opened, modal}` from the previous reconcile — see the focus-in effect. */
+  private readonly lastModality = new WeakMap<CaeDrawer, { opened: boolean; modal: boolean }>();
+
   /**
    * Force the backdrop on or off for every drawer in this container. Leave unset (`null`) to keep
    * Material's rule — a backdrop for every mode but `side`.
@@ -304,9 +376,10 @@ export class CaeDrawerContainer {
    * uncoerced signal here would hold `''`, which is falsy, and silently withhold `role="dialog"`
    * from every drawer in the container — permanently, since nothing writes back to this input.
    *
-   * **Open-time only.** Changing it while a drawer is open re-labels the drawer here but does not
-   * re-run Material's `_updateFocusTrapState`, so the trap and the content's `inert` do not follow;
-   * see #857.
+   * **Safe to change while a drawer is open** (#857). Material recomputes its focus trap and the
+   * content's `inert` only from a drawer's own open/close or `mode` change — its `hasBackdrop`
+   * setter calls neither — so the container re-syncs it explicitly, and pulls focus into a drawer
+   * this input has just made modal.
    */
   readonly hasBackdrop = input<boolean | null, unknown>(null, {
     transform: (value: unknown) => (value == null ? null : booleanAttribute(value)),
@@ -322,11 +395,14 @@ export class CaeDrawerContainer {
    * it: an unset override defers to the drawer's own mode, a set one wins outright. Re-deriving the
    * rule instead of mirroring it is how the a11y contract and the rendered behaviour drift apart.
    *
-   * Note what this is **not**: Material's focus-trap predicate is
-   * `opened && container._isShowingBackdrop()`, and `_isShowingBackdrop()` ORs across *both*
-   * positions. So with a `side` and an `over` drawer open at once, the `side` drawer is trapped too
-   * while this returns `false` for it. That case is tracked as #856; the single-drawer case, which
-   * is what the component documents and tests, is exact.
+   * Note what this is **not**: a statement about the focus trap. Material's trap predicate is
+   * `opened && container._isShowingBackdrop()`, which ORs across *both* positions, so with a `side`
+   * and an `over` drawer open together the `side` drawer can be trapped while this returns `false`
+   * for it. Worse, that is order-dependent rather than merely wrong — `_updateFocusTrapState` runs
+   * at each drawer's own transition, so opening the `over` drawer first traps both (measured), and
+   * the reverse order traps only the `over` one. Two drawers open behind a backdrop is therefore an
+   * unsupported configuration that dev-warns (#856), not a shape modelled here; see
+   * {@link ariaModalFor} for what the labelling does in it.
    */
   protected isModal(drawer: CaeDrawer): boolean {
     const override = this.hasBackdrop();
@@ -344,5 +420,127 @@ export class CaeDrawerContainer {
   protected roleFor(drawer: CaeDrawer): 'dialog' | 'region' | null {
     if (this.isModal(drawer)) return 'dialog';
     return drawer.ariaLabel() || drawer.ariaLabelledby() ? 'region' : null;
+  }
+
+  /**
+   * `aria-modal="true"`, but only for a drawer that is genuinely the exclusive one (#856).
+   *
+   * `aria-modal` claims *everything outside this node is inert*. With a second drawer open that
+   * claim is false — the other drawer is outside this one and demonstrably not inert — and two
+   * siblings each asserting it is invalid state that Material alone never produced (it emits no
+   * `aria-modal` at all). So the exclusivity claim is made once or not at all; `role="dialog"`
+   * stays on both, since a dialog is still a dialog. The dev warning below names the situation.
+   */
+  protected ariaModalFor(drawer: CaeDrawer): 'true' | null {
+    const exclusive = this.openDrawers().length === 1;
+    return this.isModal(drawer) && drawer.opened() && exclusive ? 'true' : null;
+  }
+
+  /**
+   * @internal Close a drawer that is being destroyed while open, before its `<mat-drawer>` goes
+   * with it (#855).
+   *
+   * `MatDrawer.ngOnDestroy` destroys the focus trap but never re-runs
+   * `MatDrawerContent._updateInert`, and `_drawers.changes` only re-validates — so a drawer removed
+   * while open strands `inert="true"` on the content and freezes the page until some later modal
+   * drawer opens *and* closes. Closing it first routes through `_setOpen(false, …)`, which calls
+   * `_drawerToggled` synchronously (clearing `inert` **and** keeping Material's own `_isInert`
+   * bookkeeping in step — the reason this is not done by removing the attribute ourselves: a
+   * hand-cleared attribute leaves `_isInert` stuck `true`, and the next drawer to open would then
+   * find its `_updateInert` a no-op and render modal over *reachable* content) and `_restoreFocus`,
+   * which also fixes the focus dropping to `<body>`.
+   */
+  releaseDrawer(drawer: CaeDrawer): void {
+    const matDrawer = this.stamped.get(drawer);
+    this.stamped.delete(drawer);
+    this.lastModality.delete(drawer);
+    if (matDrawer?.opened) matDrawer.close();
+  }
+
+  constructor() {
+    // Pair each drawer with the <mat-drawer> stamped for it while the two lists are still aligned;
+    // see `stamped` for why the pairing cannot be recovered later.
+    effect(() => {
+      const cae = this.ownDrawers();
+      const mat = this.matDrawers();
+      untracked(() => {
+        for (let i = 0; i < cae.length && i < mat.length; i++) this.stamped.set(cae[i], mat[i]);
+      });
+    });
+
+    // #857 — re-sync Material after a modality change it does not react to.
+    //
+    // `_updateFocusTrapState` and `_updateInert` run only from a drawer's own open/close or its
+    // `mode` setter. A `mode` change arrives through the binding, so Material handles that itself;
+    // `hasBackdrop` is the gap — `MatDrawerContainer`'s setter calls neither. Changing it while a
+    // drawer is open therefore re-labels the drawer here and moves nothing there: a `side` drawer
+    // announced as a modal dialog with the page fully reachable, or (the worse arm) an `over`
+    // drawer presented as ordinary content while the trap and `inert` stay on.
+    //
+    // Re-assigning `mode` its CURRENT value is the lever: `set mode` in `sidenav.mjs` is unguarded
+    // — no equality check — so it re-runs `_updateFocusTrapState()` and `_drawerModeChanged()` →
+    // `_updateInert()` against the now-current state. It is a public input, not a private reach.
+    //
+    // It must run in the AFTER-RENDER phase, not a plain `effect`: both recompute from Material's
+    // own `_backdropOverride`, which this component's `[hasBackdrop]` binding writes during the
+    // template update. A component effect runs before that, so it would poke Material into
+    // recomputing the value it already had — measured, the fix silently did nothing.
+    afterRenderEffect(() => {
+      this.hasBackdrop();
+      untracked(() => {
+        for (const matDrawer of this.matDrawers()) {
+          const mode = matDrawer.mode;
+          matDrawer.mode = mode;
+        }
+      });
+    });
+
+    // #857, focus half — a drawer that becomes modal while ALREADY open never gets focus moved
+    // into it: `MatDrawer._takeFocus()` runs only from the `openedChange` subscription, so nothing
+    // fires on a modality flip. That leaves focus outside a `role="dialog" aria-modal="true"`
+    // region whose content Material has just made `inert`, i.e. focus lands on nothing. Restricted
+    // to the already-open edge on purpose: on a normal open Material focuses the drawer itself, and
+    // duplicating that would fight it.
+    effect(() => {
+      const states = this.ownDrawers().map((drawer) => ({
+        drawer,
+        opened: drawer.opened(),
+        modal: this.isModal(drawer),
+      }));
+      untracked(() => {
+        const panels = this.panels();
+        states.forEach(({ drawer, opened, modal }, index) => {
+          const previous = this.lastModality.get(drawer);
+          this.lastModality.set(drawer, { opened, modal });
+          if (!previous?.opened || !opened || previous.modal || !modal) return;
+          const panel = panels[index];
+          if (panel) {
+            afterNextRender(() => panel.nativeElement.focus(), { injector: this.injector });
+          }
+        });
+      });
+    });
+
+    if (isDevMode()) {
+      // #856 — the supported surface is ONE drawer open behind a backdrop. Material's focus trap
+      // and `inert` are container-wide while Caelum's labelling is per-drawer, and the two only
+      // agree in that case. Worse, Material's own answer is order-dependent rather than merely
+      // incoherent: `_updateFocusTrapState` runs at each drawer's own transition, so opening an
+      // `over` drawer and then a `side` one traps BOTH (measured `true,true`), while the reverse
+      // order traps only the `over` one (`false,true`) — the same markup, two behaviours. Mirroring
+      // that faithfully is not a goal, so the extra drawer is warned about rather than modelled.
+      effect(() => {
+        // `open.some(isModal)` mirrors `MatDrawerContainer._isShowingBackdrop()`, which ORs across
+        // positions — the trap and `inert` are container-wide facts, unlike the per-drawer label.
+        const open = this.openDrawers();
+        if (open.length > 1 && open.some((drawer) => this.isModal(drawer))) {
+          // Kept short on purpose: a `console.warn` argument is shipped string content and is
+          // charged against the entry point's size budget, unlike the JSDoc above it (#150).
+          console.warn(
+            'cae-drawer-container: open one drawer at a time behind a backdrop — the focus trap is container-wide (#856).',
+          );
+        }
+      });
+    }
   }
 }
