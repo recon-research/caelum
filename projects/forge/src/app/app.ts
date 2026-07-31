@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   DOCUMENT,
+  DestroyRef,
   ElementRef,
   Injector,
   computed,
@@ -215,6 +216,14 @@ export class App {
   private readonly toast = inject(CaeToast);
   /** Resolves the lazily-imported CaeDialog singleton on demand (see renameWorkspace). */
   private readonly injector = inject(Injector);
+  /**
+   * Liveness witness for the `await import()` continuations below (#915). An overlay flow that
+   * lazy-loads its service has a real gap between "user clicked" and "service injected", and the
+   * component can be destroyed inside it — navigate away while the chunk is still in flight and the
+   * continuation resumes against a torn-down injector, where `injector.get()` throws NG0205 as an
+   * *unhandled rejection* (nothing awaits these handlers). Windows CI lost that race on PR #914.
+   */
+  private readonly destroyRef = inject(DestroyRef);
 
   protected readonly title = signal('Forge');
 
@@ -962,6 +971,8 @@ export class App {
       import('@recon-research/caelum/dialog'),
       import('./rename-workspace-dialog'),
     ]);
+    // Destroyed while the chunk was loading? Nothing left to open into (#915) — see destroyRef.
+    if (this.destroyRef.destroyed) return;
     const dialog = this.injector.get(CaeDialog);
     const ref = dialog.open<RenameWorkspaceDialog, string, RenameWorkspaceData>(dialogBody, {
       data: { name: this.workspaceName() },
@@ -989,6 +1000,8 @@ export class App {
   protected async deleteWorkspace(): Promise<void> {
     this.deleteMessage.set('');
     const { CaeConfirmService } = await import('@recon-research/caelum/confirm');
+    // Destroyed while the chunk was loading? Nothing left to confirm against (#915) — see destroyRef.
+    if (this.destroyRef.destroyed) return;
     const name = this.workspaceName();
     const confirmed = await this.injector.get(CaeConfirmService).confirm({
       header: 'Delete workspace?',

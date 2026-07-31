@@ -254,11 +254,18 @@ describe('App', () => {
     fixture.detectChanges();
     await fixture.whenStable();
   };
+  // Budget the wait in MILLISECONDS, not iterations (#915). `setTimeout(0)` clamps to ~1 ms, so the
+  // old `i < 25` bound was a ~25 ms budget wearing a retry count's clothing — and the FIRST cold
+  // `import('@recon-research/caelum/confirm')` of a run takes 265 ms on a windows-latest runner. That
+  // is the whole bug: the dialog hadn't failed to open, we had simply stopped waiting for it, and the
+  // abandoned continuation then poisoned the next test. A real deadline absorbs any cold-load cost
+  // (19x headroom over the measured 265 ms) while staying well under the suite's 15 s ceiling (#886).
   const waitForConfirm = async (
     fixture: ComponentFixture<App>,
     overlay: HTMLElement,
   ): Promise<HTMLElement> => {
-    for (let i = 0; i < 25 && !overlay.querySelector('mat-dialog-container'); i++) {
+    const deadline = Date.now() + 5000;
+    while (!overlay.querySelector('mat-dialog-container') && Date.now() < deadline) {
       await flushTimer(fixture);
     }
     const surface = overlay.querySelector('mat-dialog-container') as HTMLElement | null;
@@ -320,6 +327,80 @@ describe('App', () => {
     expect(overlay.querySelector('mat-dialog-container')).toBeNull();
 
     TestBed.inject(OverlayContainer).ngOnDestroy();
+  });
+
+  // --- the teardown race behind #915 -------------------------------------------------------------
+  // Both tests below destroy the world SYNCHRONOUSLY after calling deleteWorkspace(). That is what
+  // makes them deterministic rather than timing-dependent: `await import()` yields at minimum a
+  // microtask even when the module is already cached, so the destroy always lands first and the
+  // continuation always resumes into a torn-down context. No artificial slow-down needed.
+
+  it('drops a lazy confirm whose component was destroyed mid-import (#915)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const overlay = TestBed.inject(OverlayContainer).getContainerElement();
+    const app = fixture.componentInstance as unknown as { deleteWorkspace(): Promise<void> };
+
+    // The realistic user path: click Delete, then navigate away while the chunk is still loading.
+    // The root injector is still very much alive here, so nothing stops the continuation from
+    // opening a modal on behalf of a component that no longer exists — an alertdialog with no owner,
+    // which is why the guard keys on the COMPONENT's DestroyRef and not on injector liveness.
+    // Warm the chunk so the single macrotask below really is enough for the continuation to resume.
+    // Cold it can take ~265 ms, and the assertion would then fire before the confirm could open —
+    // passing over a broken guard instead of catching it. This is the assertion's INPUT, so it is
+    // pinned rather than assumed (the #915 tests run after the #101 ones today, which would warm it
+    // by accident; running this file filtered to '#915' alone does not).
+    await import('@recon-research/caelum/confirm');
+
+    const done = app.deleteWorkspace();
+    fixture.destroy();
+    // Assert BEFORE awaiting `done`: strip the guard and the continuation opens a real confirm, then
+    // parks on a choice nobody will ever make. Measured both ways — with this ordering the broken
+    // guard fails here in 117 ms; awaiting first reports the same defect as a 15 019 ms timeout.
+    // Awaiting after the assertion is safe: the guard returned early, so `done` has already settled.
+    await new Promise<void>((resolve) => setTimeout(resolve));
+    expect(overlay.querySelector('mat-dialog-container')).toBeNull();
+    await done;
+
+    TestBed.inject(OverlayContainer).ngOnDestroy();
+  });
+
+  it('settles a lazy confirm abandoned by injector teardown, without NG0205 (#915)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const app = fixture.componentInstance as unknown as { deleteWorkspace(): Promise<void> };
+
+    // The CI path. resetTestingModule() destroys the active fixtures and then the environment
+    // injector — exactly what vitest does between tests — so the continuation's
+    // `injector.get(CaeConfirmService)` (a providedIn:'root' lookup) resolves through a destroyed
+    // R3Injector and throws NG0205. Nothing awaits deleteWorkspace() in the app, so that surfaces as
+    // an UNHANDLED REJECTION attributed to whichever test happens to be running when node reports
+    // it — the cross-test contamination that made PR #914 red on windows-latest. Awaiting `done`
+    // here converts that into a plain assertion: the promise must settle, and settle fulfilled.
+    const done = app.deleteWorkspace();
+    TestBed.resetTestingModule();
+
+    await expect(done).resolves.toBeUndefined();
+  });
+
+  it('settles a lazy rename dialog abandoned by injector teardown, without NG0205 (#915)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const app = fixture.componentInstance as unknown as { renameWorkspace(): Promise<void> };
+
+    // renameWorkspace() carries the identical `await import() → injector.get()` shape, and only
+    // avoids the CI symptom because every rename test AWAITS it (see the #100 test above, whose own
+    // comment already named this hazard). That makes its guard the untested twin — pinned here, so
+    // deleting it fails a test rather than waiting for a user to navigate away mid-chunk.
+    //
+    // The settling of `done` is the ONLY assertion worth making here: a companion
+    // `expect(overlay.querySelector('mat-dialog-container')).toBeNull()` was drafted, mutation-tested
+    // (guard removed, this assertion neutralised) and deleted — resetTestingModule() tears the
+    // overlay container down regardless, so it could never fail and only read as extra proof.
+    const done = app.renameWorkspace();
+    TestBed.resetTestingModule();
+
+    await expect(done).resolves.toBeUndefined();
   });
 
   it('defers the below-the-fold demo sections off the initial bundle (#85)', async () => {
