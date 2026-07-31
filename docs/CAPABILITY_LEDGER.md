@@ -10,7 +10,7 @@ backs. **M4 exits when every shipped entry point reads `adversarial-passed`**, b
 exemption — and an exemption is re-proven from the source on every run, never taken on trust
 (#773).
 
-**67/67 adversarial-passed** · 0 parity-verified · 0 implemented — of which 66 carry a quote verified against their commit and 1 is pointer-only (†) · 1 exempt (below)
+**67/67 adversarial-passed** · 0 parity-verified · 0 implemented — of which 65 carry a quote verified against their commit and 2 are pointer-only (†) · 1 exempt (below)
 
 `untouched` / `mapped` (§3.4's first two states) are the p-*→cae-* mapping tracked in
 [`textbooks/reference/COMPARISON.md`](../textbooks/reference/COMPARISON.md) (Status column,
@@ -52,7 +52,7 @@ failed re-review gets recorded.
 |---|---|---|---|---|---|---|
 | `accordion` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #81 · `10b7ebe9` |
 | `alert` | adversarial-passed | ☑ | ☑ | ☑ | ☑ | PR #867 · `2a91731` |
-| `autocomplete` | adversarial-passed | ☑ | ☑ | — | — | PR #121 · `fc2d36fa` |
+| `autocomplete` | adversarial-passed | ☑ | ☑ | — | — | PR #910 · `5737356d` † |
 | `avatar` | adversarial-passed | ☑ | ☑ | — | — | PR #670 · `89f2560d` |
 | `badge` | adversarial-passed | ☑ | ☑ | — | — | PR #130 · `8cb47816` |
 | `breadcrumb` | adversarial-passed | ☑ | ☑ | — | — | PR #334 · `323efe6e` |
@@ -122,7 +122,7 @@ failed re-review gets recorded.
 † **Pointer-only.** Every other row's quote is matched against its commit message
 on each run. These quote a **PR body**, which lives on GitHub — the gate runs offline,
 so it verifies the commit pointer but cannot check the words. Read the linked PR to
-audit them: `tree-select` (PR #284).
+audit them: `autocomplete` (PR #910), `tree-select` (PR #284).
 
 ## Exemptions
 

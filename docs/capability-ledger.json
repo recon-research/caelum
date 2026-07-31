@@ -11,10 +11,10 @@
       "quote": "Adversarially reviewed (4-lens ultracode — di/coordination, a11y, api-design, arch-packaging): 0 BLOCKER, 0 MAJOR; MINOR/NIT applied — `multi`→`multiple` alias, a11y roving-gap disclosed in JSDoc (+#7"
     },
     "autocomplete": {
-      "pr": 121,
-      "commit": "fc2d36fa",
-      "source": "commit",
-      "quote": "ai/code/session_01VFguz4Q8QdTr9MGxKn8kwj * cae-autocomplete: apply 4-lens review fixes (1 CONFIRMED MAJOR + MINOR/NIT) 4-lens adversarial review: 1 CONFIRMED MAJOR, 1 REFUTED MAJOR, 9 MINOR/NIT"
+      "pr": 910,
+      "commit": "5737356d",
+      "source": "pr",
+      "quote": "Fixes both halves of #898 (from the 5-lens review of #889): `onTouched` in `[multiple]` mode **under-fired**"
     },
     "avatar": {
       "pr": 670,
