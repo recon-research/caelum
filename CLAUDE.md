@@ -6,7 +6,7 @@ Caelum is an open-source, **US-origin-clean** Angular 22 component library — A
 
 > ~10 lines of "where are we". Per-slice detail lives in the merged PRs, [`docs/ROADMAP.md`](docs/ROADMAP.md), and the issue tracker — never here.
 
-**As of:** 2026-07-31 · main @ `fc5725a` · CI green (full matrix) · **repo LIVE + protected** ([github.com/recon-research/caelum](https://github.com/recon-research/caelum)) · **Phase 2** · **M0 ☑ · M1 ☑ · M2 ☑ · M3 ☑ · M4 ☑ · M5 ◐** · template @ pyxis `7faba3c`. Full slice index → [`docs/ROADMAP.md`](docs/ROADMAP.md); recipe + gotchas → [`docs/PATTERNS.md`](docs/PATTERNS.md).
+**As of:** 2026-07-31 · main @ `915d7e3` · CI green (full matrix, on PR #921) · **repo LIVE + protected** ([github.com/recon-research/caelum](https://github.com/recon-research/caelum)) · **Phase 2** · **M0 ☑ · M1 ☑ · M2 ☑ · M3 ☑ · M4 ☑ · M5 ◐** · template @ pyxis `7faba3c`. Full slice index → [`docs/ROADMAP.md`](docs/ROADMAP.md); recipe + gotchas → [`docs/PATTERNS.md`](docs/PATTERNS.md).
 
 **Where we are:** **M5** (**D-849**) — parity first, *then* publish. **Parity track CLOSED 5/5** (#709/#710/#711/#150/#120; #150/#120 stay OPEN for their non-parity bullets) — **exit clause (1) met**, `audit_comparison.py` grades 14 `☐`, all policy. **Release track 2/3:** ☑ **#514** the package is `@recon-research/caelum` (PR #892, **D-501**) · ☑ **#851** a gated release path (PR #894) — `CHANGELOG.md` @ `0.1.0`, the 0.x contract in the *packaged* readme, `release.yml`, `check-package-surface.mjs`; dry run green. **The 5-lens independent review of #889 found a shipped bug** → ☑ **#897** (PR #908) · ☑ **#898** (PR #910) · ☑ **#899** (PR #914) · ☑ **#901** (PR #921) · #900 test debt.
 
