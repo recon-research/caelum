@@ -77,6 +77,32 @@ class TwoDrawerHost {}
 })
 class BareDrawerHost {}
 
+/** Two independently-driven drawers — the shape the container-wide modality rules need (#856). */
+@Component({
+  imports: [CaeDrawer, CaeDrawerContainer],
+  template: `
+    <cae-drawer-container [hasBackdrop]="hasBackdrop()">
+      @if (startPresent()) {
+        <cae-drawer position="start" [(opened)]="startOpen" [mode]="startMode()" ariaLabel="Start">
+          <a id="body-start" href="#t">S</a>
+        </cae-drawer>
+      }
+      <cae-drawer position="end" [(opened)]="endOpen" [mode]="endMode()" ariaLabel="End">
+        <a id="body-end" href="#t">E</a>
+      </cae-drawer>
+      <main id="main-content">Page content</main>
+    </cae-drawer-container>
+  `,
+})
+class PairHost {
+  readonly startPresent = signal(true);
+  readonly startOpen = signal(false);
+  readonly endOpen = signal(false);
+  readonly startMode = signal<CaeDrawerMode>('over');
+  readonly endMode = signal<CaeDrawerMode>('over');
+  readonly hasBackdrop = signal<boolean | null>(null);
+}
+
 describe('CaeDrawer / CaeDrawerContainer', () => {
   let fixture: ComponentFixture<DrawerHost>;
   let host: DrawerHost;
@@ -324,5 +350,306 @@ describe('CaeDrawer / CaeDrawerContainer', () => {
     host.opened.set(true);
     await settle();
     await expectNoA11yViolations(el());
+  });
+});
+
+/**
+ * Modality coherence — Caelum's per-drawer label vs Material's container-wide machinery
+ * (#855 / #856 / #857).
+ *
+ * These need **fake timers**, unlike every test above. `inert` is the only jsdom-visible proxy for
+ * Material's modal state (its focus trap is not — see the scope note), and `MatDrawerContent`
+ * writes it from `_drawerToggled` via `_animationEnd.pipe(delay(50))`. `whenStable()` does not wait
+ * out that delay, so without advancing the clock `inert` is never set at all and every assertion
+ * here reads `null` — passing identically against the bug and the fix.
+ */
+describe('CaeDrawerContainer — modality coherence', () => {
+  let fixture: ComponentFixture<DrawerHost>;
+  let host: DrawerHost;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({ imports: [DrawerHost] }).compileComponents();
+    fixture = TestBed.createComponent(DrawerHost);
+    host = fixture.componentInstance;
+    document.body.appendChild(fixture.nativeElement);
+    fixture.detectChanges();
+    // Fake timers AFTER create, so the real-timer compile/create is undisturbed.
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    fixture.nativeElement.remove();
+  });
+
+  /** Render, then run out Material's deferred `inert` write. */
+  const flush = (): void => {
+    fixture.detectChanges();
+    vi.advanceTimersByTime(200);
+    fixture.detectChanges();
+  };
+
+  const el = (): HTMLElement => fixture.nativeElement;
+  const content = (): HTMLElement => el().querySelector('mat-drawer-content')!;
+  const drawer = (): HTMLElement | null => el().querySelector('mat-drawer');
+
+  // -------------------------------------------------------------------------
+  // #855 — a drawer destroyed while open must not strand `inert` on the content.
+  // -------------------------------------------------------------------------
+
+  it('clears the content inert when an open modal drawer is destroyed', () => {
+    host.opened.set(true);
+    flush();
+    // Vacuity guard. If Material never set `inert` — the default state of this suite before fake
+    // timers were introduced — the assertion below would pass against a completely broken fix.
+    expect(content().getAttribute('inert')).toBe('true');
+
+    host.present.set(false);
+    flush();
+
+    expect(drawer()).toBeNull();
+    // The defect: `MatDrawer.ngOnDestroy` never re-runs `_updateInert`, so this stayed 'true' and
+    // the whole page was left non-interactive and hidden from AT with nothing on screen to say so.
+    expect(content().hasAttribute('inert')).toBe(false);
+  });
+
+  // -------------------------------------------------------------------------
+  // #857 — modality changed while open: Material must follow Caelum's label.
+  // -------------------------------------------------------------------------
+
+  it('applies the trap and inert when hasBackdrop turns a side drawer modal mid-open', () => {
+    host.mode.set('side');
+    host.opened.set(true);
+    flush();
+    expect(drawer()!.getAttribute('role')).toBe('region');
+    expect(content().hasAttribute('inert')).toBe(false);
+
+    host.hasBackdrop.set(true);
+    flush();
+
+    // Caelum re-labels; before the fix Material moved nothing, leaving a drawer announced as a
+    // modal dialog with the entire page still reachable behind it.
+    expect(drawer()!.getAttribute('role')).toBe('dialog');
+    expect(content().getAttribute('inert')).toBe('true');
+  });
+
+  it('releases the trap and inert when hasBackdrop turns an over drawer non-modal mid-open', () => {
+    host.opened.set(true);
+    flush();
+    expect(drawer()!.getAttribute('role')).toBe('dialog');
+    expect(content().getAttribute('inert')).toBe('true');
+
+    host.hasBackdrop.set(false);
+    flush();
+
+    // The worse arm: Caelum dropped the modal labelling while Material's trap and `inert` stayed
+    // on, so with disableClose the user was held in a panel claiming to be ordinary content.
+    expect(drawer()!.getAttribute('role')).toBe('region');
+    expect(content().hasAttribute('inert')).toBe(false);
+  });
+
+  it('pulls focus into a drawer that becomes modal while already open', () => {
+    const outside = document.createElement('button');
+    document.body.appendChild(outside);
+    try {
+      host.mode.set('side');
+      host.opened.set(true);
+      flush();
+      outside.focus();
+      expect(document.activeElement).toBe(outside);
+
+      host.hasBackdrop.set(true);
+      flush();
+
+      // `MatDrawer._takeFocus()` runs only from the `openedChange` subscription, so a modality flip
+      // fires nothing — leaving focus outside a role="dialog" whose surroundings Material has just
+      // made `inert`, i.e. focus sitting on nothing.
+      expect(document.activeElement).toBe(el().querySelector('.cae-drawer__panel'));
+    } finally {
+      outside.remove();
+    }
+  });
+
+  it('leaves an ordinary open to Material, focusing the drawer rather than the panel', () => {
+    // The negative arm of the rule above, and the one that pins the *restriction* rather than the
+    // mechanism: drop the already-open condition and the focus-in fires on every open too, landing
+    // focus on `.cae-drawer__panel` instead. Material's own choice here is `<mat-drawer>` — with
+    // nothing tabbable findable in jsdom, `_takeFocus()` falls back to focusing the host element —
+    // so the two outcomes are distinguishable, which is exactly what makes this test able to fail.
+    const outside = document.createElement('button');
+    document.body.appendChild(outside);
+    // Watch the panel for a focus EVENT rather than reading `activeElement` at the end. Material's
+    // `_takeFocus` resolves a promise and then focuses `<mat-drawer>`, so it lands *after* our
+    // `afterNextRender` — a final-state assertion reads Material's value and passes even when the
+    // focus-in wrongly fired first. Measured: the end-state version of this test could not kill
+    // dropping the already-open restriction.
+    const panel = el().querySelector('.cae-drawer__panel')!;
+    let panelFocused = 0;
+    const count = (): number => ++panelFocused;
+    panel.addEventListener('focus', count);
+    try {
+      outside.focus();
+      host.opened.set(true);
+      flush();
+      expect(panelFocused).toBe(0);
+      expect(document.activeElement).toBe(drawer());
+    } finally {
+      panel.removeEventListener('focus', count);
+      outside.remove();
+    }
+  });
+
+  it('does not re-steal focus when an open drawer changes between two modal modes', () => {
+    // `over` → `push` is a modality-preserving change. The focus-in must key on the false→true
+    // modality EDGE, not merely on "open and modal now": keyed on the latter it re-fires on any
+    // re-run while a modal drawer is open, yanking focus out of whatever the user was using inside
+    // the drawer. This is the arm that pins the edge.
+    const panel = (): HTMLElement => el().querySelector('.cae-drawer__panel')!;
+    host.opened.set(true);
+    flush();
+    const link = el().querySelector<HTMLElement>('#nav-link')!;
+    link.focus();
+    let panelFocused = 0;
+    const count = (): number => ++panelFocused;
+    panel().addEventListener('focus', count);
+    try {
+      host.mode.set('push');
+      flush();
+      expect(drawer()!.getAttribute('role')).toBe('dialog');
+      expect(panelFocused).toBe(0);
+      expect(document.activeElement).toBe(link);
+    } finally {
+      panel().removeEventListener('focus', count);
+    }
+  });
+});
+
+/**
+ * The surviving-sibling arm of #855, in its own fixture because ORDER matters: the fixture must be
+ * created while real timers are still installed. `MatDrawerContainer` arms `_transitionsEnabled`
+ * from a `setTimeout` in `ngAfterContentInit`; created under the fake clock, advancing time turns
+ * transitions ON, and `_animationEnd` then waits for a transition event jsdom never dispatches — so
+ * `inert` is never written and the whole test reads `null`. Measured.
+ */
+describe('CaeDrawerContainer — destroying one of two drawers (#855)', () => {
+  let fixture: ComponentFixture<PairHost>;
+  let host: PairHost;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({ imports: [PairHost] }).compileComponents();
+    fixture = TestBed.createComponent(PairHost);
+    host = fixture.componentInstance;
+    document.body.appendChild(fixture.nativeElement);
+    fixture.detectChanges();
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    fixture.nativeElement.remove();
+  });
+
+  const flush = (): void => {
+    fixture.detectChanges();
+    vi.advanceTimersByTime(200);
+    fixture.detectChanges();
+  };
+  const content = (): HTMLElement => fixture.nativeElement.querySelector('mat-drawer-content')!;
+
+  it('leaves the surviving drawer able to re-inert the content', () => {
+    // The reason the fix closes the drawer rather than just removing the attribute. `_updateInert`
+    // is guarded by Material's own `_isInert` flag, so clearing the attribute behind its back
+    // leaves that flag stuck `true` and the next `_updateInert` becomes a no-op — a modal drawer
+    // over content that is still reachable.
+    //
+    // It has to be a *surviving sibling* that opens next. Re-adding a drawer constructs a new
+    // `MatDrawer`, whose `mode` binding runs `set mode` on creation — which calls `_updateInert`
+    // and silently repairs the desync. The single-drawer version of this test therefore passed
+    // against both the fix and the naive attribute-removal, measured doing exactly that.
+    host.startOpen.set(true);
+    flush();
+    expect(content().getAttribute('inert')).toBe('true');
+
+    host.startPresent.set(false);
+    flush();
+    expect(content().hasAttribute('inert')).toBe(false);
+
+    // The `end` drawer was never destroyed, so nothing re-ran its `mode` setter: Material's own
+    // bookkeeping is the only thing that can let this open apply `inert` again.
+    host.endOpen.set(true);
+    flush();
+    expect(content().getAttribute('inert')).toBe('true');
+  });
+});
+
+/** Container-wide modality with two drawers — the only shape that can falsify the #856 rules. */
+describe('CaeDrawerContainer — two drawers open at once (#856)', () => {
+  let fixture: ComponentFixture<PairHost>;
+  let host: PairHost;
+  let warn: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({ imports: [PairHost] }).compileComponents();
+    fixture = TestBed.createComponent(PairHost);
+    host = fixture.componentInstance;
+    warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    fixture.detectChanges();
+    await fixture.whenStable();
+  });
+
+  afterEach(() => warn.mockRestore());
+
+  const settle = async (): Promise<void> => {
+    fixture.detectChanges();
+    await fixture.whenStable();
+  };
+  const drawers = (): HTMLElement[] =>
+    Array.from(fixture.nativeElement.querySelectorAll('mat-drawer'));
+  const attr = (name: string): (string | null)[] => drawers().map((d) => d.getAttribute(name));
+
+  it('emits aria-modal for the sole open drawer', async () => {
+    // Vacuity guard for the two tests below: without this, gating aria-modal on a condition that
+    // is ALWAYS false (never emitting it at all) would satisfy them both.
+    host.startOpen.set(true);
+    await settle();
+    expect(attr('aria-modal')).toEqual(['true', null]);
+  });
+
+  it('withholds aria-modal from both drawers when two are open, keeping their dialog roles', async () => {
+    host.startOpen.set(true);
+    host.endOpen.set(true);
+    await settle();
+
+    // `aria-modal="true"` claims everything outside this node is inert. With a sibling drawer open
+    // that is false in both directions, and two siblings each asserting it is invalid state that
+    // Material alone never produced — it emits no aria-modal at all. The role stays: a dialog is
+    // still a dialog, it just is not the exclusive one.
+    expect(attr('aria-modal')).toEqual([null, null]);
+    expect(attr('role')).toEqual(['dialog', 'dialog']);
+  });
+
+  it('dev-warns when a second drawer opens behind a backdrop', async () => {
+    host.startOpen.set(true);
+    await settle();
+    expect(warn).not.toHaveBeenCalled();
+
+    host.endOpen.set(true);
+    await settle();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('#856'));
+  });
+
+  it('stays silent when two NON-modal drawers are open — no backdrop, no container-wide trap', async () => {
+    // The rule is keyed on the backdrop, not on the drawer count: `side` drawers share no focus
+    // trap and no `inert`, so two of them are an ordinary supported layout. A warning keyed on
+    // `openDrawers().length > 1` alone would cry wolf here — and a guard that fires on the correct
+    // path trains the reader to skim it.
+    host.startMode.set('side');
+    host.endMode.set('side');
+    host.startOpen.set(true);
+    host.endOpen.set(true);
+    await settle();
+
+    expect(warn).not.toHaveBeenCalled();
+    expect(attr('role')).toEqual(['region', 'region']);
   });
 });
