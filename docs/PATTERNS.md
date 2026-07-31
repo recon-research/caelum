@@ -413,3 +413,28 @@ The per-entry-point size gate charges for HTML comments in a component's `templa
   That is true for JS/JSDoc only; it has been corrected in place. On a breach, check *where* the
   prose lives before bumping a row.
 
+
+## 16. Parity or deviation? Measure upstream before classifying a "bug" (#919)
+
+A ticket that reports wrong behaviour may be reporting *correct parity*. The classification decides
+**whose call the fix is** — a bug-fix ships on the agent's judgment, a deviation from PrimeNG is a
+`decision` for the owner (`CLAUDE.md` §3).
+
+- **Order: reproduce → measure upstream → then classify.** Reproducing first stops you arguing about
+  a phantom; measuring second stops you shipping a deviation as a bug-fix. #919 reproduced three
+  ways (one the ticket hadn't named), and *still* turned out to be parity.
+- **Docs are not the measurement — read the source.** PrimeNG's own page did not document the case
+  at all; `autocomplete.ts` did (`updateInputWithForceSelection` resolves a typed label to its key
+  only under `forceSelection`). "Not documented" is not "no constraint".
+- **Our own shipped docs count too.** `MIGRATION.md` §5.1 already stated the behaviour #919 wanted
+  changed. A documented contract is a promise; changing it is a deviation even where upstream is
+  silent.
+- **Deviating is often right** — Caelum already flips this control's headline default. The point is
+  that the *choice* routes to the owner: reversible ⇒ file the `decision`, proceed provisionally,
+  carry `Provisional on #NN` in the PR body, keep working. Reversibility here rested on nothing being
+  published and **D-850**; post-1.0 the same fork is the park-and-switch branch.
+- **Sibling trap, same slice.** When a *pre-existing* test fails from your change, ask whether its
+  **subject** is affected or only its **setup**. #901's trigger-resync test broke because its token
+  happened to be an option label — incidental. Updating its expectation would have been wrong twice
+  (a resolved key is *taken*, so `filtered()` empties and `panelOpen` reads false for an unrelated
+  reason). Re-key the fixture to something the new rule cannot touch, and comment why.
