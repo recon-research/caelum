@@ -144,7 +144,7 @@
 # (research/banked/register-game-engine, EXP-03/04/05, docs/METRICS numbers).
 source: https://github.com/recon-research/pyxis
 source_path: /home/connor/claude/pyxis (this box's checkout; resolve per the #737 ladder elsewhere. Upstream identified + first synced 2026-07-08, template-sync #245)
-sha: 79fdfbe69d4acea904048cd204e58275b7c043f2 (template sync d04440a→79fdfbe, #518; synced 2026-07-17)
+sha: 7faba3c9e5452a52b2b08f6cf1a7b242a06c2fb6 (template sync 79fdfbe->7faba3c, #903; synced 2026-07-30)
 baseline: 276a2d6 (reconstructed — the copy-day HEAD; the original copy recorded no sha, see #245)
 copied: 2026-06-25
-last_update: 2026-07-17
+last_update: 2026-07-30
