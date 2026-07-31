@@ -1,20 +1,21 @@
-import { COMMA, ENTER } from '@angular/cdk/keycodes';
+import { COMMA, DOWN_ARROW, ENTER } from '@angular/cdk/keycodes';
 import { Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
-import { vi } from 'vitest';
 
 import { CaeAutocomplete, CaeAutocompleteOption } from './autocomplete';
 import { expectAnnouncedErrorState, expectNoA11yViolations } from '../testing/a11y';
 
 /**
- * MatAutocomplete opens its panel in a CDK overlay that needs real focus/layout to attach, which
- * jsdom stubs out — so the panel's options and keyboard navigation aren't exercised here (that is
- * deferred to the M4 real-browser a11y pass, like the slider #110). These tests drive the CVA + the
- * client-side filter at the component boundary: `writeValue` → the rendered input display, the
- * `(optionSelected)` handler → the committed value, `(input)` → the filtered list, and the strict
- * blur reconciliation. The error-forwarding bridge is exercised through a host with a real
- * `[formControl]`.
+ * Most tests here drive the CVA + the client-side filter at the component boundary: `writeValue` →
+ * the rendered input display, the `(optionSelected)` handler → the committed value, `(input)` → the
+ * filtered list, and the strict blur reconciliation. The error-forwarding bridge is exercised
+ * through a host with a real `[formControl]`.
+ *
+ * The panel DOES attach in jsdom — the "#897 regression (real events)" block below opens it with
+ * real focusin/input/keydown dispatches; this file's original header claimed the opposite ("needs
+ * real focus/layout to attach") and that claim was what let #897 ship. Migrating the remaining
+ * handler-call tests to real dispatched events is #900.
  */
 const OPTIONS: CaeAutocompleteOption[] = [
   { value: 'us', label: 'United States' },
@@ -44,11 +45,11 @@ describe('CaeAutocomplete', () => {
     expect(fixture.nativeElement.querySelector('mat-autocomplete')).not.toBeNull();
   });
 
-  it('has no axe violations (named via ariaLabel; the panel is a real-browser check per the header note)', async () => {
+  it('has no axe violations (named via ariaLabel; the open panel is an axe gap ticketed in #899)', async () => {
     // Named via ariaLabel, not the visible [label] — mat-form-field's MDC floating label is
-    // CSS-positioned and axe judges it "hidden" in jsdom (same fix as input.spec.ts). The
-    // suggestion panel needs real focus/layout to attach in jsdom (this file's header comment),
-    // so — like every other test in this file — this stays at the CVA/rendered-input boundary.
+    // CSS-positioned and axe judges it "hidden" in jsdom (same fix as input.spec.ts). The panel
+    // CAN attach in jsdom (see the #897 real-event block) — scanning the open-panel state is part
+    // of the #899/#900 test-debt work, not this closed-state scan.
     fixture.componentRef.setInput('ariaLabel', 'Country');
     fixture.detectChanges();
     await fixture.whenStable();
@@ -342,7 +343,10 @@ describe('CaeAutocomplete — multiple (chips)', () => {
     expect(component['chipValues']()).toEqual(['us']);
   });
 
-  it('clears the field on a pick so the trigger leaves no label behind (displayFn)', () => {
+  it('returns an empty chip-mode display — the DOM clear itself lives in onSelected (#897)', () => {
+    // The trigger routes this '' to MatChipGrid.value (inert), never the DOM input; asserting ''
+    // here only pins the _previousValue bookkeeping. The real clear is asserted by the #897
+    // real-event regression block.
     expect(component['displayFn']('us')).toBe('');
   });
 
@@ -434,38 +438,173 @@ describe('CaeAutocomplete — multiple + freeText', () => {
     expect(calls).toBe(0);
   });
 
-  it('lists ENTER/COMMA as separators only under freeText', () => {
-    // Material's _emitChipEnd preventDefault()s any separator key. In strict mode that would swallow
-    // the Enter submitting the surrounding form, while never being able to add a chip.
-    expect(component['separatorKeyCodes']()).toEqual([ENTER, COMMA]);
+  it('lists COMMA as the only separator, only under freeText — never ENTER (#897)', () => {
+    // Material's separator path is key-agnostic and preventDefault()s unconditionally, so a listed
+    // ENTER cannot be told apart from a COMMA when deciding whether the panel owns the keystroke
+    // (that ambiguity dead-keyed COMMA whenever a suggestion was highlighted). Enter goes through
+    // the component's own (keydown.enter) handler instead. In strict mode a listed ENTER would
+    // also swallow the Enter submitting the surrounding form.
+    expect(component['separatorKeyCodes']()).toEqual([COMMA]);
     fixture.componentRef.setInput('freeText', false);
     expect(component['separatorKeyCodes']()).toEqual([]);
   });
 
-  it('yields the Enter keystroke to the panel when a suggestion is highlighted', () => {
-    // Both host listeners fire on the same element — MatAutocompleteTrigger preventDefault()s but
-    // never stopPropagation()s — so an unguarded onTokenEnd turns one Enter into two chips: the
-    // highlighted option AND the raw text. vi.spyOn throws if either accessor is renamed upstream,
-    // so this pins the real API rather than inventing one.
+  it('pins the trigger accessors onEnterKey arbitrates with (panelOpen / activeOption)', () => {
+    // A silent upstream rename would make onEnterKey's optional-chained reads yield undefined and
+    // the guard mis-arbitrate; 'in' walks the prototype chain, where Material's accessors live.
+    // The behaviour itself is asserted by the #897 real-event block.
     const trigger = component['autocompleteTrigger']()!;
     expect(trigger).toBeTruthy();
-    vi.spyOn(trigger, 'panelOpen', 'get').mockReturnValue(true);
-    vi.spyOn(trigger, 'activeOption', 'get').mockReturnValue({} as never);
+    expect('panelOpen' in trigger).toBe(true);
+    expect('activeOption' in trigger).toBe(true);
+  });
+});
 
-    let calls = 0;
-    component.registerOnChange(() => calls++);
-    component['onTokenEnd'](tokenEvent('United Sta'));
-    expect(component['chipValues']()).toEqual([]);
-    expect(calls).toBe(0);
-    expect(inputEl().value).toBe('United Sta'); // untouched — the trigger's own path clears it
+// --- #897 regression: REAL dispatched events, not handler calls ---
+// Every event here goes through the DOM, so the full Material seam runs — MatChipInput._keydown,
+// MatAutocompleteTrigger._handleKeydown, MatOption's click handling, and the CDK overlay panel,
+// which attaches fine in jsdom. Fabricated-event handler calls were exactly what let #897 ship
+// (#900): the old suite asserted a test-owned `chipInput.clear()` stub instead of Material.
+describe('CaeAutocomplete — #897 regression (real events, multiple mode)', () => {
+  let component: CaeAutocomplete;
+  let fixture: ComponentFixture<CaeAutocomplete>;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({ imports: [CaeAutocomplete] }).compileComponents();
+    fixture = TestBed.createComponent(CaeAutocomplete);
+    component = fixture.componentInstance;
+    fixture.componentRef.setInput('options', OPTIONS);
+    fixture.componentRef.setInput('multiple', true);
+    fixture.componentRef.setInput('freeText', true);
+    await fixture.whenStable();
   });
 
-  it('still commits the token when the panel is open with nothing highlighted', () => {
-    const trigger = component['autocompleteTrigger']()!;
-    vi.spyOn(trigger, 'panelOpen', 'get').mockReturnValue(true);
-    vi.spyOn(trigger, 'activeOption', 'get').mockReturnValue(null);
-    component['onTokenEnd'](tokenEvent('urgent'));
-    expect(component['chipValues']()).toEqual(['urgent']);
+  const inputEl = (): HTMLInputElement => fixture.nativeElement.querySelector('input');
+
+  /** Dispatch a real cancelable keydown; returns false iff something preventDefault()ed it. */
+  const keydown = (keyCode: number, key: string): boolean => {
+    const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'keyCode', { get: () => keyCode });
+    return inputEl().dispatchEvent(event);
+  };
+
+  /** Real focusin + input events — the path that opens the panel and feeds the filter. */
+  const type = async (text: string): Promise<void> => {
+    const el = inputEl();
+    el.focus();
+    el.dispatchEvent(new Event('focusin', { bubbles: true }));
+    el.value = text;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    fixture.detectChanges();
+    await fixture.whenStable();
+  };
+
+  /** The options of THIS input's open panel, resolved via aria-controls (a closed panel lingers). */
+  const panelOptions = (): NodeListOf<HTMLElement> => {
+    const panelId = inputEl().getAttribute('aria-controls');
+    expect(panelId).toBeTruthy(); // vacuity guard: no panel id means the panel never opened
+    return document.getElementById(panelId!)!.querySelectorAll('mat-option');
+  };
+
+  it('clears the field on a mouse pick, so a later separator cannot commit the stale text', async () => {
+    await type('Unit');
+    const options = panelOptions();
+    expect(options[0].textContent).toContain('United States');
+    options[0].click(); // a real mouse pick — no assumption about directive ordering
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(component['chipValues']()).toEqual(['us']);
+    expect(inputEl().value).toBe(''); // the shipped bug: 'Unit' stayed in the field
+    keydown(COMMA, ','); // the second half of the data defect: stale text became a second chip
+    expect(component['chipValues']()).toEqual(['us']);
+  });
+
+  it('adds exactly one chip when Enter picks the highlighted suggestion', async () => {
+    await type('Unit');
+    keydown(DOWN_ARROW, 'ArrowDown');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(component['autocompleteTrigger']()!.activeOption).toBeTruthy(); // vacuity guard
+    keydown(ENTER, 'Enter');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    // The shipped bug committed ['us', 'Unit'] — the typed prefix alongside the pick.
+    expect(component['chipValues']()).toEqual(['us']);
+    expect(inputEl().value).toBe('');
+  });
+
+  it('commits the token on COMMA even while a suggestion is highlighted (the dead-key half)', async () => {
+    fixture.componentRef.setInput('autoActiveFirstOption', true);
+    await type('unit');
+    expect(component['autocompleteTrigger']()!.activeOption).toBeTruthy(); // vacuity guard
+    keydown(COMMA, ',');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    // The shipped key-agnostic guard swallowed this COMMA entirely: no chip, no comma, no change.
+    expect(component['chipValues']()).toEqual(['unit']);
+    expect(inputEl().value).toBe('');
+  });
+
+  it('commits the token on Enter when the highlighted suggestion is disabled', async () => {
+    // Only ArrowDown can land here: autoActiveFirstOption skips disabled options at the source
+    // (_resetActiveItem walks to the first ENABLED one), but the key manager's arrow navigation
+    // does not (MatAutocomplete._skipPredicate returns false).
+    await type('germ'); // matches only the disabled 'Germany'
+    keydown(DOWN_ARROW, 'ArrowDown');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const active = component['autocompleteTrigger']()!.activeOption;
+    expect(active?.disabled).toBe(true); // vacuity guard: the precondition is a DISABLED highlight
+    keydown(ENTER, 'Enter');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    // Shipped: the trigger swallowed the Enter, its selection no-op'd, and the guard returned —
+    // a dead key. The token is the only meaningful outcome left for that keystroke.
+    expect(component['chipValues']()).toEqual(['germ']);
+    expect(inputEl().value).toBe('');
+  });
+
+  // In the live listener ordering (host listeners register before template listeners) the trigger
+  // always runs first, so onEnterKey's panel guard only ever fires in the OTHER ordering — which a
+  // dispatched event cannot produce. These two drive the handler directly against REAL trigger
+  // state (no mocks) so the ordering insurance stays tested rather than inert; the two-directives-
+  // one-key lesson is that this ordering is observed, not contractual.
+  it('yields to the panel when a selectable suggestion is highlighted (ours-first ordering)', async () => {
+    await type('Unit');
+    keydown(DOWN_ARROW, 'ArrowDown');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(component['autocompleteTrigger']()!.activeOption).toBeTruthy(); // vacuity guard
+    const event = new KeyboardEvent('keydown', { key: 'Enter', cancelable: true });
+    component['onEnterKey'](event, inputEl());
+    expect(component['chipValues']()).toEqual([]); // the trigger's selection owns this keystroke
+    expect(inputEl().value).toBe('Unit'); // untouched — onSelected will clear it
+    expect(event.defaultPrevented).toBe(false); // the trigger, not us, consumes it
+  });
+
+  it('does NOT yield to a disabled highlight even in ours-first ordering', async () => {
+    await type('germ');
+    keydown(DOWN_ARROW, 'ArrowDown');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(component['autocompleteTrigger']()!.activeOption?.disabled).toBe(true); // vacuity guard
+    component['onEnterKey'](
+      new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }),
+      inputEl(),
+    );
+    expect(component['chipValues']()).toEqual(['germ']); // a no-op selection is nobody's keystroke
+  });
+
+  it('swallows a blank freeText Enter (separator parity), but leaves strict-mode Enter alone', async () => {
+    inputEl().focus();
+    expect(keydown(ENTER, 'Enter')).toBe(false); // preventDefault'd: mid-entry Enter ≠ form submit
+    expect(component['chipValues']()).toEqual([]);
+    fixture.componentRef.setInput('freeText', false);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    // Strict mode with nothing highlighted: Enter must stay live for the surrounding form.
+    expect(keydown(ENTER, 'Enter')).toBe(true);
+    expect(component['chipValues']()).toEqual([]);
   });
 });
 
