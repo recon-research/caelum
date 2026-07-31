@@ -92,7 +92,12 @@ export interface CaeChipRemoveEvent<T> {
         >
           {{ label()(item) }}
           @if (isRemovable(item)) {
-            <button matChipRemove type="button" [attr.aria-label]="removeAriaLabelFor(item)">
+            <button
+              matChipRemove
+              class="cae-chip-set__remove"
+              type="button"
+              [attr.aria-label]="removeAriaLabelFor(item)"
+            >
               <svg
                 class="cae-chip-set__remove-glyph"
                 viewBox="0 0 24 24"
@@ -144,6 +149,18 @@ export interface CaeChipRemoveEvent<T> {
     }
     .cae-chip-set__input::placeholder {
       color: var(--cae-color-on-surface-variant);
+    }
+    /* Same 18px breach, same floor as cae-chip — Material sizes its trailing action from an icon
+       scale, so this is 18x18 at every density, not a density collapse (#925, measured in
+       chip-set.browser.spec.ts). --cae-target-min is density-invariant; a --cae-space-* floor would
+       drop to 16px under [data-density=compact]. Scoped with Material's class to win specificity. */
+    .cae-chip-set__remove.mat-mdc-chip-remove {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-inline-size: var(--cae-target-min);
+      min-block-size: var(--cae-target-min);
+      padding: 0;
     }
     .cae-chip-set__remove-glyph {
       inline-size: 1em;

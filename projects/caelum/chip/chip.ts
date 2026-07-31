@@ -39,7 +39,13 @@ import { MatChipsModule } from '@angular/material/chips';
     <mat-chip [disabled]="disabled()" [removable]="removable()" (removed)="removed.emit()">
       <ng-content />
       @if (removable()) {
-        <button matChipRemove type="button" [tabIndex]="0" [attr.aria-label]="removeAriaLabel()">
+        <button
+          matChipRemove
+          class="cae-chip__remove"
+          type="button"
+          [tabIndex]="0"
+          [attr.aria-label]="removeAriaLabel()"
+        >
           <svg
             class="cae-chip__remove-glyph"
             viewBox="0 0 24 24"
@@ -53,6 +59,21 @@ import { MatChipsModule } from '@angular/material/chips';
     </mat-chip>
   `,
   styles: `
+    /* Material sizes a chip's trailing action from its own icon scale — 18x18 CSS px at EVERY
+       density, under WCAG 2.5.8's 24x24 minimum (measured in chip.browser.spec.ts; jsdom lays
+       nothing out, so a unit test could only ever assert the button exists). Floor it on the
+       density-INVARIANT --cae-target-min, never a --cae-space-* token: those collapse to 16px at
+       [data-density=compact], which is exactly where a dense admin UI puts a chip row (PATTERNS 10 —
+       a 3p-supplied affordance you re-skin is still yours to floor; #925, the #900 breach elsewhere).
+       Scoped WITH Material's own class so the floor wins on specificity without !important. */
+    .cae-chip__remove.mat-mdc-chip-remove {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-inline-size: var(--cae-target-min);
+      min-block-size: var(--cae-target-min);
+      padding: 0;
+    }
     .cae-chip__remove-glyph {
       inline-size: 1em;
       block-size: 1em;
