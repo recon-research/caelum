@@ -4,12 +4,14 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
   ElementRef,
   inject,
   input,
   isDevMode,
   model,
 } from '@angular/core';
+import type { CaeFocusTarget } from '@recon-research/caelum/shared';
 
 /**
  * Alert severity. Maps to the existing `--cae-color-*` tokens — `success`/`warn`/`danger` to
@@ -324,12 +326,16 @@ export class CaeAlert {
    * Unset ⇒ focus is left where the browser puts it, and dev mode warns — unlike `cae-chip-set`'s
    * `[emptyFocusTarget]`, this is not a "the consumer owns it" case: dismissal *always* destroys the
    * element that had focus, so there is no arrangement where doing nothing is correct.
+   *
+   * The two rules that govern how the target is focused — no `preventScroll`, and a callable-focus
+   * guard — live once on {@link CaeFocusTarget}, not per component.
    */
-  readonly dismissFocusTarget = input<HTMLElement | ElementRef<HTMLElement> | null | undefined>(
-    null,
-  );
+  readonly dismissFocusTarget = input<CaeFocusTarget>(null);
 
   private readonly host = inject(ElementRef<HTMLElement>);
+
+  /** Latch for {@link warnIfMessageEmpty}; dev-only, never read in production. */
+  private emptyMessageWarned = false;
 
   /** The resolved politeness — the explicit input, else the severity default. */
   protected readonly resolvedPoliteness = computed(
@@ -382,13 +388,31 @@ export class CaeAlert {
     //
     // afterRenderEffect keyed on visible(), NOT cae-tag's one-shot afterNextRender: an alert is
     // overwhelmingly rendered conditionally (`@if (error())`), so a first-render-only check would
-    // read an absent element and pass vacuously on the exact shape that matters. Known limit: the
-    // projected content is read from the DOM, which is not reactive, so a message emptied at runtime
-    // while the alert stays mounted is not re-checked (#863).
+    // read an absent element and pass vacuously on the exact shape that matters.
     if (isDevMode()) {
+      // Projected content is read from the DOM and the DOM is not reactive, so the effect's own
+      // deps (visible, severity) cannot see a message emptied at runtime while the alert stays
+      // mounted — `<cae-alert>{{ errorText() }}</cae-alert>` going 'Boom' -> ''. That is the shape
+      // the class doc RECOMMENDS, so without this observer the guard was blindest on the path we
+      // tell people to take (#863). Dev-only, so it costs a production consumer nothing.
+      //
+      // Re-pointed from the effect rather than attached once: `.cae-alert__content` lives inside
+      // @if (visible()), so the node this observes is destroyed and replaced on every toggle, and
+      // an observer left watching only the old node would silently never fire again.
+      //
+      // The `disconnect()` at the top of the effect is HYGIENE, not correctness — mutation-tested,
+      // removing it kills no test, and that result is honest rather than a gap: `observe()` on the
+      // fresh node registers it either way, and a detached node never mutates, so nothing
+      // behavioural changes. What it buys is that the observer watches one node instead of
+      // accumulating a dead observation (and the DOM subtree behind it) per toggle. Kept for that,
+      // and documented so the next reader doesn't mistake it for load-bearing.
+      const contentObserver = new MutationObserver(() => this.warnIfMessageEmpty());
+      inject(DestroyRef).onDestroy(() => contentObserver.disconnect());
+
       afterRenderEffect(() => {
         const visible = this.visible();
         const severity = this.severity();
+        contentObserver.disconnect();
         if (!visible) return;
 
         // An unrecognised severity silently loses EVERY channel at once — no glyph, no tint, and a
@@ -402,18 +426,42 @@ export class CaeAlert {
           );
         }
 
-        // A severity alert with NO text conveys its meaning by the tint and an aria-hidden glyph
-        // alone — i.e. by colour only, WCAG 1.4.1 (the cae-tag #669 convention). Reads the RENDERED
-        // content, not an input, because the message is always projected.
         const content = this.host.nativeElement.querySelector('.cae-alert__content');
-        if (content && !content.textContent?.trim()) {
-          console.warn(
-            `cae-alert: [severity="${severity}"] with no message conveys status by colour ` +
-              'alone (the glyph is decorative) — WCAG 1.4.1. Project text into the alert.',
-          );
+        if (content) {
+          contentObserver.observe(content, {
+            subtree: true,
+            childList: true,
+            characterData: true,
+          });
         }
+        this.warnIfMessageEmpty();
       });
     }
+  }
+
+  /**
+   * Dev-only WCAG 1.4.1 check: a severity alert with NO text conveys its meaning by the tint and an
+   * aria-hidden glyph alone — i.e. by colour only (the cae-tag #669 convention). Reads the RENDERED
+   * content, not an input, because the message is always projected.
+   *
+   * **Latched**, because the observer above fires per mutation batch rather than per transition:
+   * an alert that is empty while unrelated projected nodes come and go would otherwise re-warn on
+   * every batch, and a console that repeats itself is one a developer learns to scroll past. The
+   * latch clears the moment the message is non-empty again, so a second emptying does warn.
+   */
+  private warnIfMessageEmpty(): void {
+    const content = this.host.nativeElement.querySelector('.cae-alert__content');
+    if (!content) return;
+    if (content.textContent?.trim()) {
+      this.emptyMessageWarned = false;
+      return;
+    }
+    if (this.emptyMessageWarned) return;
+    this.emptyMessageWarned = true;
+    console.warn(
+      `cae-alert: [severity="${this.severity()}"] with no message conveys status by colour ` +
+        'alone (the glyph is decorative) — WCAG 1.4.1. Project text into the alert.',
+    );
   }
 
   /**
@@ -443,13 +491,23 @@ export class CaeAlert {
   private placeFocus(): void {
     const target = this.dismissFocusTarget();
     const el = target instanceof ElementRef ? target.nativeElement : target;
-    el?.focus({ preventScroll: true });
+
+    // Both rules are the shared CaeFocusTarget convention — the rationale lives there, once.
+    // `focusable` narrows to HTMLElement|null so the call site needs no non-null assertion, and it
+    // separates "nothing was bound" (warn A) from "something unusable was bound" (warn B) below.
+    const focusable = el && typeof el.focus === 'function' ? el : null;
+    focusable?.focus();
 
     if (!isDevMode()) return;
     if (!el) {
       console.warn(
         'cae-alert: [dismissible] with no [dismissFocusTarget] — dismissing dropped focus to ' +
           '<body> (WCAG 2.4.3). Bind [dismissFocusTarget] to the element focus should land on.',
+      );
+    } else if (!focusable) {
+      console.warn(
+        'cae-alert: [dismissFocusTarget] is not an element — bind the viewChild RESULT, not the ' +
+          'signal itself ([dismissFocusTarget]="ref()", not "ref"). Focus was not moved.',
       );
     } else if (document.activeElement !== el) {
       // A non-focusable target (a non-interactive element missing tabindex="-1") or one detached
