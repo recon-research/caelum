@@ -1,7 +1,9 @@
-import { COMMA, DOWN_ARROW, ENTER } from '@angular/cdk/keycodes';
+import { LiveAnnouncer } from '@angular/cdk/a11y';
+import { BACKSPACE, COMMA, DOWN_ARROW, ENTER } from '@angular/cdk/keycodes';
 import { Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
+import { vi } from 'vitest';
 
 import { CaeAutocomplete, CaeAutocompleteOption } from './autocomplete';
 import { expectAnnouncedErrorState, expectNoA11yViolations } from '../testing/a11y';
@@ -609,6 +611,122 @@ describe('CaeAutocomplete — #897 regression (real events, multiple mode)', () 
   });
 });
 
+// Real-event helpers duplicated from the #897 block above — #900 (the spec-wide real-event
+// migration) is where they consolidate to one shared set.
+describe('CaeAutocomplete — #899 a11y (real events, multiple mode)', () => {
+  let component: CaeAutocomplete;
+  let fixture: ComponentFixture<CaeAutocomplete>;
+  let announce: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({ imports: [CaeAutocomplete] }).compileComponents();
+    fixture = TestBed.createComponent(CaeAutocomplete);
+    component = fixture.componentInstance;
+    fixture.componentRef.setInput('options', OPTIONS);
+    fixture.componentRef.setInput('multiple', true);
+    fixture.componentRef.setInput('freeText', true);
+    fixture.componentRef.setInput('label', 'Countries');
+    announce = vi.spyOn(TestBed.inject(LiveAnnouncer), 'announce').mockResolvedValue(undefined);
+    await fixture.whenStable();
+  });
+
+  const inputEl = (): HTMLInputElement => fixture.nativeElement.querySelector('input');
+
+  /** Dispatch a real cancelable keydown on `target` (the input, or a focused chip action). */
+  const keydownOn = (target: EventTarget, keyCode: number, key: string): void => {
+    const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'keyCode', { get: () => keyCode });
+    target.dispatchEvent(event);
+  };
+
+  /** Real focusin + input events — the path that opens the panel and feeds the filter. */
+  const type = async (text: string): Promise<void> => {
+    const el = inputEl();
+    el.focus();
+    el.dispatchEvent(new Event('focusin', { bubbles: true }));
+    el.value = text;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    fixture.detectChanges();
+    await fixture.whenStable();
+  };
+
+  /** The options of THIS input's open panel, resolved via aria-controls (a closed panel lingers). */
+  const panelOptions = (): NodeListOf<HTMLElement> => {
+    const panelId = inputEl().getAttribute('aria-controls');
+    expect(panelId).toBeTruthy(); // vacuity guard: no panel id means the panel never opened
+    return document.getElementById(panelId!)!.querySelectorAll('mat-option');
+  };
+
+  it('announces a real panel pick with the resolved label and the running count', async () => {
+    await type('Unit');
+    panelOptions()[0].click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(component['chipValues']()).toEqual(['us']);
+    // The LABEL, not the key — 'us added' is meaningless to a listener.
+    expect(announce).toHaveBeenCalledWith('United States added, 1 selected');
+  });
+
+  it('announces a free-text Enter commit — the path where focus never moves', async () => {
+    await type('etna');
+    keydownOn(inputEl(), ENTER, 'Enter');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(component['chipValues']()).toEqual(['etna']);
+    expect(announce).toHaveBeenCalledWith('etna added, 1 selected');
+  });
+
+  it('does not announce a rejected duplicate — nothing was added', async () => {
+    component.writeValue(['us']);
+    await fixture.whenStable();
+    announce.mockClear();
+    await type('us'); // the raw key: free-text commits typed text verbatim, so 'us' collides
+    keydownOn(inputEl(), ENTER, 'Enter');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(component['chipValues']()).toEqual(['us']); // vacuity guard: the add really was rejected
+    expect(announce).not.toHaveBeenCalled();
+  });
+
+  it('announces a removal from the real two-Backspace path, with the remaining count', async () => {
+    component.writeValue(['us', 'uk']);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    announce.mockClear();
+    const el = inputEl();
+    el.focus();
+    keydownOn(el, BACKSPACE, 'Backspace');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    // Vacuity guards on the documented model: the FIRST Backspace (empty input) only moves focus —
+    // into the LAST chip row — and removes nothing.
+    expect(component['chipValues']()).toEqual(['us', 'uk']);
+    const rows = fixture.nativeElement.querySelectorAll('mat-chip-row');
+    expect((document.activeElement as HTMLElement).closest('mat-chip-row')).toBe(rows[1]);
+    keydownOn(document.activeElement!, BACKSPACE, 'Backspace');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(component['chipValues']()).toEqual(['us']);
+    expect(announce).toHaveBeenCalledWith('United Kingdom removed, 1 selected');
+  });
+
+  it('names the chip grid from the floating label — aria-labelledby resolves to it', async () => {
+    // While empty the grid's role is null, and a name on a role-less element is an ARIA violation
+    // (axe aria-prohibited-attr — the aria-label arm was caught live by the error-state axe scan).
+    const grid = fixture.nativeElement.querySelector('mat-chip-grid') as HTMLElement;
+    expect(grid.getAttribute('role')).toBeNull(); // vacuity guard for the absence claim
+    expect(grid.hasAttribute('aria-labelledby')).toBe(false);
+    component.writeValue(['us']);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(grid.getAttribute('role')).toBe('grid'); // vacuity guard
+    const labelId = grid.getAttribute('aria-labelledby');
+    expect(labelId).toBeTruthy();
+    // The id must RESOLVE to the visible label — an attr pointing at nothing names nothing.
+    expect(document.getElementById(labelId!)?.textContent).toContain('Countries');
+  });
+});
+
 // --- Error-forwarding bridge (needs a real NgControl on the OUTER element) ---
 @Component({
   imports: [CaeAutocomplete, ReactiveFormsModule],
@@ -703,6 +821,16 @@ describe('CaeAutocomplete — multiple, inside a real form field', () => {
     await fixture.whenStable();
     expect(fixture.nativeElement.querySelectorAll('mat-chip-row').length).toBe(2);
     await expectNoA11yViolations(fixture.nativeElement);
+  });
+
+  it('prefers an explicit ariaLabel for the grid name over the label id (#899)', async () => {
+    fixture.componentInstance.ctrl.setValue(['us']);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const grid = fixture.nativeElement.querySelector('mat-chip-grid') as HTMLElement;
+    expect(grid.getAttribute('aria-label')).toBe('Tags');
+    // Not both: a lingering aria-labelledby would OVERRIDE the explicit aria-label (ARIA precedence).
+    expect(grid.hasAttribute('aria-labelledby')).toBe(false);
   });
 
   it('names each remove button after its chip', async () => {

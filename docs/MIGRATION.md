@@ -331,6 +331,8 @@ Theming is token-bridge-only, so `matBadgeColor` is not exposed. Wrap any elemen
 
 Enter and comma commit a tag; each renders as a removable chip. Duplicates are rejected (a repeat would throw NG0955 out of the `@for` that renders the chips), and `[options]` may still be supplied to offer suggestions alongside free entry — already-chosen options drop out of the panel. Without `[freeText]` the field becomes multi-select-from-suggestions only.
 
+The chip keyboard model, for keyboard and screen-reader users: the chips share **one tab stop** (arrows walk them — Left/Right within a chip between its label and its remove button, Up/Down between chips) and the text input is the next tab stop. Deleting the newest tag from the input takes **two** Backspaces — the first, on an empty field, moves focus to the last chip; the second removes it. Every add and remove is announced to screen readers with the running count.
+
 ### 5.10 Other divergences worth a glance
 `cae-toggle-button` has one projected label for both states (no `onLabel`/`offLabel` — [#75](https://github.com/recon-research/caelum/issues/75)) · `cae-tab-menu` matches on `item.value` rather than an item reference, and owns its `mat-tab-nav-panel` so the bar renders the full ARIA tabs pattern · `cae-input-number`, `cae-input-mask`, `cae-input-otp` and `cae-password` are **components**, not directives, because each owns its own `mat-form-field` wrapper.
 
