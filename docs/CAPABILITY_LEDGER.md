@@ -61,8 +61,8 @@ failed re-review gets recorded.
 | `card` | adversarial-passed | ☑ | ☑ | — | ☑ | PR #30 · `148b026` |
 | `carousel` | adversarial-passed | ☑ | ☑ | — | — | PR #277 · `42277770` |
 | `checkbox` | adversarial-passed | ☑ | ☑ | — | ☑ | PR #30 · `148b026` |
-| `chip` | adversarial-passed | ☑ | ☑ | — | — | PR #86 · `33f3b2f4` |
-| `chip-set` | adversarial-passed | ☑ | ☑ | — | — | PR #203 · `72a07943` |
+| `chip` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #86 · `33f3b2f4` |
+| `chip-set` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #203 · `72a07943` |
 | `confirm` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #833 · `e334c8e2` |
 | `context-menu` | adversarial-passed | ☑ | ☑ | — | — | PR #159 · `f48cc09b` |
 | `datepicker` | adversarial-passed | ☑ | ☑ | — | — | PR #684 · `a730b5a1` |
