@@ -115,6 +115,29 @@ describe('CaeMenubar', () => {
     await expectNoA11yViolations(overlayContainer.getContainerElement());
   });
 
+  it('does not hand an open dropdown to the group that slides into its slot (#879)', async () => {
+    // The #774 family rule: a caeMenuTriggerFor's open/closed state lives inside Material and is
+    // never bound in this template, so a view reused at a position carries it to whatever data
+    // lands there. Under `track $index` this leaves the surviving group looking already-open,
+    // showing ITS items, having never been triggered.
+    //
+    // Removing group 0 rather than the last group is the whole test. Drop the LAST group and
+    // nothing slides into the vacated slot, so the reused view is destroyed either way and the
+    // assertion passes under BOTH tracking modes — that is exactly how #150's own version of this
+    // test was vacuous on first write (and why the vacuity guard below asserts the slide happened).
+    await setup();
+    menuTriggerAt(0).open();
+    await flush();
+    expect(menuItems().map((r) => r.textContent!.trim())).toEqual(['New', 'Open']); // setup guard
+
+    ref.setInput('model', GROUPS.slice(1)); // 'File' out; 'Edit' takes position 0
+    await flush();
+
+    expect(triggers().map((b) => b.textContent!.trim())).toEqual(['Edit', 'View']); // it DID slide
+    expect(triggers()[0].getAttribute('aria-expanded')).not.toBe('true');
+    expect(menuItems()).toEqual([]); // no panel survived the group that owned it
+  });
+
   it('marks each trigger role=menuitem with type=button (no form submit — #148) and a popup', async () => {
     await setup();
     for (const b of triggers()) {

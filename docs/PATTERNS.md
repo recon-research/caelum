@@ -354,9 +354,12 @@ Both idioms are correct; they answer different questions, so **neither is swept 
 
 ## 13. `track $index` is safe only while the rendered child is stateless (#774)
 
-Every data-driven list in this library tracks `$index` — `cae-menu`, `cae-menubar`,
-`cae-context-menu`, `cae-breadcrumb`. That is correct *there*, because those rows are pure
-renderers: every visible byte comes from a binding, so re-keying just re-binds.
+Data-driven lists in this library started out tracking `$index` — and that is correct only while
+the rows are pure renderers: every visible byte comes from a binding, so re-keying just re-binds.
+`cae-context-menu` and `cae-breadcrumb` still qualify. Two did not, and each was found by *auditing
+the stated exception list rather than trusting it*: `cae-menu` when its branches gained submenus
+(#150) and `cae-menubar`, which stamps a `caeMenuTriggerFor` per group (**#879**). The family
+comment in `panel-menu.ts` names the current audit — keep it honest when a member changes side.
 
 It stops being correct the moment the child owns state the parent never binds. `cae-panel-menu`
 composes `cae-expansion-panel`, whose `expanded` flag lives **inside Material** and is not bound by

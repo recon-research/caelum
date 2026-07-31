@@ -92,6 +92,16 @@ export class MenubarTriggerItem implements FocusableOption {
  * Enter/Space open it too via the native button. A group with no items is treated as disabled (no
  * dead-end empty menu). Name the bar with {@link ariaLabel}.
  *
+ * **Model updates — groups need stable identity** (#879, the family rule from #774). Groups track by
+ * **object identity**, so a group's dropdown state follows the group it belongs to across a model
+ * change. `$index` would be wrong here for the same reason it was wrong for `cae-expansion-panel`
+ * (#774) and `cae-menu`'s branches (#150): a `caeMenuTriggerFor`'s open/closed state lives inside
+ * Material and is never bound in this template, so a view reused at a position keeps it. Remove an
+ * open group and the group that slid into its slot would appear **already open**, showing its own
+ * items, having never been triggered. The cost of identity tracking is the usual one: rebuilding
+ * `model()` into fresh object literals every change-detection pass re-creates every trigger and
+ * panel, so hold the array (or its groups) stable.
+ *
  * **v1 scope** (#153): one level of dropdown (the common File▸/Edit▸ admin case). Follow-ups —
  * rich items (router links/commands, #150),
  * responsive overflow collapse, RTL roving.
@@ -109,7 +119,8 @@ export class MenubarTriggerItem implements FocusableOption {
       [attr.aria-label]="ariaLabel() || null"
       (keydown)="onKeydown($event)"
     >
-      @for (group of model(); track $index) {
+      <!-- track group, NOT $index — a trigger's open state is unbound (#774/#879). See the class doc. -->
+      @for (group of model(); track group) {
         <button
           matButton
           type="button"
