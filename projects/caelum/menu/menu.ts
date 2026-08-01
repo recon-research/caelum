@@ -1,11 +1,13 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   Directive,
   effect,
   forwardRef,
   inject,
   input,
+  isDevMode,
   output,
   type TemplateRef,
   viewChild,
@@ -25,7 +27,8 @@ export interface CaeMenuItem {
   disabled?: boolean;
   /**
    * Optional leading glyph, by built-in name (`caelum/icon` registry — D-596). Rendered
-   * decoratively (`aria-hidden`); the item's accessible name stays {@link label}. For a
+   * decoratively (`aria-hidden`); the item's accessible name stays {@link label}, because the
+   * registry glyphs are text-free inline SVG — see `iconTemplate` for why that matters. For a
    * custom glyph, supply the component-level `iconTemplate` instead, which wins over this.
    * Honoured by every component that consumes this interface — `cae-menu` itself, the menus
    * embedded in `cae-split-button` / `cae-menubar`, and `cae-context-menu` — so one item
@@ -55,12 +58,15 @@ export interface CaeMenuItem {
    * that arm is #158.
    *
    * **Two preconditions, both introduced by the #150 recursion:**
-   * - **The graph must be a finite tree.** A cycle (`a.items = [a]`, or a mutual pair) recurses
-   *   until the stack overflows, and it happens at the first change detection — not on open, since
-   *   a branch's nested menu is projected content that is *created* eagerly even though its DOM is
-   *   only inserted when the panel opens. Material's own recursion guard cannot catch this: it
-   *   trips only when a panel is its own direct parent, and here every level is a distinct
-   *   instance. A dev-mode cycle check is #877.
+   * - **The graph must be finite and acyclic.** A **DAG is fine** — reuse one subtree object under
+   *   several branches and it renders in full under each. A **cycle** (`a.items = [a]`, or a mutual
+   *   pair) is not: the item on the cycle renders as a *disabled leaf*, the branch stops there, and
+   *   dev mode warns naming it (#877). That is a deliberate break, not a diagnostic — without it
+   *   the recursion does not terminate, and it fails at the **first change detection** rather than
+   *   on open, since a branch's nested menu is projected content that is *created* eagerly even
+   *   though its DOM is only inserted when the panel opens. Material's own recursion guard cannot
+   *   catch it either: that trips only when a panel is its own direct parent, and here every level
+   *   is a distinct instance.
    * - **Item objects need stable identity, and must be distinct within a level.** Rows track by
    *   item identity (see the template), so binding a freshly-built array of fresh objects on every
    *   change detection — `[items]="buildItems()"` with a non-memoised method — now destroys and
@@ -115,6 +121,23 @@ export interface CaeMenuItem {
  * declared inside *its* `<mat-menu>`, and is wired up through the same public `[items]` input and
  * `getMenuPanel()` seam the consumer's own trigger uses.
  *
+ * **The whole tree is instantiated at the first change detection, not on open — measured (#878).**
+ * A branch's nested `cae-menu` is projected content, and Angular *creates* projected views eagerly,
+ * deferring only their DOM insertion. So every level exists before anything opens. At a 4-level x
+ * 6-child model (1554 nodes): **259** `MatMenu` + **258** `MatMenuTrigger` + **1554** `MatMenuItem`
+ * instantiated, **0** rows in the live document, ~252 ms of first CD. Three things that measurement
+ * corrected, all of them counter-intuitive:
+ * - The cost is **per branch, not per node** — 259 key-manager/typeahead sets, not one per row.
+ * - `MatMenu.ngAfterContentInit` (the `FocusKeyManager` + `Typeahead` + three subscriptions that
+ *   look like the expensive part) is **2–3% of it**. The cost is plain Angular view creation.
+ * - **Most of it is not the tiering.** A *flat* 1554-row menu costs ~173 ms of the same 252 ms, so
+ *   only ~31% is attributable to nesting at all (~0.3 ms per branch, ~0.11 ms per row).
+ * At Forge's real shape (1 branch x 3 leaves) first CD is **~1.9 ms**, so this is negligible where
+ * anyone actually is; `<ng-template matMenuContent>` is the lever *if* a consumer ever needs it,
+ * but it moves where rows are declared and would undo the correctness argument above — don't reach
+ * for it without a profile. Note a `By.directive(MatMenu)` query reports **1** here however deep the
+ * tree is (the panel lives in an un-stamped `ng-template`), so that count reads "lazy" and is wrong.
+ *
  * **Two template decisions worth knowing, kept here rather than inline** — HTML comments inside a
  * `template:` literal are string content, so they are *not* minified away and the per-entry-point
  * size gate charges for them, while this JSDoc is free:
@@ -151,10 +174,10 @@ export interface CaeMenuItem {
     <mat-menu [xPosition]="xPosition()" [yPosition]="yPosition()" [aria-label]="ariaLabel()">
       @for (item of items(); track item; let i = $index) {
         <!-- track item, NOT $index — a branch's open state is unbound (#774). See the class doc. -->
-        @if (item.items?.length) {
+        @if (isBranch(item)) {
           <button
             mat-menu-item
-            [disabled]="item.disabled ?? false"
+            [disabled]="rowDisabled(item)"
             [matMenuTriggerFor]="child.getMenuPanel() ?? null"
           >
             <ng-container
@@ -171,7 +194,7 @@ export interface CaeMenuItem {
             (itemSelect)="itemSelect.emit($event)"
           />
         } @else {
-          <button mat-menu-item [disabled]="item.disabled ?? false" (click)="itemSelect.emit(item)">
+          <button mat-menu-item [disabled]="rowDisabled(item)" (click)="itemSelect.emit(item)">
             <ng-container
               [ngTemplateOutlet]="row"
               [ngTemplateOutletContext]="{ $implicit: item, index: i }"
@@ -223,6 +246,15 @@ export class CaeMenu implements CaeMenuPanelHost {
    * supplied, for every item, so one convention governs the whole menu. The template owns
    * its own spacing and accessibility (keep glyphs decorative; the item's accessible name
    * is its label).
+   *
+   * **The template must be TEXT-FREE** — the family-wide D-596 rule, single-homed on
+   * {@link CaeItemIconContext}. Here it is load-bearing rather than merely tidy (#881): Material
+   * derives a row's typeahead key from the same text content as its accessible name, via
+   * `MatMenuItem.getLabel()`, which clones the row and strips only `mat-icon, .material-icons` —
+   * so this template's text survives into both. A template stamping `{{ index }}:{{ item.value }}`
+   * makes the "New" row's key `"0:newNew"`, and typing `N` stops reaching it. `MatMenuItem` exposes
+   * no typeahead-label input to override that (CDK Menu's `cdkMenuitemTypeaheadLabel` has no
+   * Material equivalent), so the wrapper cannot repair it — hence a contract, not a default.
    */
   readonly iconTemplate = input<TemplateRef<CaeItemIconContext<CaeMenuItem>> | null>(null);
   /**
@@ -243,6 +275,38 @@ export class CaeMenu implements CaeMenuPanelHost {
   readonly yPosition = input<'above' | 'below'>('below');
   /** Emits the chosen item when a menu item is activated (click or keyboard). */
   readonly itemSelect = output<CaeMenuItem>();
+
+  /**
+   * The items reachable from {@link items} that sit on a cycle — recomputed only when the model
+   * changes. See {@link findCycles} for why this is node-scoped rather than path-scoped.
+   */
+  private readonly cyclicItems = computed(() => findCycles(this.items()));
+
+  constructor() {
+    // Dev-only DIAGNOSTIC for the cycle a model should not contain (#877). The cycle *break* is
+    // deliberately NOT dev-gated — it lives in `isDeadEnd`, so a production build renders a broken
+    // model inertly instead of overflowing the stack. Only the explanation is dev-only (#955: a
+    // behaviour effect wrapped in isDevMode() is a defect; a warning wrapped in it is correct).
+    //
+    // The gate sits OUTSIDE `effect()` — the idiom ten other components here already use — so a
+    // production build allocates no effect node at all. Inside, it would still create and schedule
+    // one per instance, and this component's own #878 measurement is 259 instances for a 4x6 tree.
+    //
+    // The message is terse ON PURPOSE. A template literal's contents are shipped bytes charged to
+    // this entry point's size budget, exactly like the HTML comments the class doc calls out, so
+    // the reasoning lives in `findCycles`' doc (free) and the warning carries only what a developer
+    // needs to locate it: which item, what is wrong, and what the component did instead.
+    if (isDevMode()) {
+      effect(() => {
+        for (const item of this.cyclicItems()) {
+          console.warn(
+            `cae-menu: "${item.label}" is on a cycle in CaeMenuItem.items, which must be a finite ` +
+              'graph. Rendered as a disabled leaf; recursing would not terminate.',
+          );
+        }
+      });
+    }
+  }
 
   /**
    * The raw view query backing {@link getMenuPanel} — an INTERNAL seam, not a consumer API.
@@ -274,6 +338,94 @@ export class CaeMenu implements CaeMenuPanelHost {
 
   /** Context builder for {@link iconTemplate} — the single-homed D-596 helper (#649). */
   protected readonly iconContext = caeItemIconContext;
+
+  /**
+   * Whether `item` renders as a *branch* — a row that opens its own nested panel. It must have
+   * children, and those children must be able to produce a panel worth opening ({@link isDeadEnd}).
+   */
+  protected isBranch(item: CaeMenuItem): boolean {
+    return !!item.items?.length && !this.isDeadEnd(item);
+  }
+
+  /**
+   * Whether the row for `item` is non-interactive: the consumer disabled it, or it is a dead end.
+   * A dead end is disabled rather than left clickable because a branch is navigational — emitting
+   * it through `(itemSelect)` as if it were a leaf would report a selection the model never
+   * offered (the same line Book 09 §3.5 draws for CascadeSelect's intermediate nodes).
+   */
+  protected rowDisabled(item: CaeMenuItem): boolean {
+    return (item.disabled ?? false) || this.isDeadEnd(item);
+  }
+
+  /**
+   * A row that HAS children but cannot open a usable panel — the family's no-dead-end rule. Stated
+   * precisely, because the obvious sentence over-claims: `cae-menubar` and `cae-split-button`
+   * establish *that* a trigger with nothing behind it should be disabled, but each checks only the
+   * **empty**-model arm (`menubar.ts` `group.items.length === 0`, `split-button.ts`
+   * `model().length === 0`). Neither covers all-disabled, so the same dead end is still reachable
+   * from those two triggers — filed as #961, deliberately blocked on #880. Two ways to get here,
+   * both from a model the component cannot render as asked:
+   *
+   * - **Every child is disabled** (#880). Material would open the panel and then find nothing to
+   *   focus: `focusFirstItem` → `setFirstItemActive()` skips disabled rows, leaves `activeItem`
+   *   unset, and parks focus on the bare `role="menu"` div, where the arrow keys do nothing and
+   *   only Escape or an outside click recovers. Verified in `menu.mjs` (`focusFirstItem`'s
+   *   `if (!manager.activeItem && menuPanel) menuPanel.focus()`), not assumed.
+   * - **The item sits on a cycle** (#877) — a model that is not a finite graph. Stopping here is
+   *   what bounds the recursion; see {@link findCycles} and the constructor's dev-mode warning.
+   *
+   * An **empty** `items` array is not a dead end and not a branch: it is an ordinary leaf, per
+   * {@link CaeMenuItem.items}. Note `[].every(…)` is `true`, so the length test below is load-
+   * bearing — without it an empty array would render as a *disabled* leaf.
+   */
+  private isDeadEnd(item: CaeMenuItem): boolean {
+    if (!item.items?.length) return false;
+    return item.items.every((child) => child.disabled) || this.cyclicItems().has(item);
+  }
+}
+
+/**
+ * The items on a cycle in the graph reachable from `roots`, by iterative-colouring DFS: an item
+ * still on the current path is a back edge, and back edges are exactly the cycles.
+ *
+ * **Node-scoped, not path-scoped — and that distinction is the whole point.** The first version of
+ * this guard asked "is this item one of my *ancestors*", walking a DI parent chain. That terminates,
+ * but only bounds the recursion's DEPTH: every *simple path* through a cyclic graph still unrolls,
+ * because each path is legal until it repeats. Measured on a symmetric 7-node graph (every item
+ * listing the other six — the shape a graph-flavoured API produces by accident): **1957 panels and
+ * 2377 ms of blocking first change detection**, growing factorially; ten nodes is ~986k panels. That
+ * traded a fast, loud `RangeError` for a silently frozen tab with no warning, since the diagnostic
+ * never gets to flush. Marking the item itself instead makes the recursion stop at the *first*
+ * sighting: one pass, `O(V+E)`, and the same 7-node graph renders one disabled row.
+ *
+ * `done` is what keeps it linear, and it is also why a legal **DAG still renders in full**: a
+ * subtree shared by two sibling branches is re-entered, found already finished rather than on the
+ * path, and skipped *for cycle purposes only* — the template still recurses into it under each
+ * parent. A visited-ever check that conflated the two would kill exactly that case, which is why it
+ * has its own spec.
+ *
+ * Detecting one node per cycle is sufficient: every cycle contains at least one back edge in any
+ * DFS, so breaking there leaves an acyclic graph. Note that bounds *cycles*, not fan-out — a dense
+ * acyclic model still renders every path, which is the pre-existing behaviour a shared subtree
+ * relies on.
+ */
+function findCycles(roots: readonly CaeMenuItem[]): ReadonlySet<CaeMenuItem> {
+  const onPath = new Set<CaeMenuItem>();
+  const done = new Set<CaeMenuItem>();
+  const cyclic = new Set<CaeMenuItem>();
+  const walk = (item: CaeMenuItem): void => {
+    if (onPath.has(item)) {
+      cyclic.add(item);
+      return;
+    }
+    if (done.has(item)) return;
+    onPath.add(item);
+    for (const child of item.items ?? []) walk(child);
+    onPath.delete(item);
+    done.add(item);
+  };
+  for (const root of roots) walk(root);
+  return cyclic;
 }
 
 /**

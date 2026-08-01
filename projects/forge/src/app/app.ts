@@ -266,6 +266,20 @@ export class App {
     },
     { value: 'reset', label: 'Reset form' },
     { value: 'duplicate', label: 'Duplicate workspace', disabled: true },
+    // A group whose children are ALL disabled — the shape a permission-gated, config-driven menu
+    // produces constantly in a console like this one, and the only interaction that reaches #880's
+    // no-dead-end rule. It renders as a DISABLED LEAF: no chevron, no submenu, not clickable.
+    // Without that rule Material opens a panel with nothing focusable in it and parks focus on the
+    // empty panel div, where the arrow keys do nothing and only Escape gets you out. Contrast it
+    // with "Jump to step" above, which is a real branch, and note that a group with only SOME
+    // children disabled still opens normally.
+    {
+      label: 'Bulk actions',
+      items: [
+        { value: 'bulk:archive', label: 'Archive selected', disabled: true },
+        { value: 'bulk:delete', label: 'Delete selected', disabled: true },
+      ],
+    },
   ];
 
   /** A `cae-tree` model — the workspace structure, expandable + selectable. */
