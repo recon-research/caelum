@@ -82,12 +82,12 @@ failed re-review gets recorded.
 | `input-number` | adversarial-passed | ☑ | ☑ | — | — | PR #307 · `0ff5d1cf` |
 | `input-otp` | adversarial-passed | ☑ | ☑ | — | — | PR #310 · `de78df5d` |
 | `listbox` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #115 · `1e81e3cf` |
-| `menu` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #876 · `7a8e5e7` |
+| `menu` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #969 · `c7fde82` |
 | `menubar` | adversarial-passed | ☑ | ☑ | — | — | PR #154 · `402539ad` |
 | `multi-select` | adversarial-passed | ☑ | ☑ | — | — | PR #136 · `5dfd7412` |
 | `order-list` | adversarial-passed | ☑ | ☑ | — | — | PR #339 · `cd77e581` |
 | `panel` | adversarial-passed | ☑ | ☑ | ☑ | ☑ | PR #872 · `1bf7619` |
-| `panel-menu` | adversarial-passed | ☑ | ☑ | — | — | PR #778 · `5be24f1` |
+| `panel-menu` | adversarial-passed | ☑ | ☑ | — | — | PR #969 · `c7fde82` |
 | `password` | adversarial-passed | ☑ | ☑ | — | — | PR #313 · `1793231c` |
 | `pick-list` | adversarial-passed | ☑ | ☑ | — | — | PR #343 · `766931bb` |
 | `popover` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #842 · `bc51fc23` |
