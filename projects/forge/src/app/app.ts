@@ -280,6 +280,14 @@ export class App {
         { value: 'bulk:delete', label: 'Delete selected', disabled: true },
       ],
     },
+    // ...and the rule is TRANSITIVE (#962). "Export report" is not caught by the check above --
+    // its only child is a branch, not a disabled item -- but that child is itself a dead end, so
+    // nothing under here is reachable and the whole thing collapses to a disabled leaf. Before
+    // #962 this rendered as a live submenu over a panel containing one unreachable row.
+    {
+      label: 'Export report',
+      items: [{ label: 'Formats', items: [{ label: 'PDF (licence required)', disabled: true }] }],
+    },
   ];
 
   /** A `cae-tree` model — the workspace structure, expandable + selectable. */

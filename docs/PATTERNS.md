@@ -554,7 +554,7 @@ element and `document.activeElement` becomes `<body>`, so the keyboard user lose
   non-interactive element whose announcement nobody here can verify. A dev warning naming the
   consumer's two ways out keeps the gap loud and honest (decision #951).
 
-## 20. Bound a self-recursive component per *node*, not per *path* or per *depth* (#877, #880)
+## 20. Bound a self-recursive component per *node*, not per *path* or per *depth* (#877, #880, #962)
 
 A component that stamps itself for nested data (`cae-menu` on `CaeMenuItem.items`) inherits the
 model's shape as its recursion depth — so a cyclic model recurses forever. Two things make that
@@ -610,8 +610,46 @@ nothing and only Escape recovers) nor a command that emits an item the model nev
 array an ordinary enabled leaf — and that distinction needs its own spec, because the mutation that
 breaks it is a one-character edit.
 
-**Deadness is not transitive here, and that is a known hole rather than a design.** `cae-menu` reads
-each child's own `disabled` flag, so a branch whose only child is *itself* a dead end still opens a
-panel with one disabled row — the same strand, one level in. Filed rather than fixed because it
-predates the slice; the point for a reader is that "no dead ends" and "no dead ends *transitively*"
-are different claims, and the cheap predicate only buys the first.
+**Deadness is transitive, and asking it per row cannot answer it** (#962). Reading each child's own
+`disabled` flag looks like the rule but is not: a child that is *itself* a dead end renders disabled
+while carrying `disabled === undefined`, so a branch whose only child is a dead end still opened a
+panel with one unreachable row — the same strand, one level in. "No dead ends" and "no dead ends
+*transitively*" are different claims, and the cheap predicate only buys the first. The fix is not a
+deeper predicate but a change of direction: make the traversal **bottom-up** and have it return
+*"would this item's own row be focusable"* — exactly what the parent needs to decide whether it is a
+dead end. That rides the cycle DFS for free, since both are reachability questions about one graph,
+and stays `O(V+E)` per model change instead of re-walking a subtree per row per change detection.
+
+**When the recursion is a component, termination is a property of the *sequence* of analyses, not of
+any one of them** (#962). This is the subtlest failure in this section, it survived a full mutation
+table, and it is the same lesson as the path-vs-node one applied one level up. Every level
+re-analyses **its own** subtree from a different starting set, and "which node closes the cycle"
+depends on where the walk started — so a break that lands on a different node each time can keep
+missing the node the render is about to descend into. Two symptoms, same cause:
+
+- **Levels disagree.** A parent concludes a cycle member is usable while that member's own instance
+  concludes it is dead, so the parent renders an **enabled** trigger over a panel its child has
+  disabled entirely — the empty-panel focus trap the rule existed to prevent. Needs a cycle whose
+  members *also* carry ordinary leaves, which is why no small single-cycle test shows it.
+- **Nothing terminates at all.** With four mutually-referencing branches, analysing `A`'s children
+  flags one set and leaves `B` a branch; analysing `B`'s children flags another and leaves `A` a
+  branch — period-2 infinite descent, at the first change detection, warning at every level while
+  the tab freezes.
+
+Fix: break **every** node on the closing path (`path.indexOf(item)` → end) rather than the back-edge
+target alone, which is start-independent. Keep the *warning* set single-node — one line per cycle is
+the useful diagnostic. Because a boundedness claim is exactly what this section already got wrong
+once, it was checked by randomised search rather than by hand: **~190k random cyclic graphs, 0
+non-terminating renders with whole-cycle marking and 61 without it** — the second number being what
+says the search actually exercised the hazard. General form: **any memoised per-instance graph answer
+must be a function of the graph, not of the traversal**, or the instances are silently inconsistent
+with one another. And when a hand proof is not available, fuzz the property and report the
+control arm alongside it.
+
+**Then walk every child anyway — `usable ||= walk(child)` is a trap.** The moment the traversal
+returns a boolean, the idiomatic accumulator short-circuits, and it stops calling `walk` as soon as
+one child is usable. An *undiscovered* cycle is not a cosmetic miss: it is an unbounded render.
+Worse, it hides from the obvious spec, because each recursion level re-analyses only what it can
+reach — put the usable child *first* and a cycle behind it, and every level short-circuits in turn,
+so `A` renders `B` renders `A` forever with no assertion ever failing. The spec that catches it does
+not fail under the mutation; it hangs. Write the loop out longhand and say why in a comment.

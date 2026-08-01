@@ -664,6 +664,152 @@ describe('CaeMenu tiered submenus (#150)', () => {
       await openRoot();
       expect(rowNamed(rootPanel(), 'Solo').getAttribute('disabled')).toBeNull();
     });
+
+    /**
+     * #962 — the rule has to be TRANSITIVE. `Export` is itself a dead end (its only child is
+     * disabled), so it renders as a disabled row; a `File` panel containing nothing but that row is
+     * exactly as unusable as the one #880 fixed, and strands focus identically. The first
+     * implementation asked `items.every((child) => child.disabled)`, which reads each child's own
+     * flag — and a dead-end branch carries `disabled === undefined`, so this model walked straight
+     * through the guard one level down.
+     */
+    it('is TRANSITIVE — a branch whose only child is a dead end is a dead end too', async () => {
+      host.items.set([
+        { label: 'File', items: [{ label: 'Export', items: [{ label: 'PDF', disabled: true }] }] },
+      ]);
+      await openRoot();
+      const file = rowNamed(rootPanel(), 'File');
+      expect(file.getAttribute('aria-haspopup')).toBeNull();
+      expect(file.getAttribute('disabled')).not.toBeNull();
+    });
+
+    /** Three levels deep, so a fix that only looks one level further down does not read as correct. */
+    it('propagates a dead end up THREE levels', async () => {
+      host.items.set([
+        {
+          label: 'Root',
+          items: [
+            {
+              label: 'File',
+              items: [{ label: 'Export', items: [{ label: 'PDF', disabled: true }] }],
+            },
+          ],
+        },
+      ]);
+      await openRoot();
+      const root = rowNamed(rootPanel(), 'Root');
+      expect(root.getAttribute('aria-haspopup')).toBeNull();
+      expect(root.getAttribute('disabled')).not.toBeNull();
+    });
+
+    /**
+     * The false-positive direction, and the reason the traversal is bottom-up rather than "any
+     * branch-of-branches is suspect": ONE reachable leaf anywhere down the chain keeps every
+     * ancestor a live branch. Without this arm, a fix that over-marked would still pass both specs
+     * above.
+     */
+    it('leaves a DEEP branch alone when something at the bottom is still usable', async () => {
+      host.items.set([
+        {
+          label: 'File',
+          items: [
+            {
+              label: 'Export',
+              items: [
+                { label: 'PDF', disabled: true },
+                { value: 'csv', label: 'CSV' },
+              ],
+            },
+          ],
+        },
+      ]);
+      await openRoot();
+      const file = rowNamed(rootPanel(), 'File');
+      expect(file.getAttribute('aria-haspopup')).toBe('menu');
+      expect(file.getAttribute('disabled')).toBeNull();
+
+      // ...and the reachable leaf really is reachable, not merely un-marked one level up.
+      file.click();
+      await settle();
+      const exportRow = rowNamed(panelOf(file), 'Export');
+      exportRow.click();
+      await settle();
+      expect(rowNamed(panelOf(exportRow), 'CSV').getAttribute('disabled')).toBeNull();
+    });
+
+    /**
+     * The accumulator must be ANY-child-wins, not last-child-wins. The sibling spec above happens
+     * to list its usable child LAST, so `usable = walk(child)` (dropping the accumulation) passes
+     * there; with the order reversed it marks a live branch dead and hides a reachable row.
+     */
+    it('opens when the usable child comes FIRST — order must not decide it', async () => {
+      host.items.set([
+        {
+          label: 'Group',
+          items: [
+            { value: 'b', label: 'b' },
+            { label: 'a', disabled: true },
+          ],
+        },
+      ]);
+      await openRoot();
+      const group = rowNamed(rootPanel(), 'Group');
+      expect(group.getAttribute('disabled')).toBeNull();
+      group.click();
+      await settle();
+      expect(rowsIn(panelOf(group)).map((r) => r.textContent?.trim())).toEqual(['b', 'a']);
+    });
+
+    /**
+     * A disabled child that is itself a BRANCH still does not count as reachable. Every other
+     * disabled item in this file is a childless leaf, so `walk`'s `!item.disabled` term is
+     * otherwise pinned only for leaves — drop it for branches and `P` becomes a live trigger over
+     * a panel holding one disabled row, the #880 trap again.
+     */
+    it('does not count a DISABLED branch child as reachable', async () => {
+      host.items.set([
+        {
+          label: 'P',
+          items: [{ label: 'Q', disabled: true, items: [{ value: 'r', label: 'R' }] }],
+        },
+      ]);
+      await openRoot();
+      const p = rowNamed(rootPanel(), 'P');
+      expect(p.getAttribute('aria-haspopup')).toBeNull();
+      expect(p.getAttribute('disabled')).not.toBeNull();
+    });
+
+    /** A dead end at a root index > 0 — the root loop must walk every root, not stop at the first. */
+    it('finds a dead end at a LATER root index', async () => {
+      host.items.set([
+        { value: 'u', label: 'U' },
+        { label: 'Group', items: [{ label: 'a', disabled: true }] },
+      ]);
+      await openRoot();
+      const group = rowNamed(rootPanel(), 'Group');
+      expect(group.getAttribute('aria-haspopup')).toBeNull();
+      expect(group.getAttribute('disabled')).not.toBeNull();
+    });
+
+    /**
+     * An all-disabled branch is a LEGAL model — a permission-gated menu produces them constantly —
+     * so the cycle diagnostic must stay silent for it. `cyclic` and `deadEnd` are separate sets
+     * precisely to keep that true; a mutation adding `cyclic.add` beside every `deadEnd.add` is
+     * otherwise only caught incidentally, by a warning COUNT in the cycle describe.
+     */
+    it('stays SILENT for an all-disabled branch — only a cycle is a defect', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        host.items.set([{ label: 'Group', items: [{ label: 'a', disabled: true }] }]);
+        await openRoot();
+        expect(rowNamed(rootPanel(), 'Group').getAttribute('disabled')).not.toBeNull();
+        expect(
+          warn.mock.calls.filter((c: unknown[]) => String(c[0]).includes('is on a cycle')),
+        ).toHaveLength(0);
+      } finally {
+        warn.mockRestore();
+      }
+    });
   });
 
   describe('a cyclic model (#877)', () => {
@@ -691,7 +837,7 @@ describe('CaeMenu tiered submenus (#150)', () => {
      * The break is NODE-scoped, so it lands on the very first sighting — `A` is a disabled leaf in
      * the ROOT panel, and no second level is ever built. An ancestor-chain (path-scoped) guard
      * instead renders `A` as a branch and disables the copy one level down, which terminates but
-     * unrolls every simple path; see `findCycles`' doc and the fan-out spec below.
+     * unrolls every simple path; see `analyseMenuGraph`'s doc and the fan-out spec below.
      */
     it('renders a self-referential item as a disabled leaf, at the first sighting', async () => {
       const a = node('A');
@@ -716,6 +862,119 @@ describe('CaeMenu tiered submenus (#150)', () => {
 
       const row = rowNamed(rootPanel(), 'A');
       expect(row.getAttribute('aria-haspopup')).toBeNull();
+      expect(warn).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * The traversal must walk EVERY child, never stopping at the first usable one — the arm that
+     * makes `usable ||= walk(child)` (which short-circuits) unshippable, and the reason the loop is
+     * written out longhand.
+     *
+     * `A`'s first child `U` is an ordinary usable leaf, so a short-circuiting version returns before
+     * ever reaching `B` — and therefore never discovers `B → A`. That is not a cosmetic miss: the
+     * cycle is then invisible at *every* level, because each level re-analyses only what it can
+     * reach and each one short-circuits at `U` in turn, so `A` renders `B` renders `A` without
+     * bound. Like the self-reference spec above, this test would not fail under that mutation — it
+     * would hang. The usable child must come FIRST for the arm to bite.
+     */
+    it('walks EVERY child — a usable sibling must not hide a cycle behind it', async () => {
+      const a = node('A');
+      const b = node('B');
+      a.items = [{ value: 'u', label: 'U' } as CaeMenuItem, b as CaeMenuItem];
+      b.items = [a as CaeMenuItem];
+      host.items.set([a as CaeMenuItem]);
+      await openRoot();
+
+      const row = rowNamed(rootPanel(), 'A');
+      expect(row.getAttribute('aria-haspopup')).toBeNull();
+      expect(row.getAttribute('disabled')).not.toBeNull();
+      expect(warn).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * **Every level must reach the SAME verdict about one cycle.** The break is applied by each
+     * `cae-menu` instance over its own `items()`, and a back edge lands on whichever cycle node
+     * that particular walk saw first — so marking only that node lets a parent and its own child
+     * disagree, and the disagreement is not cosmetic: the parent renders an ENABLED trigger whose
+     * panel the child has disabled entirely, which is the #880 focus trap.
+     *
+     * Here `u ⇄ C` is a cycle whose members each also carry an ordinary leaf, so neither is a dead
+     * end by the escape-leaf test alone. Reached from `Z` first, the back edge lands on `u`, and
+     * `C` looks usable — so `P`, whose only child is `C`, looked like a live branch. `P`'s own
+     * nested instance then started from `C`, landed the back edge there, and disabled its only row.
+     * Marking the whole closing path is start-independent, which is what makes the two agree.
+     */
+    it('agrees across levels — a cycle with escape leaves cannot strand a parent', async () => {
+      const u = node('u');
+      const c = node('C');
+      u.items = [c as CaeMenuItem, { value: 'lu', label: 'leafU' }];
+      c.items = [u as CaeMenuItem, { value: 'lc', label: 'leafC' }];
+      host.items.set([
+        { label: 'Z', items: [u as CaeMenuItem, { value: 'lz', label: 'leafZ' }] },
+        { label: 'P', items: [c as CaeMenuItem] },
+      ]);
+      await openRoot();
+
+      // P's only child is on the cycle, so P has nothing reachable: a disabled leaf, no trigger.
+      const p = rowNamed(rootPanel(), 'P');
+      expect(p.getAttribute('aria-haspopup')).toBeNull();
+      expect(p.getAttribute('disabled')).not.toBeNull();
+
+      // Z is NOT over-marked: it still reaches leafZ, so it stays a live branch whose panel
+      // offers that leaf alongside the broken row. This is the false-positive direction.
+      const z = rowNamed(rootPanel(), 'Z');
+      expect(z.getAttribute('aria-haspopup')).toBe('menu');
+      z.click();
+      await settle();
+      expect(rowNamed(panelOf(z), 'leafZ').getAttribute('disabled')).toBeNull();
+    });
+
+    /**
+     * **The break point must not MOVE between levels.** Termination here is a property of a
+     * *sequence* of independent analyses, not of one: every level re-analyses its own `items()`, so
+     * a break that lands on a different node each time can miss the node the render is about to
+     * descend into — forever. This model does exactly that under single-node marking: analysing
+     * `A`'s children flags `Q,P,A` and leaves `B` a branch; analysing `B`'s children flags `P,Q,B`
+     * and leaves `A` a branch; and that is the first level again. Period-2 infinite descent, at the
+     * first change detection, with the dev warning firing at every level while the tab freezes.
+     *
+     * So this test does not fail without the fix — it dies. Randomised search over ~190k cyclic
+     * graphs finds 0 non-terminating renders with whole-cycle marking and 61 without it, which is
+     * also what says this arm is not a lucky single case.
+     */
+    it('terminates when the break point would otherwise move between levels', async () => {
+      const a = node('A');
+      const b = node('B');
+      const p = node('P');
+      const q = node('Q');
+      a.items = [q, p, b, { value: 'la', label: 'LA' }] as CaeMenuItem[];
+      b.items = [p, q, a, { value: 'lb', label: 'LB' }] as CaeMenuItem[];
+      p.items = [b, a] as CaeMenuItem[];
+      q.items = [a] as CaeMenuItem[];
+      host.items.set([{ label: 'Root', items: a.items }]);
+      await openRoot();
+
+      // Reaching here at all is the point. The break still applied: Root opens, and the rows the
+      // cycle passes through are inert rather than further triggers.
+      const root = rowNamed(rootPanel(), 'Root');
+      expect(root.getAttribute('aria-haspopup')).toBe('menu');
+      root.click();
+      await settle();
+      const rows = rowsIn(panelOf(root));
+      expect(rows.filter((r) => r.getAttribute('disabled') !== null).length).toBeGreaterThan(0);
+      expect(rowNamed(panelOf(root), 'LA').getAttribute('disabled')).toBeNull();
+    });
+
+    /** A cycle at a root index > 0 — the root loop must walk every root, not stop at the first. */
+    it('finds a cycle at a LATER root index', async () => {
+      const a = node('A');
+      a.items = [a as CaeMenuItem];
+      host.items.set([{ value: 'u', label: 'U' }, a as CaeMenuItem]);
+      await openRoot();
+
+      const row = rowNamed(rootPanel(), 'A');
+      expect(row.getAttribute('aria-haspopup')).toBeNull();
+      expect(row.getAttribute('disabled')).not.toBeNull();
       expect(warn).toHaveBeenCalledTimes(1);
     });
 
@@ -748,7 +1007,7 @@ describe('CaeMenu tiered submenus (#150)', () => {
      * count is the quantity that actually exploded.
      *
      * TWELVE nodes rather than seven, deliberately: this is also the only arm that pins the `done`
-     * memo in `findCycles`. Detection still finds the cycle without it, and the render still stops
+     * memo in `analyseMenuGraph`. Detection still finds the cycle without it, and the render still stops
      * at one row, so nothing smaller notices its removal — but the traversal itself then walks
      * every simple path (~10^8 here) and the test dies on timeout instead of passing instantly.
      */
@@ -804,7 +1063,7 @@ describe('CaeMenu tiered submenus (#150)', () => {
     /**
      * A subtree object reused under two SIBLING branches is a legal finite DAG — a shared "Share…"
      * submenu is exactly that — and it must render in full under BOTH parents. This is what stops
-     * `findCycles` from conflating "already finished" with "on the current path": a visited-ever
+     * `analyseMenuGraph` from conflating "already finished" with "on the current path": a visited-ever
      * check passes every cycle spec above and kills the second sibling here, which is why both
      * siblings are opened rather than just the first.
      */
