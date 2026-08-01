@@ -178,6 +178,31 @@ describe('CaeSplitButton', () => {
     expect(toggle().disabled).toBe(false);
   });
 
+  it('disables the toggle when the only item is a DISABLED BRANCH', async () => {
+    // The `!item.disabled` half of the predicate, untested by every other arm: this item is
+    // disabled but has LIVE children, so the traversal does NOT mark it a dead end and only that
+    // half keeps the toggle off. Without it the dropdown opens holding one disabled branch row.
+    await setup({
+      model: [
+        { label: 'Locked', disabled: true, items: [{ value: 'a', label: 'A' }] },
+      ] satisfies CaeMenuItem[],
+    });
+    expect(toggle().disabled).toBe(true);
+  });
+
+  it('re-evaluates the verdict when the model changes on a LIVE instance', async () => {
+    // Every other arm builds a fresh fixture and reads the state once, so a one-shot latch would
+    // pass all of them. This is the arm that requires the verdict to be reactive.
+    await setup({ model: [{ value: 'a', label: 'A' }] satisfies CaeMenuItem[] });
+    expect(toggle().disabled).toBe(false);
+    ref.setInput('model', [{ value: 'a', label: 'A', disabled: true }] satisfies CaeMenuItem[]);
+    await flush();
+    expect(toggle().disabled).toBe(true);
+    ref.setInput('model', [{ value: 'a', label: 'A' }] satisfies CaeMenuItem[]);
+    await flush();
+    expect(toggle().disabled).toBe(false);
+  });
+
   it('disables the toggle when the model is cyclic — not a finite graph (#877)', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {

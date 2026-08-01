@@ -133,8 +133,16 @@ describe('CaeTag', () => {
 @Component({
   imports: [CaeTag],
   template: `
+    <!--
+      A TEXT-FREE glyph carrying its context in a data attribute (#963, the D-596 sweep). The slot
+      sits inside <mat-chip> beside .cae-tag__label, so any text it stamps joins the chip's
+      announced content — the shape CaeItemIconContext forbids, and this was the seventh fixture
+      still modelling it (found by a review lens after the first six were swept).
+    -->
     <cae-tag [value]="value" icon="user" [iconTemplate]="custom">
-      <ng-template #custom let-v>glyph:{{ v }}</ng-template>
+      <ng-template #custom let-v
+        ><i class="tpl-glyph" [attr.data-cx]="v" aria-hidden="true"></i
+      ></ng-template>
     </cae-tag>
     <cae-tag>{{ projected }}</cae-tag>
   `,
@@ -157,7 +165,10 @@ describe('CaeTag (templates & projection)', () => {
   it('renders the custom iconTemplate with the value as its $implicit context (D-596)', () => {
     const first = root.querySelectorAll('cae-tag')[0];
     // The custom glyph escape hatch receives { $implicit: value } — `let-v` binds the tag's value.
-    expect(first.textContent).toContain('glyph:Live');
+    expect(first.querySelector('.tpl-glyph')?.getAttribute('data-cx')).toBe('Live');
+    // …and the tag's announced content stays EXACTLY its label — the assertion that catches the
+    // class, since the slot sits inside the chip and its text would join that name (#963).
+    expect(first.textContent?.trim()).toBe('Live');
     // iconTemplate wins over [icon]: the @if/@else-if is mutually exclusive, so the registry glyph
     // must NOT also render (this tag sets BOTH icon="user" and the template).
     expect(first.querySelector('cae-icon')).toBeNull();

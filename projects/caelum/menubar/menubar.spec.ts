@@ -266,6 +266,80 @@ describe('CaeMenubar', () => {
     expect(triggers()[0].disabled).toBe(false);
   });
 
+  it('treats a group whose only item is a DISABLED BRANCH as disabled', async () => {
+    // The `!item.disabled` half of the predicate, which every other arm leaves untested: this
+    // item is disabled but has LIVE children, so the traversal does NOT put it in `deadEnd` and
+    // only that half keeps the trigger off. Without it the panel opens holding exactly one
+    // disabled branch row — the #880 trap, and the shape a permission-gated section header takes.
+    await setup({
+      model: [
+        { label: 'File', items: [{ value: 'new', label: 'New' }] },
+        {
+          label: 'Gated',
+          items: [{ label: 'Locked', disabled: true, items: [{ value: 'a', label: 'A' }] }],
+        },
+      ] satisfies CaeMenubarItem[],
+    });
+    expect(triggers()[1].disabled).toBe(true);
+  });
+
+  it('re-evaluates the verdict when the model changes on a LIVE instance', async () => {
+    // Every other arm builds a fresh fixture and reads the state once, so a one-shot latch would
+    // pass all of them. This is the arm that requires the verdict to be reactive.
+    await setup({ model: [{ label: 'File', items: [{ value: 'new', label: 'New' }] }] });
+    expect(triggers()[0].disabled).toBe(false);
+    ref.setInput('model', [
+      { label: 'File', items: [{ value: 'new', label: 'New', disabled: true }] },
+    ] satisfies CaeMenubarItem[]);
+    await flush();
+    expect(triggers()[0].disabled).toBe(true);
+    ref.setInput('model', [
+      { label: 'File', items: [{ value: 'new', label: 'New' }] },
+    ] satisfies CaeMenubarItem[]);
+    await flush();
+    expect(triggers()[0].disabled).toBe(false);
+  });
+
+  it('keeps a tab stop when the model arrives AFTER init and group 0 is dead', async () => {
+    // The roving tabindex names exactly one trigger, and `ngAfterViewInit` seeds it once — against
+    // an EMPTY QueryList when the model is async (the ordinary permissions/HTTP shape). CDK's
+    // `_itemsChanged` only repairs an index that already holds a live item, so `activeIndex`
+    // stayed 0; a dead group 0 then held the bar's only `tabindex="0"` on a natively-disabled
+    // button (Material's `_getTabIndex()` ignores `disabled` for a non-anchor), and the whole
+    // menubar left the tab order — WCAG 2.1.1. Measured before the fix: 0 tabbable triggers.
+    await setup({ model: [] });
+    ref.setInput('model', [
+      { label: 'Locked', items: [{ value: 'a', label: 'A', disabled: true }] },
+      { label: 'File', items: [{ value: 'new', label: 'New' }] },
+    ] satisfies CaeMenubarItem[]);
+    await flush();
+    expect(triggers().filter((b) => !b.disabled && b.tabIndex === 0).length).toBe(1);
+    expect(triggers()[1].tabIndex).toBe(0); // and it is the live one
+  });
+
+  it('ArrowDown refuses to open a dead group when EVERY group is dead', async () => {
+    // A native `disabled` does NOT stop a programmatic open: `MatMenuTrigger._openMenu` refuses
+    // only on `aria-disabled` (`menu.mjs` `_triggerIsAriaDisabled` reads the attribute), which
+    // `MatButton` emits only in its `disabledInteractive` posture. So `onKeydown` has to re-ask.
+    //
+    // The all-dead model is what makes this reachable, and finding it took a mutation: with even
+    // one live group the re-seed above moves `activeIndex` onto it, so the guard never fires and
+    // an arm written against a mixed model passes with the guard DELETED. Here `seedActiveIndex`
+    // has no operable trigger to pick, falls back to index 0 — a dead group — and the guard is the
+    // only thing standing between ArrowDown and a panel Material parks focus inside.
+    await setup({
+      model: [
+        { label: 'Locked', items: [{ value: 'a', label: 'A', disabled: true }] },
+        { label: 'Gated', items: [] },
+      ] satisfies CaeMenubarItem[],
+    });
+    expect(triggers().every((b) => b.disabled)).toBe(true); // the precondition, asserted
+    keydown(DOWN_ARROW);
+    await flush();
+    expect(menuItems()).toEqual([]);
+    expect(document.activeElement?.getAttribute('role')).not.toBe('menu');
+  });
+
   it('treats a CYCLIC group as disabled — the model is not a finite graph (#877)', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {

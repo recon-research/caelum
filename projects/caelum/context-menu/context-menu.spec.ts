@@ -234,6 +234,11 @@ describe('CaeContextMenu per-item icons (D-596, #645)', () => {
     // ELEMENT, not a bare `svg` (the text-free template renders one too) and not the cosmetic
     // .cae-context-menu__icon class, which nothing pins and whose deletion would read green.
     expect(menuItems()[0].querySelector('cae-icon')).toBeNull();
+    // The accessible-name tripwire the other five swept files carry (#963). It matters MORE here
+    // than anywhere: `cdkMenuitemTypeaheadLabel` repairs the typeahead key but not the name — CDK
+    // strips nothing — so without this arm a text-stamping #tpl renames every row and the file
+    // stays green. Trimmed EQUALITY, not toContain.
+    expect(menuItems().map((el) => el.textContent?.trim())).toEqual(['View', 'Edit', 'Delete']);
     // Reverse flip: clearing the template restores the built-in glyph (not a one-way latch).
     fixture.componentInstance.useTpl.set(false);
     fixture.detectChanges();
