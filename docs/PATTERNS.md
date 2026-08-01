@@ -553,3 +553,50 @@ element and `document.activeElement` becomes `<body>`, so the keyboard user lose
   there is no control belonging to the component; a `tabindex="-1"` host would be a focusable
   non-interactive element whose announcement nobody here can verify. A dev warning naming the
   consumer's two ways out keeps the gap loud and honest (decision #951).
+
+## 20. Bound a self-recursive component by ancestor *identity*, not depth (#877, #880)
+
+A component that stamps itself for nested data (`cae-menu` on `CaeMenuItem.items`) inherits the
+model's shape as its recursion depth — so a cyclic model recurses until the stack overflows. Two
+things make that worse than it sounds, and both are why the guard has to be structural rather than
+a `try/catch`:
+
+- **It happens at the first change detection, not on open.** A branch's nested panel is projected
+  content, and Angular *creates* projected views eagerly, deferring only their DOM insertion.
+  Nothing has to be opened, hovered or clicked. Angular also leaves the view dirty on throw, so the
+  next scheduled tick re-attempts it.
+- **The 3p's own recursion guard will not catch it.** `MatMenu` throws only when a panel is its own
+  *direct* parent; under a component recursion every level is a distinct instance, so the check
+  never fires. Verify what the 3p actually guards before relying on it (§16).
+
+**Depth counting is the wrong instrument.** A depth cap invents a limit the model never stated and
+turns a legal deep tree into a broken one. The question is not "how far down am I" but "have I
+already rendered this exact item on the path to here" — so compare **object identity against the
+ancestor chain**:
+
+- **Get the chain from DI, not from a prop.** `inject(Self, { optional: true, skipSelf: true })`
+  yields the enclosing instance, and walking it costs one signal read per level. This works for the
+  same reason §14 does — element injectors follow where a template is *declared*, so the chain is
+  intact even though each panel is later stamped into a detached CDK overlay.
+- **Pass the item object, never a derived array.** The obvious `[ancestors]="[...ancestors, item]"`
+  allocates a fresh array on every change detection, so every nested level's input churns every
+  pass and its effects re-run. Passing the *item* keeps the binding reference-stable and lets each
+  level derive the chain by walking its parents.
+- **Ancestor-scoped, not seen-anywhere.** A subtree object reused under two *sibling* branches is a
+  legal finite DAG — a shared "Share…" submenu is exactly that — and a cheaper visited-set or
+  array-identity check kills it while passing every self-cycle and mutual-pair test. **That case
+  needs its own spec**, or the cheap wrong check looks fully guarded.
+- **Break unconditionally; warn only in dev.** Gating the *break* on `isDevMode()` leaves production
+  overflowing the stack, which is the one build where you cannot see why (#955). Gate the message,
+  not the behaviour — and keep the message terse, because a runtime string is shipped bytes (§15)
+  while the reasoning next to it in JSDoc is free.
+
+**The same predicate answers "should this render as a branch at all".** Once a component asks
+"can this item open a usable panel", a *cycle* and *every child disabled* are the same answer with
+two causes — a row that has children but no panel worth opening. Rendering that as a **disabled
+leaf** keeps the family's no-dead-end rule without inventing a selection: it is neither a trigger
+that opens an empty panel (Material parks focus on the bare `role="menu"` div, where the arrows do
+nothing and only Escape recovers) nor a command that emits an item the model never offered. Note
+`[].every(…)` is vacuously **true**, so an explicit length test is what keeps an *empty* `items`
+array an ordinary enabled leaf — and that distinction needs its own spec, because the mutation that
+breaks it is a one-character edit.
