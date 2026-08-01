@@ -315,7 +315,7 @@ describe('CaePanelMenu', () => {
 
       expect(headerLabels()).not.toContain('A');
       expect(leafByLabel('A').hasAttribute('disabled')).toBe(true);
-      expect(warn).toHaveBeenCalledTimes(1);
+      expect(cycleWarnings()).toHaveLength(1);
       expect(warn.mock.calls[0][0]).toContain('"A" is on a cycle');
     });
 
@@ -329,7 +329,7 @@ describe('CaePanelMenu', () => {
 
       expect(headerLabels()).not.toContain('A');
       expect(leafByLabel('A').hasAttribute('disabled')).toBe(true);
-      expect(warn).toHaveBeenCalledTimes(1);
+      expect(cycleWarnings()).toHaveLength(1);
     });
 
     /**
@@ -348,7 +348,7 @@ describe('CaePanelMenu', () => {
 
       expect(headerLabels()).not.toContain('A');
       expect(leafByLabel('A').hasAttribute('disabled')).toBe(true);
-      expect(warn).toHaveBeenCalledTimes(1);
+      expect(cycleWarnings()).toHaveLength(1);
     });
 
     /**
@@ -388,6 +388,58 @@ describe('CaePanelMenu', () => {
       expect(headerLabels()).toContain('Bulk');
       expect(leafByLabel('Archive').hasAttribute('disabled')).toBe(true);
       expect(cycleWarnings()).toHaveLength(0);
+    });
+
+    /**
+     * The `done` memo is what keeps the walk linear, and NOTHING else in this file notices if it
+     * goes: every other arm here is a 1-3 node cycle that is found either way. Without it the
+     * traversal enumerates every simple path — a symmetric twelve-node graph is ~10^8 — and the
+     * first change detection never returns. So this arm does not fail without the memo, it hangs,
+     * and the explicit timeout is the oracle: leaving it to the global `testTimeout` would let a
+     * future raise of that unrelated knob silently retire this guard.
+     */
+    it('does not unroll a dense cyclic graph', async () => {
+      const nodes = Array.from({ length: 12 }, (_, i) => node(`N${i}`));
+      for (const n of nodes) n.items = nodes.filter((o) => o !== n) as CaeMenuItem[];
+      host.model.set([nodes[0] as CaeMenuItem]);
+      await settle();
+
+      expect(headerLabels()).not.toContain('N0');
+      expect(leafByLabel('N0').hasAttribute('disabled')).toBe(true);
+    }, 3000);
+
+    /** A cycle at a root index > 0 — the root loop must walk every root, not stop at the first. */
+    it('finds a cycle at a LATER root index', async () => {
+      const a = node('A');
+      a.items = [a as CaeMenuItem];
+      host.model.set([
+        { label: 'Files', items: [{ label: 'Open', value: 'open' }] },
+        a as CaeMenuItem,
+      ]);
+      await settle();
+
+      expect(headerLabels()).not.toContain('A');
+      expect(leafByLabel('A').hasAttribute('disabled')).toBe(true);
+      expect(cycleWarnings()).toHaveLength(1);
+    });
+
+    /**
+     * The `@else if (item.url && !rowDisabled(item))` arm: a navigation leaf that is disabled — or
+     * broken by a cycle — must NOT render as a live `<a href>`. Nothing else in this file pairs a
+     * `url` with `disabled`, so without this the term could be dropped and a disabled row would
+     * still navigate.
+     */
+    it('renders a DISABLED navigation leaf as an inert button, never a live link', async () => {
+      host.model.set([
+        { label: 'Files', items: [{ label: 'Gone', url: '/gone', disabled: true }] },
+      ]);
+      await settle();
+      await expand('Files');
+
+      const gone = leafByLabel('Gone');
+      expect(gone.tagName).toBe('BUTTON');
+      expect(gone.hasAttribute('disabled')).toBe(true);
+      expect(gone.hasAttribute('href')).toBe(false);
     });
   });
 

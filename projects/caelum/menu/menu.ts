@@ -437,34 +437,57 @@ interface CaeMenuGraph {
  * parent. A visited-ever check that conflated the two would kill exactly that case, which is why it
  * has its own spec.
  *
- * Detecting one node per cycle is sufficient: every cycle contains at least one back edge in any
- * DFS, so breaking there leaves an acyclic graph. Note that bounds *cycles*, not fan-out — a dense
- * acyclic model still renders every path, which is the pre-existing behaviour a shared subtree
- * relies on.
+ * Breaking one node per cycle would be enough to *terminate* — every cycle contains a back edge in
+ * any DFS — but it is **not** enough to stay consistent, so the whole cycle breaks. Which node a
+ * back edge lands on depends on where the walk started, and this component's recursion means the
+ * graph is analysed many times from different roots: a nested `cae-menu` re-runs this over its own
+ * `items()`. With one node marked, a parent and its child reach *different* verdicts about the same
+ * cycle, and the disagreement renders an enabled trigger over a panel the child has disabled
+ * entirely — the #880 trap, reachable whenever the cycle's members also carry ordinary leaves.
+ * Marking every node on the closing path is start-independent, so all levels agree. (`cyclic` still
+ * holds just the back-edge target: it drives only the dev warning, where one line per cycle is the
+ * useful number.) Note this bounds *cycles*, not fan-out — a dense acyclic model still renders every
+ * path, which is the pre-existing behaviour a shared subtree relies on.
  *
  * **Dead ends ride the same traversal because they are the same question asked upwards** (#962).
  * `walk` returns whether the item's own ROW would be focusable — not disabled, and not a dead end —
  * which is exactly what its parent needs in order to decide whether *it* is a dead end. Answering
  * that per row instead would be both wrong (it cannot see past one level) and quadratic on a
  * component whose own #878 measurement is 259 panels for a 4×6 tree; here it is one `O(V+E)` pass
- * per model change, and the per-row predicates are set lookups.
+ * per model change **per panel instance**, and the per-row predicates are set lookups. (Because each
+ * nested level re-analyses its own subtree, the whole tree costs `O(V·depth)` — ~5900 walks for that
+ * 1554-node fixture — which stays far below the view creation it rides along with.)
  *
  * A cycle break resolves to "not focusable via this path", so a parent whose only child is a broken
  * row correctly becomes a dead end itself rather than opening a panel of one disabled item.
  */
 function analyseMenuGraph(roots: readonly CaeMenuItem[]): CaeMenuGraph {
+  // `onPath` answers "is this item on the current path" in O(1); `path` is the same set in
+  // traversal ORDER, which is what lets the back edge below name the cycle it just closed.
   const onPath = new Set<CaeMenuItem>();
+  const path: CaeMenuItem[] = [];
   const done = new Set<CaeMenuItem>();
   const cyclic = new Set<CaeMenuItem>();
   const deadEnd = new Set<CaeMenuItem>();
   const walk = (item: CaeMenuItem): boolean => {
     if (onPath.has(item)) {
       cyclic.add(item);
-      deadEnd.add(item);
+      // Break EVERY node on the cycle, not only the one the back edge happened to land on.
+      // Which node that is depends on where the walk STARTED, and each nested `cae-menu`
+      // re-analyses its own `items()` from scratch — so marking a single node lets a parent
+      // and its own child disagree about the same graph. When they disagree the parent renders
+      // an enabled trigger whose every row the child then disables, which is the #880 focus
+      // trap this rule exists to prevent, reachable whenever the cycle's members carry escape
+      // leaves. Marking the whole cycle is start-independent, so every level agrees.
+      for (let i = path.indexOf(item); i < path.length; i++) deadEnd.add(path[i]);
+      // Unobservable today — the caller is the last `path` entry, which the loop above just
+      // marked, so returning `true` here changes no render. It stays `false` because that is what
+      // the value MEANS; don't read it as a live guard (mutating it survives the suite, by design).
       return false;
     }
     if (!done.has(item)) {
       onPath.add(item);
+      path.push(item);
       if (item.items?.length) {
         // Every child is walked, deliberately without short-circuiting: `usable ||= walk(child)`
         // stops calling `walk` once one child is usable, so a cycle sitting behind that child is
@@ -474,6 +497,7 @@ function analyseMenuGraph(roots: readonly CaeMenuItem[]): CaeMenuGraph {
         if (!usable) deadEnd.add(item);
       }
       onPath.delete(item);
+      path.pop();
       done.add(item);
     }
     return !item.disabled && !deadEnd.has(item);

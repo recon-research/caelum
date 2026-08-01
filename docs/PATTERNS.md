@@ -620,6 +620,19 @@ deeper predicate but a change of direction: make the traversal **bottom-up** and
 dead end. That rides the cycle DFS for free, since both are reachability questions about one graph,
 and stays `O(V+E)` per model change instead of re-walking a subtree per row per change detection.
 
+**A per-instance analysis must give a start-independent answer, or the levels disagree** (#962). This
+is the subtle one, and it survived a full mutation table before an adversarial lens asked for it. When
+the recursion is a *component*, every level re-analyses **its own** subtree from a different starting
+set — and "which node closes the cycle" depends on where the walk started. Break only the back-edge
+target and a parent can conclude a cycle member is usable while that member's own instance concludes
+it is dead: the parent then renders an **enabled** trigger over a panel its child has disabled
+entirely, which is the empty-panel focus trap the rule existed to prevent. It needs a cycle whose
+members *also* carry ordinary leaves, so no single-node test shows it. Fix: break **every** node on
+the closing path (`path.indexOf(item)` → end), which is start-independent, so all levels agree. Keep
+the *warning* set separate and single-node — one line per cycle is the useful diagnostic. General
+form: **any memoised, per-instance graph answer must be a function of the graph, not of the
+traversal** — otherwise the instances are silently inconsistent with each other.
+
 **Then walk every child anyway — `usable ||= walk(child)` is a trap.** The moment the traversal
 returns a boolean, the idiomatic accumulator short-circuits, and it stops calling `walk` as soon as
 one child is usable. An *undiscovered* cycle is not a cosmetic miss: it is an unbounded render.

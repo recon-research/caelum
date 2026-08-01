@@ -727,6 +727,88 @@ describe('CaeMenu tiered submenus (#150)', () => {
       const file = rowNamed(rootPanel(), 'File');
       expect(file.getAttribute('aria-haspopup')).toBe('menu');
       expect(file.getAttribute('disabled')).toBeNull();
+
+      // ...and the reachable leaf really is reachable, not merely un-marked one level up.
+      file.click();
+      await settle();
+      const exportRow = rowNamed(panelOf(file), 'Export');
+      exportRow.click();
+      await settle();
+      expect(rowNamed(panelOf(exportRow), 'CSV').getAttribute('disabled')).toBeNull();
+    });
+
+    /**
+     * The accumulator must be ANY-child-wins, not last-child-wins. The sibling spec above happens
+     * to list its usable child LAST, so `usable = walk(child)` (dropping the accumulation) passes
+     * there; with the order reversed it marks a live branch dead and hides a reachable row.
+     */
+    it('opens when the usable child comes FIRST — order must not decide it', async () => {
+      host.items.set([
+        {
+          label: 'Group',
+          items: [
+            { value: 'b', label: 'b' },
+            { label: 'a', disabled: true },
+          ],
+        },
+      ]);
+      await openRoot();
+      const group = rowNamed(rootPanel(), 'Group');
+      expect(group.getAttribute('disabled')).toBeNull();
+      group.click();
+      await settle();
+      expect(rowsIn(panelOf(group)).map((r) => r.textContent?.trim())).toEqual(['b', 'a']);
+    });
+
+    /**
+     * A disabled child that is itself a BRANCH still does not count as reachable. Every other
+     * disabled item in this file is a childless leaf, so `walk`'s `!item.disabled` term is
+     * otherwise pinned only for leaves — drop it for branches and `P` becomes a live trigger over
+     * a panel holding one disabled row, the #880 trap again.
+     */
+    it('does not count a DISABLED branch child as reachable', async () => {
+      host.items.set([
+        {
+          label: 'P',
+          items: [{ label: 'Q', disabled: true, items: [{ value: 'r', label: 'R' }] }],
+        },
+      ]);
+      await openRoot();
+      const p = rowNamed(rootPanel(), 'P');
+      expect(p.getAttribute('aria-haspopup')).toBeNull();
+      expect(p.getAttribute('disabled')).not.toBeNull();
+    });
+
+    /** A dead end at a root index > 0 — the root loop must walk every root, not stop at the first. */
+    it('finds a dead end at a LATER root index', async () => {
+      host.items.set([
+        { value: 'u', label: 'U' },
+        { label: 'Group', items: [{ label: 'a', disabled: true }] },
+      ]);
+      await openRoot();
+      const group = rowNamed(rootPanel(), 'Group');
+      expect(group.getAttribute('aria-haspopup')).toBeNull();
+      expect(group.getAttribute('disabled')).not.toBeNull();
+    });
+
+    /**
+     * An all-disabled branch is a LEGAL model — a permission-gated menu produces them constantly —
+     * so the cycle diagnostic must stay silent for it. `cyclic` and `deadEnd` are separate sets
+     * precisely to keep that true; a mutation adding `cyclic.add` beside every `deadEnd.add` is
+     * otherwise only caught incidentally, by a warning COUNT in the cycle describe.
+     */
+    it('stays SILENT for an all-disabled branch — only a cycle is a defect', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        host.items.set([{ label: 'Group', items: [{ label: 'a', disabled: true }] }]);
+        await openRoot();
+        expect(rowNamed(rootPanel(), 'Group').getAttribute('disabled')).not.toBeNull();
+        expect(
+          warn.mock.calls.filter((c: unknown[]) => String(c[0]).includes('is on a cycle')),
+        ).toHaveLength(0);
+      } finally {
+        warn.mockRestore();
+      }
     });
   });
 
@@ -801,6 +883,57 @@ describe('CaeMenu tiered submenus (#150)', () => {
       a.items = [{ value: 'u', label: 'U' } as CaeMenuItem, b as CaeMenuItem];
       b.items = [a as CaeMenuItem];
       host.items.set([a as CaeMenuItem]);
+      await openRoot();
+
+      const row = rowNamed(rootPanel(), 'A');
+      expect(row.getAttribute('aria-haspopup')).toBeNull();
+      expect(row.getAttribute('disabled')).not.toBeNull();
+      expect(warn).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * **Every level must reach the SAME verdict about one cycle.** The break is applied by each
+     * `cae-menu` instance over its own `items()`, and a back edge lands on whichever cycle node
+     * that particular walk saw first — so marking only that node lets a parent and its own child
+     * disagree, and the disagreement is not cosmetic: the parent renders an ENABLED trigger whose
+     * panel the child has disabled entirely, which is the #880 focus trap.
+     *
+     * Here `u ⇄ C` is a cycle whose members each also carry an ordinary leaf, so neither is a dead
+     * end by the escape-leaf test alone. Reached from `Z` first, the back edge lands on `u`, and
+     * `C` looks usable — so `P`, whose only child is `C`, looked like a live branch. `P`'s own
+     * nested instance then started from `C`, landed the back edge there, and disabled its only row.
+     * Marking the whole closing path is start-independent, which is what makes the two agree.
+     */
+    it('agrees across levels — a cycle with escape leaves cannot strand a parent', async () => {
+      const u = node('u');
+      const c = node('C');
+      u.items = [c as CaeMenuItem, { value: 'lu', label: 'leafU' }];
+      c.items = [u as CaeMenuItem, { value: 'lc', label: 'leafC' }];
+      host.items.set([
+        { label: 'Z', items: [u as CaeMenuItem, { value: 'lz', label: 'leafZ' }] },
+        { label: 'P', items: [c as CaeMenuItem] },
+      ]);
+      await openRoot();
+
+      // P's only child is on the cycle, so P has nothing reachable: a disabled leaf, no trigger.
+      const p = rowNamed(rootPanel(), 'P');
+      expect(p.getAttribute('aria-haspopup')).toBeNull();
+      expect(p.getAttribute('disabled')).not.toBeNull();
+
+      // Z is NOT over-marked: it still reaches leafZ, so it stays a live branch whose panel
+      // offers that leaf alongside the broken row. This is the false-positive direction.
+      const z = rowNamed(rootPanel(), 'Z');
+      expect(z.getAttribute('aria-haspopup')).toBe('menu');
+      z.click();
+      await settle();
+      expect(rowNamed(panelOf(z), 'leafZ').getAttribute('disabled')).toBeNull();
+    });
+
+    /** A cycle at a root index > 0 — the root loop must walk every root, not stop at the first. */
+    it('finds a cycle at a LATER root index', async () => {
+      const a = node('A');
+      a.items = [a as CaeMenuItem];
+      host.items.set([{ value: 'u', label: 'U' }, a as CaeMenuItem]);
       await openRoot();
 
       const row = rowNamed(rootPanel(), 'A');
