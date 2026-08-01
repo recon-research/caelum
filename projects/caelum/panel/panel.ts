@@ -11,9 +11,12 @@ import {
   input,
   isDevMode,
   model,
+  viewChild,
 } from '@angular/core';
 import { MatCard } from '@angular/material/card';
 import { CaeIcon } from '@recon-research/caelum/icon';
+
+import { redirectFocusOutOfCollapsedRegion } from './collapse-focus';
 
 // Module-scoped id counter for the header/content ids the toggle's `aria-labelledby` and
 // `aria-controls` point at. Deterministic per load, and never collides across instances.
@@ -103,6 +106,7 @@ export class CaePanelHeader {}
           </div>
           @if (toggleable()) {
             <button
+              #toggleBtn
               type="button"
               class="cae-panel__toggle"
               [class.cae-panel__toggle--expanded]="!collapsed()"
@@ -117,7 +121,7 @@ export class CaePanelHeader {}
           }
         </div>
       }
-      <div class="cae-panel__content" [id]="contentId" [hidden]="collapsed()">
+      <div #content class="cae-panel__content" [id]="contentId" [hidden]="collapsed()">
         <ng-content />
       </div>
     </mat-card>
@@ -202,17 +206,19 @@ export class CaePanel {
    * **Bind it** (`[collapsed]="true"`) — never write a bare `collapsed` attribute. A `model()`
    * takes no `booleanAttribute` transform, so the bare form arrives as `''`, which is falsy: the
    * panel renders **expanded** and the attribute is a silent no-op, the opposite of the intent.
-   * (Consumers compiling with `strictTemplates` get a type error there; this repo does not.)
+   * Caelum's own templates compile with `strictTemplates` (#858), which makes the bare form a type
+   * error here; a consumer app without it reaches the silent no-op.
    *
    * It is deliberately **not** gated on `[toggleable]`, so a panel with no toggle of its own can
    * still be driven from an external control — a "collapse all" button, say. The corollary is that
    * `[collapsed]="true"` without `[toggleable]` leaves the content unreachable *from the panel*:
-   * the consumer owns the affordance, and should put `aria-expanded` on their own control.
+   * the consumer owns the affordance, and should wire it with {@link contentId} (#871).
    *
-   * Collapsing while focus is **inside** the content region drops focus to `<body>` (the engine
-   * blurs a `display: none` descendant) — a WCAG 2.4.3 hazard on the *programmatic* path only, since
-   * both toggles sit outside their own content region. `MatExpansionPanel` and `p-panel` behave the
-   * same. Move focus somewhere deliberate before collapsing from outside.
+   * Collapsing while focus is **inside** the content region would drop focus to `<body>` — a WCAG
+   * 2.4.3 strand reachable only on the *programmatic* path, since the toggle sits outside its own
+   * content region. The panel redirects focus to its toggle instead (#870; see
+   * `redirectFocusOutOfCollapsedRegion`). With **no** toggle there is nothing to land on, so that
+   * case dev-warns and the strand stands — move focus deliberately before collapsing from outside.
    */
   readonly collapsed = model(false);
   /**
@@ -239,8 +245,32 @@ export class CaePanel {
   private readonly uid = nextUniqueId++;
   /** `aria-labelledby` target — the header cell, whichever of the two header forms filled it. */
   protected readonly headerId = `cae-panel-header-${this.uid}`;
-  /** `aria-controls` target — the collapsible region. */
-  protected readonly contentId = `cae-panel-content-${this.uid}`;
+  /**
+   * `aria-controls` target — the id of the collapsible region.
+   *
+   * **Public because `[collapsed]` is not gated on `[toggleable]`** (#871): a panel driven entirely
+   * from an external "collapse all" button is a supported shape, and that button needs an id to
+   * point `aria-controls` at. Without this it could carry `aria-expanded` but never say *what* it
+   * expands, so AT announces a state with no referent.
+   *
+   * Read it off a template reference to the component:
+   *
+   * ```html
+   * <button
+   *   type="button"
+   *   [attr.aria-expanded]="!billing.collapsed()"
+   *   [attr.aria-controls]="billing.contentId"
+   *   (click)="billing.collapsed.set(!billing.collapsed())"
+   * >Toggle billing</button>
+   *
+   * <cae-panel #billing header="Billing" [(collapsed)]="billingCollapsed">…</cae-panel>
+   * ```
+   *
+   * Exposed as a **readonly** rather than a `[contentId]` input, deliberately: an input would add a
+   * uniqueness contract the component cannot enforce (two panels handed the same id break every
+   * `aria-controls` pointing at either), for no capability the consumer lacks here.
+   */
+  readonly contentId = `cae-panel-content-${this.uid}`;
 
   /**
    * Whether anything would land in the header row. `toggleable` counts: the toggle has to live
@@ -272,7 +302,32 @@ export class CaePanel {
 
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
+  /**
+   * The component's **own** content region and toggle, for the collapse focus redirect (#870).
+   *
+   * `viewChild` rather than a `querySelector` on the host, and that is load-bearing: a view query
+   * cannot see into projected content, so a `cae-panel` nested inside another one's body stays
+   * invisible here. A host `querySelector('.cae-panel__toggle')` on a panel that is *not* itself
+   * toggleable would match the nested panel's toggle — first in document order — and send focus
+   * into the wrong component entirely.
+   */
+  private readonly contentRef = viewChild<ElementRef<HTMLElement>>('content');
+  private readonly toggleRef = viewChild<ElementRef<HTMLElement>>('toggleBtn');
+
   constructor() {
+    // Not dev-only: this is behaviour, not a guard. It reads `collapsed` unconditionally so the
+    // effect stays subscribed on every path (#710) — the redirect is a no-op unless focus is
+    // actually inside the region, which is also what keeps it from firing on a panel that simply
+    // renders collapsed.
+    afterRenderEffect(() => {
+      if (!this.collapsed()) return;
+      redirectFocusOutOfCollapsedRegion(
+        this.contentRef()?.nativeElement,
+        this.toggleRef()?.nativeElement,
+        'cae-panel',
+      );
+    });
+
     if (isDevMode()) {
       afterRenderEffect(() => {
         // Every signal the guard depends on is read UNCONDITIONALLY: a read reached only inside the

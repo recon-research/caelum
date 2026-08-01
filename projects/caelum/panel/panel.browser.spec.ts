@@ -10,9 +10,11 @@
  *      passing while the button ends up with no floor at all. Only a layout engine resolves `var()`
  *      and the cascade. The `compact` arm matters most: `--cae-target-min` is density-INVARIANT,
  *      and the entire reason the rule uses it is that `--cae-space-*` shrinks to 16px there.
- *   2. **`hidden` genuinely removes collapsed content from the tab order.** jsdom has no focus
- *      model worth trusting here, so "collapsing takes the content out of Tab" — the claim that
- *      makes hiding-instead-of-removing safe — can only be shown against a real engine.
+ *   2. **`hidden` genuinely removes collapsed content from the tab order — and #870's focus
+ *      redirect outruns the engine's own fixup.** jsdom has no focus model worth trusting here: it
+ *      never blurs a hidden element, so both the strand this component prevents and the frame-tight
+ *      window it prevents it in are invisible there. Every jsdom assertion about the redirect
+ *      passes on a runner that has no fixup to outrun; only a real engine grades the timing.
  *   3. **The `<fieldset>` `min-inline-size` reset.** The UA default (`min-content`) is a *used
  *      value* computed during layout; a jsdom text match on the declaration cannot show that the
  *      group actually shrinks inside a narrow flex parent.
@@ -55,6 +57,22 @@ class PanelBrowserHost {
   `,
 })
 class TightHost {}
+
+/**
+ * A panel with NO toggle, driven entirely from outside — the one shape #870's redirect cannot
+ * rescue, because there is no control belonging to the panel to move focus to.
+ */
+@Component({
+  imports: [CaePanel],
+  template: `
+    <cae-panel id="untoggleable" header="Driven from outside" [collapsed]="collapsed()">
+      <button id="orphan" type="button">Inside the panel</button>
+    </cae-panel>
+  `,
+})
+class UntoggleablePanelHost {
+  readonly collapsed = signal(false);
+}
 
 /** A very narrow flex parent — the shape that exposes a fieldset's UA `min-inline-size`. */
 @Component({
@@ -137,22 +155,21 @@ describe('CaePanel / CaeFieldset (real browser)', () => {
       expect(document.activeElement).toBe(inner);
     }
 
-    // This collapse deliberately happens while focus is still INSIDE the region, and what follows
-    // is measured rather than assumed (#870). Neither component can cause the strand — both toggles
-    // sit outside their own content region — so it is a consumer hazard on the programmatic path,
-    // the same one MatExpansionPanel and p-panel have, documented on the `collapsed` input.
+    // This collapse deliberately happens while focus is still INSIDE the region. Both components
+    // are `toggleable` here, so #870's redirect applies: focus lands on the fieldset's toggle (the
+    // last region focused above), not on <body>.
     await collapse();
 
-    // Synchronously after the model write and CD, focus is STILL on the now-hidden button: the
-    // engine defers its focus fixup to the next rendering opportunity rather than applying it with
-    // the style change.
-    expect(document.activeElement).toBe(regions[1].inner);
+    const fieldsetToggle = root.querySelector<HTMLButtonElement>('.cae-fieldset__toggle')!;
+    expect(document.activeElement).toBe(fieldsetToggle);
 
-    // One frame on, it has been reset to <body> — the WCAG 2.4.3 strand. Pinning both halves is
-    // what #870 needs: a redirect has to act before this frame, because afterwards
-    // `activeElement === body` can no longer distinguish a collapse from a deliberate park.
+    // …and it STAYS there. This is the assertion that makes the arm a real timing test rather than
+    // a restatement of the line above: before #870 this same wait was what turned focus into
+    // <body>, because the engine defers its fixup for an unrendered element to the next rendering
+    // opportunity. Surviving two frames proves the redirect ran INSIDE that window — which is the
+    // claim jsdom cannot grade at all, having no fixup to outrun.
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    expect(document.activeElement).toBe(document.body);
+    expect(document.activeElement).toBe(fieldsetToggle);
 
     for (const { content, inner } of regions) {
       // Assert the REGION's display, not the button's: `display: none` on an ancestor does not
@@ -167,6 +184,31 @@ describe('CaePanel / CaeFieldset (real browser)', () => {
       // Content inside a `hidden` region is not focusable — focus does not enter it.
       expect(document.activeElement).not.toBe(inner);
     }
+  });
+
+  it('still strands focus when the panel has no toggle — the documented residual gap (#870)', async () => {
+    const fixture = TestBed.createComponent(UntoggleablePanelHost);
+    document.body.appendChild(fixture.nativeElement);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const root = fixture.nativeElement as HTMLElement;
+
+    const orphan = root.querySelector<HTMLButtonElement>('#orphan')!;
+    orphan.focus();
+    expect(document.activeElement).toBe(orphan);
+
+    fixture.componentInstance.collapsed.set(true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    // The redirect declines rather than inventing a target (it dev-warns instead — graded in the
+    // unit suite, where a console spy is cheap). Pinning the strand HERE is what keeps that a
+    // measured decision rather than an assumption: if a later change gave the panel something to
+    // focus, this arm goes red and forces the doc on `collapsed` to be re-read.
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    expect(document.activeElement).toBe(document.body);
+
+    fixture.nativeElement.remove();
   });
 
   it('actually renders the legend, which is what names the group', async () => {

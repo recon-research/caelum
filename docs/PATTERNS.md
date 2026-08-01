@@ -492,3 +492,35 @@ its own signal deps change — and a consumer changing the message changes none 
   non-empty again, or the *second* real emptying goes unreported — both directions want a spec.
 - **Same trap, other components:** any `querySelector` + `textContent` check inside a projection
   boundary (`cae-tag`'s #669 convention, and anything copying it) inherits it.
+
+## 19. Hiding a region blurs whatever is inside it — and the window to react is one frame (#870)
+
+Collapsing by `[hidden]` (rather than `@if`) still strands focus: the engine blurs the unrendered
+element and `document.activeElement` becomes `<body>`, so the next Tab restarts at the top of the
+document (WCAG 2.4.3). `MatExpansionPanel` and `p-panel` both do this.
+
+- **The component usually cannot cause it, which is why it survives review.** `cae-panel`'s and
+  `cae-fieldset`'s toggles sit *outside* their own content region, so the click path always leaves
+  focus on the toggle. Only the programmatic path reaches it — an external control, a timer, a route
+  change — and no demo clicks that path.
+- **The fixup is deferred to the next rendering opportunity, so `afterRenderEffect` is inside the
+  window.** Measured in Chromium: synchronously after the model write and CD, `activeElement` is
+  *still* the now-hidden element; one frame later it is `<body>`. So a post-render read can still ask
+  "was focus inside me?" — no pre-write capture is needed. #870 assumed the opposite and specified a
+  `collapsed`-write interceptor; measuring first replaced it with four lines. **Pin it with a
+  mutation**: deferring the redirect by a single `requestAnimationFrame` must turn the browser arm
+  red, or the timing claim is decorative.
+- **A frame later the question is unanswerable** — `activeElement === body` cannot distinguish a
+  collapse from a deliberate park (the `external-removal-focus-restore` trap).
+- **Scope the target with a view query, never a host `querySelector`.** A component that can nest
+  inside itself will match the *inner* instance's control first in document order, and focus lands in
+  a different component — inside the region just hidden. `viewChild` cannot see into projected
+  content, which is exactly the boundary wanted.
+- **jsdom grades none of this.** It never blurs a hidden element, so both the strand and the window
+  are invisible: every jsdom assertion about the redirect passes on a runner with no fixup to outrun.
+  jsdom owns the redirect (the component's own `focus()` call) and the dev warning; the browser arm
+  owns the timing and the residual strand.
+- **When there is nothing to focus, say so rather than inventing a target.** With no toggle rendered
+  there is no control belonging to the component; a `tabindex="-1"` host would be a focusable
+  non-interactive element whose announcement nobody here can verify. A dev warning naming the
+  consumer's two ways out keeps the gap loud and honest (decision #951).
