@@ -1,4 +1,4 @@
-import { Component, signal, Type } from '@angular/core';
+import { Component, signal, Type, ViewEncapsulation } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 
@@ -304,6 +304,12 @@ describe.each(CONTRACT)(
         await set(() => host.toggleable.set(true));
         const btn = toggle()!;
         const focusSpy = vi.spyOn(btn, 'focus');
+        // The successful path must be SILENT. Without this, deleting the `return` after
+        // `toggle.focus()` survives the whole suite: every other warn assertion here sits on a path
+        // where the toggle is absent or the guard returned early, so the mutant would ship
+        // "this instance has no toggle" on every correct redirect — an alarm on the clean path,
+        // which is what trains a reader to skim the real one.
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
         const projected = el<HTMLInputElement>('.projected')!;
         projected.focus();
         // The arm that makes the assertion below mean something: without it, a redirect that never
@@ -321,6 +327,26 @@ describe.each(CONTRACT)(
         // ring somewhere the user cannot see (WCAG 2.4.7). Pinned because jsdom cannot tell the two
         // calls apart: a revert to `{ preventScroll: true }` is otherwise a silent, green change.
         expect(focusSpy).toHaveBeenCalledWith();
+        expect(warn).not.toHaveBeenCalled();
+        focusSpy.mockRestore();
+        warn.mockRestore();
+      });
+
+      it('leaves focus alone when it is already ON the toggle (the click path)', async () => {
+        await set(() => host.toggleable.set(true));
+        const btn = toggle()!;
+        btn.focus();
+        expect(document.activeElement).toBe(btn);
+        const focusSpy = vi.spyOn(btn, 'focus');
+
+        await set(() => host.collapsed.set(true));
+
+        // Pins the containment SCOPE, not just the containment test. Passing the component HOST as
+        // the region instead of the content div survives every other test in this file — but the
+        // toggle lives inside the host, so a collapse by click would re-`focus()` the element that
+        // already has focus, and `focus()` re-runs scroll-into-view whether or not focus moved.
+        // On an off-screen panel that yanks the viewport on every toggle click.
+        expect(focusSpy).not.toHaveBeenCalled();
         focusSpy.mockRestore();
       });
 
@@ -345,25 +371,25 @@ describe.each(CONTRACT)(
         const projected = el<HTMLInputElement>('.projected')!;
         projected.focus();
 
-        // Rendering the toggle re-runs the effect (its view query resolves), with focus sitting
-        // inside a region that is perfectly visible. Without the `collapsed()` early return the
-        // redirect fires here and yanks the user out of the field they are typing in — a mutation
-        // every other test in this describe survives, because they all collapse first.
+        // In the SHIPPED code this flip does not re-run the effect at all — that is the point.
+        // `collapsed()` is false, so the early return fires before `toggleRef()` is ever read, and
+        // the producer set stays `{collapsed}`. Under the mutation the early return is gone, the
+        // view query IS read and becomes a dependency, the flip re-runs the effect with focus in a
+        // perfectly visible region, and the user is yanked out of the field they are typing in.
+        // Every other test in this describe survives that mutation, because they all collapse first.
         await set(() => host.toggleable.set(true));
-        expect(document.activeElement).toBe(projected);
-
-        await set(() => host.collapsed.set(false));
         expect(document.activeElement).toBe(projected);
       });
 
-      it('does not fire on a component that simply renders collapsed', async () => {
+      it('does not warn when focus is outside the region', async () => {
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
         try {
           await set(() => host.collapsed.set(true));
           // No toggle and no focus inside: the effect runs (collapsed is true) and must fall
           // straight through the containment guard rather than warning about a hazard that is not
-          // happening. An initially-collapsed panel is the common shape, so a warn here would be
-          // pure noise — which is how a guard trains its reader to skim it.
+          // happening. A warn here would be pure noise — which is how a guard trains its reader to
+          // skim it. (Named for what it actually arranges: the fixture renders EXPANDED and is
+          // collapsed here. The born-collapsed first run is graded separately below.)
           expect(warn).not.toHaveBeenCalled();
         } finally {
           warn.mockRestore();
@@ -542,6 +568,77 @@ describe('CaePanel', () => {
     }
   });
 
+  it('finds focus inside a SHADOW-encapsulated consumer, where document.activeElement cannot', async () => {
+    // `document.activeElement` retargets to the outermost shadow host on the path to the focused
+    // node. With the panel mounted inside a ShadowDom consumer that host is an ANCESTOR of the
+    // content region, so a global read makes containment false and the redirect declines silently —
+    // skipping its own warning too, since both sit behind the same guard. Reading `activeElement`
+    // off `region.getRootNode()` is what fixes it. Three review lenses reached this independently.
+    @Component({
+      imports: [CaePanel],
+      encapsulation: ViewEncapsulation.ShadowDom,
+      template: `
+        <cae-panel header="Shadowed" [toggleable]="true" [collapsed]="collapsed()">
+          <input class="shadow-field" aria-label="Shadowed field" />
+        </cae-panel>
+      `,
+    })
+    class ShadowHost {
+      readonly collapsed = signal(false);
+    }
+
+    const f = TestBed.createComponent(ShadowHost);
+    document.body.appendChild(f.nativeElement);
+    try {
+      f.detectChanges();
+      await f.whenStable();
+
+      const shadow = (f.nativeElement as HTMLElement).shadowRoot!;
+      const field = shadow.querySelector<HTMLInputElement>('.shadow-field')!;
+      const btn = shadow.querySelector<HTMLButtonElement>('.cae-panel__toggle')!;
+      field.focus();
+
+      // The positive control for the whole test: if jsdom did NOT retarget, this would already be
+      // the field and the mutation below could never be observed here.
+      expect(document.activeElement).toBe(f.nativeElement);
+      expect(shadow.activeElement).toBe(field);
+
+      f.componentInstance.collapsed.set(true);
+      f.detectChanges();
+      await f.whenStable();
+
+      expect(shadow.activeElement).toBe(btn);
+    } finally {
+      f.nativeElement.remove();
+    }
+  });
+
+  it('does not warn on a panel whose FIRST render is already collapsed (#870)', async () => {
+    // The state no other test reaches: every fixture above renders expanded and is collapsed later,
+    // so the effect's first run always sees `collapsed === false`. Here it sees `true` on run #1 —
+    // the common "starts closed" shape — and must fall through the containment guard silently.
+    @Component({
+      imports: [CaePanel],
+      template: `<cae-panel header="Closed" [collapsed]="true"><p>body</p></cae-panel>`,
+    })
+    class BornCollapsedHost {}
+
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const f = TestBed.createComponent(BornCollapsedHost);
+    document.body.appendChild(f.nativeElement);
+    try {
+      f.detectChanges();
+      await f.whenStable();
+      expect(f.nativeElement.querySelector('.cae-panel__content').hasAttribute('hidden')).toBe(
+        true,
+      );
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      f.nativeElement.remove();
+      warn.mockRestore();
+    }
+  });
+
   describe('projected header', () => {
     @Component({
       imports: [CaePanel, CaePanelHeader],
@@ -702,6 +799,79 @@ describe('CaeFieldset', () => {
     host = fixture.componentInstance;
     fixture.detectChanges();
     await fixture.whenStable();
+  });
+
+  it('never sends focus into a NESTED fieldset when it collapses (#870)', async () => {
+    // The panel-side twin of this test is not enough. The view query lives in each component's own
+    // source, so `fieldset.ts` can regress to a host `querySelector` while every panel test stays
+    // green — the same describe.each asymmetry this file already calls out for the chevron. Nested
+    // fieldsets are the standard form-grouping shape, so this is reachable, not theoretical.
+    @Component({
+      imports: [CaeFieldset],
+      template: `
+        <cae-fieldset legend="Outer" [collapsed]="collapsed()">
+          <input class="outer-field" aria-label="Outer field" />
+          <cae-fieldset legend="Inner" [toggleable]="true">
+            <p>Inner body</p>
+          </cae-fieldset>
+        </cae-fieldset>
+      `,
+    })
+    class NestedFieldsetHost {
+      readonly collapsed = signal(false);
+    }
+
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const f = TestBed.createComponent(NestedFieldsetHost);
+    document.body.appendChild(f.nativeElement);
+    try {
+      f.detectChanges();
+      await f.whenStable();
+      const r = f.nativeElement as HTMLElement;
+
+      const field = r.querySelector<HTMLInputElement>('.outer-field')!;
+      const innerToggle = r.querySelector<HTMLButtonElement>('.cae-fieldset__toggle')!;
+      expect(innerToggle).not.toBeNull();
+
+      field.focus();
+      f.componentInstance.collapsed.set(true);
+      f.detectChanges();
+      await f.whenStable();
+
+      // A host query would return the inner fieldset's toggle — first in document order — and send
+      // focus to a control inside the region just hidden, where a real engine refuses it. The user
+      // is stranded AND the diagnostic is suppressed.
+      expect(document.activeElement).not.toBe(innerToggle);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0][0]).toContain('no toggle to move focus to');
+    } finally {
+      f.nativeElement.remove();
+      warn.mockRestore();
+    }
+  });
+
+  it('gives ids unique per instance, so two fieldsets never cross-wire aria-controls (#871)', async () => {
+    // The panel has had this since #711; the fieldset never did, and #871 raised the stakes by
+    // making `contentId` the value external controls point `aria-controls` at. Dropping the
+    // `nextUniqueId++` otherwise survives the whole suite.
+    @Component({
+      imports: [CaeFieldset],
+      template: `
+        <cae-fieldset legend="One" [toggleable]="true">a</cae-fieldset>
+        <cae-fieldset legend="Two" [toggleable]="true">b</cae-fieldset>
+      `,
+    })
+    class TwoFieldsetHost {}
+
+    const f = TestBed.createComponent(TwoFieldsetHost);
+    f.detectChanges();
+    await f.whenStable();
+
+    const [a, b] = Array.from(
+      (f.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.cae-fieldset__content'),
+    );
+    expect(a.id).toBeTruthy();
+    expect(a.id).not.toBe(b.id);
   });
 
   it('renders a NATIVE fieldset+legend — the whole reason it is not a cae-panel', () => {

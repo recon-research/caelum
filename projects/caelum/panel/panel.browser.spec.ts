@@ -186,6 +186,24 @@ describe('CaePanel / CaeFieldset (real browser)', () => {
     }
   });
 
+  it("outruns the engine's fixup for cae-PANEL too, not just the fieldset (#870)", async () => {
+    // The sibling test focuses `#fieldset-inner` last, so at collapse time `cae-panel`'s guard only
+    // ever DECLINES there — deleting CaePanel's entire effect would leave that test green. This arm
+    // is what makes the panel's timing claim measured rather than inherited from the shared helper.
+    const root = await render();
+    const panelInner = root.querySelector<HTMLButtonElement>('#panel-inner')!;
+    panelInner.focus();
+    expect(document.activeElement).toBe(panelInner);
+
+    await collapse();
+
+    const panelToggle = root.querySelector<HTMLButtonElement>('.cae-panel__toggle')!;
+    expect(document.activeElement).toBe(panelToggle);
+
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    expect(document.activeElement).toBe(panelToggle);
+  });
+
   it('still strands focus when the panel has no toggle — the documented residual gap (#870)', async () => {
     const fixture = TestBed.createComponent(UntoggleablePanelHost);
     document.body.appendChild(fixture.nativeElement);

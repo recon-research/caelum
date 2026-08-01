@@ -266,9 +266,15 @@ export class CaePanel {
    * <cae-panel #billing header="Billing" [(collapsed)]="billingCollapsed">…</cae-panel>
    * ```
    *
-   * Exposed as a **readonly** rather than a `[contentId]` input, deliberately: an input would add a
-   * uniqueness contract the component cannot enforce (two panels handed the same id break every
-   * `aria-controls` pointing at either), for no capability the consumer lacks here.
+   * The id **format** is not API — read this property, never hard-code `cae-panel-content-0` in a
+   * selector or stylesheet. Uniqueness is per *module instance*: `nextUniqueId` is module-scoped, so
+   * two independently-bundled copies of `caelum/panel` on one page each start at zero.
+   *
+   * Exposed as a **readonly** rather than a `[contentId]` input on YAGNI grounds: no consumer has
+   * asked to choose the id, and D-850 keeps adding the input later a *minor* bump. (An earlier note
+   * here claimed an input would introduce a uniqueness contract the readonly avoids — that was
+   * wrong, per the module-scope caveat above, and is corrected rather than left for a future slice
+   * to cite as settled.)
    */
   readonly contentId = `cae-panel-content-${this.uid}`;
 
@@ -315,10 +321,16 @@ export class CaePanel {
   private readonly toggleRef = viewChild<ElementRef<HTMLElement>>('toggleBtn');
 
   constructor() {
-    // Not dev-only: this is behaviour, not a guard. It reads `collapsed` unconditionally so the
-    // effect stays subscribed on every path (#710) — the redirect is a no-op unless focus is
-    // actually inside the region, which is also what keeps it from firing on a panel that simply
-    // renders collapsed.
+    // Not dev-only: this is behaviour, not a guard. Wrapping it in `isDevMode()` would ship the fix
+    // dead in production while leaving the whole suite green, since tests run in dev mode (#955).
+    //
+    // It reads `collapsed` unconditionally so the effect stays subscribed on every path (#710). The
+    // view queries below are read only past that early return, which is deliberate and NOT a #710
+    // violation: while expanded, a `toggleable` flip must not re-run the redirect and yank focus out
+    // of a visible region. So on the quiet path the producer set is `{collapsed}` alone.
+    //
+    // Phase left at the default `mixedReadWrite`, which is the honest one here rather than an
+    // oversight: reading `activeElement` is a read, and `focus()`'s scroll-into-view is a write.
     afterRenderEffect(() => {
       if (!this.collapsed()) return;
       redirectFocusOutOfCollapsedRegion(

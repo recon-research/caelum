@@ -49,4 +49,13 @@ export class PanelDemo {
   protected toggleDetails(): void {
     this.detailsCollapsed.update((collapsed) => !collapsed);
   }
+
+  /**
+   * Collapses from a control INSIDE the region — the only interaction that reaches #870's focus
+   * redirect, since an outside button takes focus with it on mousedown. The button destroys the
+   * thing holding focus, and `cae-panel` lands it on its own toggle rather than `<body>`.
+   */
+  protected collapseDetails(): void {
+    this.detailsCollapsed.set(true);
+  }
 }

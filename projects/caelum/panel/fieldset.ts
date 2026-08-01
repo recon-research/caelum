@@ -183,7 +183,8 @@ export class CaeFieldset {
   /**
    * `aria-controls` target — the id of the collapsible region. Public for the same reason as
    * {@link CaePanel.contentId} (#871): an external control driving `[collapsed]` needs an id to
-   * point at. See that member for the worked example and why it is a readonly, not an input.
+   * point at. See that member for the worked example, the id-format caveat, and why it is a
+   * readonly rather than an input.
    */
   readonly contentId = `cae-fieldset-content-${nextUniqueId++}`;
 
@@ -192,7 +193,9 @@ export class CaeFieldset {
   private readonly toggleRef = viewChild<ElementRef<HTMLElement>>('toggleBtn');
 
   constructor() {
-    // Behaviour, not a guard — see the matching effect in `panel.ts` (#870).
+    // Behaviour, not a guard — see the matching effect in `panel.ts` (#870) for why it must stay
+    // outside `isDevMode()` (#955), why the view queries are read only past the early return, and
+    // why the default `mixedReadWrite` phase is the honest one.
     afterRenderEffect(() => {
       if (!this.collapsed()) return;
       redirectFocusOutOfCollapsedRegion(
