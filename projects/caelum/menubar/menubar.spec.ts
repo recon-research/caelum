@@ -197,6 +197,199 @@ describe('CaeMenubar', () => {
     expect(triggers()[1].disabled).toBe(true);
   });
 
+  // --- Nothing-reachable groups (#961) -------------------------------------------------------
+  //
+  // The arm above was the WHOLE of this rule until now: `group.items.length === 0`. Every case
+  // below is non-empty, so every one of them used to leave the trigger live, open a panel, and let
+  // Material park focus on a bare role="menu" div answering no key but Escape. The bar now asks
+  // `cae-menu`'s own question (`caeMenuHasUsableItems`, D-858) instead of a looser one.
+
+  it('treats an ALL-DISABLED group as disabled — empty was never the whole rule (#961/D-856)', async () => {
+    await setup({
+      model: [
+        { label: 'File', items: [{ value: 'new', label: 'New' }] },
+        { label: 'Locked', items: [{ value: 'a', label: 'A', disabled: true }] },
+      ] satisfies CaeMenubarItem[],
+    });
+    expect(triggers()[1].disabled).toBe(true);
+    expect(triggers()[0].disabled).toBe(false); // and it does not over-disable
+  });
+
+  it('treats a TRANSITIVELY dead group as disabled — deadness is not a one-level question (#962)', async () => {
+    await setup({
+      model: [
+        { label: 'File', items: [{ value: 'new', label: 'New' }] },
+        // Nothing here carries `disabled` above the leaf: the group holds one branch, holding one
+        // branch, whose only child is disabled. Every intermediate row has `disabled === undefined`,
+        // so any per-row check — including the obvious `items.every((i) => i.disabled)` — reads
+        // them as live and lets the trigger through. Only a bottom-up walk answers it.
+        {
+          label: 'Reports',
+          items: [
+            {
+              label: 'Export',
+              items: [
+                { label: 'Formats', items: [{ value: 'pdf', label: 'PDF', disabled: true }] },
+              ],
+            },
+          ],
+        },
+      ] satisfies CaeMenubarItem[],
+    });
+    expect(triggers()[1].disabled).toBe(true);
+  });
+
+  it('leaves a group ENABLED when something deep under it is still reachable', async () => {
+    // The negative control for the two arms above: same depth, one live leaf at the bottom. A rule
+    // that disables this has stopped being a dead-end check and started hiding working menus.
+    await setup({
+      model: [
+        {
+          label: 'Reports',
+          items: [
+            {
+              label: 'Export',
+              items: [
+                {
+                  label: 'Formats',
+                  items: [
+                    { value: 'pdf', label: 'PDF', disabled: true },
+                    { value: 'csv', label: 'CSV' },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ] satisfies CaeMenubarItem[],
+    });
+    expect(triggers()[0].disabled).toBe(false);
+  });
+
+  it('treats a group whose only item is a DISABLED BRANCH as disabled', async () => {
+    // The `!item.disabled` half of the predicate, which every other arm leaves untested: this
+    // item is disabled but has LIVE children, so the traversal does NOT put it in `deadEnd` and
+    // only that half keeps the trigger off. Without it the panel opens holding exactly one
+    // disabled branch row — the #880 trap, and the shape a permission-gated section header takes.
+    await setup({
+      model: [
+        { label: 'File', items: [{ value: 'new', label: 'New' }] },
+        {
+          label: 'Gated',
+          items: [{ label: 'Locked', disabled: true, items: [{ value: 'a', label: 'A' }] }],
+        },
+      ] satisfies CaeMenubarItem[],
+    });
+    expect(triggers()[1].disabled).toBe(true);
+  });
+
+  it('re-evaluates the verdict when the model changes on a LIVE instance', async () => {
+    // Every other arm builds a fresh fixture and reads the state once, so a one-shot latch would
+    // pass all of them. This is the arm that requires the verdict to be reactive.
+    await setup({ model: [{ label: 'File', items: [{ value: 'new', label: 'New' }] }] });
+    expect(triggers()[0].disabled).toBe(false);
+    ref.setInput('model', [
+      { label: 'File', items: [{ value: 'new', label: 'New', disabled: true }] },
+    ] satisfies CaeMenubarItem[]);
+    await flush();
+    expect(triggers()[0].disabled).toBe(true);
+    ref.setInput('model', [
+      { label: 'File', items: [{ value: 'new', label: 'New' }] },
+    ] satisfies CaeMenubarItem[]);
+    await flush();
+    expect(triggers()[0].disabled).toBe(false);
+  });
+
+  it('keeps a tab stop when the model arrives AFTER init and group 0 is dead', async () => {
+    // The roving tabindex names exactly one trigger, and `ngAfterViewInit` seeds it once — against
+    // an EMPTY QueryList when the model is async (the ordinary permissions/HTTP shape). CDK's
+    // `_itemsChanged` only repairs an index that already holds a live item, so `activeIndex`
+    // stayed 0; a dead group 0 then held the bar's only `tabindex="0"` on a natively-disabled
+    // button (Material's `_getTabIndex()` ignores `disabled` for a non-anchor), and the whole
+    // menubar left the tab order — WCAG 2.1.1. Measured before the fix: 0 tabbable triggers.
+    await setup({ model: [] });
+    ref.setInput('model', [
+      { label: 'Locked', items: [{ value: 'a', label: 'A', disabled: true }] },
+      { label: 'File', items: [{ value: 'new', label: 'New' }] },
+    ] satisfies CaeMenubarItem[]);
+    await flush();
+    expect(triggers().filter((b) => !b.disabled && b.tabIndex === 0).length).toBe(1);
+    expect(triggers()[1].tabIndex).toBe(0); // and it is the live one
+  });
+
+  it('ArrowDown refuses to open a dead group when EVERY group is dead', async () => {
+    // A native `disabled` does NOT stop a programmatic open: `MatMenuTrigger._openMenu` refuses
+    // only on `aria-disabled` (`menu.mjs` `_triggerIsAriaDisabled` reads the attribute), which
+    // `MatButton` emits only in its `disabledInteractive` posture. So `onKeydown` has to re-ask.
+    //
+    // The all-dead model is what makes this reachable, and finding it took a mutation: with even
+    // one live group the re-seed above moves `activeIndex` onto it, so the guard never fires and
+    // an arm written against a mixed model passes with the guard DELETED. Here `seedActiveIndex`
+    // has no operable trigger to pick, falls back to index 0 — a dead group — and the guard is the
+    // only thing standing between ArrowDown and a panel Material parks focus inside.
+    await setup({
+      model: [
+        { label: 'Locked', items: [{ value: 'a', label: 'A', disabled: true }] },
+        { label: 'Gated', items: [] },
+      ] satisfies CaeMenubarItem[],
+    });
+    expect(triggers().every((b) => b.disabled)).toBe(true); // the precondition, asserted
+    keydown(DOWN_ARROW);
+    await flush();
+    expect(menuItems()).toEqual([]);
+    expect(document.activeElement?.getAttribute('role')).not.toBe('menu');
+  });
+
+  it('treats a CYCLIC group as disabled — the model is not a finite graph (#877)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const loop: { label: string; value: string; items?: readonly CaeMenuItem[] } = {
+        label: 'Loop',
+        value: 'loop',
+      };
+      loop.items = [loop as CaeMenuItem];
+      await setup({
+        model: [
+          { label: 'File', items: [{ value: 'new', label: 'New' }] },
+          { label: 'Broken', items: [loop as CaeMenuItem] },
+        ] satisfies CaeMenubarItem[],
+      });
+      // The cycle break makes `Loop` a disabled leaf, which leaves its group with nothing
+      // reachable — the transitive rule reaching a case the all-disabled arm cannot produce.
+      expect(triggers()[1].disabled).toBe(true);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('skips a nothing-reachable group when roving, and Down cannot open it', async () => {
+    // #961's own acceptance bullet: `disabledGroup` feeds BOTH [menubarDisabled] (the key
+    // manager's skipPredicate) and [disabled] (the DOM), so a dead group must be unreachable by
+    // keyboard, not merely greyed. Dead group FIRST, so ngAfterViewInit's "first enabled trigger"
+    // seed is what puts roving on File — and Down then opens File's panel, never Locked's.
+    await setup({
+      model: [
+        { label: 'Locked', items: [{ value: 'a', label: 'A', disabled: true }] },
+        { label: 'File', items: [{ value: 'new', label: 'New' }] },
+        { label: 'View', items: [{ value: 'zoom', label: 'Zoom' }] },
+      ] satisfies CaeMenubarItem[],
+    });
+    expect(triggers()[0].disabled).toBe(true);
+    expect(triggers()[1].tabIndex).toBe(0); // roving seeded past the dead group, not onto it
+
+    keydown(DOWN_ARROW);
+    await flush();
+    expect(menuItems().map((r) => r.textContent!.trim())).toEqual(['New']);
+
+    // And roving from the last trigger wraps PAST the dead one rather than landing on it.
+    keydown(RIGHT_ARROW); // 1 -> 2
+    await flush();
+    keydown(RIGHT_ARROW); // 2 -> wrap, skipping dead 0 -> back to 1
+    await flush();
+    expect(triggers()[1].tabIndex).toBe(0);
+    expect(triggers()[0].tabIndex).toBe(-1);
+  });
+
   it('skips a disabled group when roving', async () => {
     await setup({
       model: [
@@ -241,8 +434,18 @@ describe('CaeMenubar', () => {
   imports: [CaeMenubar],
   template: `
     <cae-menubar [model]="model" [iconTemplate]="useTpl() ? tpl : null" />
+    <!--
+      A TEXT-FREE glyph carrying its per-item context in a data attribute (#963, the D-596 sweep).
+      This fixture used to stamp the index and value as visible text — the one shape D-596 forbids,
+      and it matters most here: each group's dropdown IS a cae-menu, so Material derives both the
+      row's accessible name and its typeahead key from row text, stripping only mat-icon /
+      .material-icons. The data attribute proves exactly the same thing about per-GROUP indexing.
+      (No backticks in here: this is inside a template literal, and one would terminate it.)
+    -->
     <ng-template #tpl let-item let-index="index">
-      <span class="custom-icon">{{ index }}:{{ item.value }}</span>
+      <span class="custom-icon" [attr.data-cx]="index + ':' + item.value" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="16" height="16"><path d="M4 12h16" /></svg>
+      </span>
     </ng-template>
   `,
 })
@@ -308,18 +511,23 @@ describe('CaeMenubar per-item icons (D-596, #645)', () => {
     fixture.detectChanges();
 
     const file = await openGroupItems(0);
-    expect(file.map((el) => el.querySelector('.custom-icon')?.textContent)).toEqual([
+    expect(file.map((el) => el.querySelector('.custom-icon')?.getAttribute('data-cx'))).toEqual([
       '0:new',
       '1:open',
     ]);
-    expect(file[0].querySelector('svg')).toBeNull();
+    // The BUILT-IN glyph is gone; the template's own svg is what remains — so this targets the
+    // cae-icon ELEMENT, not a bare `svg` (which the text-free template now also renders) and not
+    // the cosmetic .cae-menu__icon class (nothing pins it, so deleting it would read green).
+    expect(file[0].querySelector('cae-icon')).toBeNull();
 
     // The second group is the assertion that matters: a forward wired to only the first
     // cae-menu (or dropped entirely) leaves this dropdown on its built-in glyph. Its index
     // restarting at 0 also pins the documented per-group (not bar-wide running) count.
     const edit = await openGroupItems(1);
-    expect(edit.map((el) => el.querySelector('.custom-icon')?.textContent)).toEqual(['0:cut']);
-    expect(edit[0].querySelector('svg')).toBeNull();
+    expect(edit.map((el) => el.querySelector('.custom-icon')?.getAttribute('data-cx'))).toEqual([
+      '0:cut',
+    ]);
+    expect(edit[0].querySelector('cae-icon')).toBeNull();
 
     // Reverse flip: clearing the template restores the built-in glyph (not a one-way latch).
     fixture.componentInstance.useTpl.set(false);
@@ -327,5 +535,21 @@ describe('CaeMenubar per-item icons (D-596, #645)', () => {
     const editAgain = await openGroupItems(1);
     expect(editAgain[0].querySelector('.custom-icon')).toBeNull();
     expect(editAgain[0].querySelector('svg path')?.getAttribute('d')).toBe(CAE_ICON_GLYPHS.file);
+  });
+
+  /**
+   * The arm `menu.spec.ts` gained at #881, brought here because this component is one of the two
+   * that embed a real `cae-menu` and so inherit its exposure (#963). `MatMenuItem.getLabel()` feeds
+   * `FocusKeyManager.withTypeAhead()` and strips ONLY `mat-icon, .material-icons`, with no
+   * typeahead-label input to override — so a dropdown row's text content is both its accessible
+   * name and its typeahead key, and D-596's "the item's name stays `label`" holds only while the
+   * icon slot is text-free. Trimmed EQUALITY, not `toContain`: a template stamping "0:new" makes
+   * the row read "0:new New", a wrong name and a key nobody can type.
+   */
+  it('keeps a dropdown row name exactly its label — built-in glyph AND template', async () => {
+    expect((await openGroupItems(0)).map((el) => el.textContent?.trim())).toEqual(['New', 'Open']);
+    fixture.componentInstance.useTpl.set(true);
+    fixture.detectChanges();
+    expect((await openGroupItems(0)).map((el) => el.textContent?.trim())).toEqual(['New', 'Open']);
   });
 });

@@ -146,10 +146,31 @@ describe('CaeContextMenu', () => {
 @Component({
   imports: [CaeContextMenu],
   template: `
-    <cae-context-menu [items]="items()" [iconTemplate]="useTpl() ? tpl : null">
+    <cae-context-menu
+      [items]="items()"
+      [iconTemplate]="usePoisonTpl() ? poisonTpl : useTpl() ? tpl : null"
+    >
       <div class="target-content">Right-click me</div>
     </cae-context-menu>
+    <!--
+      The CONVENTIONAL shape (#963, the D-596 sweep): a text-free glyph carrying its per-item
+      context in a data attribute. This is the one a reader copies, so it is the one that follows
+      the rule the docs state.
+      (No backticks in here: this is inside a template literal, and one would terminate it.)
+    -->
     <ng-template #tpl let-item let-index="index">
+      <span class="custom-icon" [attr.data-cx]="index + ':' + item.value" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="16" height="16"><path d="M4 12h16" /></svg>
+      </span>
+    </ng-template>
+    <!--
+      A DELIBERATE violation of that rule, kept because it is the INPUT to a guard, not an example:
+      the typeahead spec below proves cdkMenuitemTypeaheadLabel survives a consumer template that
+      stamps text, and it can only prove that against a template that actually stamps some. Without
+      this the guard would be asserted against text-free markup and pass vacuously. Do not copy it,
+      and do not merge it back into #tpl above.
+    -->
+    <ng-template #poisonTpl let-item let-index="index">
       <span class="custom-icon">{{ index }}:{{ item.value }}</span>
     </ng-template>
   `,
@@ -161,6 +182,8 @@ class ContextIconHost {
     { value: 'del', label: 'Delete', icon: 'folder', disabled: true },
   ]);
   readonly useTpl = signal(false);
+  /** Selects the text-stamping template — only the typeahead guard's own spec sets this. */
+  readonly usePoisonTpl = signal(false);
 }
 
 describe('CaeContextMenu per-item icons (D-596, #645)', () => {
@@ -203,10 +226,19 @@ describe('CaeContextMenu per-item icons (D-596, #645)', () => {
     fixture.detectChanges();
     await open();
     // Stamped once per item with { $implicit: item, index } …
-    const custom = menuItems().map((el) => el.querySelector('.custom-icon')?.textContent);
+    const custom = menuItems().map((el) =>
+      el.querySelector('.custom-icon')?.getAttribute('data-cx'),
+    );
     expect(custom).toEqual(['0:view', '1:edit', '2:del']);
-    // … and the built-in glyph gives way even where item.icon is set.
-    expect(menuItems()[0].querySelector('svg')).toBeNull();
+    // … and the built-in glyph gives way even where item.icon is set. Targeted by cae-icon
+    // ELEMENT, not a bare `svg` (the text-free template renders one too) and not the cosmetic
+    // .cae-context-menu__icon class, which nothing pins and whose deletion would read green.
+    expect(menuItems()[0].querySelector('cae-icon')).toBeNull();
+    // The accessible-name tripwire the other five swept files carry (#963). It matters MORE here
+    // than anywhere: `cdkMenuitemTypeaheadLabel` repairs the typeahead key but not the name — CDK
+    // strips nothing — so without this arm a text-stamping #tpl renames every row and the file
+    // stays green. Trimmed EQUALITY, not toContain.
+    expect(menuItems().map((el) => el.textContent?.trim())).toEqual(['View', 'Edit', 'Delete']);
     // Reverse flip: clearing the template restores the built-in glyph (not a one-way latch).
     fixture.componentInstance.useTpl.set(false);
     fixture.detectChanges();
@@ -225,7 +257,9 @@ describe('CaeContextMenu per-item icons (D-596, #645)', () => {
   });
 
   it('pins the typeahead label to item.label, so a text-stamping iconTemplate cannot poison it', async () => {
-    fixture.componentInstance.useTpl.set(true);
+    // The one spec that deliberately uses the D-596-forbidden shape — it IS the guard's input
+    // (#963). The conventional #tpl is text-free, which would make every assertion below vacuous.
+    fixture.componentInstance.usePoisonTpl.set(true);
     fixture.detectChanges();
     await open();
     // CdkMenuItem derives typeahead from the element's RAW textContent — unlike MatMenuItem,

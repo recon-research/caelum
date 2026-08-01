@@ -653,3 +653,41 @@ Worse, it hides from the obvious spec, because each recursion level re-analyses 
 reach — put the usable child *first* and a cycle behind it, and every level short-circuits in turn,
 so `A` renders `B` renders `A` forever with no assertion ever failing. The spec that catches it does
 not fail under the mutation; it hangs. Write the loop out longhand and say why in a comment.
+
+**Every *trigger* over that model asks the same question, so export the roll-up — not the
+traversal** (#961, D-858). A component that opens the recursive one — `cae-menubar`'s group button,
+`cae-split-button`'s chevron — has to decide whether to enable itself, which is exactly "would the
+panel contain anything focusable". Three of them had each written their own cheap approximation
+(`items.length === 0`), and all three were wrong the same way the per-row check was: not empty is
+not the same as not dead. The fix is one exported predicate answering the trigger's question as a
+boolean, **not** an exported graph object — hand back the roll-up and callers cannot re-derive
+"usable" differently, which is the drift that produced three answers in the first place. Two
+constraints decide where it lives: a *type-only* shared entry point cannot hold a runtime helper
+(check the budget, not the name), and the consumers that already import the recursive component as a
+**runtime value** pay nothing new for it — so verify runtime-vs-type per consumer before treating
+this as an architecture question. It shrank a five-component fork to a one-component one here.
+
+**A predicate that walks the graph must be memoised at the binding, not called from it.** The
+natural consumer shape is `[disabled]="isDead(group)"` — and `cae-menubar` reads it *twice* per
+group per change detection (once for the DOM, once for the key manager's skip predicate), so an
+`O(V+E)` walk in that method is a walk per binding per CD. Wrap it in a `computed` keyed to the
+model and let the per-row method be a set lookup, the same way the recursive component itself does
+it. Nothing in a suite will catch this: removing the memo is a deliberate surviving mutant, so only
+the comment on it records that it is load-bearing for cost. Word that comment carefully — the
+un-memoised form is not *identical*, it is strictly **fresher** under an in-place model mutation,
+and a rationale that claims equivalence invites a future reader to "fix" a staleness report by
+deleting the memo while the suite stays silent.
+
+**And the trigger's disabled state cannot be the only thing that moves.** Disabling a trigger is
+half a fix; the widget around it holds indices and handlers that still name the thing you just
+disabled. Two bit us at once on #961, both measured, both invisible to a suite that only asserts
+`disabled === true`: (1) a **roving tabindex** seeded once at `ngAfterViewInit` never re-derives, so
+an *asynchronously* arriving model — the ordinary permissions/HTTP shape — leaves the only
+`tabindex="0"` on a now-dead trigger, and since Material's `_getTabIndex()` returns `this.tabIndex`
+for a non-anchor button *regardless of `disabled`*, the entire widget silently leaves the tab order
+(WCAG 2.1.1). CDK's `_itemsChanged` will not save you: it repairs the index only when it already
+holds a live item. Re-seed on the `QueryList.changes` of the roving items. (2) a **programmatic
+`open()`** sails straight past a natively-disabled trigger — `MatMenuTrigger._openMenu` refuses only
+when the element carries `aria-disabled`, which `MatButton` emits *only* in its `disabledInteractive`
+posture — so the keyboard handler must re-ask the predicate itself. Choosing native `[disabled]`
+over `aria-disabled` is what disarms the 3p's own guard; if you take that route, you owe the guard.

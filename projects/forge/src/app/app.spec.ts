@@ -949,6 +949,16 @@ describe('App', () => {
     // The composed menubar renders as a role=menubar of top-level triggers.
     const bar = card.querySelector('cae-menubar [role="menubar"]');
     expect(bar).not.toBeNull();
+
+    // The demo's #961 contrast, asserted rather than merely present: `Admin` carries no `disabled`
+    // flag anywhere on it, yet its trigger is disabled because nothing behind it is reachable —
+    // while `File` stays live. Without this the group could be deleted, or made live, or the rule
+    // reverted to the empty-only check, and the Forge suite would not notice.
+    const state = Array.from(bar!.querySelectorAll('button')).map(
+      (b) => [b.textContent!.trim(), b.disabled] as const,
+    );
+    expect(state).toContainEqual(['Admin', true]);
+    expect(state).toContainEqual(['File', false]);
     const app = fixture.componentInstance;
     expect(app['commandLog']().length).toBe(0);
 

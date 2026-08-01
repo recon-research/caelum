@@ -40,8 +40,21 @@ const MODEL: CaeMenuItem[] = [
       [multiple]="multiple()"
       [iconTemplate]="useTemplate() ? tpl : null"
     />
+    <!--
+      A TEXT-FREE glyph (#963, the D-596 sweep). This fixture already carried its index in a data
+      attribute, but still stamped the label as visible text — the slot is inside the leaf's own
+      button, so that text joined the leaf's accessible name. Both facts now ride attributes.
+      (No backticks in here: this is inside a template literal, and one would terminate it.)
+    -->
     <ng-template #tpl let-item let-index="index">
-      <span class="custom-icon" [attr.data-index]="index">{{ item.label }}-glyph</span>
+      <span
+        class="custom-icon"
+        [attr.data-index]="index"
+        [attr.data-cx]="item.label"
+        aria-hidden="true"
+      >
+        <svg viewBox="0 0 24 24" width="16" height="16"><path d="M4 12h16" /></svg>
+      </span>
     </ng-template>
   `,
 })
@@ -232,9 +245,12 @@ describe('CaePanelMenu', () => {
     const open = leafByLabel('Open');
     expect(open.querySelector('cae-icon')).toBeNull(); // built-in suppressed
     const custom = open.querySelector('.custom-icon');
-    expect(custom?.textContent).toContain('Open-glyph');
+    expect(custom?.getAttribute('data-cx')).toBe('Open');
     // Open is index 0 among Files' children — the single-homed caeItemIconContext carried it through.
     expect(custom?.getAttribute('data-index')).toBe('0');
+    // The leaf's accessible name is still EXACTLY its label — the assertion that catches the
+    // class, since the icon slot lives inside the leaf button and its text would join that name.
+    expect(open.textContent?.trim()).toBe('Open');
   });
 
   it('roves Arrow/Home/End over a level’s own leaves and never leaks into a nested level', async () => {

@@ -507,6 +507,31 @@ function analyseMenuGraph(roots: readonly CaeMenuItem[]): CaeMenuGraph {
 }
 
 /**
+ * Whether a `cae-menu` built from `items` would contain a row the user can actually reach — the
+ * question every **trigger** over a menu has to answer before enabling itself, exported here for
+ * the two that ask it from outside this file (**D-858**).
+ *
+ * `cae-menubar` and `cae-split-button` each embed a `cae-menu` for their dropdown, so each already
+ * imports this entry point as a *runtime* value and pays nothing new for the predicate; what it
+ * buys is one definition of "usable" instead of three. They had already drifted apart: both asked
+ * only `length === 0`, so an all-disabled model (#880) — or, since #962, one whose every branch
+ * bottoms out in disabled rows — still enabled the trigger, opened the panel, and left focus parked
+ * on the bare `role="menu"` div where nothing but Escape answers (#961).
+ *
+ * This is the roll-up of exactly what {@link CaeMenu} asks per row, which is why it cannot be a
+ * simple `every((i) => i.disabled)`: "reachable" is a bottom-up property of the whole subtree, so
+ * it needs the same {@link analyseMenuGraph} pass the panel itself runs. An **empty** array is not
+ * usable — the old `length === 0` arm survives as one special case of the general question.
+ *
+ * Cost is one `O(V+E)` walk per call, so a caller binding it in a template should memoize it in a
+ * `computed` keyed to its model rather than re-walking on every change detection.
+ */
+export function caeMenuHasUsableItems(items: readonly CaeMenuItem[]): boolean {
+  const { deadEnd } = analyseMenuGraph(items);
+  return items.some((item) => !item.disabled && !deadEnd.has(item));
+}
+
+/**
  * `caeMenuTriggerFor` — opens a `cae-menu` from a focusable host. Composes Material's
  * `MatMenuTrigger` (overlay, positioning, keyboard) and wires the `cae-menu`'s panel into
  * it, so the consumer references the `cae-menu` instance directly (never a Material type):

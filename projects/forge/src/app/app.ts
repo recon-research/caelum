@@ -543,7 +543,8 @@ export class App {
    * menu over `MatToolbar` + `cae-menu`, with CDK roving keyboard across the top-level items.
    * Composed-over-composed: selecting any command records it in {@link commandLog} and the live
    * region, so the menubar drives visible Forge state. `Help` is a disabled top-level group (roving
-   * skips it); `Delete` is a disabled item inside `Edit`.
+   * skips it); `Delete` is a disabled item inside `Edit`; `Admin` is disabled by the no-dead-end
+   * rule alone, without saying so (#961) — see the comment on it.
    */
   protected readonly commandGroups: readonly CaeMenubarItem[] = [
     {
@@ -570,6 +571,21 @@ export class App {
       ],
     },
     { label: 'Help', disabled: true, items: [{ value: 'docs', label: 'Documentation' }] },
+    // The contrast that makes #961 visible, and the only interaction here that reaches it. `Help`
+    // above is disabled because the model SAYS SO. `Admin` says nothing of the kind — every field
+    // on the group is ordinary — yet its trigger is disabled too, because nothing behind it is
+    // reachable: one item is explicitly disabled, and the other is a branch whose own only child
+    // is disabled, so the whole subtree collapses (the rule is transitive, #962). This is the shape
+    // a permission-gated console produces constantly. Until #961 the bar asked only whether `items`
+    // was EMPTY, so this trigger stayed live, opened its panel, and left focus parked on a menu
+    // with nothing focusable in it, where the arrow keys do nothing and only Escape recovers.
+    {
+      label: 'Admin',
+      items: [
+        { value: 'audit', label: 'Audit log', disabled: true },
+        { label: 'Billing', items: [{ value: 'invoices', label: 'Invoices', disabled: true }] },
+      ],
+    },
   ];
   protected readonly lastCommand = signal('');
   /** Recent commands, newest first, capped — a small visible history of menubar selections. */

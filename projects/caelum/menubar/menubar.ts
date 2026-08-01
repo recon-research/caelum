@@ -2,6 +2,7 @@ import {
   AfterViewInit,
   ChangeDetectionStrategy,
   Component,
+  computed,
   DestroyRef,
   Directive,
   ElementRef,
@@ -19,7 +20,12 @@ import { FocusableOption, FocusKeyManager } from '@angular/cdk/a11y';
 import { DOWN_ARROW, UP_ARROW } from '@angular/cdk/keycodes';
 import { MatButtonModule } from '@angular/material/button';
 import { MatToolbarModule } from '@angular/material/toolbar';
-import { CaeMenu, CaeMenuTrigger, type CaeMenuItem } from '@recon-research/caelum/menu';
+import {
+  CaeMenu,
+  caeMenuHasUsableItems,
+  CaeMenuTrigger,
+  type CaeMenuItem,
+} from '@recon-research/caelum/menu';
 import type { CaeItemIconContext } from '@recon-research/caelum/icon';
 
 /**
@@ -89,8 +95,10 @@ export class MenubarTriggerItem implements FocusableOption {
  * `FocusKeyManager` gives the bar roving focus — only the active trigger is tab-focusable, and
  * Left/Right/Home/End + typeahead move between them, skipping disabled groups. Down/Up open the
  * active group's panel and move focus into it (Material owns the panel-side keys + Escape-restore);
- * Enter/Space open it too via the native button. A group with no items is treated as disabled (no
- * dead-end empty menu). Name the bar with {@link ariaLabel}.
+ * Enter/Space open it too via the native button. A group with **nothing reachable behind it** is
+ * treated as disabled (#961) — empty, all-disabled, or every branch bottoming out in disabled rows;
+ * the bar asks `cae-menu`'s own question rather than a looser one. Name the bar with
+ * {@link ariaLabel}.
  *
  * **Model updates — groups need stable identity** (#879, the family rule from #774). Groups track by
  * **object identity**, so a group's dropdown state follows the group it belongs to across a model
@@ -186,9 +194,34 @@ export class CaeMenubar implements AfterViewInit, OnDestroy {
   @ViewChildren(CaeMenuTrigger) private readonly menuTriggers!: QueryList<CaeMenuTrigger>;
   private keyManager?: FocusKeyManager<MenubarTriggerItem>;
 
-  /** A group is effectively disabled when explicitly disabled OR it has no items (no dead-end menu). */
+  /**
+   * The groups with nothing reachable behind them, resolved once per model change rather than per
+   * binding — {@link disabledGroup} is read twice for every group on every change detection
+   * (`menubarDisabled` and `disabled`), and the predicate walks that group's whole subtree.
+   *
+   * Keyed on `model()`, matching `CaeMenu.graph` and `CaeSplitButton.toggleDisabled`. A review
+   * proposed keying it on `group.items` instead, so that swapping one group's items on a *stable*
+   * model array would re-run — the worry being a trigger left disabled over a panel that
+   * `[items]="group.items"` had already refreshed. **Measured, both keyings behave identically**,
+   * and so does the pre-#961 `group.items.length === 0`: an in-place mutation touches no signal,
+   * so the row view is never re-checked and the binding never reaches the DOM at all. The
+   * staleness is the family's `model`-identity contract (see the class doc), not this memo — see
+   * #975. Keying per items array would buy only skipping the re-walk of unchanged groups on a
+   * model change, which at menubar scale is noise.
+   */
+  private readonly deadGroups = computed(
+    () => new Set(this.model().filter((group) => !caeMenuHasUsableItems(group.items))),
+  );
+
+  /**
+   * A group is effectively disabled when explicitly disabled OR its dropdown would open onto
+   * nothing focusable — the family's no-dead-end rule (#961), asked the way `cae-menu` asks it.
+   * This used to be `group.items.length === 0`, which covers only the *empty* arm: a group of one
+   * disabled item, or one whose branches all bottom out in disabled rows (#962), is not empty, so
+   * its trigger stayed enabled and Material parked focus on a panel answering no key but Escape.
+   */
   protected disabledGroup(group: CaeMenubarItem): boolean {
-    return (group.disabled ?? false) || group.items.length === 0;
+    return (group.disabled ?? false) || this.deadGroups().has(group);
   }
 
   ngAfterViewInit(): void {
@@ -204,9 +237,34 @@ export class CaeMenubar implements AfterViewInit, OnDestroy {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((index) => this.activeIndex.set(index));
     // Point the roving tabindex at the first enabled trigger without stealing focus on load.
+    this.seedActiveIndex();
+    // …and re-seed whenever the rendered trigger set changes. Nothing else does: this hook runs
+    // once, and CDK's `_itemsChanged` repairs the index only when it already holds a live item, so
+    // a model that arrives ASYNCHRONOUSLY — the ordinary permissions/HTTP shape — seeds against an
+    // empty QueryList and leaves `activeIndex` at 0. If group 0 is then dead, the bar's only
+    // `tabindex="0"` sits on a natively-disabled button (Material's `_getTabIndex()` returns
+    // `this.tabIndex` for a non-anchor regardless of `disabled`), so the whole menubar drops out of
+    // the tab order — WCAG 2.1.1, and reachable with nothing more exotic than an HTTP response.
+    this.triggers.changes.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+      // Only when the index no longer names an operable trigger — re-seeding unconditionally would
+      // yank the roving position back to the start on any model edit, which the roving specs catch.
+      const current = this.triggers.get(this.activeIndex());
+      if (current && !current.disabled) return;
+      this.seedActiveIndex();
+    });
+  }
+
+  /**
+   * Point the roving tabindex at the first operable trigger. Never focuses anything: this decides
+   * only which trigger is Tab-reachable, and it also gives the key manager the active item it needs
+   * before any arrow key arrives.
+   */
+  private seedActiveIndex(): void {
     const first = this.triggers.toArray().findIndex((t) => !t.disabled);
-    this.keyManager.updateActiveItem(Math.max(first, 0));
-    this.activeIndex.set(this.keyManager.activeItemIndex ?? 0);
+    // `first < 0` (every trigger dead) falls back to 0: nothing here is operable, so there is no
+    // better index, and the bar has nothing to put in the tab order either way.
+    this.keyManager?.updateActiveItem(Math.max(first, 0));
+    this.activeIndex.set(this.keyManager?.activeItemIndex ?? 0);
   }
 
   ngOnDestroy(): void {
@@ -219,7 +277,14 @@ export class CaeMenubar implements AfterViewInit, OnDestroy {
     // Intercept before the key manager so they open rather than move focus along the bar.
     if (event.keyCode === DOWN_ARROW || event.keyCode === UP_ARROW) {
       event.preventDefault();
-      this.menuTriggers?.get(this.activeIndex())?.open();
+      // Refuse to open a dead group. The native `disabled` on the trigger does NOT stop this:
+      // `MatMenuTrigger._openMenu` refuses only when the element carries `aria-disabled`
+      // (`menu.mjs` `_triggerIsAriaDisabled` reads the attribute), and `MatButton` emits that
+      // attribute only in its `disabledInteractive` posture — so a programmatic `open()` sails
+      // straight past a natively-disabled trigger and lands focus on the bare `role="menu"` div,
+      // the exact #880 trap this rule exists to prevent (#961).
+      const group = this.model()[this.activeIndex()];
+      if (group && !this.disabledGroup(group)) this.menuTriggers?.get(this.activeIndex())?.open();
       return;
     }
     this.keyManager?.onKeydown(event);

@@ -2,6 +2,7 @@ import {
   booleanAttribute,
   ChangeDetectionStrategy,
   Component,
+  computed,
   input,
   output,
   type TemplateRef,
@@ -9,7 +10,12 @@ import {
 import { MatButtonModule } from '@angular/material/button';
 import type { CaeButtonVariant } from '@recon-research/caelum/button';
 import { CaeIcon, type CaeIconName, type CaeItemIconContext } from '@recon-research/caelum/icon';
-import { CaeMenu, CaeMenuTrigger, type CaeMenuItem } from '@recon-research/caelum/menu';
+import {
+  CaeMenu,
+  caeMenuHasUsableItems,
+  CaeMenuTrigger,
+  type CaeMenuItem,
+} from '@recon-research/caelum/menu';
 
 /**
  * `cae-split-button` — a **composed** default-command button joined to a dropdown of
@@ -32,8 +38,9 @@ import { CaeMenu, CaeMenuTrigger, type CaeMenuItem } from '@recon-research/caelu
  * required {@link label}; the icon-only chevron toggle by {@link menuAriaLabel}. Both are
  * `type="button"` by default so the control never submits an enclosing `<form>` by accident —
  * set {@link type} to `submit` to opt the primary in (the toggle is always `button`). The two are
- * wrapped in a `role="group"` (name it with {@link ariaLabel}); the toggle is disabled when
- * {@link model} is empty (no dead-end empty menu). Theming is free via the token bridge (D-04).
+ * wrapped in a `role="group"` (name it with {@link ariaLabel}); the toggle is disabled whenever
+ * {@link model} holds nothing the user could reach — empty, all-disabled, or every branch bottoming
+ * out in disabled rows ({@link toggleDisabled}, #961). Theming is free via the token bridge (D-04).
  *
  * **v1 scope** (#148): shared `variant`, a required `label`, an optional-submit primary, and a
  * data-driven menu. Icons follow the library convention (D-596, #644): a primary {@link icon}
@@ -70,7 +77,7 @@ import { CaeMenu, CaeMenuTrigger, type CaeMenuItem } from '@recon-research/caelu
         class="cae-split-button__toggle"
         type="button"
         [matButton]="variant()"
-        [disabled]="disabled() || model().length === 0"
+        [disabled]="toggleDisabled()"
         [attr.aria-label]="menuAriaLabel() || 'More actions'"
         [caeMenuTriggerFor]="menu"
       >
@@ -136,7 +143,10 @@ export class CaeSplitButton {
    * `string` (validated at render by `cae-icon`, like `model[].icon`).
    */
   readonly icon = input<CaeIconName | (string & {}) | null>(null);
-  /** Dropdown items, as data (reuses `cae-menu`'s {@link CaeMenuItem}). Empty disables the toggle. */
+  /**
+   * Dropdown items, as data (reuses `cae-menu`'s {@link CaeMenuItem}). A model with nothing
+   * reachable in it disables the toggle — see {@link toggleDisabled}.
+   */
   readonly model = input<readonly CaeMenuItem[]>([]);
   /** Material button appearance, shared by both halves. Defaults to `filled` — the primary action. */
   readonly variant = input<CaeButtonVariant>('filled');
@@ -164,4 +174,17 @@ export class CaeSplitButton {
    * wins whenever both are supplied. See `CaeMenu.iconTemplate` for the full contract.
    */
   readonly iconTemplate = input<TemplateRef<CaeItemIconContext<CaeMenuItem>> | null>(null);
+
+  /**
+   * Whether the chevron toggle is inert: the whole control is disabled, or its dropdown would open
+   * onto nothing focusable — the family's no-dead-end rule (#961), asked with `cae-menu`'s own
+   * predicate so the two cannot drift. This was `model().length === 0`, which covers only the
+   * *empty* arm: a model of purely disabled items, or one whose branches all bottom out in disabled
+   * rows (#962), is not empty, so the toggle stayed live and Material parked focus on a panel that
+   * answers no key but Escape. A `computed` rather than an inline expression because the predicate
+   * walks the whole model and the binding is read on every change detection.
+   */
+  protected readonly toggleDisabled = computed(
+    () => this.disabled() || !caeMenuHasUsableItems(this.model()),
+  );
 }
