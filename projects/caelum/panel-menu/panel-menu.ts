@@ -2,6 +2,7 @@ import {
   booleanAttribute,
   ChangeDetectionStrategy,
   Component,
+  computed,
   Directive,
   effect,
   ElementRef,
@@ -132,14 +133,14 @@ export class CaePanelMenuLeaf {
         <!-- track item, NOT $index — an expansion panel's open flag is unbound (#774). Family
              audit in the class doc; cae-menubar's exception is #879. -->
         @for (item of items; track item; let i = $index) {
-          @if (item.items?.length) {
+          @if (isBranch(item)) {
             <cae-expansion-panel [title]="item.label" [disabled]="item.disabled ?? false">
               <ng-container
                 [ngTemplateOutlet]="level"
                 [ngTemplateOutletContext]="{ $implicit: item.items }"
               />
             </cae-expansion-panel>
-          } @else if (item.url && !item.disabled) {
+          } @else if (item.url && !rowDisabled(item)) {
             <a class="cae-panel-menu__leaf" caePanelMenuLeaf [href]="item.url">
               <ng-container
                 [ngTemplateOutlet]="leaf"
@@ -151,7 +152,7 @@ export class CaePanelMenuLeaf {
               type="button"
               class="cae-panel-menu__leaf"
               caePanelMenuLeaf
-              [disabled]="item.disabled ?? false"
+              [disabled]="rowDisabled(item)"
               (click)="activate(item)"
             >
               <ng-container
@@ -245,6 +246,12 @@ export class CaePanelMenu {
   /** Context builder for {@link iconTemplate} — the single-homed D-596 helper (#649). */
   protected readonly iconContext = caeItemIconContext;
 
+  /**
+   * The items reachable from {@link model} that sit on a cycle — recomputed only when the model
+   * changes. See {@link findMenuCycles} for why the detection is node-scoped.
+   */
+  private readonly cyclicItems = computed(() => findMenuCycles(this.model()));
+
   constructor() {
     if (isDevMode()) {
       // A <nav> without an accessible name is an unlabelled landmark — indistinguishable from any
@@ -256,12 +263,81 @@ export class CaePanelMenu {
           );
         }
       });
+      // Dev-only DIAGNOSTIC for a cycle (#960). The break itself is NOT dev-gated — it lives in
+      // `isBranch`, so a production build renders a broken model inertly rather than overflowing
+      // the stack (#955: a behaviour effect wrapped in isDevMode() is a defect; a warning is not).
+      effect(() => {
+        for (const item of this.cyclicItems()) {
+          console.warn(
+            `cae-panel-menu: "${item.label}" is on a cycle in CaeMenuItem.items, which must be a ` +
+              'finite graph. Rendered as a disabled leaf; recursing would not terminate.',
+          );
+        }
+      });
     }
+  }
+
+  /**
+   * Whether `item` renders as a collapsible section rather than a leaf. It must have children, and
+   * it must not sit on a cycle — stopping there is what bounds the recursion (#960).
+   *
+   * Unlike `cae-menu`, an all-disabled branch is left alone here. That rule exists there because
+   * Material parks focus on an empty `role="menu"` panel with no way out but Escape (#880); an
+   * expansion panel has no such trap — its header stays focusable and its disabled rows are simply
+   * inert — so disabling the section would remove information for no accessibility gain.
+   */
+  protected isBranch(item: CaeMenuItem): boolean {
+    return !!item.items?.length && !this.cyclicItems().has(item);
+  }
+
+  /** Whether the row for `item` is non-interactive: the consumer disabled it, or it is a cycle break. */
+  protected rowDisabled(item: CaeMenuItem): boolean {
+    return (item.disabled ?? false) || this.cyclicItems().has(item);
   }
 
   /** Activate a command leaf: no-op if disabled; otherwise emit it. */
   protected activate(item: CaeMenuItem): void {
-    if (item.disabled) return;
+    if (this.rowDisabled(item)) return;
     this.itemSelect.emit(item);
   }
+}
+
+/**
+ * The items on a cycle in the graph reachable from `roots`, by colouring DFS: an item still on the
+ * current path is a back edge, and back edges are exactly the cycles. Recursion stops at the *first*
+ * sighting, so this is `O(V+E)` — a path-scoped guard ("is this one of my ancestors") would
+ * terminate without *bounding*, unrolling every simple path through a dense cycle (`cae-menu`
+ * measured 1957 panels / 2377 ms at seven nodes before that version was replaced, #877).
+ *
+ * `done` is what keeps it linear, and it is also why a legal **DAG still renders in full**: a
+ * subtree shared by two sibling branches is re-entered, found already finished rather than on the
+ * path, and skipped for cycle purposes only. A visited-ever check that conflated the two would kill
+ * exactly that case, which is why it has its own spec.
+ *
+ * **Deliberately a second copy of `cae-menu`'s traversal, not a shared import** (#960). The natural
+ * home for a shared helper would be `caelum/shared`, which is type-only by construction — a 64-byte
+ * budget, and the reason `cae-button` can name the menu seam without dragging menu code into every
+ * button bundle. The alternative, importing from `caelum/menu`, would put `@angular/material/menu`
+ * in the dependency graph of every `cae-panel-menu` consumer to reuse fifteen lines. Consolidating
+ * the two (a `caelum/menu-model` entry point holding `CaeMenuItem` and its graph utilities) is a
+ * public-API question, filed as #968. Note the copies are not identical: `cae-menu` needs dead ends
+ * as well, so its version is bottom-up (`analyseMenuGraph`).
+ */
+function findMenuCycles(roots: readonly CaeMenuItem[]): ReadonlySet<CaeMenuItem> {
+  const onPath = new Set<CaeMenuItem>();
+  const done = new Set<CaeMenuItem>();
+  const cyclic = new Set<CaeMenuItem>();
+  const walk = (item: CaeMenuItem): void => {
+    if (onPath.has(item)) {
+      cyclic.add(item);
+      return;
+    }
+    if (done.has(item)) return;
+    onPath.add(item);
+    for (const child of item.items ?? []) walk(child);
+    onPath.delete(item);
+    done.add(item);
+  };
+  for (const root of roots) walk(root);
+  return cyclic;
 }

@@ -272,6 +272,125 @@ describe('CaePanelMenu', () => {
     warn.mockRestore();
   });
 
+  describe('a cyclic model (#960)', () => {
+    let warn: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    });
+    afterEach(() => warn.mockRestore());
+
+    /** Builds `{label}` objects whose `items` can be wired into a cycle after construction. */
+    const node = (
+      label: string,
+    ): { label: string; value: string; items?: readonly CaeMenuItem[] } => ({
+      label,
+      value: label.toLowerCase(),
+    });
+    const headerLabels = (): string[] =>
+      Array.from(root().querySelectorAll('mat-panel-title')).map(
+        (t) => t.textContent?.trim() ?? '',
+      );
+    /**
+     * THIS component's cycle diagnostic, not "console.warn was silent". Swapping the model wholesale
+     * makes Angular itself warn (NG0956 — `track item` re-creating a same-sized collection), so a
+     * bare `not.toHaveBeenCalled()` fails on a fixture artefact that has nothing to do with the
+     * claim. Not vacuous: the specs above prove this filter DOES match on a real cycle.
+     */
+    const cycleWarnings = (): unknown[] =>
+      warn.mock.calls.filter((c: unknown[]) => String(c[0]).includes('is on a cycle'));
+
+    /**
+     * Without the break this does not terminate at the FIRST change detection — a branch's nested
+     * level is `ngTemplateOutlet` content inside a `cae-expansion-panel`, which projects it eagerly,
+     * so the recursion runs before anything has been expanded. The assertion that matters most is
+     * therefore that `settle()` returns at all: this test would not *fail* without the fix, it would
+     * die with `RangeError: Maximum call stack size exceeded` — the measured #960 repro.
+     */
+    it('renders a self-referential item as a disabled leaf, not a section', async () => {
+      const a = node('A');
+      a.items = [a as CaeMenuItem];
+      host.model.set([a as CaeMenuItem]);
+      await settle();
+
+      expect(headerLabels()).not.toContain('A');
+      expect(leafByLabel('A').hasAttribute('disabled')).toBe(true);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0][0]).toContain('"A" is on a cycle');
+    });
+
+    it('stops a MUTUAL pair too — the cycle, not just self-reference', async () => {
+      const a = node('A');
+      const b = node('B');
+      a.items = [b as CaeMenuItem];
+      b.items = [a as CaeMenuItem];
+      host.model.set([a as CaeMenuItem]);
+      await settle();
+
+      expect(headerLabels()).not.toContain('A');
+      expect(leafByLabel('A').hasAttribute('disabled')).toBe(true);
+      expect(warn).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * A cycle longer than two: a guard that only looks a fixed distance up the ancestry — self plus
+     * one level — passes both specs above and then fails to terminate here.
+     */
+    it('stops a THREE-cycle', async () => {
+      const a = node('A');
+      const b = node('B');
+      const c = node('C');
+      a.items = [b as CaeMenuItem];
+      b.items = [c as CaeMenuItem];
+      c.items = [a as CaeMenuItem];
+      host.model.set([a as CaeMenuItem]);
+      await settle();
+
+      expect(headerLabels()).not.toContain('A');
+      expect(leafByLabel('A').hasAttribute('disabled')).toBe(true);
+      expect(warn).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * The false-positive direction, and the reason `done` and `onPath` have to be different sets. A
+     * DAG is legal: one subtree object reused under two SIBLING branches must still render in full
+     * under each. A cheaper visited-ever check passes every cycle spec above and silently kills this
+     * one — which is why both siblings are expanded rather than just the first.
+     */
+    it('does NOT flag a subtree shared by two sibling branches, under either one', async () => {
+      const shared: CaeMenuItem = { label: 'Shared', items: [{ label: 'Deep', value: 'deep' }] };
+      host.model.set([
+        { label: 'One', items: [shared] },
+        { label: 'Two', items: [shared] },
+      ]);
+      await settle();
+      await expand('One');
+      await expand('Two');
+
+      expect(headerLabels()).toContain('One');
+      expect(headerLabels()).toContain('Two');
+      // The shared branch renders as a real section under BOTH parents, not a broken leaf.
+      expect(headerLabels().filter((l) => l === 'Shared')).toHaveLength(2);
+      expect(cycleWarnings()).toHaveLength(0);
+    });
+
+    /**
+     * The rule `cae-menu` has and this component deliberately does NOT (#880 vs #960). Material
+     * parks focus on an empty `role="menu"` panel with no way out but Escape, which is why a menu
+     * disables an all-disabled branch; an expansion panel has no such trap — the header stays
+     * focusable and the rows are simply inert — so the section must still render.
+     */
+    it('leaves an all-disabled section expandable — the menu dead-end rule does not transfer', async () => {
+      host.model.set([{ label: 'Bulk', items: [{ label: 'Archive', disabled: true }] }]);
+      await settle();
+      await expand('Bulk');
+
+      expect(headerLabels()).toContain('Bulk');
+      expect(leafByLabel('Archive').hasAttribute('disabled')).toBe(true);
+      expect(cycleWarnings()).toHaveLength(0);
+    });
+  });
+
   it('draws its leaf chrome from tokens (no hardcoded design values)', () => {
     const styles = (CaePanelMenu as unknown as { ɵcmp: { styles: string[] } }).ɵcmp.styles.join(
       '\n',
