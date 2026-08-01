@@ -203,10 +203,10 @@
       "quote": "Four-lens adversarial review. One HIGH, confirmed by simulation before fixing,\nplus six test gaps the lenses proposed as surviving mutations and that measured\nout as real."
     },
     "menubar": {
-      "pr": 154,
-      "commit": "402539ad",
+      "pr": 974,
+      "commit": "c4072c2",
       "source": "commit",
-      "quote": "ai/code/session_01VFguz4Q8QdTr9MGxKn8kwj * cae-menubar: apply 4-lens review fixes + docs (#153) 4-lens adversarial review (16 agents) — fixed the surviving majors + actionable minors: - a11y/arch (2 l"
+      "quote": "A three-lens adversarial review of da7a400 found the slice's headline claim\nfalsified through the very component it fixes. Both reproduced before fixing."
     },
     "multi-select": {
       "pr": 136,
@@ -320,10 +320,10 @@
       "quote": "Adversarially reviewed (4-lens): 0 BLOCKER/MAJOR, 0 refuted; core verified against Material 22"
     },
     "split-button": {
-      "pr": 151,
-      "commit": "1bc5bb8d",
+      "pr": 974,
+      "commit": "c4072c2",
       "source": "commit",
-      "quote": "4-lens adversarial review fixed the one confirmed major (found by all four lenses, 0/2 refuted): matButton sets no default type, so the owned buttons defaulted to type=submit — inside a <form> the tog"
+      "quote": "A three-lens adversarial review of da7a400 found the slice's headline claim\nfalsified through the very component it fixes. Both reproduced before fixing."
     },
     "splitter": {
       "pr": 326,
