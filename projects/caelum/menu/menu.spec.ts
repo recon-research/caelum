@@ -191,8 +191,10 @@ describe('CaeMenu per-item icons (D-596)', () => {
     const deep = items().find((el) => el.textContent?.includes('Deep'))!;
     // Index is per-level: 'Deep' is the first row of ITS panel, so 0 — not 2 continuing the root.
     expect(deep.querySelector('.custom-icon')?.getAttribute('data-cx')).toBe('0:deep');
-    // The BUILT-IN glyph is gone; the template's own svg is what remains.
-    expect(deep.querySelector('.cae-menu__icon')).toBeNull();
+    // The BUILT-IN glyph is gone; the template's own svg is what remains. Targeted by ELEMENT,
+    // not by the .cae-menu__icon class: that class is cosmetic and nothing else pins it, so
+    // deleting it from the template would make this assertion vacuously green (#881 lens).
+    expect(deep.querySelector('cae-icon')).toBeNull();
   });
 
   it('iconTemplate wins over item.icon, for every item — and yields back when cleared (D-596)', async () => {
@@ -202,8 +204,8 @@ describe('CaeMenu per-item icons (D-596)', () => {
     // The template is stamped for each item with { $implicit: item, index } …
     const custom = items().map((el) => el.querySelector('.custom-icon')?.getAttribute('data-cx'));
     expect(custom).toEqual(['0:new', '1:find']);
-    // … and the built-in glyph gives way even where item.icon is set.
-    expect(items()[0].querySelector('.cae-menu__icon')).toBeNull();
+    // … and the built-in glyph gives way even where item.icon is set (by element, see above).
+    expect(items()[0].querySelector('cae-icon')).toBeNull();
     // Reverse flip: clearing the template restores the built-in glyph (not a one-way latch).
     fixture.componentInstance.useTpl.set(false);
     fixture.detectChanges();
@@ -672,77 +674,160 @@ describe('CaeMenu tiered submenus (#150)', () => {
     });
     afterEach(() => warn.mockRestore());
 
-    /**
-     * Without the break this overflows the stack at the FIRST change detection — not on open —
-     * because a branch's nested `cae-menu` is projected content that Angular *creates* eagerly and
-     * only defers the DOM insertion of. So the assertion that matters is simply that `settle()`
-     * returns: the test would not fail here, it would die.
-     */
-    it('stops a self-referential item instead of overflowing the stack', async () => {
-      const a: CaeMenuItem = { value: 'a', label: 'A' };
-      (a as { items?: readonly CaeMenuItem[] }).items = [a];
-      host.items.set([a]);
-      await openRoot();
-
-      // Level 1 renders A as a real branch — the cycle is only visible one level down.
-      const top = rowNamed(rootPanel(), 'A');
-      expect(top.getAttribute('aria-haspopup')).toBe('menu');
-      top.click();
-      await settle();
-
-      // Level 2 is where A encloses itself: rendered, disabled, and NOT recursed into.
-      const inner = rowNamed(panelOf(top), 'A');
-      expect(inner.getAttribute('aria-haspopup')).toBeNull();
-      expect(inner.getAttribute('disabled')).not.toBeNull();
-      expect(warn).toHaveBeenCalledTimes(1);
-      expect(warn.mock.calls[0][0]).toContain('"A" is its own ancestor');
+    /** Builds `{label}` objects whose `items` can be wired into a cycle after construction. */
+    const node = (
+      label: string,
+    ): { label: string; value: string; items?: readonly CaeMenuItem[] } => ({
+      label,
+      value: label.toLowerCase(),
     });
 
-    it('stops a MUTUAL pair too — the chain, not just self-reference', async () => {
-      const a = { value: 'a', label: 'A' } as { value: string; label: string; items?: unknown };
-      const b = { value: 'b', label: 'B' } as { value: string; label: string; items?: unknown };
-      a.items = [b];
-      b.items = [a];
+    /**
+     * Without the break this does not terminate, at the FIRST change detection — not on open —
+     * because a branch's nested `cae-menu` is projected content that Angular *creates* eagerly and
+     * only defers the DOM insertion of. So the assertion that matters most is that `settle()`
+     * returns at all: the test would not fail here, it would die.
+     *
+     * The break is NODE-scoped, so it lands on the very first sighting — `A` is a disabled leaf in
+     * the ROOT panel, and no second level is ever built. An ancestor-chain (path-scoped) guard
+     * instead renders `A` as a branch and disables the copy one level down, which terminates but
+     * unrolls every simple path; see `findCycles`' doc and the fan-out spec below.
+     */
+    it('renders a self-referential item as a disabled leaf, at the first sighting', async () => {
+      const a = node('A');
+      a.items = [a as CaeMenuItem];
       host.items.set([a as CaeMenuItem]);
       await openRoot();
 
-      const top = rowNamed(rootPanel(), 'A');
-      top.click();
-      await settle();
-      const mid = rowNamed(panelOf(top), 'B');
-      expect(mid.getAttribute('aria-haspopup')).toBe('menu'); // B is not yet an ancestor of itself
-      mid.click();
-      await settle();
-      // A again, now enclosed by [A, B] — broken here.
-      const deep = rowNamed(panelOf(mid), 'A');
-      expect(deep.getAttribute('aria-haspopup')).toBeNull();
+      const row = rowNamed(rootPanel(), 'A');
+      expect(row.getAttribute('aria-haspopup')).toBeNull();
+      expect(row.getAttribute('disabled')).not.toBeNull();
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0][0]).toContain('"A" is on a cycle');
+    });
+
+    it('stops a MUTUAL pair too — the cycle, not just self-reference', async () => {
+      const a = node('A');
+      const b = node('B');
+      a.items = [b as CaeMenuItem];
+      b.items = [a as CaeMenuItem];
+      host.items.set([a as CaeMenuItem]);
+      await openRoot();
+
+      const row = rowNamed(rootPanel(), 'A');
+      expect(row.getAttribute('aria-haspopup')).toBeNull();
       expect(warn).toHaveBeenCalledTimes(1);
     });
 
     /**
-     * The false-positive guard, and the reason the check is ANCESTOR-scoped rather than
-     * "seen anywhere". Reusing one subtree under two SIBLING branches is a legal finite DAG —
-     * exactly what a shared "Share…" submenu is — and it must keep working. A cheaper check
-     * (a visited-set across the whole traversal, or comparing `items` array identity) passes
-     * every test above and breaks this one.
+     * A cycle longer than two. A guard that only looks a fixed distance up the ancestry — self plus
+     * one level, say — passes both specs above and then fails to terminate here, which is the one
+     * failure mode #877 exists to prevent. So this arm is the reason the detection has to be a real
+     * traversal rather than a bounded look-back.
      */
-    it('does NOT flag a subtree shared by two sibling branches', async () => {
+    it('stops a THREE-cycle — a bounded look-back would not', async () => {
+      const [a, b, c] = [node('A'), node('B'), node('C')];
+      a.items = [b as CaeMenuItem];
+      b.items = [c as CaeMenuItem];
+      c.items = [a as CaeMenuItem];
+      host.items.set([a as CaeMenuItem]);
+      await openRoot();
+
+      expect(rowNamed(rootPanel(), 'A').getAttribute('aria-haspopup')).toBeNull();
+      expect(warn).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * The regression guard for the fan-out this replaced. A symmetric graph — every item listing
+     * every other — is the shape a graph-flavoured API produces by accident. Under a path-scoped
+     * ancestor check each of its simple paths is legal until it repeats, so 7 nodes unrolled to
+     * 1957 panels and 2377 ms of blocking first change detection (measured), growing factorially.
+     * Node-scoped detection stops at the first sighting, so the whole thing is one disabled row.
+     *
+     * Asserting the ROW COUNT, not a duration: a wall-clock budget would be flaky, and the panel
+     * count is the quantity that actually exploded.
+     *
+     * TWELVE nodes rather than seven, deliberately: this is also the only arm that pins the `done`
+     * memo in `findCycles`. Detection still finds the cycle without it, and the render still stops
+     * at one row, so nothing smaller notices its removal — but the traversal itself then walks
+     * every simple path (~10^8 here) and the test dies on timeout instead of passing instantly.
+     */
+    it('does not unroll a dense cyclic graph — every path is not a branch', async () => {
+      const nodes = Array.from({ length: 12 }, (_, i) => node(`N${i}`));
+      for (const n of nodes) n.items = nodes.filter((o) => o !== n) as CaeMenuItem[];
+      host.items.set([nodes[0] as CaeMenuItem]);
+      await openRoot();
+
+      expect(rowsIn(rootPanel()).map((el) => el.textContent!.trim())).toEqual(['N0']);
+      expect(rowNamed(rootPanel(), 'N0').getAttribute('aria-haspopup')).toBeNull();
+      // The whole overlay holds exactly the root panel — no nested level was ever built.
+      expect(
+        overlayContainer.getContainerElement().querySelectorAll('[mat-menu-item]').length,
+      ).toBe(1);
+    });
+
+    /**
+     * The false-positive guard, and the reason the check is by object IDENTITY. Two *distinct*
+     * items that happen to share a label and a value — `Settings > Advanced > Settings`, the most
+     * ordinary menu shape there is — form a legal finite tree. Comparing by label or by value
+     * instead flags this as a cycle, cripples a real branch, and warns about a defect that is not
+     * there; nothing else in this file would notice, because no other fixture repeats a label.
+     */
+    it('does NOT flag two distinct items that share a label and value', async () => {
+      host.items.set([
+        {
+          value: 'settings',
+          label: 'Settings',
+          items: [
+            {
+              label: 'Advanced',
+              items: [
+                { value: 'settings', label: 'Settings', items: [{ value: 'x', label: 'X' }] },
+              ],
+            },
+          ],
+        },
+      ]);
+      await openRoot();
+      const outer = rowNamed(rootPanel(), 'Settings');
+      outer.click();
+      await settle();
+      const advanced = rowNamed(panelOf(outer), 'Advanced');
+      advanced.click();
+      await settle();
+      const inner = rowNamed(panelOf(advanced), 'Settings');
+      expect(inner.getAttribute('aria-haspopup')).toBe('menu');
+      expect(inner.getAttribute('disabled')).toBeNull();
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    /**
+     * A subtree object reused under two SIBLING branches is a legal finite DAG — a shared "Share…"
+     * submenu is exactly that — and it must render in full under BOTH parents. This is what stops
+     * `findCycles` from conflating "already finished" with "on the current path": a visited-ever
+     * check passes every cycle spec above and kills the second sibling here, which is why both
+     * siblings are opened rather than just the first.
+     */
+    it('does NOT flag a subtree shared by two sibling branches, under either one', async () => {
       const shared: CaeMenuItem = { label: 'Shared', items: [{ value: 's', label: 'Leaf' }] };
       host.items.set([
         { label: 'One', items: [shared] },
         { label: 'Two', items: [shared] },
       ]);
       await openRoot();
-      const one = rowNamed(rootPanel(), 'One');
-      one.click();
-      await settle();
-      const sharedRow = rowNamed(panelOf(one), 'Shared');
-      expect(sharedRow.getAttribute('aria-haspopup')).toBe('menu');
-      expect(sharedRow.getAttribute('disabled')).toBeNull();
-      sharedRow.click();
-      await settle();
-      expect(rowsIn(panelOf(sharedRow)).map((el) => el.textContent!.trim())).toEqual(['Leaf']);
-      // Not vacuous: the two specs above prove this spy DOES fire on a real cycle.
+
+      for (const parent of ['One', 'Two']) {
+        const branch = rowNamed(rootPanel(), parent);
+        branch.click();
+        await settle();
+        const sharedRow = rowNamed(panelOf(branch), 'Shared');
+        expect(sharedRow.getAttribute('aria-haspopup')).toBe('menu');
+        expect(sharedRow.getAttribute('disabled')).toBeNull();
+        sharedRow.click();
+        await settle();
+        expect(rowsIn(panelOf(sharedRow)).map((el) => el.textContent!.trim())).toEqual(['Leaf']);
+      }
+      // Not vacuous: the specs above prove this spy DOES fire on a real cycle.
       expect(warn).not.toHaveBeenCalled();
     });
   });

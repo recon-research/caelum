@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   Directive,
   effect,
   forwardRef,
@@ -57,12 +58,15 @@ export interface CaeMenuItem {
    * that arm is #158.
    *
    * **Two preconditions, both introduced by the #150 recursion:**
-   * - **The graph must be a finite tree.** A cycle (`a.items = [a]`, or a mutual pair) recurses
-   *   until the stack overflows, and it happens at the first change detection — not on open, since
-   *   a branch's nested menu is projected content that is *created* eagerly even though its DOM is
-   *   only inserted when the panel opens. Material's own recursion guard cannot catch this: it
-   *   trips only when a panel is its own direct parent, and here every level is a distinct
-   *   instance. A dev-mode cycle check is #877.
+   * - **The graph must be finite and acyclic.** A **DAG is fine** — reuse one subtree object under
+   *   several branches and it renders in full under each. A **cycle** (`a.items = [a]`, or a mutual
+   *   pair) is not: the item on the cycle renders as a *disabled leaf*, the branch stops there, and
+   *   dev mode warns naming it (#877). That is a deliberate break, not a diagnostic — without it
+   *   the recursion does not terminate, and it fails at the **first change detection** rather than
+   *   on open, since a branch's nested menu is projected content that is *created* eagerly even
+   *   though its DOM is only inserted when the panel opens. Material's own recursion guard cannot
+   *   catch it either: that trips only when a panel is its own direct parent, and here every level
+   *   is a distinct instance.
    * - **Item objects need stable identity, and must be distinct within a level.** Rows track by
    *   item identity (see the template), so binding a freshly-built array of fresh objects on every
    *   change detection — `[items]="buildItems()"` with a non-memoised method — now destroys and
@@ -185,7 +189,6 @@ export interface CaeMenuItem {
           <cae-menu
             #child
             [items]="item.items ?? []"
-            [ownerItem]="item"
             [iconTemplate]="iconTemplate()"
             [ariaLabel]="item.label"
             (itemSelect)="itemSelect.emit($event)"
@@ -274,36 +277,10 @@ export class CaeMenu implements CaeMenuPanelHost {
   readonly itemSelect = output<CaeMenuItem>();
 
   /**
-   * The branch item whose row opens THIS panel — set by the recursion in the template, `null` on a
-   * root menu. An internal seam, but **`@internal` protects it less than it does {@link panel}, and
-   * the difference is worth stating rather than assuming**: `stripInternal` removes the property
-   * *declaration* from the published `.d.ts`, so nothing can read `menu.ownerItem` in TypeScript —
-   * verified in `dist/caelum/types/`. It does **not** remove the entry from the component's input
-   * map in `ɵcmp`, which is what Angular's template type-checker consults, so `[ownerItem]="…"`
-   * still compiles in a consumer template under `strictTemplates`. `panel` is fully hidden only
-   * because it is a `viewChild` and therefore never in that map; an *input* cannot be hidden this
-   * way at all. This is the library's first `@internal` input and no surface gate covers the case.
-   *
-   * The blast radius if someone does bind it is bounded and non-destructive: passing an item that
-   * also appears in this menu's own `items` makes that row look like its own ancestor, so it
-   * renders as a disabled leaf instead of a branch. Degraded rendering, not unsafe behaviour — the
-   * reason this is documented rather than defended against.
-   *
-   * It exists so a level can see the chain of items enclosing it, which is what makes the cycle
-   * break in {@link isDeadEnd} possible without counting depth (#877 forbids a depth input). The
-   * item object itself is passed, never a derived array, so the binding is reference-stable across
-   * change detection — a freshly-built chain array would invalidate every nested level's input on
-   * every pass.
-   * @internal
+   * The items reachable from {@link items} that sit on a cycle — recomputed only when the model
+   * changes. See {@link findCycles} for why this is node-scoped rather than path-scoped.
    */
-  readonly ownerItem = input<CaeMenuItem | null>(null);
-
-  /**
-   * The `cae-menu` whose panel encloses this one, or `null` at the root. Resolves by DI because the
-   * nested `<cae-menu>` is *declared* inside this component's template — element injectors follow
-   * the declaration site, not the CDK overlay the panel is later stamped into.
-   */
-  private readonly parent: CaeMenu | null = inject(CaeMenu, { optional: true, skipSelf: true });
+  private readonly cyclicItems = computed(() => findCycles(this.items()));
 
   constructor() {
     // Dev-only DIAGNOSTIC for the cycle a model should not contain (#877). The cycle *break* is
@@ -311,21 +288,24 @@ export class CaeMenu implements CaeMenuPanelHost {
     // model inertly instead of overflowing the stack. Only the explanation is dev-only (#955: a
     // behaviour effect wrapped in isDevMode() is a defect; a warning wrapped in it is correct).
     //
+    // The gate sits OUTSIDE `effect()` — the idiom ten other components here already use — so a
+    // production build allocates no effect node at all. Inside, it would still create and schedule
+    // one per instance, and this component's own #878 measurement is 259 instances for a 4x6 tree.
+    //
     // The message is terse ON PURPOSE. A template literal's contents are shipped bytes charged to
     // this entry point's size budget, exactly like the HTML comments the class doc calls out, so
-    // the reasoning lives in `isDeadEnd`'s doc (free) and the warning carries only what a developer
+    // the reasoning lives in `findCycles`' doc (free) and the warning carries only what a developer
     // needs to locate it: which item, what is wrong, and what the component did instead.
-    effect(() => {
-      if (!isDevMode()) return;
-      for (const item of this.items()) {
-        if (item.items?.length && this.encloses(item)) {
+    if (isDevMode()) {
+      effect(() => {
+        for (const item of this.cyclicItems()) {
           console.warn(
-            `cae-menu: "${item.label}" is its own ancestor — CaeMenuItem.items is a cycle, not a ` +
-              'tree. Rendered as a disabled leaf; recursing would overflow the stack.',
+            `cae-menu: "${item.label}" is on a cycle in CaeMenuItem.items, which must be a finite ` +
+              'graph. Rendered as a disabled leaf; recursing would not terminate.',
           );
         }
-      }
-    });
+      });
+    }
   }
 
   /**
@@ -378,17 +358,21 @@ export class CaeMenu implements CaeMenuPanelHost {
   }
 
   /**
-   * A row that HAS children but cannot open a usable panel — the family's no-dead-end rule, which
-   * `cae-menubar` and `cae-split-button` already enforce by disabling a trigger with nothing behind
-   * it. Two ways to get here, both from a model the component cannot render as asked:
+   * A row that HAS children but cannot open a usable panel — the family's no-dead-end rule. Stated
+   * precisely, because the obvious sentence over-claims: `cae-menubar` and `cae-split-button`
+   * establish *that* a trigger with nothing behind it should be disabled, but each checks only the
+   * **empty**-model arm (`menubar.ts` `group.items.length === 0`, `split-button.ts`
+   * `model().length === 0`). Neither covers all-disabled, so the same dead end is still reachable
+   * from those two triggers — filed as #961, deliberately blocked on #880. Two ways to get here,
+   * both from a model the component cannot render as asked:
    *
    * - **Every child is disabled** (#880). Material would open the panel and then find nothing to
    *   focus: `focusFirstItem` → `setFirstItemActive()` skips disabled rows, leaves `activeItem`
    *   unset, and parks focus on the bare `role="menu"` div, where the arrow keys do nothing and
    *   only Escape or an outside click recovers. Verified in `menu.mjs` (`focusFirstItem`'s
    *   `if (!manager.activeItem && menuPanel) menuPanel.focus()`), not assumed.
-   * - **The item is one of its own ancestors** (#877) — a cyclic model. Breaking the chain here is
-   *   what stops the recursion; see the constructor for the dev-mode explanation.
+   * - **The item sits on a cycle** (#877) — a model that is not a finite graph. Stopping here is
+   *   what bounds the recursion; see {@link findCycles} and the constructor's dev-mode warning.
    *
    * An **empty** `items` array is not a dead end and not a branch: it is an ordinary leaf, per
    * {@link CaeMenuItem.items}. Note `[].every(…)` is `true`, so the length test below is load-
@@ -396,18 +380,52 @@ export class CaeMenu implements CaeMenuPanelHost {
    */
   private isDeadEnd(item: CaeMenuItem): boolean {
     if (!item.items?.length) return false;
-    return item.items.every((child) => child.disabled) || this.encloses(item);
+    return item.items.every((child) => child.disabled) || this.cyclicItems().has(item);
   }
+}
 
-  /**
-   * Whether `item` already opened this panel or any panel enclosing it — i.e. a cycle. Walks up
-   * by recursion rather than a loop: the chain is the DI parent chain, and a loop over it would
-   * have to alias `this` into a mutable local (which `@typescript-eslint/no-this-alias` forbids,
-   * rightly — the alias reads as if it could be some other object).
-   */
-  private encloses(item: CaeMenuItem): boolean {
-    return this.ownerItem() === item || (this.parent?.encloses(item) ?? false);
-  }
+/**
+ * The items on a cycle in the graph reachable from `roots`, by iterative-colouring DFS: an item
+ * still on the current path is a back edge, and back edges are exactly the cycles.
+ *
+ * **Node-scoped, not path-scoped — and that distinction is the whole point.** The first version of
+ * this guard asked "is this item one of my *ancestors*", walking a DI parent chain. That terminates,
+ * but only bounds the recursion's DEPTH: every *simple path* through a cyclic graph still unrolls,
+ * because each path is legal until it repeats. Measured on a symmetric 7-node graph (every item
+ * listing the other six — the shape a graph-flavoured API produces by accident): **1957 panels and
+ * 2377 ms of blocking first change detection**, growing factorially; ten nodes is ~986k panels. That
+ * traded a fast, loud `RangeError` for a silently frozen tab with no warning, since the diagnostic
+ * never gets to flush. Marking the item itself instead makes the recursion stop at the *first*
+ * sighting: one pass, `O(V+E)`, and the same 7-node graph renders one disabled row.
+ *
+ * `done` is what keeps it linear, and it is also why a legal **DAG still renders in full**: a
+ * subtree shared by two sibling branches is re-entered, found already finished rather than on the
+ * path, and skipped *for cycle purposes only* — the template still recurses into it under each
+ * parent. A visited-ever check that conflated the two would kill exactly that case, which is why it
+ * has its own spec.
+ *
+ * Detecting one node per cycle is sufficient: every cycle contains at least one back edge in any
+ * DFS, so breaking there leaves an acyclic graph. Note that bounds *cycles*, not fan-out — a dense
+ * acyclic model still renders every path, which is the pre-existing behaviour a shared subtree
+ * relies on.
+ */
+function findCycles(roots: readonly CaeMenuItem[]): ReadonlySet<CaeMenuItem> {
+  const onPath = new Set<CaeMenuItem>();
+  const done = new Set<CaeMenuItem>();
+  const cyclic = new Set<CaeMenuItem>();
+  const walk = (item: CaeMenuItem): void => {
+    if (onPath.has(item)) {
+      cyclic.add(item);
+      return;
+    }
+    if (done.has(item)) return;
+    onPath.add(item);
+    for (const child of item.items ?? []) walk(child);
+    onPath.delete(item);
+    done.add(item);
+  };
+  for (const root of roots) walk(root);
+  return cyclic;
 }
 
 /**

@@ -554,12 +554,11 @@ element and `document.activeElement` becomes `<body>`, so the keyboard user lose
   non-interactive element whose announcement nobody here can verify. A dev warning naming the
   consumer's two ways out keeps the gap loud and honest (decision #951).
 
-## 20. Bound a self-recursive component by ancestor *identity*, not depth (#877, #880)
+## 20. Bound a self-recursive component per *node*, not per *path* or per *depth* (#877, #880)
 
 A component that stamps itself for nested data (`cae-menu` on `CaeMenuItem.items`) inherits the
-model's shape as its recursion depth — so a cyclic model recurses until the stack overflows. Two
-things make that worse than it sounds, and both are why the guard has to be structural rather than
-a `try/catch`:
+model's shape as its recursion depth — so a cyclic model recurses forever. Two things make that
+worse than it sounds, and both are why the guard has to be structural rather than a `try/catch`:
 
 - **It happens at the first change detection, not on open.** A branch's nested panel is projected
   content, and Angular *creates* projected views eagerly, deferring only their DOM insertion.
@@ -569,34 +568,50 @@ a `try/catch`:
   *direct* parent; under a component recursion every level is a distinct instance, so the check
   never fires. Verify what the 3p actually guards before relying on it (§16).
 
-**Depth counting is the wrong instrument.** A depth cap invents a limit the model never stated and
-turns a legal deep tree into a broken one. The question is not "how far down am I" but "have I
-already rendered this exact item on the path to here" — so compare **object identity against the
-ancestor chain**:
+**Depth counting is the wrong instrument** — a depth cap invents a limit the model never stated and
+turns a legal deep tree into a broken one. But the obvious replacement is wrong too, and the gap
+between them is the lesson:
 
-- **Get the chain from DI, not from a prop.** `inject(Self, { optional: true, skipSelf: true })`
-  yields the enclosing instance, and walking it costs one signal read per level. This works for the
-  same reason §14 does — element injectors follow where a template is *declared*, so the chain is
-  intact even though each panel is later stamped into a detached CDK overlay.
-- **Pass the item object, never a derived array.** The obvious `[ancestors]="[...ancestors, item]"`
-  allocates a fresh array on every change detection, so every nested level's input churns every
-  pass and its effects re-run. Passing the *item* keeps the binding reference-stable and lets each
-  level derive the chain by walking its parents.
-- **Ancestor-scoped, not seen-anywhere.** A subtree object reused under two *sibling* branches is a
-  legal finite DAG — a shared "Share…" submenu is exactly that — and a cheaper visited-set or
-  array-identity check kills it while passing every self-cycle and mutual-pair test. **That case
-  needs its own spec**, or the cheap wrong check looks fully guarded.
-- **Break unconditionally; warn only in dev.** Gating the *break* on `isDevMode()` leaves production
-  overflowing the stack, which is the one build where you cannot see why (#955). Gate the message,
-  not the behaviour — and keep the message terse, because a runtime string is shipped bytes (§15)
-  while the reasoning next to it in JSDoc is free.
+- **Path-scoped ("is this item one of my ancestors?") terminates without bounding.** Walking a DI
+  parent chain is cheap, needs no depth counter, and passes every self-loop and mutual-pair test.
+  It also lets *every simple path* through a cyclic graph unroll, because each path stays legal
+  until it repeats. Measured on a symmetric 7-node graph — every item listing the other six, which
+  is what a graph-flavoured API produces by accident — that was **1957 panels and 2377 ms of
+  blocking first change detection**, growing factorially; ten nodes is ~986k panels. It replaced a
+  fast, loud `RangeError` with a silently frozen tab, and the dev warning never printed because view
+  creation is what hung. **A termination proof is not a boundedness proof** — an adversarial lens
+  caught this by asking for a *dense* cycle, not another shape of small one.
+- **Node-scoped ("is this item on a cycle at all?") bounds it.** One colouring DFS over the model
+  per model change: an item still on the current path is a back edge, and back edges are exactly the
+  cycles. Mark those items, and the recursion stops at the *first* sighting — `O(V+E)`, and the
+  7-node graph renders one disabled row. It is also **less code**: the DI lookup, the internal
+  input threading ancestry down, and the ancestor walk all delete.
+- **On-path and already-finished are different sets, and conflating them kills legal models.** A
+  subtree object reused under two *sibling* branches is a finite DAG — a shared "Share…" submenu is
+  exactly that — and it must render in full under **both** parents. A visited-ever check passes
+  every cycle test and silently drops the second sibling, so **open both** in the spec; opening only
+  the first is the vacuous version of that test.
+- **Compare by object identity, not by label or id.** `Settings ▸ Advanced ▸ Settings` is two
+  distinct objects sharing a name — an ordinary menu, not a cycle. Nothing else in a suite tends to
+  repeat a label, so a label comparison survives every other arm; it needs its own spec.
+- **Break unconditionally; warn only in dev, and put the gate *outside* `effect()`.** Gating the
+  *break* on `isDevMode()` leaves production non-terminating, which is the one build where you
+  cannot see why (#955). Gating from *inside* the effect body still allocates and schedules an
+  effect node per instance — 259 of them for one 4×6 menu. Keep the message terse: a runtime string
+  is shipped bytes (§15) while the reasoning next to it in JSDoc is free.
 
-**The same predicate answers "should this render as a branch at all".** Once a component asks
-"can this item open a usable panel", a *cycle* and *every child disabled* are the same answer with
-two causes — a row that has children but no panel worth opening. Rendering that as a **disabled
-leaf** keeps the family's no-dead-end rule without inventing a selection: it is neither a trigger
-that opens an empty panel (Material parks focus on the bare `role="menu"` div, where the arrows do
+**The same predicate answers "should this render as a branch at all".** Once a component asks "can
+this item open a usable panel", a *cycle* and *every child disabled* are the same answer with two
+causes — a row that has children but no panel worth opening. Rendering that as a **disabled leaf**
+keeps the family's no-dead-end rule without inventing a selection: it is neither a trigger that
+opens an empty panel (Material parks focus on the bare `role="menu"` div, where the arrows do
 nothing and only Escape recovers) nor a command that emits an item the model never offered. Note
 `[].every(…)` is vacuously **true**, so an explicit length test is what keeps an *empty* `items`
 array an ordinary enabled leaf — and that distinction needs its own spec, because the mutation that
 breaks it is a one-character edit.
+
+**Deadness is not transitive here, and that is a known hole rather than a design.** `cae-menu` reads
+each child's own `disabled` flag, so a branch whose only child is *itself* a dead end still opens a
+panel with one disabled row — the same strand, one level in. Filed rather than fixed because it
+predates the slice; the point for a reader is that "no dead ends" and "no dead ends *transitively*"
+are different claims, and the cheap predicate only buys the first.
