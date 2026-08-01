@@ -620,18 +620,31 @@ deeper predicate but a change of direction: make the traversal **bottom-up** and
 dead end. That rides the cycle DFS for free, since both are reachability questions about one graph,
 and stays `O(V+E)` per model change instead of re-walking a subtree per row per change detection.
 
-**A per-instance analysis must give a start-independent answer, or the levels disagree** (#962). This
-is the subtle one, and it survived a full mutation table before an adversarial lens asked for it. When
-the recursion is a *component*, every level re-analyses **its own** subtree from a different starting
-set — and "which node closes the cycle" depends on where the walk started. Break only the back-edge
-target and a parent can conclude a cycle member is usable while that member's own instance concludes
-it is dead: the parent then renders an **enabled** trigger over a panel its child has disabled
-entirely, which is the empty-panel focus trap the rule existed to prevent. It needs a cycle whose
-members *also* carry ordinary leaves, so no single-node test shows it. Fix: break **every** node on
-the closing path (`path.indexOf(item)` → end), which is start-independent, so all levels agree. Keep
-the *warning* set separate and single-node — one line per cycle is the useful diagnostic. General
-form: **any memoised, per-instance graph answer must be a function of the graph, not of the
-traversal** — otherwise the instances are silently inconsistent with each other.
+**When the recursion is a component, termination is a property of the *sequence* of analyses, not of
+any one of them** (#962). This is the subtlest failure in this section, it survived a full mutation
+table, and it is the same lesson as the path-vs-node one applied one level up. Every level
+re-analyses **its own** subtree from a different starting set, and "which node closes the cycle"
+depends on where the walk started — so a break that lands on a different node each time can keep
+missing the node the render is about to descend into. Two symptoms, same cause:
+
+- **Levels disagree.** A parent concludes a cycle member is usable while that member's own instance
+  concludes it is dead, so the parent renders an **enabled** trigger over a panel its child has
+  disabled entirely — the empty-panel focus trap the rule existed to prevent. Needs a cycle whose
+  members *also* carry ordinary leaves, which is why no small single-cycle test shows it.
+- **Nothing terminates at all.** With four mutually-referencing branches, analysing `A`'s children
+  flags one set and leaves `B` a branch; analysing `B`'s children flags another and leaves `A` a
+  branch — period-2 infinite descent, at the first change detection, warning at every level while
+  the tab freezes.
+
+Fix: break **every** node on the closing path (`path.indexOf(item)` → end) rather than the back-edge
+target alone, which is start-independent. Keep the *warning* set single-node — one line per cycle is
+the useful diagnostic. Because a boundedness claim is exactly what this section already got wrong
+once, it was checked by randomised search rather than by hand: **~190k random cyclic graphs, 0
+non-terminating renders with whole-cycle marking and 61 without it** — the second number being what
+says the search actually exercised the hazard. General form: **any memoised per-instance graph answer
+must be a function of the graph, not of the traversal**, or the instances are silently inconsistent
+with one another. And when a hand proof is not available, fuzz the property and report the
+control arm alongside it.
 
 **Then walk every child anyway — `usable ||= walk(child)` is a trap.** The moment the traversal
 returns a boolean, the idiomatic accumulator short-circuits, and it stops calling `walk` as soon as

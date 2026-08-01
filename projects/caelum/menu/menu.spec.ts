@@ -929,6 +929,42 @@ describe('CaeMenu tiered submenus (#150)', () => {
       expect(rowNamed(panelOf(z), 'leafZ').getAttribute('disabled')).toBeNull();
     });
 
+    /**
+     * **The break point must not MOVE between levels.** Termination here is a property of a
+     * *sequence* of independent analyses, not of one: every level re-analyses its own `items()`, so
+     * a break that lands on a different node each time can miss the node the render is about to
+     * descend into — forever. This model does exactly that under single-node marking: analysing
+     * `A`'s children flags `Q,P,A` and leaves `B` a branch; analysing `B`'s children flags `P,Q,B`
+     * and leaves `A` a branch; and that is the first level again. Period-2 infinite descent, at the
+     * first change detection, with the dev warning firing at every level while the tab freezes.
+     *
+     * So this test does not fail without the fix — it dies. Randomised search over ~190k cyclic
+     * graphs finds 0 non-terminating renders with whole-cycle marking and 61 without it, which is
+     * also what says this arm is not a lucky single case.
+     */
+    it('terminates when the break point would otherwise move between levels', async () => {
+      const a = node('A');
+      const b = node('B');
+      const p = node('P');
+      const q = node('Q');
+      a.items = [q, p, b, { value: 'la', label: 'LA' }] as CaeMenuItem[];
+      b.items = [p, q, a, { value: 'lb', label: 'LB' }] as CaeMenuItem[];
+      p.items = [b, a] as CaeMenuItem[];
+      q.items = [a] as CaeMenuItem[];
+      host.items.set([{ label: 'Root', items: a.items }]);
+      await openRoot();
+
+      // Reaching here at all is the point. The break still applied: Root opens, and the rows the
+      // cycle passes through are inert rather than further triggers.
+      const root = rowNamed(rootPanel(), 'Root');
+      expect(root.getAttribute('aria-haspopup')).toBe('menu');
+      root.click();
+      await settle();
+      const rows = rowsIn(panelOf(root));
+      expect(rows.filter((r) => r.getAttribute('disabled') !== null).length).toBeGreaterThan(0);
+      expect(rowNamed(panelOf(root), 'LA').getAttribute('disabled')).toBeNull();
+    });
+
     /** A cycle at a root index > 0 — the root loop must walk every root, not stop at the first. */
     it('finds a cycle at a LATER root index', async () => {
       const a = node('A');
