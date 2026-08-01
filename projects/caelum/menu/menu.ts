@@ -275,8 +275,19 @@ export class CaeMenu implements CaeMenuPanelHost {
 
   /**
    * The branch item whose row opens THIS panel — set by the recursion in the template, `null` on a
-   * root menu. An INTERNAL seam like {@link panel}: `@internal` strips it from the published
-   * typings, and a consumer never binds it.
+   * root menu. An internal seam, but **`@internal` protects it less than it does {@link panel}, and
+   * the difference is worth stating rather than assuming**: `stripInternal` removes the property
+   * *declaration* from the published `.d.ts`, so nothing can read `menu.ownerItem` in TypeScript —
+   * verified in `dist/caelum/types/`. It does **not** remove the entry from the component's input
+   * map in `ɵcmp`, which is what Angular's template type-checker consults, so `[ownerItem]="…"`
+   * still compiles in a consumer template under `strictTemplates`. `panel` is fully hidden only
+   * because it is a `viewChild` and therefore never in that map; an *input* cannot be hidden this
+   * way at all. This is the library's first `@internal` input and no surface gate covers the case.
+   *
+   * The blast radius if someone does bind it is bounded and non-destructive: passing an item that
+   * also appears in this menu's own `items` makes that row look like its own ancestor, so it
+   * renders as a disabled leaf instead of a branch. Degraded rendering, not unsafe behaviour — the
+   * reason this is documented rather than defended against.
    *
    * It exists so a level can see the chain of items enclosing it, which is what makes the cycle
    * break in {@link isDeadEnd} possible without counting depth (#877 forbids a depth input). The
