@@ -369,8 +369,16 @@ describe('CaeBreadcrumb', () => {
   imports: [CaeBreadcrumb],
   template: `
     <cae-breadcrumb [items]="items()" [iconTemplate]="useTpl() ? tpl : null" />
+    <!--
+      A TEXT-FREE glyph carrying its per-item context in a data attribute (#963, the D-596 sweep).
+      The slot sits inside the crumb's own interactive element, so any text it stamps joins that
+      link's accessible name. The data attribute proves the same thing about per-item context.
+      (No backticks in here: this is inside a template literal, and one would terminate it.)
+    -->
     <ng-template #tpl let-item let-index="index">
-      <span class="custom-icon">{{ index }}:{{ item.label }}</span>
+      <span class="custom-icon" [attr.data-cx]="index + ':' + item.label" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="16" height="16"><path d="M4 12h16" /></svg>
+      </span>
     </ng-template>
   `,
 })
@@ -421,11 +429,17 @@ describe('CaeBreadcrumb per-item icons (D-596)', () => {
 
   it('iconTemplate wins over item.icon, for every crumb (D-596)', () => {
     const el = render([{ label: 'Home', url: '/', icon: 'home' }, { label: 'Q3' }], true);
-    const custom = Array.from(el.querySelectorAll('.custom-icon')).map((n) => n.textContent);
+    const custom = Array.from(el.querySelectorAll('.custom-icon')).map((n) =>
+      n.getAttribute('data-cx'),
+    );
     expect(custom).toEqual(['0:Home', '1:Q3']);
-    // The built-in glyph gives way even where item.icon is set.
-    expect(el.querySelector('svg')).toBeNull();
+    // The built-in glyph gives way even where item.icon is set. Targeted by cae-icon ELEMENT,
+    // not a bare `svg` — the text-free template now renders one of its own (#963).
+    expect(el.querySelector('cae-icon')).toBeNull();
     // Still stamped inside the interactive element, not beside it.
     expect(el.querySelector('a.cae-breadcrumb__link .custom-icon')).not.toBeNull();
+    // And the crumb's accessible name is still EXACTLY its label — the assertion that catches
+    // the class, since the slot lives inside the link and its text would join that name.
+    expect(el.querySelector('a.cae-breadcrumb__link')?.textContent?.trim()).toBe('Home');
   });
 });

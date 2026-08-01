@@ -653,3 +653,24 @@ Worse, it hides from the obvious spec, because each recursion level re-analyses 
 reach — put the usable child *first* and a cycle behind it, and every level short-circuits in turn,
 so `A` renders `B` renders `A` forever with no assertion ever failing. The spec that catches it does
 not fail under the mutation; it hangs. Write the loop out longhand and say why in a comment.
+
+**Every *trigger* over that model asks the same question, so export the roll-up — not the
+traversal** (#961, D-858). A component that opens the recursive one — `cae-menubar`'s group button,
+`cae-split-button`'s chevron — has to decide whether to enable itself, which is exactly "would the
+panel contain anything focusable". Three of them had each written their own cheap approximation
+(`items.length === 0`), and all three were wrong the same way the per-row check was: not empty is
+not the same as not dead. The fix is one exported predicate answering the trigger's question as a
+boolean, **not** an exported graph object — hand back the roll-up and callers cannot re-derive
+"usable" differently, which is the drift that produced three answers in the first place. Two
+constraints decide where it lives: a *type-only* shared entry point cannot hold a runtime helper
+(check the budget, not the name), and the consumers that already import the recursive component as a
+**runtime value** pay nothing new for it — so verify runtime-vs-type per consumer before treating
+this as an architecture question. It shrank a five-component fork to a one-component one here.
+
+**A predicate that walks the graph must be memoised at the binding, not called from it.** The
+natural consumer shape is `[disabled]="isDead(group)"` — and `cae-menubar` reads it *twice* per
+group per change detection (once for the DOM, once for the key manager's skip predicate), so an
+`O(V+E)` walk in that method is a walk per binding per CD. Wrap it in a `computed` keyed to the
+model and let the per-row method be a set lookup, the same way the recursive component itself does
+it. Nothing in a suite will catch this: the memo is behaviourally identical, so removing it is a
+deliberate surviving mutant, and only the comment on it records that it is load-bearing for cost.

@@ -122,6 +122,79 @@ describe('CaeSplitButton', () => {
     expect(primary().disabled).toBe(false);
   });
 
+  // --- Nothing-reachable models (#961) -------------------------------------------------------
+  //
+  // The arm above was the WHOLE of this rule until now: `model().length === 0`. Each case below is
+  // non-empty, so each used to leave the toggle live, open the dropdown, and let Material park
+  // focus on a bare role="menu" div where only Escape answers. The toggle now asks `cae-menu`'s own
+  // question (`caeMenuHasUsableItems`, D-858) rather than a looser one — and only the TOGGLE: the
+  // primary command is independent of what is behind the chevron.
+
+  it('disables the toggle when every dropdown item is disabled (#961/D-856)', async () => {
+    await setup({
+      model: [
+        { value: 'close', label: 'Save and close', disabled: true },
+        { value: 'draft', label: 'Save as draft', disabled: true },
+      ] satisfies CaeMenuItem[],
+    });
+    expect(toggle().disabled).toBe(true);
+    expect(primary().disabled).toBe(false);
+  });
+
+  it('disables the toggle when the model is TRANSITIVELY dead (#962)', async () => {
+    // Nothing above the leaf carries `disabled`: a branch holding a branch whose only child is
+    // disabled. Every intermediate row reads `disabled === undefined`, so a per-row check — even
+    // `model().every((i) => i.disabled)` — passes it through. Only a bottom-up walk answers it.
+    await setup({
+      model: [
+        {
+          label: 'Export',
+          items: [{ label: 'Formats', items: [{ value: 'pdf', label: 'PDF', disabled: true }] }],
+        },
+      ] satisfies CaeMenuItem[],
+    });
+    expect(toggle().disabled).toBe(true);
+  });
+
+  it('leaves the toggle ENABLED when something deep in the model is reachable', async () => {
+    // The negative control: same shape, one live leaf at the bottom. A rule that disables this has
+    // stopped being a dead-end check and started hiding working menus.
+    await setup({
+      model: [
+        {
+          label: 'Export',
+          items: [
+            {
+              label: 'Formats',
+              items: [
+                { value: 'pdf', label: 'PDF', disabled: true },
+                { value: 'csv', label: 'CSV' },
+              ],
+            },
+          ],
+        },
+      ] satisfies CaeMenuItem[],
+    });
+    expect(toggle().disabled).toBe(false);
+  });
+
+  it('disables the toggle when the model is cyclic — not a finite graph (#877)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const loop: { label: string; value: string; items?: readonly CaeMenuItem[] } = {
+        label: 'Loop',
+        value: 'loop',
+      };
+      loop.items = [loop as CaeMenuItem];
+      await setup({ model: [loop as CaeMenuItem] });
+      // The cycle break makes `Loop` a disabled leaf, leaving the model with nothing reachable —
+      // a dead end the all-disabled arm cannot produce, since no item here is marked disabled.
+      expect(toggle().disabled).toBe(true);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it('exposes the group accessible name via ariaLabel', async () => {
     await setup({ ariaLabel: 'Save actions' });
     expect(el.querySelector('[role="group"]')!.getAttribute('aria-label')).toBe('Save actions');
@@ -187,8 +260,18 @@ describe('CaeSplitButton', () => {
       [model]="model()"
       [iconTemplate]="useTpl() ? tpl : null"
     />
+    <!--
+      A TEXT-FREE glyph carrying its per-item context in a data attribute (#963, the D-596 sweep).
+      This fixture used to stamp the index and value as visible text — the one shape D-596 forbids,
+      and it matters most here: the dropdown IS a cae-menu, so Material derives both the row's
+      accessible name and its typeahead key from row text, stripping only mat-icon /
+      .material-icons. The data attribute proves exactly the same thing about per-item context.
+      (No backticks in here: this is inside a template literal, and one would terminate it.)
+    -->
     <ng-template #tpl let-item let-index="index">
-      <span class="custom-icon">{{ index }}:{{ item.value }}</span>
+      <span class="custom-icon" [attr.data-cx]="index + ':' + item.value" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="16" height="16"><path d="M4 12h16" /></svg>
+      </span>
     </ng-template>
   `,
 })
@@ -256,9 +339,23 @@ describe('CaeSplitButton icons (D-596 / #149)', () => {
     fixture.componentInstance.useTpl.set(true);
     fixture.detectChanges();
     await open();
-    const custom = menuItems().map((el) => el.querySelector('.custom-icon')?.textContent);
+    const custom = menuItems().map((el) =>
+      el.querySelector('.custom-icon')?.getAttribute('data-cx'),
+    );
     expect(custom).toEqual(['0:close', '1:draft']);
-    expect(menuItems()[0].querySelector('svg')).toBeNull();
+    // The BUILT-IN glyph gave way; the template's own svg is what remains — so this targets the
+    // cae-icon ELEMENT, not a bare `svg` (the text-free template renders one too) and not the
+    // cosmetic .cae-menu__icon class, which nothing pins and whose deletion would read green.
+    expect(menuItems()[0].querySelector('cae-icon')).toBeNull();
+    // The row's accessible name is EXACTLY its label — the arm menu.spec.ts gained at #881,
+    // brought here because this component embeds a real cae-menu and inherits its exposure
+    // (#963). MatMenuItem.getLabel() feeds withTypeAhead() and strips only mat-icon /
+    // .material-icons, with no override input, so row text is both the name and the typeahead
+    // key. Trimmed EQUALITY: a text-stamping template makes this read "0:close Save and close".
+    expect(menuItems().map((el) => el.textContent?.trim())).toEqual([
+      'Save and close',
+      'Save as draft',
+    ]);
     // The template governs only the DROPDOWN's icon slot: the primary [icon] glyph survives.
     const primary = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>(
       '.cae-split-button__primary',

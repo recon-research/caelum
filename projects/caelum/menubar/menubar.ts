@@ -2,6 +2,7 @@ import {
   AfterViewInit,
   ChangeDetectionStrategy,
   Component,
+  computed,
   DestroyRef,
   Directive,
   ElementRef,
@@ -19,7 +20,12 @@ import { FocusableOption, FocusKeyManager } from '@angular/cdk/a11y';
 import { DOWN_ARROW, UP_ARROW } from '@angular/cdk/keycodes';
 import { MatButtonModule } from '@angular/material/button';
 import { MatToolbarModule } from '@angular/material/toolbar';
-import { CaeMenu, CaeMenuTrigger, type CaeMenuItem } from '@recon-research/caelum/menu';
+import {
+  CaeMenu,
+  caeMenuHasUsableItems,
+  CaeMenuTrigger,
+  type CaeMenuItem,
+} from '@recon-research/caelum/menu';
 import type { CaeItemIconContext } from '@recon-research/caelum/icon';
 
 /**
@@ -89,8 +95,10 @@ export class MenubarTriggerItem implements FocusableOption {
  * `FocusKeyManager` gives the bar roving focus — only the active trigger is tab-focusable, and
  * Left/Right/Home/End + typeahead move between them, skipping disabled groups. Down/Up open the
  * active group's panel and move focus into it (Material owns the panel-side keys + Escape-restore);
- * Enter/Space open it too via the native button. A group with no items is treated as disabled (no
- * dead-end empty menu). Name the bar with {@link ariaLabel}.
+ * Enter/Space open it too via the native button. A group with **nothing reachable behind it** is
+ * treated as disabled (#961) — empty, all-disabled, or every branch bottoming out in disabled rows;
+ * the bar asks `cae-menu`'s own question rather than a looser one. Name the bar with
+ * {@link ariaLabel}.
  *
  * **Model updates — groups need stable identity** (#879, the family rule from #774). Groups track by
  * **object identity**, so a group's dropdown state follows the group it belongs to across a model
@@ -186,9 +194,24 @@ export class CaeMenubar implements AfterViewInit, OnDestroy {
   @ViewChildren(CaeMenuTrigger) private readonly menuTriggers!: QueryList<CaeMenuTrigger>;
   private keyManager?: FocusKeyManager<MenubarTriggerItem>;
 
-  /** A group is effectively disabled when explicitly disabled OR it has no items (no dead-end menu). */
+  /**
+   * The groups with nothing reachable behind them, resolved once per model change rather than per
+   * binding — {@link disabledGroup} is read twice for every group on every change detection
+   * (`menubarDisabled` and `disabled`), and the predicate walks that group's whole subtree.
+   */
+  private readonly deadGroups = computed(
+    () => new Set(this.model().filter((group) => !caeMenuHasUsableItems(group.items))),
+  );
+
+  /**
+   * A group is effectively disabled when explicitly disabled OR its dropdown would open onto
+   * nothing focusable — the family's no-dead-end rule (#961), asked the way `cae-menu` asks it.
+   * This used to be `group.items.length === 0`, which covers only the *empty* arm: a group of one
+   * disabled item, or one whose branches all bottom out in disabled rows (#962), is not empty, so
+   * its trigger stayed enabled and Material parked focus on a panel answering no key but Escape.
+   */
   protected disabledGroup(group: CaeMenubarItem): boolean {
-    return (group.disabled ?? false) || group.items.length === 0;
+    return (group.disabled ?? false) || this.deadGroups().has(group);
   }
 
   ngAfterViewInit(): void {

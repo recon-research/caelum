@@ -167,8 +167,16 @@ describe('CaeTabMenu', () => {
   imports: [CaeTabMenu],
   template: `
     <cae-tab-menu [items]="items()" [iconTemplate]="useTpl() ? tpl : null" ariaLabel="Sections" />
+    <!--
+      A TEXT-FREE glyph carrying its per-item context in a data attribute (#963, the D-596 sweep).
+      The slot sits inside the tab element, so any text it stamps joins that tab's accessible name.
+      The data attribute proves exactly the same thing about per-item context.
+      (No backticks in here: this is inside a template literal, and one would terminate it.)
+    -->
     <ng-template #tpl let-item let-index="index">
-      <span class="custom-icon">{{ index }}:{{ item.value }}</span>
+      <span class="custom-icon" [attr.data-cx]="index + ':' + item.value" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="16" height="16"><path d="M4 12h16" /></svg>
+      </span>
     </ng-template>
   `,
 })
@@ -212,8 +220,13 @@ describe('CaeTabMenu per-item icons (D-596)', () => {
     fixture.componentInstance.useTpl.set(true);
     fixture.detectChanges();
     await fixture.whenStable();
-    const custom = links().map((el) => el.querySelector('.custom-icon')?.textContent);
+    const custom = links().map((el) => el.querySelector('.custom-icon')?.getAttribute('data-cx'));
     expect(custom).toEqual(['0:home', '1:files']);
-    expect(links()[0].querySelector('svg')).toBeNull();
+    // The BUILT-IN glyph gave way; the template's own svg remains — so target the cae-icon
+    // ELEMENT, not a bare `svg` and not a cosmetic class nothing else pins (#963).
+    expect(links()[0].querySelector('cae-icon')).toBeNull();
+    // And the tab's accessible name is still EXACTLY its label — the assertion that catches the
+    // whole class, since the icon slot lives inside the tab and its text would join that name.
+    expect(links().map((el) => el.textContent?.trim())).toEqual(['Home', 'Files']);
   });
 });
