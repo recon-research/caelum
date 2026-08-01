@@ -492,3 +492,64 @@ its own signal deps change — and a consumer changing the message changes none 
   non-empty again, or the *second* real emptying goes unreported — both directions want a spec.
 - **Same trap, other components:** any `querySelector` + `textContent` check inside a projection
   boundary (`cae-tag`'s #669 convention, and anything copying it) inherits it.
+
+## 19. Hiding a region blurs whatever is inside it — and the window to react is one frame (#870)
+
+Collapsing by `[hidden]` (rather than `@if`) still strands focus: the engine blurs the unrendered
+element and `document.activeElement` becomes `<body>`, so the keyboard user loses their place (WCAG
+2.4.3).
+
+- **Measure the 3p before claiming you exceed it (§16, again).** The first draft of this entry said
+  "`MatExpansionPanel` and `p-panel` both do this" and framed the fix as Caelum exceeding Material.
+  A review lens read the source: `MatExpansionPanelHeader` subscribes `panel.closed` filtered on
+  `_containsFocus()` (itself `activeElement` + `contains`) and focuses the header via
+  `focusVia(el, 'program')` — the same technique, the same destination, and no `preventScroll`
+  either. It is *convergent design*, and the correction strengthened the slice: Material is prior
+  art for both decisions. `p-panel` stays **unmeasured** — primeng is not installed, and §16 asks
+  for source, not assumption. Say "unmeasured"; do not round it to "the same".
+- **The component usually cannot cause it, which is why it survives review.** `cae-panel`'s and
+  `cae-fieldset`'s toggles sit *outside* their own content region, so the click path always leaves
+  focus on the toggle. The reachable paths are a control *inside* the region, and anything
+  programmatic — a timer, a route change.
+- **An external *button* is the exemplar that does not work.** On Chromium/Firefox `mousedown`
+  focuses the button, so focus has already left the region before the handler writes the model. A
+  demo built around one therefore exercises none of this — check that the shipped example reaches
+  the code it advertises, or the liveness gate passes on a path nothing can travel.
+- **The fixup is deferred to the next rendering opportunity, so `afterRenderEffect` is inside the
+  window.** Measured in Chromium: synchronously after the model write and CD, `activeElement` is
+  *still* the now-hidden element; one frame later it is `<body>`. So a post-render read can still ask
+  "was focus inside me?" — no pre-write capture is needed. #870 assumed the opposite and specified a
+  `collapsed`-write interceptor; measuring first replaced it with four lines. **Pin it with a
+  mutation**: deferring the redirect by a single `requestAnimationFrame` must turn the browser arm
+  red, or the timing claim is decorative.
+- **A frame later the question is unanswerable** — `activeElement === body` cannot distinguish a
+  collapse from a deliberate park (the `external-removal-focus-restore` trap).
+- **Scope the target with a view query, never a host `querySelector`.** A component that can nest
+  inside itself will match the *inner* instance's control first in document order, and focus lands in
+  a different component — inside the region just hidden. `viewChild` cannot see into projected
+  content, which is exactly the boundary wanted. Grade this **per component**: the query lives in
+  each component's own source, so a two-component family needs a nested fixture for *each*, or one
+  half regresses green.
+- **Pin the region's *scope*, not just the containment test.** Passing the component host instead of
+  the content region survives a suite built the obvious way — but the toggle is inside the host, so
+  every collapse-by-click re-`focus()`es the already-focused toggle, and `focus()` re-runs
+  scroll-into-view whether or not focus moved. Assert that a collapse with focus already **on** the
+  toggle calls `focus()` zero times.
+- **Read `activeElement` off the region's own root.** `document.activeElement` retargets to the
+  outermost shadow host, so a panel mounted inside a `ViewEncapsulation.ShadowDom` consumer gets an
+  *ancestor* — containment is false, and the guard declines *and* skips its own warning.
+  `region.getRootNode().activeElement` is identical in light DOM and correct in both shadow
+  directions. CDK's `_getFocusedElementPierceShadowDom` is the wrong tool: it pierces **down**, and
+  `contains()` does not cross shadow boundaries, so it breaks the case that already worked. And
+  unlike the focus fixup, **jsdom does model shadow retargeting** — a host with
+  `encapsulation: ViewEncapsulation.ShadowDom` kills the mutation in the unit suite, so this one is
+  pinnable rather than documentation-only. Assert `shadowRoot.activeElement`, and use
+  `document.activeElement === host` as the positive control that retargeting really happened.
+- **jsdom grades none of this.** It never blurs a hidden element, so both the strand and the window
+  are invisible: every jsdom assertion about the redirect passes on a runner with no fixup to outrun.
+  jsdom owns the redirect (the component's own `focus()` call) and the dev warning; the browser arm
+  owns the timing and the residual strand.
+- **When there is nothing to focus, say so rather than inventing a target.** With no toggle rendered
+  there is no control belonging to the component; a `tabindex="-1"` host would be a focusable
+  non-interactive element whose announcement nobody here can verify. A dev warning naming the
+  consumer's two ways out keeps the gap loud and honest (decision #951).

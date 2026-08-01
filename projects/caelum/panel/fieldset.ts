@@ -6,8 +6,12 @@ import {
   input,
   isDevMode,
   model,
+  viewChild,
+  type ElementRef,
 } from '@angular/core';
 import { CaeIcon } from '@recon-research/caelum/icon';
+
+import { redirectFocusOutOfCollapsedRegion } from './collapse-focus';
 
 // Module-scoped id counter for the `aria-controls` target. Deterministic per load, never collides.
 let nextUniqueId = 0;
@@ -62,6 +66,7 @@ let nextUniqueId = 0;
       <legend class="cae-fieldset__legend">
         @if (toggleable()) {
           <button
+            #toggleBtn
             type="button"
             class="cae-fieldset__toggle"
             [class.cae-fieldset__toggle--expanded]="!collapsed()"
@@ -76,7 +81,7 @@ let nextUniqueId = 0;
           {{ legend() }}
         }
       </legend>
-      <div class="cae-fieldset__content" [id]="contentId" [hidden]="collapsed()">
+      <div #content class="cae-fieldset__content" [id]="contentId" [hidden]="collapsed()">
         <ng-content />
       </div>
     </fieldset>
@@ -169,15 +174,37 @@ export class CaeFieldset {
    * renders **expanded**, the opposite of the intent, with no error.
    *
    * As in {@link CaePanel} this is not gated on `[toggleable]` (an external control may drive it),
-   * and collapsing while focus is inside the region drops focus to `<body>` — see that class's
-   * `collapsed` doc for both corollaries.
+   * collapsing while focus is inside the region redirects focus to the toggle rather than stranding
+   * it on `<body>`, and with no toggle that redirect dev-warns instead — see that class's
+   * `collapsed` doc for all three corollaries.
    */
   readonly collapsed = model(false);
 
-  /** `aria-controls` target — the collapsible region. */
-  protected readonly contentId = `cae-fieldset-content-${nextUniqueId++}`;
+  /**
+   * `aria-controls` target — the id of the collapsible region. Public for the same reason as
+   * {@link CaePanel.contentId} (#871): an external control driving `[collapsed]` needs an id to
+   * point at. See that member for the worked example, the id-format caveat, and why it is a
+   * readonly rather than an input.
+   */
+  readonly contentId = `cae-fieldset-content-${nextUniqueId++}`;
+
+  /** The component's own region + toggle — see {@link CaePanel} for why these are view queries. */
+  private readonly contentRef = viewChild<ElementRef<HTMLElement>>('content');
+  private readonly toggleRef = viewChild<ElementRef<HTMLElement>>('toggleBtn');
 
   constructor() {
+    // Behaviour, not a guard — see the matching effect in `panel.ts` (#870) for why it must stay
+    // outside `isDevMode()` (#955), why the view queries are read only past the early return, and
+    // why the default `mixedReadWrite` phase is the honest one.
+    afterRenderEffect(() => {
+      if (!this.collapsed()) return;
+      redirectFocusOutOfCollapsedRegion(
+        this.contentRef()?.nativeElement,
+        this.toggleRef()?.nativeElement,
+        'cae-fieldset',
+      );
+    });
+
     if (isDevMode()) {
       afterRenderEffect(() => {
         // Hoisted by convention, not necessity: the read below happens in a condition, which is

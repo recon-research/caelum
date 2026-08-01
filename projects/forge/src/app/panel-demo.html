@@ -19,19 +19,45 @@
       </p>
     </cae-panel>
 
-    <cae-panel header="Order details" toggleable [(collapsed)]="detailsCollapsed">
+    <cae-panel #details header="Order details" toggleable [(collapsed)]="detailsCollapsed">
       <p class="forge-panel-body">
         Two-way <code>[(collapsed)]</code>, so the button outside this panel and the toggle inside
-        it stay in step.
+        it stay in step. That outside button reads <code>details.contentId</code> off this panel, so
+        it can name the region it controls.
       </p>
+      <!-- The one interaction that actually reaches #870's focus redirect. A button OUTSIDE the
+           region cannot: mousedown focuses it, so focus has already left the region before the
+           handler writes `collapsed`. This one lives inside the region, so collapsing it destroys
+           the very thing holding focus — and the panel moves focus to its own toggle instead of
+           dropping the keyboard user on <body>. Tab from here after clicking it. -->
+      <button type="button" class="forge-panel-button" (click)="collapseDetails()">
+        Done — collapse from <em>inside</em> (watch where focus goes)
+      </button>
     </cae-panel>
   </div>
 
   <!-- A PERSISTENT control, not one that unmounts on its own click: a button that removes itself
-       drops the keyboard user to <body> (WCAG 2.4.3). Same shape as the alert/drawer demos. -->
+       drops the keyboard user to <body> (WCAG 2.4.3). Same shape as the alert/drawer demos.
+
+       It carries the FULL disclosure contract, which is what `contentId` being public buys (#871):
+       `aria-expanded` alone would announce a state with no referent, because AT has no way to learn
+       WHICH region this button expands. `[collapsed]` is deliberately not gated on `[toggleable]`,
+       so this is the shape a "collapse all" control uses — here it drives a panel that also has its
+       own toggle, and both point `aria-controls` at the same region.
+
+       The label is STABLE ("Toggle…"), not flipped to Expand/Collapse. Once a control carries
+       `aria-expanded`, the state lives in that attribute; a label that also names the action makes
+       AT announce "Collapse Order details, button, expanded" — two readings of the same state,
+       pointing opposite ways. This matches the recipe on CaePanel.toggleAriaLabel. -->
   <div class="forge-panel-controls">
-    <button type="button" class="forge-panel-button" (click)="toggleDetails()">
-      {{ detailsCollapsed() ? 'Expand' : 'Collapse' }} “Order details” from outside
+    <button
+      type="button"
+      class="forge-panel-button"
+      [attr.aria-expanded]="!detailsCollapsed()"
+      [attr.aria-controls]="details.contentId"
+      (click)="toggleDetails()"
+    >
+      Toggle “Order details” from outside
     </button>
   </div>
 
