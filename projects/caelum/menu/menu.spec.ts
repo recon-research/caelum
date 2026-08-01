@@ -97,8 +97,19 @@ describe('CaeMenu', () => {
   template: `
     <cae-menu #actions [items]="items()" [iconTemplate]="useTpl() ? tpl : null" />
     <button type="button" [caeMenuTriggerFor]="actions">Actions</button>
+    <!--
+      A TEXT-FREE glyph, carrying its per-item context in a data attribute rather than in text
+      (#881). This fixture used to stamp the index and value as visible text, which made the repo
+      model the one shape D-596 forbids: Material derives BOTH the row's accessible name and its
+      typeahead key from the row's text content, stripping only mat-icon / .material-icons — so
+      template text lands in both, and typing "N" stops reaching the "New" row. The data attribute
+      proves exactly the same thing about context and per-level indexing.
+      (No backticks in here: this is inside a template literal, and one would terminate it.)
+    -->
     <ng-template #tpl let-item let-index="index">
-      <span class="custom-icon">{{ index }}:{{ item.value }}</span>
+      <span class="custom-icon" [attr.data-cx]="index + ':' + item.value" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="16" height="16"><path d="M4 12h16" /></svg>
+      </span>
     </ng-template>
   `,
 })
@@ -179,8 +190,9 @@ describe('CaeMenu per-item icons (D-596)', () => {
     await fixture.whenStable();
     const deep = items().find((el) => el.textContent?.includes('Deep'))!;
     // Index is per-level: 'Deep' is the first row of ITS panel, so 0 — not 2 continuing the root.
-    expect(deep.querySelector('.custom-icon')?.textContent).toBe('0:deep');
-    expect(deep.querySelector('svg')).toBeNull();
+    expect(deep.querySelector('.custom-icon')?.getAttribute('data-cx')).toBe('0:deep');
+    // The BUILT-IN glyph is gone; the template's own svg is what remains.
+    expect(deep.querySelector('.cae-menu__icon')).toBeNull();
   });
 
   it('iconTemplate wins over item.icon, for every item — and yields back when cleared (D-596)', async () => {
@@ -188,16 +200,37 @@ describe('CaeMenu per-item icons (D-596)', () => {
     fixture.detectChanges();
     await open();
     // The template is stamped for each item with { $implicit: item, index } …
-    const custom = items().map((el) => el.querySelector('.custom-icon')?.textContent);
+    const custom = items().map((el) => el.querySelector('.custom-icon')?.getAttribute('data-cx'));
     expect(custom).toEqual(['0:new', '1:find']);
     // … and the built-in glyph gives way even where item.icon is set.
-    expect(items()[0].querySelector('svg')).toBeNull();
+    expect(items()[0].querySelector('.cae-menu__icon')).toBeNull();
     // Reverse flip: clearing the template restores the built-in glyph (not a one-way latch).
     fixture.componentInstance.useTpl.set(false);
     fixture.detectChanges();
     await fixture.whenStable();
     expect(items()[0].querySelector('.custom-icon')).toBeNull();
     expect(items()[0].querySelector('svg path')?.getAttribute('d')).toBe(CAE_ICON_GLYPHS.plus);
+  });
+
+  /**
+   * The arm that would have caught #881. `MatMenuItem.getLabel()` — which feeds
+   * `FocusKeyManager.withTypeAhead()` — clones the row and strips ONLY `mat-icon, .material-icons`
+   * (verified in `@angular/material/fesm2022/menu.mjs`); it has no typeahead-label input to
+   * override, and neither `cae-icon` nor a consumer template is stripped. So the row's text content
+   * IS its accessible name AND its typeahead key, and the D-596 contract "the item's accessible
+   * name stays `label`" holds only while the icon slot stays text-free.
+   *
+   * Asserting trimmed equality (not `toContain`) is the whole point: a template stamping
+   * "0:new" makes this read "0:new New", which is both a wrong accessible name and a typeahead
+   * key no user can type.
+   */
+  it('keeps the row name exactly the label — with the built-in glyph AND with a template', async () => {
+    await open();
+    expect(items().map((el) => el.textContent?.trim())).toEqual(['New', 'Find']);
+    fixture.componentInstance.useTpl.set(true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(items().map((el) => el.textContent?.trim())).toEqual(['New', 'Find']);
   });
 });
 
@@ -579,6 +612,139 @@ describe('CaeMenu tiered submenus (#150)', () => {
     expect(share.getAttribute('aria-expanded')).toBe('true');
     expect(rowsIn(panelOf(share)).length).toBe(2);
     await expectNoA11yViolations(overlayContainer.getContainerElement());
+  });
+
+  // ── Dead-end branch arms: a row with children that cannot open a usable panel (#877, #880) ──
+  //
+  // Both arms below reach the SAME rule — `isDeadEnd` — so they are pinned together. The rule is
+  // "has children but no panel worth opening ⇒ render a disabled leaf", which is the family's
+  // no-dead-end contract that cae-menubar and cae-split-button already enforce on their triggers.
+
+  describe('a branch whose children are all disabled (#880)', () => {
+    it('renders a DISABLED leaf, not a dead-end panel', async () => {
+      host.items.set([{ value: 'grp', label: 'Group', items: [{ label: 'a', disabled: true }] }]);
+      await openRoot();
+      const group = rowNamed(rootPanel(), 'Group');
+      // Not a branch: no submenu trigger wiring at all.
+      expect(group.getAttribute('aria-haspopup')).toBeNull();
+      // ...and not a clickable command either — a branch is navigational, never selectable.
+      expect(group.getAttribute('disabled')).not.toBeNull();
+      group.click();
+      await settle();
+      expect(host.selected()).toBeUndefined();
+    });
+
+    it('still opens when only SOME children are disabled', async () => {
+      host.items.set([
+        {
+          label: 'Group',
+          items: [
+            { label: 'a', disabled: true },
+            { value: 'b', label: 'b' },
+          ],
+        },
+      ]);
+      await openRoot();
+      const group = rowNamed(rootPanel(), 'Group');
+      expect(group.getAttribute('disabled')).toBeNull();
+      group.click();
+      await settle();
+      // The reachable child is focusable, so the panel is not a dead end.
+      expect(rowsIn(panelOf(group)).map((el) => el.textContent!.trim())).toEqual(['a', 'b']);
+    });
+
+    // The length test in `isDeadEnd` is load-bearing precisely because of this case: `[].every()`
+    // is vacuously true, so dropping it would turn every empty-items leaf into a DISABLED one.
+    // The existing "treats an EMPTY items array as a leaf" spec asserts it still emits; this one
+    // asserts the attribute that would flip first, so the two fail for different reasons.
+    it('leaves an EMPTY items array enabled — [].every() must not read as all-disabled', async () => {
+      host.items.set([{ value: 'solo', label: 'Solo', items: [] }]);
+      await openRoot();
+      expect(rowNamed(rootPanel(), 'Solo').getAttribute('disabled')).toBeNull();
+    });
+  });
+
+  describe('a cyclic model (#877)', () => {
+    let warn: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    });
+    afterEach(() => warn.mockRestore());
+
+    /**
+     * Without the break this overflows the stack at the FIRST change detection — not on open —
+     * because a branch's nested `cae-menu` is projected content that Angular *creates* eagerly and
+     * only defers the DOM insertion of. So the assertion that matters is simply that `settle()`
+     * returns: the test would not fail here, it would die.
+     */
+    it('stops a self-referential item instead of overflowing the stack', async () => {
+      const a: CaeMenuItem = { value: 'a', label: 'A' };
+      (a as { items?: readonly CaeMenuItem[] }).items = [a];
+      host.items.set([a]);
+      await openRoot();
+
+      // Level 1 renders A as a real branch — the cycle is only visible one level down.
+      const top = rowNamed(rootPanel(), 'A');
+      expect(top.getAttribute('aria-haspopup')).toBe('menu');
+      top.click();
+      await settle();
+
+      // Level 2 is where A encloses itself: rendered, disabled, and NOT recursed into.
+      const inner = rowNamed(panelOf(top), 'A');
+      expect(inner.getAttribute('aria-haspopup')).toBeNull();
+      expect(inner.getAttribute('disabled')).not.toBeNull();
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0][0]).toContain('"A" is its own ancestor');
+    });
+
+    it('stops a MUTUAL pair too — the chain, not just self-reference', async () => {
+      const a = { value: 'a', label: 'A' } as { value: string; label: string; items?: unknown };
+      const b = { value: 'b', label: 'B' } as { value: string; label: string; items?: unknown };
+      a.items = [b];
+      b.items = [a];
+      host.items.set([a as CaeMenuItem]);
+      await openRoot();
+
+      const top = rowNamed(rootPanel(), 'A');
+      top.click();
+      await settle();
+      const mid = rowNamed(panelOf(top), 'B');
+      expect(mid.getAttribute('aria-haspopup')).toBe('menu'); // B is not yet an ancestor of itself
+      mid.click();
+      await settle();
+      // A again, now enclosed by [A, B] — broken here.
+      const deep = rowNamed(panelOf(mid), 'A');
+      expect(deep.getAttribute('aria-haspopup')).toBeNull();
+      expect(warn).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * The false-positive guard, and the reason the check is ANCESTOR-scoped rather than
+     * "seen anywhere". Reusing one subtree under two SIBLING branches is a legal finite DAG —
+     * exactly what a shared "Share…" submenu is — and it must keep working. A cheaper check
+     * (a visited-set across the whole traversal, or comparing `items` array identity) passes
+     * every test above and breaks this one.
+     */
+    it('does NOT flag a subtree shared by two sibling branches', async () => {
+      const shared: CaeMenuItem = { label: 'Shared', items: [{ value: 's', label: 'Leaf' }] };
+      host.items.set([
+        { label: 'One', items: [shared] },
+        { label: 'Two', items: [shared] },
+      ]);
+      await openRoot();
+      const one = rowNamed(rootPanel(), 'One');
+      one.click();
+      await settle();
+      const sharedRow = rowNamed(panelOf(one), 'Shared');
+      expect(sharedRow.getAttribute('aria-haspopup')).toBe('menu');
+      expect(sharedRow.getAttribute('disabled')).toBeNull();
+      sharedRow.click();
+      await settle();
+      expect(rowsIn(panelOf(sharedRow)).map((el) => el.textContent!.trim())).toEqual(['Leaf']);
+      // Not vacuous: the two specs above prove this spy DOES fire on a real cycle.
+      expect(warn).not.toHaveBeenCalled();
+    });
   });
 });
 

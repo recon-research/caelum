@@ -54,6 +54,20 @@ export const CAE_ICON_GLYPHS: Readonly<Record<CaeIconName, string>> = {
  * every data-driven component that exposes an `iconTemplate`, so a consumer learns it once
  * (deliberately not enumerated: the list grew in #645 and would rot at the next component).
  * Type-only; it lives here because the icon-supply convention owns it.
+ *
+ * **The template it fills must render a glyph and no TEXT** (#881) — no count, badge or initials
+ * chip. This is the single home of that rule, for the same reason the context shape is: it holds
+ * for every `iconTemplate` in the family. An icon slot is decorative, and the row's accessible name
+ * is meant to be the item's own label; text stamped into the slot is *inside* the row element, so
+ * it joins the row's text content and therefore its accessible name — a template stamping
+ * `{{ index }}:{{ item.value }}` renames a "New" row to "0:new New". Put such text in the item's
+ * `label`, or in an `aria-hidden` / `[attr.data-*]` wrapper the a11y tree ignores.
+ *
+ * Two family members raise the stakes past a wrong name, because their keyboard typeahead reads
+ * the same text: `cae-menu` (and the menus inside `cae-split-button` / `cae-menubar`), where
+ * `MatMenuItem.getLabel()` strips only `mat-icon`/`.material-icons` and offers no override input;
+ * and `cae-context-menu`, where CDK's `CdkMenuItem` reads raw `textContent` but *does* accept
+ * `cdkMenuitemTypeaheadLabel`. There the polluted key is un-typeable, so the row is unreachable.
  */
 export interface CaeItemIconContext<TItem> {
   /** The item this icon slot belongs to (`let-item` binds this). */
