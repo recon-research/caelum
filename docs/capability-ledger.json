@@ -197,10 +197,10 @@
       "quote": "ai/code/session_01VFguz4Q8QdTr9MGxKn8kwj * cae-listbox: apply 4-lens review fixes (0 MAJOR; MINOR/NIT) Adversarial 4-lens review returned 0 confirmed BLOCKER/MAJOR (the CVA core was actively falsified"
     },
     "menu": {
-      "pr": 876,
-      "commit": "7a8e5e7",
+      "pr": 969,
+      "commit": "c7fde82",
       "source": "commit",
-      "quote": "REVERSED a wrong call from the first pass. I had deleted `:host{display:none}`\nas provably inert after mutation-testing it INSIDE a menu panel, where a block\ncontainer absorbs an empty inline. That is the one context where it does not\nmatter."
+      "quote": "Four-lens adversarial review. One HIGH, confirmed by simulation before fixing,\nplus six test gaps the lenses proposed as surviving mutations and that measured\nout as real."
     },
     "menubar": {
       "pr": 154,
@@ -227,10 +227,10 @@
       "quote": "Two-party adversarial review — 3 independent read-only lenses (correctness/state,\na11y semantics, test-oracle integrity + YAGNI). Verdict: SOLID-with-gaps — 2 HIGH,\n9 MED, 12 LOW."
     },
     "panel-menu": {
-      "pr": 778,
-      "commit": "5be24f1",
+      "pr": 969,
+      "commit": "c7fde82",
       "source": "commit",
-      "quote": "The adversarial review cae-panel-menu never got (#774 — the capability ledger's only entry point with no sign-off on record). Three lenses: correctness/state, a11y/structure, test integrity."
+      "quote": "Four-lens adversarial review. One HIGH, confirmed by simulation before fixing,\nplus six test gaps the lenses proposed as surviving mutations and that measured\nout as real."
     },
     "password": {
       "pr": 313,
