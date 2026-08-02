@@ -74,9 +74,15 @@ describe('CaeMenubar', () => {
     Array.from(document.querySelectorAll<HTMLElement>('[mat-menu-item]'));
 
   // D-859: a dead trigger is `aria-disabled` — focusable, so it cannot strand focus — and
-  // advertises NO popup, rendering exactly as a dead row does under D-856. Assert the whole
-  // contract in one place: checking `.disabled` alone would now silently pass for a live trigger,
-  // since no trigger carries the native attribute any more.
+  // advertises NO popup. Assert the whole contract in one place: checking `.disabled` alone would
+  // now silently pass for a live trigger, since no trigger carries the native attribute any more.
+  //
+  // This comment used to add "rendering exactly as a dead row does under D-856". That is false and
+  // was verified false at source (#989 review): a dead ROW keeps native `disabled` and
+  // `tabindex="-1"`, and MatMenu's key manager takes no skipPredicate override, so CDK's default
+  // skips it. Rows and triggers agree on role, `aria-disabled`, no popup and not-activatable; they
+  // differ on focusability and roving reachability, which Caelum cannot change for rows without
+  // leaving Material. D-859's evidence cell carries the correction.
   const expectDead = (button: HTMLButtonElement): void => {
     expect(button.hasAttribute('disabled')).toBe(false); // native disabled blurs to <body>
     expect(button.getAttribute('aria-disabled')).toBe('true');
@@ -451,9 +457,16 @@ describe('CaeMenubar', () => {
     // #977 predicted this arm would have to be browser-only, because the strand it described came
     // from a browser blurring a natively-disabled element — which jsdom does not do. D-859 changed
     // the mechanism: a dead trigger is `aria-disabled`, never natively disabled, so nothing blurs
-    // it. What stranded focus instead is the two-branch template DESTROYING the focused button to
-    // build its replacement, and element removal IS modelled by jsdom. So the claim moved layers
-    // and this belongs in the unit suite after all.
+    // it. What strands focus instead is the focused button being DESTROYED and rebuilt, and element
+    // removal IS modelled by jsdom. So the claim moved layers and this belongs in the unit suite.
+    //
+    // Be precise about WHICH destruction this arm grades (#989 review). It hands `setInput` fresh
+    // object literals, and the template tracks by identity, so every `@for` row is re-created —
+    // including the untouched File group. The vacuity guard below is satisfied by that recreation,
+    // not by the `@if` arm swap. On this component the two are inseparable: a deadness change
+    // arrives as a new group object by construction, so the branch adds no failure mode the
+    // identity contract did not already have. `cae-split-button`'s toggle is not inside a `@for`,
+    // and its equivalent arm DOES isolate the branch swap. The claim is stated per component.
     await setup({
       model: [
         { label: 'File', items: [{ value: 'new', label: 'New' }] },
@@ -510,11 +523,15 @@ describe('CaeMenubar', () => {
     }
   });
 
-  it('keeps the two D-859 branches identical apart from the trigger (two-branch parity)', async () => {
-    // The arms are duplicated markup and only caeMenuTriggerFor may differ between them. Every
-    // other arm in this file exercises one arm or the other, never both against each other, so a
-    // dropped class, a lost type="button" or a missing role would ship in silence — the same
-    // hazard cae-button's own two-branch parity arm exists to catch.
+  it('keeps the two D-859 branches identical apart from the deadness deltas (two-branch parity)', async () => {
+    // The arms are duplicated markup and nothing else in this file compares them, so a dropped
+    // class, a lost type="button" or a missing role would ship in silence.
+    //
+    // Compare MECHANICALLY rather than by whitelist. This arm used to name five properties, and a
+    // property whitelist grades only what someone thought to list — it is blind to anything a later
+    // edit ADDS to one arm only, and the sibling component's equivalent arm let a real
+    // `[matButton]="variant()"` → `matButton` divergence survive for exactly that reason (#989
+    // review). Set comparison has no such blind spot.
     await setup({
       model: [
         { label: 'File', items: [{ value: 'new', label: 'New' }] },
@@ -522,15 +539,205 @@ describe('CaeMenubar', () => {
       ] satisfies CaeMenubarItem[],
     });
     const [live, dead] = triggers();
-    expect(live.classList).toContain('cae-menubar__item');
-    expect(dead.classList).toContain('cae-menubar__item');
-    expect(dead.type).toBe(live.type); // type="button" — a bare matButton submits (#148)
-    expect(dead.getAttribute('role')).toBe(live.getAttribute('role')); // menuitem, from the directive
-    expect(dead.hasAttribute('tabindex')).toBe(live.hasAttribute('tabindex')); // roving on both
+    // The sanctioned attribute deltas, and only these: what Material derives from the two arms'
+    // deadness bindings, plus the trigger's own popup advertisement. `class` is compared separately
+    // (as a set), and `tabindex` legitimately differs in VALUE while being present on both.
+    const ATTR_DELTA = new Set([
+      'class',
+      'disabled',
+      'disabledinteractive', // the dead arm's static attribute — one of D-859's deadness bindings
+      'aria-disabled',
+      'aria-haspopup',
+      'aria-expanded',
+      'mat-ripple-loader-disabled', // Material's own, derived from the disabled state
+    ]);
+    const attrs = (b: HTMLButtonElement) =>
+      b
+        .getAttributeNames()
+        .filter((n) => !ATTR_DELTA.has(n))
+        .sort();
+    expect(attrs(dead)).toEqual(attrs(live));
+    // …and the class SET, modulo the classes Material itself adds for each posture. This is the
+    // assertion that pins appearance: `matButton`'s variant is expressed purely as classes, so a
+    // dead arm rendering a different variant fails here.
+    const MAT_DELTA =
+      /^(mat-mdc-button-disabled|mat-mdc-button-disabled-interactive|mat-mdc-menu-trigger)$/;
+    const classes = (b: HTMLButtonElement) =>
+      Array.from(b.classList)
+        .filter((c) => !MAT_DELTA.test(c))
+        .sort();
+    expect(classes(dead)).toEqual(classes(live));
+    expect(classes(dead)).toContain('cae-menubar__item'); // …and the set is not empty on both sides
     expect(dead.textContent!.trim()).toBe('Locked'); // the label still renders in the dead arm
-    // …and the ONE sanctioned difference.
-    expect(live.getAttribute('aria-haspopup')).toBe('menu');
-    expect(dead.hasAttribute('aria-haspopup')).toBe(false);
+    // …and the sanctioned differences themselves.
+    expectLive(live);
+    expectDead(dead);
+  });
+
+  it('re-seeding does not yank roving off a dead trigger that HAS focus (#989 review)', async () => {
+    // The `triggers.changes` re-seed guard was written when roving could never REST on a disabled
+    // trigger: CDK's default skipPredicate skipped it, and a natively-disabled button could not
+    // hold focus. D-859 made this state reachable with one Left press. If the re-seed fires anyway,
+    // the roving tab stop leaves the focused button and Down opens a DIFFERENT group's menu.
+    // Identities must be STABLE here, and that is the whole difficulty of testing this path: if the
+    // model edit replaces the groups, every row is re-created, the focused button is destroyed, and
+    // `restoreFocusAfterSwap` returns true before the re-seed guard is ever reached — so the arm
+    // grades the restore instead, and the guard's mutation survives. Measured, not assumed: the
+    // first version of this test did exactly that and killed nothing. Appending a group keeps the
+    // existing views alive while still firing `triggers.changes`.
+    const LOCKED: CaeMenubarItem = { label: 'Locked', items: [] };
+    const FILE: CaeMenubarItem = { label: 'File', items: [{ value: 'new', label: 'New' }] };
+    const VIEW: CaeMenubarItem = { label: 'View', items: [{ value: 'zoom', label: 'Zoom' }] };
+    await setup({ model: [LOCKED, FILE] });
+    keydown(LEFT_ARROW); // seeded on File (index 1); Left wraps back onto the dead Locked
+    await flush();
+    expect(document.activeElement).toBe(triggers()[0]);
+    expectDead(triggers()[0]);
+
+    ref.setInput('model', [LOCKED, FILE, VIEW]);
+    await flush();
+
+    expect(triggers()[0].isConnected).toBe(true); // vacuity guard: the restore path did NOT run,
+    expect(document.activeElement).toBe(triggers()[0]); // …so this arm really grades the re-seed
+
+    // Roving must still name the group the user is standing on…
+    expect(triggers()[0].tabIndex).toBe(0);
+    // …so Down refuses (dead) rather than opening File's menu behind the user's back.
+    keydown(DOWN_ARROW);
+    await flush();
+    expect(menuItems()).toEqual([]);
+  });
+
+  it('syncs roving to focus that arrives by pointer, so Down cannot open the wrong group (#989 review)', async () => {
+    // D-859 made a dead trigger take click focus (no native `disabled`) and — unlike a live one —
+    // it opens no menu to mask a focus↔roving mismatch. Without a sync in onFocusIn, activeIndex
+    // still names whatever was seeded, and Down opens THAT group.
+    await setup({
+      model: [
+        { label: 'File', items: [{ value: 'new', label: 'New' }] },
+        { label: 'Locked', items: [] },
+      ] satisfies CaeMenubarItem[],
+    });
+    expect(triggers()[0].tabIndex).toBe(0); // seeded on File
+
+    triggers()[1].focus(); // the pointer path: focus lands without the key manager's knowledge
+    await flush();
+    expect(triggers()[1].tabIndex).toBe(0); // roving followed
+    expect(triggers()[0].tabIndex).toBe(-1);
+
+    keydown(DOWN_ARROW);
+    await flush();
+    expect(menuItems()).toEqual([]); // refused, rather than opening File's menu
+  });
+
+  it('keeps the very same button when a surviving group merely changes position (#989 review)', async () => {
+    // Why the witness is keyed on a POSITION and not on the group's identity, which a review
+    // proposed. `@for` tracks by identity, so a group that survives a model edit has its view
+    // MOVED, not destroyed — the focused button is the same element afterwards, still focused,
+    // and the restore never runs. Identity re-keying would therefore be dead code: the witness is
+    // disconnected only when its group is gone from the model, and then `indexOf` cannot find it.
+    //
+    // This arm is the evidence for that claim, and it is the reason the restore below clamps an
+    // index instead. Written as a test rather than a comment because the first attempt at the
+    // identity fix passed review reasoning and was caught only by its own vacuity guard.
+    await setup();
+    const before = triggers()[2]; // View
+    before.focus();
+    expect(document.activeElement).toBe(before);
+
+    ref.setInput('model', [GROUPS[1], GROUPS[2]]); // File dropped; Edit and View keep identity
+    await flush();
+
+    expect(triggers().map((b) => b.textContent!.trim())).toEqual(['Edit', 'View']);
+    expect(before.isConnected).toBe(true); // the same element, moved — never destroyed
+    expect(triggers()[1]).toBe(before);
+    expect(document.activeElement).toBe(before); // …so focus never went anywhere to restore
+  });
+
+  it('restores focus when the model shrinks PAST the focused group rather than stranding (#989 review)', async () => {
+    // The index-only lookup declined here — `triggers.get(2)` was undefined — and left focus on
+    // <body>. Removing a middle group restored fine while removing the LAST one stranded, which is
+    // the shape of bug that survives review by being asymmetric.
+    await setup();
+    const before = triggers()[2]; // View, the last group
+    before.focus();
+
+    ref.setInput('model', [GROUPS[0], GROUPS[1]]); // View removed entirely
+    await flush();
+
+    expect(before.isConnected).toBe(false);
+    expect(document.activeElement).not.toBe(document.body); // WCAG 2.4.3
+    expect(document.activeElement).toBe(triggers()[1]); // clamped to the last surviving trigger
+  });
+
+  it('does NOT steal focus back when the user blurred to the page background first (#989 review)', async () => {
+    // The hard half of the anti-steal gate, which the shipped arm never exercised: it parked focus
+    // on an outside BUTTON, so `activeElement !== body` and the second gate did all the work. When
+    // the user's own blur landed on <body>, both gates passed and the bar grabbed focus back.
+    await setup();
+    const before = triggers()[1];
+    before.focus();
+    expect(document.activeElement).toBe(before);
+    before.blur(); // deliberate departure — no focusin reaches the bar, so the witness is stale
+    expect(document.activeElement).toBe(document.body);
+
+    ref.setInput('model', [GROUPS[0], { label: 'Edit', items: [] }, GROUPS[2]]);
+    await flush();
+
+    expect(before.isConnected).toBe(false); // the swap really happened…
+    expect(document.activeElement).toBe(document.body); // …and focus was left where the user put it
+  });
+
+  it('keeps exactly one tab stop when EVERY group is dead (#974/#989 review)', async () => {
+    // seedActiveIndex's `Math.max(first, 0)` fallback. Under D-859 a dead trigger is focusable, so
+    // an all-dead bar genuinely keeps a tab stop — and dropping to updateActiveItem(-1) would put
+    // tabindex="-1" on every trigger and remove the bar from the tab order, re-introducing the
+    // WCAG 2.1.1 break #974 fixed.
+    await setup({
+      model: [
+        { label: 'Locked', items: [] },
+        { label: 'Admin', items: [{ value: 'x', label: 'X', disabled: true }] },
+      ] satisfies CaeMenubarItem[],
+    });
+    triggers().forEach(expectDead);
+    expect(triggers().filter((b) => b.tabIndex === 0).length).toBe(1);
+    expect(triggers()[0].tabIndex).toBe(0);
+  });
+
+  it('restores focus across TWO consecutive swaps, so the witness re-arms (#989 review)', async () => {
+    // `focus()` re-fires focusin, which re-captures the witness for the next swap. Nothing graded
+    // that: the shipped arms all stop after one flip, so nulling the witness after a restore was a
+    // surviving mutation. Two async model refreshes is the ordinary permissions shape.
+    await setup();
+    triggers()[1].focus();
+
+    ref.setInput('model', [GROUPS[0], { label: 'Edit', items: [] }, GROUPS[2]]);
+    await flush();
+    const first = triggers()[1];
+    expect(document.activeElement).toBe(first);
+
+    // …and back to live, without the user touching anything in between.
+    ref.setInput('model', [GROUPS[0], { ...GROUPS[1] }, GROUPS[2]]);
+    await flush();
+    expect(first.isConnected).toBe(false);
+    expect(document.activeElement).toBe(triggers()[1]);
+    expectLive(triggers()[1] as HTMLButtonElement);
+  });
+
+  it('keeps arrow keys aligned with focus after a restore (#989 review)', async () => {
+    // The restore leaves roving to the focusin it triggers. If the two disagree, the next arrow
+    // press moves from the STALE index — the user presses Right and lands back where they were,
+    // or skips a group. Nothing pressed an arrow after a restore before this.
+    await setup();
+    triggers()[1].focus(); // Edit
+
+    ref.setInput('model', [GROUPS[0], { label: 'Edit', items: [] }, GROUPS[2]]);
+    await flush();
+    expect(document.activeElement).toBe(triggers()[1]);
+
+    keydown(RIGHT_ARROW);
+    await flush();
+    expect(document.activeElement).toBe(triggers()[2]); // View, not back to Edit or over to File
   });
 
   it('opens a group dropdown and renders one menu item per entry', async () => {

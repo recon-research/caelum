@@ -52,13 +52,25 @@ describe('CaeSplitButton', () => {
   const toggle = () => buttons()[1];
 
   // D-859: a dead TOGGLE is `aria-disabled` — focusable, so it cannot strand focus — and advertises
-  // no popup, rendering as a dead row does under D-856. Asserted as a whole because `.disabled`
-  // alone would now pass for a live toggle too: no toggle carries the native attribute any more.
-  // The PRIMARY button is untouched — it is a command, not a menu trigger, so it stays natively
-  // disabled and its arms below still read `.disabled`.
+  // no popup. Asserted as a whole because `.disabled` alone would now pass for a live toggle too:
+  // no toggle carries the native attribute any more. The PRIMARY button is untouched — it is a
+  // command, not a menu trigger, so it stays natively disabled and its arms below still read
+  // `.disabled`.
+  //
+  // This comment used to add "rendering as a dead row does under D-856". False, and verified false
+  // at source (#989 review): a dead row keeps native `disabled` and `tabindex="-1"` and is SKIPPED
+  // by MatMenu's key manager. See D-859's evidence correction.
   const expectDeadToggle = (): void => {
     expect(toggle().hasAttribute('disabled')).toBe(false); // native disabled blurs to <body>
     expect(toggle().getAttribute('aria-disabled')).toBe('true');
+    expect(toggle().hasAttribute('aria-haspopup')).toBe(false);
+    expect(toggle().hasAttribute('aria-expanded')).toBe(false);
+  };
+  // The OTHER shade of disabled (#989 review): the consumer switched the whole control off, so the
+  // toggle goes natively disabled like the primary and leaves the tab order with it. D-859 is
+  // scoped to a dead DROPDOWN; it does not govern this case.
+  const expectOffToggle = (): void => {
+    expect(toggle().hasAttribute('disabled')).toBe(true);
     expect(toggle().hasAttribute('aria-haspopup')).toBe(false);
     expect(toggle().hasAttribute('aria-expanded')).toBe(false);
   };
@@ -81,6 +93,29 @@ describe('CaeSplitButton', () => {
       .filter((c) => (c.startsWith('mat') || c.startsWith('mdc')) && !c.includes('menu-trigger'))
       .sort()
       .join(' ');
+
+  // Two-branch parity (#989 review). The sanctioned deltas between D-859's arms, and only these:
+  // what Material derives from the deadness bindings, plus the trigger's popup advertisement.
+  // `class` is compared as a set separately; `aria-label`'s VALUE is compared directly.
+  const ATTR_DELTA = new Set([
+    'class',
+    'disabled',
+    'aria-disabled',
+    'aria-haspopup',
+    'aria-expanded',
+    'mat-ripple-loader-disabled', // Material's own, derived from the disabled state
+  ]);
+  const attrNames = (btn: HTMLElement) =>
+    btn
+      .getAttributeNames()
+      .filter((n) => !ATTR_DELTA.has(n))
+      .sort();
+  const MAT_CLASS_DELTA =
+    /^(mat-mdc-button-disabled|mat-mdc-button-disabled-interactive|mat-mdc-menu-trigger)$/;
+  const classSet = (btn: HTMLElement) =>
+    Array.from(btn.classList)
+      .filter((c) => !MAT_CLASS_DELTA.test(c))
+      .sort();
 
   it('has no axe violations (labeled group, primary + chevron)', async () => {
     await setup({ ariaLabel: 'Save actions' });
@@ -109,25 +144,89 @@ describe('CaeSplitButton', () => {
   });
 
   it('keeps the two D-859 toggle branches identical apart from the trigger (two-branch parity)', async () => {
-    // Duplicated markup: only caeMenuTriggerFor may differ. Nothing else compares the arms.
-    await setup({ model: [{ value: 'a', label: 'Alpha' }] satisfies CaeMenuItem[] });
+    // Duplicated markup: nothing else compares the arms.
+    //
+    // Compare MECHANICALLY. This arm used to name five properties, and it demonstrably failed at
+    // the job (#989 review): two independent reviewers landed on the same surviving mutation —
+    // change the dead arm's `[matButton]="variant()"` to a bare `matButton` and an OUTLINED
+    // split-button renders a filled chevron welded to an outlined primary, with every assertion
+    // green. The reason is visible in the old code: `liveClass` was captured and then only
+    // `toContain`-checked against ITSELF, never compared with the dead arm. A whitelist grades what
+    // someone thought to list; a set comparison cannot be blindsided by a later one-armed edit.
+    //
+    // Run it on a NON-DEFAULT variant and label, so a hardcoded literal in the dead arm fails too.
+    await setup({
+      model: [{ value: 'a', label: 'Alpha' }] satisfies CaeMenuItem[],
+      variant: 'outlined',
+      menuAriaLabel: 'More save options',
+    });
     const liveToggle = toggle();
-    const liveClass = liveToggle.className;
+    const liveAppearance = appearance(liveToggle);
     const liveLabel = liveToggle.getAttribute('aria-label');
-    const liveChevron = liveToggle.querySelector('.cae-split-button__chevron') !== null;
+    const liveAttrs = attrNames(liveToggle);
+    const liveClasses = classSet(liveToggle);
+    const liveChevron = liveToggle.querySelector('.cae-split-button__chevron');
     expectLiveToggle();
 
     ref.setInput('model', [{ value: 'a', label: 'Alpha', disabled: true }] satisfies CaeMenuItem[]);
     await flush();
 
     const deadToggle = toggle();
-    expect(deadToggle).not.toBe(liveToggle); // the arms really did swap
-    expect(deadToggle.type).toBe('button');
-    expect(deadToggle.getAttribute('aria-label')).toBe(liveLabel);
-    expect(deadToggle.querySelector('.cae-split-button__chevron') !== null).toBe(liveChevron);
-    expect(deadToggle.classList).toContain('cae-split-button__toggle');
-    expect(liveClass).toContain('cae-split-button__toggle');
+    expect(deadToggle).not.toBe(liveToggle); // vacuity guard: the arms really did swap
+    expect(attrNames(deadToggle)).toEqual(liveAttrs);
+    expect(classSet(deadToggle)).toEqual(liveClasses);
+    expect(classSet(deadToggle)).toContain('cae-split-button__toggle'); // …and not empty on both
+    // The class-set equality above is what pins the variant — `matButton` expresses appearance
+    // purely as classes, so the two arms cannot render different variants and still match. Say so
+    // explicitly, since this is the exact divergence two independent reviewers proposed as a
+    // survivor: `appearance()` itself is not reused here because its filter deliberately keeps the
+    // disabled-state classes that legitimately differ between the arms.
+    expect(liveAppearance).toContain('outlined'); // guard: the fixture really is on a non-default
+    expect(classSet(deadToggle).join(' ')).toContain('outlined');
+    expect(deadToggle.getAttribute('aria-label')).toBe(liveLabel); // …and so does the name
+    expect(liveLabel).toBe('More save options'); // guard: liveLabel is not the default literal
+    // The chevron is a projected child, not an attribute — compare its identity-bearing bits too.
+    const deadChevron = deadToggle.querySelector('.cae-split-button__chevron');
+    expect(deadChevron).not.toBeNull();
+    expect(deadChevron!.getAttribute('aria-hidden')).toBe(liveChevron!.getAttribute('aria-hidden'));
     expectDeadToggle();
+  });
+
+  it('does NOT steal focus back when the user blurred to the page background first (#989 review)', async () => {
+    // The hard half of the anti-steal gate, which the shipped arm never exercised: it parked focus
+    // on an outside BUTTON, so `activeElement !== body` and the second gate did all the work. When
+    // the user's own blur lands on <body>, both gates pass and the toggle grabs focus back —
+    // announcing "unavailable" at someone who had already left.
+    await setup({ model: [{ value: 'a', label: 'Alpha' }] satisfies CaeMenuItem[] });
+    const before = toggle();
+    before.focus();
+    expect(document.activeElement).toBe(before);
+    before.blur();
+    expect(document.activeElement).toBe(document.body);
+
+    ref.setInput('model', [] satisfies CaeMenuItem[]);
+    await flush();
+
+    expect(before.isConnected).toBe(false); // the swap really happened…
+    expect(document.activeElement).toBe(document.body); // …and focus stayed where the user left it
+  });
+
+  it('restores focus on the dead→LIVE swap too, not just live→dead (#989 review)', async () => {
+    // Both shipped focus arms capture the witness while the toggle is live, so only one direction
+    // was ever graded — yet the contract is stated as "flips live↔dead". An async model arriving
+    // late (empty → populated) is the ordinary shape of the untested direction.
+    await setup({ model: [] satisfies CaeMenuItem[] });
+    const before = toggle();
+    expectDeadToggle();
+    before.focus();
+    expect(document.activeElement).toBe(before);
+
+    ref.setInput('model', [{ value: 'a', label: 'Alpha' }] satisfies CaeMenuItem[]);
+    await flush();
+
+    expect(before.isConnected).toBe(false); // vacuity guard
+    expect(document.activeElement).toBe(toggle());
+    expectLiveToggle();
   });
 
   it('keeps focus on the toggle when it goes dead — the swap must not strand it (#977/D-859)', async () => {
@@ -185,9 +284,24 @@ describe('CaeSplitButton', () => {
     expect(toggle().getAttribute('aria-label')).toBe('More actions');
   });
 
-  it('disables both halves when [disabled]', async () => {
+  it('disables both halves NATIVELY when [disabled], so they leave the tab order together', async () => {
+    // #989 review. Applying D-859's aria-disabled posture here left the primary out of the tab
+    // order while the toggle stayed in it, so a control the consumer had switched off kept exactly
+    // one tab stop — on the half that does nothing, with the labelled half unreachable. D-859 is
+    // scoped to "a dead trigger — one whose dropdown has nothing reachable behind it", which a
+    // consumer-disabled control is not.
     await setup({ disabled: true });
     expect(primary().disabled).toBe(true);
+    expectOffToggle();
+    expect(toggle().hasAttribute('aria-disabled')).toBe(false); // natively disabled, not announced
+  });
+
+  it('still gives a MODEL-dead toggle the D-859 posture while the control is enabled', async () => {
+    // The other side of the same fork: deadness that comes from the dropdown keeps aria-disabled
+    // and stays focusable. Without this arm the fix above could be over-applied to both causes and
+    // nothing would notice.
+    await setup({ model: [] });
+    expect(primary().disabled).toBe(false);
     expectDeadToggle();
   });
 

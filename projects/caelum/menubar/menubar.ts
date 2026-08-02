@@ -146,6 +146,24 @@ export class MenubarTriggerItem implements FocusableOption {
  * Replace the group (or the array) rather than mutating it; the alternative is a deep compare on
  * every change detection, which is not worth it at menubar scale.
  *
+ * **The two-branch template** (D-859). A dead group's button is stamped in its own `@if` arm rather
+ * than switched by a binding, because it cannot be one button: `MatMenuTrigger` host-binds
+ * `attr.aria-expanded` to `menuOpen` **unconditionally** — only `aria-haspopup` is nulled by a null
+ * menu — so a dead trigger would still announce as a collapsed disclosure. (Whether `CaeMenuTrigger`
+ * could host-bind that away and retire the branch outright is unmeasured — #993.) Prose lives here
+ * rather than in the template because template comments are string content of the `template:`
+ * literal and ship in the FESM, while JSDoc is free (PATTERNS §15).
+ *
+ * The cost is that the arms are **separate elements**, so a group flipping live↔dead destroys the
+ * focused `<button>`. Note carefully what that does *not* mean here: because groups track by object
+ * identity, a deadness change necessarily arrives as a **new group object**, which re-creates that
+ * `@for` row anyway. So on this component the destruction is view re-creation, reachable on *any*
+ * model replacement, and the `@if` swap is not independently observable — the branch does not add a
+ * failure mode, it shares one the identity contract already had. (`cae-split-button`'s toggle is not
+ * inside a `@for`, so there the branch swap *is* the mechanism; PATTERNS §4 states both.) That is
+ * why the focus machinery below keys off destruction rather than off deadness, and why it must also
+ * survive a model that **shrinks or reorders** — the cases a pure live↔dead reading would miss.
+ *
  * **v1 scope** (#153): one level of dropdown (the common File▸/Edit▸ admin case). Follow-ups —
  * rich items (router links/commands, #150),
  * responsive overflow collapse, RTL roving.
@@ -163,6 +181,7 @@ export class MenubarTriggerItem implements FocusableOption {
       [attr.aria-label]="ariaLabel() || null"
       (keydown)="onKeydown($event)"
       (focusin)="onFocusIn($event)"
+      (focusout)="onFocusOut($event)"
     >
       <!-- track group, NOT $index — a trigger's open state is unbound (#774/#879). See the class doc. -->
       @for (group of model(); track group) {
@@ -174,12 +193,9 @@ export class MenubarTriggerItem implements FocusableOption {
           [iconTemplate]="iconTemplate()"
           (itemSelect)="itemSelect.emit($event)"
         />
-        <!-- D-859 two-branches on deadness, exactly as cae-button does for its own optional
-             trigger (PATTERNS §4): the ONLY difference between the arms is caeMenuTriggerFor.
-             It cannot be one button with a conditional binding — MatMenuTrigger host-binds
-             attr.aria-expanded to menuOpen UNCONDITIONALLY (only aria-haspopup is nulled by a
-             null menu), so a dead trigger would still announce as a collapsed disclosure. Keep
-             the arms byte-identical apart from that line; the parity spec is the only guard. -->
+        <!-- D-859 two-branches on deadness (PATTERNS §4, and the class doc above for why).
+             Deltas between the arms: the three deadness bindings + caeMenuTriggerFor. Nothing
+             else may differ — the parity spec is the only guard. -->
         @if (disabledGroup(group)) {
           <button
             matButton
@@ -257,8 +273,8 @@ export class CaeMenubar implements AfterViewInit, OnDestroy {
 
   /**
    * The groups with nothing reachable behind them, resolved once per model change rather than per
-   * binding — {@link disabledGroup} is read twice for every group on every change detection
-   * (`menubarDisabled` and `disabled`), and the predicate walks that group's whole subtree.
+   * binding — {@link disabledGroup} is read once per group per change detection (the `@if` that
+   * picks the arm), and the predicate walks that group's whole subtree.
    *
    * Keyed on `model()`, matching `CaeMenu.graph` and `CaeSplitButton.toggleDisabled`. A review
    * proposed keying it on `group.items` instead, so that swapping one group's items on a *stable*
@@ -297,8 +313,12 @@ export class CaeMenubar implements AfterViewInit, OnDestroy {
       // `item => item.disabled` (`_list-key-manager-chunk.mjs`), which made a dead group vanish
       // from the keyboard entirely — a user arrowing along the bar could not learn it existed.
       // It now receives focus and announces itself unavailable (`aria-disabled`), matching how
-      // `cae-context-menu` already roves onto disabled rows (PATTERNS §9). Down/Up still refuse to
-      // open it, twice over: the guard in `onKeydown` and the absence of a trigger to call.
+      // `cae-context-menu` already roves onto disabled rows (PATTERNS §5c — CDK's own `CdkMenuBase`
+      // ships this same `skipPredicate`). Down/Up still refuse to open it, twice over: the guard in
+      // `onKeydown` and the absence of a trigger to call.
+      //
+      // NOTE the traversal half of D-859 is provisional on #994: the decision put the *attribute*
+      // on the ballot, not skip-vs-land, so the inversion is running on the recommended default.
       .skipPredicate(() => false);
     this.keyManager.change
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -319,8 +339,16 @@ export class CaeMenubar implements AfterViewInit, OnDestroy {
       if (this.restoreFocusAfterSwap()) return;
       // Only when the index no longer names an operable trigger — re-seeding unconditionally would
       // yank the roving position back to the start on any model edit, which the roving specs catch.
+      //
+      // The focus clause is load-bearing since D-859 and was not before it. This guard was written
+      // when roving could never REST on a disabled trigger (CDK's default `skipPredicate` skipped
+      // it, and a natively-disabled button could not hold focus). `skipPredicate(() => false)` plus
+      // `disabledInteractive` made "the active index names a dead trigger that currently HAS focus"
+      // an ordinary keyboard state — reachable by one Left press. Re-seeding out of it would move
+      // the roving tab stop off the focused button, so Down would open a *different* group's menu
+      // than the one the user is standing on.
       const current = this.triggers.get(this.activeIndex());
-      if (current && !current.disabled) return;
+      if (current && (!current.disabled || current.contains(document.activeElement))) return;
       this.seedActiveIndex();
     });
   }
@@ -328,6 +356,15 @@ export class CaeMenubar implements AfterViewInit, OnDestroy {
   /**
    * Witness for {@link restoreFocusAfterSwap} — the trigger that last held focus, captured on the
    * way IN because it cannot be recovered on the way out.
+   *
+   * Keyed on the **position**, and that is not the oversight it looks like. A review proposed
+   * re-keying it on the group's object identity — the family's usual answer to a stale index — and
+   * the change measured out as **provably dead code**, caught by its own vacuity guard. `@for`
+   * tracks by identity, so Angular *moves* the view of a group that survives a model edit and
+   * destroys only the views whose identity is gone. The witness element is therefore disconnected
+   * if and only if its group is no longer in the model, which makes `indexOf(witness.group)`
+   * unconditionally `-1` at the one moment the lookup would run. Position is the only continuity
+   * that still exists here; what the index genuinely needed was the clamp below, not re-keying.
    */
   private focusWitness: { element: HTMLElement; index: number } | null = null;
 
@@ -335,31 +372,71 @@ export class CaeMenubar implements AfterViewInit, OnDestroy {
     const index = this.triggers?.toArray().findIndex((t) => t.contains(event.target as Node)) ?? -1;
     const trigger = index < 0 ? null : this.triggers.get(index);
     this.focusWitness = trigger ? { element: trigger.element, index } : null;
+    // Roving follows real focus. Focus can arrive without the key manager's knowledge — a mouse
+    // click, or our own restore below — and D-859 made that divergence reachable *and* silent: a
+    // dead trigger now takes click focus (no native `disabled`) and, unlike a live one, opens no
+    // menu to mask the mismatch. Left unsynced, Down would open whichever group `activeIndex` still
+    // named. No re-entrancy risk: `FocusKeyManager.setActiveItem` emits `change` BEFORE it calls
+    // `focus()`, so the write below is a same-index no-op on the key-manager-driven path.
+    if (index >= 0) {
+      this.keyManager?.updateActiveItem(index);
+      this.activeIndex.set(index);
+    }
   }
 
   /**
-   * Keep focus on the group that had it when its trigger flips live↔dead (#977).
+   * Drop the witness when focus genuinely **leaves** the bar, so a later destruction cannot be
+   * mistaken for one that stranded the user (#989 review).
    *
-   * D-859's two-branch template is what makes this necessary: a group going dead **destroys** the
-   * focused `<button>` and builds its replacement in the other arm, so focus falls to `<body>` —
-   * the very strand D-859 set out to fix, arriving by a different route. The dead branch is
-   * `aria-disabled` rather than natively disabled, so the replacement *can* hold focus; something
-   * just has to put it there. Focus stays on the same group, now announced unavailable, rather
-   * than jumping to a neighbour — a silent jump is the more disorienting of the two.
+   * Without this, the two gates in {@link restoreFocusAfterSwap} both pass on a sequence they were
+   * never meant to admit: focus a trigger, blur to the page background (`activeElement` is now
+   * `<body>`, and no `focusin` reaches this bar because a focus move *to* `<body>` fires at `body`
+   * and bubbles upward), then let an async model change destroy that trigger. The witness is stale
+   * but intact, so the bar yanks focus back — announcing "unavailable" at a user who had left.
+   *
+   * The `isConnected` test is what keeps this from breaking the restore itself: if a browser fires
+   * `focusout` as part of removing the focused element, the witness is already disconnected and the
+   * clear is skipped. Only a departure from a *live* element counts as leaving.
+   */
+  protected onFocusOut(event: FocusEvent): void {
+    const witness = this.focusWitness;
+    if (!witness || !witness.element.isConnected) return;
+    if (witness.element.contains(event.relatedTarget as Node)) return;
+    this.focusWitness = null;
+  }
+
+  /**
+   * Keep focus on the group that had it when that group's trigger button is **destroyed** (#977).
+   *
+   * The trigger is destruction, not deadness. A live↔dead flip is one way to get there (D-859's two
+   * arms are separate elements), but because groups track by identity every model replacement
+   * re-creates the rows too — so this fires for a reorder, a removal, or a plain refresh, and it has
+   * to be right for all of them. Focus falls to `<body>` in every case; the dead arm is
+   * `aria-disabled` rather than natively disabled, so the replacement *can* hold focus, something
+   * just has to put it there.
+   *
+   * Focus goes to whatever now occupies the witnessed position, **clamped** to the last trigger
+   * when the model shrank past it — the established external-removal shape. Declining instead (what
+   * an unclamped `triggers.get(index)` did, by returning `undefined`) left focus on `<body>`: the
+   * WCAG 2.4.3 break this whole mechanism exists to prevent. The asymmetry was the tell — removing
+   * a *middle* group restored correctly while removing the *last* one stranded.
    *
    * Gated on the witness's element being genuinely **disconnected**, not on `activeElement` alone:
    * `activeElement === body` cannot distinguish "our element was destroyed" from "the user clicked
-   * the page background", and restoring in the second case is a focus steal. Both conditions are
-   * required, and `focus()` re-fires `focusin`, which re-captures the witness for the next swap.
+   * the page background", and restoring in the second case is a focus steal. `focusout` clears the
+   * witness on a real departure ({@link onFocusOut}) — the two together are what make the second
+   * gate mean "nobody else wanted focus" rather than merely "focus is nowhere".
+   *
+   * Re-focusing re-fires `focusin`, which re-captures the witness and re-syncs roving for the next
+   * swap; that is why this method does not write `activeIndex` itself.
    */
   private restoreFocusAfterSwap(): boolean {
     const witness = this.focusWitness;
     if (!witness || witness.element.isConnected) return false;
     if (document.activeElement !== document.body) return false;
-    const replacement = this.triggers.get(witness.index);
+    const index = Math.min(witness.index, this.triggers.length - 1);
+    const replacement = index >= 0 ? this.triggers.get(index) : undefined;
     if (!replacement) return false;
-    this.keyManager?.updateActiveItem(witness.index);
-    this.activeIndex.set(witness.index);
     replacement.focus();
     return true;
   }
@@ -372,7 +449,12 @@ export class CaeMenubar implements AfterViewInit, OnDestroy {
   private seedActiveIndex(): void {
     const first = this.triggers.toArray().findIndex((t) => !t.disabled);
     // `first < 0` (every trigger dead) falls back to 0: nothing here is operable, so there is no
-    // better index, and the bar has nothing to put in the tab order either way.
+    // better index. That fallback is now load-bearing rather than cosmetic — this comment used to
+    // say the bar "has nothing to put in the tab order either way", which was true only while a
+    // dead trigger was natively disabled. Under D-859 it is `aria-disabled` and focusable, so an
+    // all-dead bar DOES keep exactly one tab stop, and dropping to `updateActiveItem(-1)` would put
+    // `tabindex="-1"` on every trigger and remove the bar from the tab order entirely — the WCAG
+    // 2.1.1 break #974 fixed, re-arriving by the back door. Pinned by an all-dead spec arm.
     this.keyManager?.updateActiveItem(Math.max(first, 0));
     this.activeIndex.set(this.keyManager?.activeItemIndex ?? 0);
   }
