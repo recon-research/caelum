@@ -40,15 +40,19 @@ export interface CaeMenubarItem {
   label: string;
   /** The dropdown items for this group. */
   items: readonly CaeMenuItem[];
-  /** Disable the whole group — its trigger is out of the tab order and skipped by roving. */
+  /**
+   * Disable the whole group. Its trigger is still **reachable by arrow keys** and announces itself
+   * unavailable (`aria-disabled`, D-859); it just cannot be opened, and the roving tab stop seeds
+   * past it. Before D-859 it was skipped outright, which hid the group from the keyboard entirely.
+   */
   disabled?: boolean;
 }
 
 /**
  * Internal roving item for the menubar's top-level triggers — a {@link FocusableOption} so a
- * `FocusKeyManager` (Book 05 §3.2) can move focus across the bar (Left/Right/Home/End + typeahead,
- * skip-disabled). Not exported: it exists only to give the key manager focusable, labelled,
- * disable-aware handles onto the trigger `<button>`s.
+ * `FocusKeyManager` (Book 05 §3.2) can move focus across the bar (Left/Right/Home/End + typeahead;
+ * dead groups are roved ONTO rather than skipped, D-859). Not exported: it exists only to give the
+ * key manager focusable, labelled, disable-aware handles onto the trigger `<button>`s.
  */
 /**
  * @internal — Angular requires a class in a component's `imports` to be exported from its file, so
@@ -61,10 +65,29 @@ export interface CaeMenubarItem {
 })
 export class MenubarTriggerItem implements FocusableOption {
   private readonly el = inject<ElementRef<HTMLElement>>(ElementRef);
-  /** Mirrors the group's effective disabled state so the key manager can skip it. */
+  /**
+   * The menu trigger on **this** button, or `null` when the group is dead — D-859 two-branches the
+   * template, so a dead trigger carries no `CaeMenuTrigger` at all.
+   *
+   * Resolved by DI from the same element rather than by a parallel `ViewChildren` index, which is
+   * what this used to be. A `QueryList<CaeMenuTrigger>` now holds only the **live** triggers, so
+   * `menuTriggers.get(activeIndex)` would name the wrong group the moment any *earlier* group went
+   * dead — and `undefined` for the last one, silently doing nothing on Down. Reading it off the
+   * roving item's own host makes the two physically incapable of disagreeing.
+   */
+  readonly menuTrigger = inject(CaeMenuTrigger, { optional: true, self: true });
+  /** Mirrors the group's effective disabled state — dead groups are still announced, not skipped. */
   readonly menubarDisabled = input(false);
   get disabled(): boolean {
     return this.menubarDisabled();
+  }
+  /** The trigger's own `<button>` — the bar witnesses focus on it across a branch swap. */
+  get element(): HTMLElement {
+    return this.el.nativeElement;
+  }
+  /** Does this trigger's button contain `node`? (focus bookkeeping, see `CaeMenubar`.) */
+  contains(node: Node | null): boolean {
+    return !!node && this.el.nativeElement.contains(node);
   }
   focus(): void {
     this.el.nativeElement.focus();
@@ -93,7 +116,9 @@ export class MenubarTriggerItem implements FocusableOption {
  *
  * **a11y.** The bar is a `role="menubar"`; each trigger is a `role="menuitem"`. A CDK
  * `FocusKeyManager` gives the bar roving focus — only the active trigger is tab-focusable, and
- * Left/Right/Home/End + typeahead move between them, skipping disabled groups. Down/Up open the
+ * Left/Right/Home/End + typeahead move between them **including** dead or disabled groups, which
+ * take focus and announce themselves unavailable (`aria-disabled`, **D-859**) rather than vanishing
+ * from the keyboard — so a user arrowing along the bar can still learn the group exists. Down/Up open the
  * active group's panel and move focus into it (Material owns the panel-side keys + Escape-restore);
  * Enter/Space open it too via the native button. A group with **nothing reachable behind it** is
  * treated as disabled (#961) — empty, all-disabled, or every branch bottoming out in disabled rows;
@@ -109,6 +134,17 @@ export class MenubarTriggerItem implements FocusableOption {
  * items, having never been triggered. The cost of identity tracking is the usual one: rebuilding
  * `model()` into fresh object literals every change-detection pass re-creates every trigger and
  * panel, so hold the array (or its groups) stable.
+ *
+ * The contract has a **visible failure mode worth naming** (#977). Mutating a group's items *in
+ * place* — `groups[0].items = [...]` on a stable `model` array — updates the **panel**, because
+ * `[items]="group.items"` is a live binding, while leaving the **trigger's** dead/live verdict
+ * stale: an in-place mutation touches no signal, so the OnPush row is never re-checked and the new
+ * binding never reaches the DOM. The two then disagree — an enabled trigger over an empty panel, or
+ * the reverse. This is the identity contract showing up as a *disagreement* rather than as nothing
+ * happening, and it is not the `deadGroups` memo: keying that memo on `group.items` instead of
+ * `model()` was measured and behaves identically, as does the pre-#961 `items.length === 0` check.
+ * Replace the group (or the array) rather than mutating it; the alternative is a deep compare on
+ * every change detection, which is not worth it at menubar scale.
  *
  * **v1 scope** (#153): one level of dropdown (the common File▸/Edit▸ admin case). Follow-ups —
  * rich items (router links/commands, #150),
@@ -126,27 +162,51 @@ export class MenubarTriggerItem implements FocusableOption {
       role="menubar"
       [attr.aria-label]="ariaLabel() || null"
       (keydown)="onKeydown($event)"
+      (focusin)="onFocusIn($event)"
     >
       <!-- track group, NOT $index — a trigger's open state is unbound (#774/#879). See the class doc. -->
       @for (group of model(); track group) {
-        <button
-          matButton
-          type="button"
-          caeMenubarItem
-          class="cae-menubar__item"
-          [menubarDisabled]="disabledGroup(group)"
-          [disabled]="disabledGroup(group)"
-          [tabindex]="$index === activeIndex() ? 0 : -1"
-          [caeMenuTriggerFor]="groupMenu"
-        >
-          {{ group.label }}
-        </button>
+        <!-- Declared before the triggers so the @else branch's caeMenuTriggerFor resolves a ref
+             that already exists; cae-menu renders nothing inline (:host display none). -->
         <cae-menu
           #groupMenu
           [items]="group.items"
           [iconTemplate]="iconTemplate()"
           (itemSelect)="itemSelect.emit($event)"
         />
+        <!-- D-859 two-branches on deadness, exactly as cae-button does for its own optional
+             trigger (PATTERNS §4): the ONLY difference between the arms is caeMenuTriggerFor.
+             It cannot be one button with a conditional binding — MatMenuTrigger host-binds
+             attr.aria-expanded to menuOpen UNCONDITIONALLY (only aria-haspopup is nulled by a
+             null menu), so a dead trigger would still announce as a collapsed disclosure. Keep
+             the arms byte-identical apart from that line; the parity spec is the only guard. -->
+        @if (disabledGroup(group)) {
+          <button
+            matButton
+            type="button"
+            caeMenubarItem
+            class="cae-menubar__item"
+            [menubarDisabled]="true"
+            [disabled]="true"
+            disabledInteractive
+            [tabindex]="$index === activeIndex() ? 0 : -1"
+          >
+            {{ group.label }}
+          </button>
+        } @else {
+          <button
+            matButton
+            type="button"
+            caeMenubarItem
+            class="cae-menubar__item"
+            [menubarDisabled]="false"
+            [disabled]="false"
+            [tabindex]="$index === activeIndex() ? 0 : -1"
+            [caeMenuTriggerFor]="groupMenu"
+          >
+            {{ group.label }}
+          </button>
+        }
       }
     </mat-toolbar>
   `,
@@ -188,10 +248,11 @@ export class CaeMenubar implements AfterViewInit, OnDestroy {
   protected readonly activeIndex = signal(0);
 
   private readonly destroyRef = inject(DestroyRef);
+  // One per group in model order, live or dead — D-859 keeps a dead group's button (and this
+  // directive on it), dropping only the menu trigger, so this list stays index-aligned with
+  // `model()`. Reach a group's trigger through `MenubarTriggerItem.menuTrigger`, never a second
+  // QueryList: that one would hold only the live triggers and misalign (see that field's doc).
   @ViewChildren(MenubarTriggerItem) private readonly triggers!: QueryList<MenubarTriggerItem>;
-  // The menu triggers, one per group, in the same order as `triggers` — so the active roving index
-  // selects the trigger whose panel Down/Up should open.
-  @ViewChildren(CaeMenuTrigger) private readonly menuTriggers!: QueryList<CaeMenuTrigger>;
   private keyManager?: FocusKeyManager<MenubarTriggerItem>;
 
   /**
@@ -231,11 +292,14 @@ export class CaeMenubar implements AfterViewInit, OnDestroy {
       .withVerticalOrientation(false)
       .withWrap()
       .withHomeAndEnd()
-      .withTypeAhead();
-    // No `.skipPredicate(...)`: CDK's ListKeyManager already initialises `_skipPredicateFn` to
-    // `item => item.disabled` (`_list-key-manager-chunk.mjs`), so restating it changed nothing and
-    // could be killed by no test (#979). Dead groups are still skipped — pinned by the roving arms
-    // below, which kill both `skipPredicate(() => false)` and the loss of `withWrap()`.
+      .withTypeAhead()
+      // D-859: rove ONTO dead groups rather than skipping them. CDK's default is
+      // `item => item.disabled` (`_list-key-manager-chunk.mjs`), which made a dead group vanish
+      // from the keyboard entirely — a user arrowing along the bar could not learn it existed.
+      // It now receives focus and announces itself unavailable (`aria-disabled`), matching how
+      // `cae-context-menu` already roves onto disabled rows (PATTERNS §9). Down/Up still refuse to
+      // open it, twice over: the guard in `onKeydown` and the absence of a trigger to call.
+      .skipPredicate(() => false);
     this.keyManager.change
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((index) => this.activeIndex.set(index));
@@ -244,17 +308,60 @@ export class CaeMenubar implements AfterViewInit, OnDestroy {
     // …and re-seed whenever the rendered trigger set changes. Nothing else does: this hook runs
     // once, and CDK's `_itemsChanged` repairs the index only when it already holds a live item, so
     // a model that arrives ASYNCHRONOUSLY — the ordinary permissions/HTTP shape — seeds against an
-    // empty QueryList and leaves `activeIndex` at 0. If group 0 is then dead, the bar's only
-    // `tabindex="0"` sits on a natively-disabled button (Material's `_getTabIndex()` returns
-    // `this.tabIndex` for a non-anchor regardless of `disabled`), so the whole menubar drops out of
-    // the tab order — WCAG 2.1.1, and reachable with nothing more exotic than an HTTP response.
+    // empty QueryList and leaves `activeIndex` at 0. D-859 softened that consequence without
+    // removing it: the bar's only `tabindex="0"` no longer sits on a *natively* disabled button —
+    // a dead trigger is `aria-disabled` and focusable — so the menubar keeps its tab stop rather
+    // than dropping out of the tab order entirely (the WCAG 2.1.1 break #974 fixed). What remains
+    // is that the stop would land on the one group that cannot open, so seeding onto a live
+    // trigger is still worth doing; it is now a quality-of-focus repair, not a rescue.
     this.triggers.changes.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+      // Focus first: if the swap took it, roving follows focus and there is nothing to re-seed.
+      if (this.restoreFocusAfterSwap()) return;
       // Only when the index no longer names an operable trigger — re-seeding unconditionally would
       // yank the roving position back to the start on any model edit, which the roving specs catch.
       const current = this.triggers.get(this.activeIndex());
       if (current && !current.disabled) return;
       this.seedActiveIndex();
     });
+  }
+
+  /**
+   * Witness for {@link restoreFocusAfterSwap} — the trigger that last held focus, captured on the
+   * way IN because it cannot be recovered on the way out.
+   */
+  private focusWitness: { element: HTMLElement; index: number } | null = null;
+
+  protected onFocusIn(event: FocusEvent): void {
+    const index = this.triggers?.toArray().findIndex((t) => t.contains(event.target as Node)) ?? -1;
+    const trigger = index < 0 ? null : this.triggers.get(index);
+    this.focusWitness = trigger ? { element: trigger.element, index } : null;
+  }
+
+  /**
+   * Keep focus on the group that had it when its trigger flips live↔dead (#977).
+   *
+   * D-859's two-branch template is what makes this necessary: a group going dead **destroys** the
+   * focused `<button>` and builds its replacement in the other arm, so focus falls to `<body>` —
+   * the very strand D-859 set out to fix, arriving by a different route. The dead branch is
+   * `aria-disabled` rather than natively disabled, so the replacement *can* hold focus; something
+   * just has to put it there. Focus stays on the same group, now announced unavailable, rather
+   * than jumping to a neighbour — a silent jump is the more disorienting of the two.
+   *
+   * Gated on the witness's element being genuinely **disconnected**, not on `activeElement` alone:
+   * `activeElement === body` cannot distinguish "our element was destroyed" from "the user clicked
+   * the page background", and restoring in the second case is a focus steal. Both conditions are
+   * required, and `focus()` re-fires `focusin`, which re-captures the witness for the next swap.
+   */
+  private restoreFocusAfterSwap(): boolean {
+    const witness = this.focusWitness;
+    if (!witness || witness.element.isConnected) return false;
+    if (document.activeElement !== document.body) return false;
+    const replacement = this.triggers.get(witness.index);
+    if (!replacement) return false;
+    this.keyManager?.updateActiveItem(witness.index);
+    this.activeIndex.set(witness.index);
+    replacement.focus();
+    return true;
   }
 
   /**
@@ -280,14 +387,16 @@ export class CaeMenubar implements AfterViewInit, OnDestroy {
     // Intercept before the key manager so they open rather than move focus along the bar.
     if (event.keyCode === DOWN_ARROW || event.keyCode === UP_ARROW) {
       event.preventDefault();
-      // Refuse to open a dead group. The native `disabled` on the trigger does NOT stop this:
-      // `MatMenuTrigger._openMenu` refuses only when the element carries `aria-disabled`
-      // (`menu.mjs` `_triggerIsAriaDisabled` reads the attribute), and `MatButton` emits that
-      // attribute only in its `disabledInteractive` posture — so a programmatic `open()` sails
-      // straight past a natively-disabled trigger and lands focus on the bare `role="menu"` div,
-      // the exact #880 trap this rule exists to prevent (#961).
+      // Refuse to open a dead group — now belt AND braces. Under D-859 a dead trigger carries no
+      // `CaeMenuTrigger` at all (nothing to call) and is `aria-disabled`, which is the one thing
+      // `MatMenuTrigger._openMenu` actually refuses on (`_triggerIsAriaDisabled` reads the
+      // attribute; native `disabled` does not set it, which is why this guard had to be written by
+      // hand for #961 in the first place). The explicit check stays: it is the only one that does
+      // not depend on the template branching correctly.
       const group = this.model()[this.activeIndex()];
-      if (group && !this.disabledGroup(group)) this.menuTriggers?.get(this.activeIndex())?.open();
+      if (group && !this.disabledGroup(group)) {
+        this.triggers.get(this.activeIndex())?.menuTrigger?.open();
+      }
       return;
     }
     this.keyManager?.onKeydown(event);
