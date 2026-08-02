@@ -402,10 +402,14 @@ export class CaeMenu implements CaeMenuPanelHost {
 /** What one pass over a `CaeMenuItem` graph has to establish for the rows to render. */
 interface CaeMenuGraph {
   /**
-   * The items sitting on a cycle — the break points. Every one of them is also in {@link deadEnd};
-   * they are tracked apart only because they are the ones dev mode warns about. An all-disabled
-   * branch is a perfectly legal model (a permission-gated menu produces them constantly) and must
-   * stay silent; a cycle is a defect in the model and must not.
+   * ONE representative item per cycle — the root of each strongly-connected component, not every
+   * member. Every *member* is in {@link deadEnd}; only the representative is listed here, because
+   * this set drives the dev warning and one line per cycle is the useful diagnostic. So this is not
+   * "the items on a cycle": for `a ⇄ b` entered at `a`, `b` is on the cycle and is absent here.
+   *
+   * Tracked apart from {@link deadEnd} because an all-disabled branch is a perfectly legal model (a
+   * permission-gated menu produces them constantly) and must stay silent; a cycle is a defect in the
+   * model and must not.
    */
   cyclic: ReadonlySet<CaeMenuItem>;
   /**
@@ -418,8 +422,12 @@ interface CaeMenuGraph {
 }
 
 /**
- * The cycles and dead ends in the graph reachable from `roots`, by one colouring DFS: an item still
- * on the current path is a back edge, and back edges are exactly the cycles.
+ * The cycles and dead ends in the graph reachable from `roots`, by one Tarjan SCC pass: an item is
+ * on a cycle exactly when it sits in a strongly-connected component of more than one member, or
+ * carries a self-edge. Note the test for that is `onStack` — the items of components that have not
+ * closed yet — which is a strict SUPERSET of "on the current DFS path", and the difference is the
+ * mechanism, not a detail: it is what tells a genuine cycle apart from a finished subtree re-entered
+ * under a second parent.
  *
  * **Node-scoped, not path-scoped — and that distinction is the whole point.** The first version of
  * this guard asked "is this item one of my *ancestors*", walking a DI parent chain. That terminates,
@@ -431,11 +439,12 @@ interface CaeMenuGraph {
  * never gets to flush. Marking the item itself instead makes the recursion stop at the *first*
  * sighting: one pass, `O(V+E)`, and the same 7-node graph renders one disabled row.
  *
- * `done` is what keeps it linear, and it is also why a legal **DAG still renders in full**: a
- * subtree shared by two sibling branches is re-entered, found already finished rather than on the
- * path, and skipped *for cycle purposes only* — the template still recurses into it under each
- * parent. A visited-ever check that conflated the two would kill exactly that case, which is why it
- * has its own spec.
+ * `index` doubles as the entered-ever memo, and that is what keeps it linear. It is also why a legal
+ * **DAG still renders in full**: a subtree shared by two sibling branches is re-entered, found to be
+ * in a component that has already closed (`onStack` is false) rather than in an open one, and so
+ * contributes no cycle — the template still recurses into it under each parent. Conflating the two,
+ * by asking `index` where the code asks `onStack`, would kill exactly that case, which is why it has
+ * its own spec.
  *
  * Breaking one node per cycle would be enough to *terminate* — every cycle contains a back edge in
  * any DFS — but it is **not** enough to stay consistent. Which node a back edge lands on depends on
@@ -448,8 +457,9 @@ interface CaeMenuGraph {
  * So the unit of breaking is the **strongly-connected component** (Tarjan), not whichever cycle a
  * walk happened to close. Marking the DFS *closing path* was the first attempt at that (#962) and is
  * not start-independent either: it marks **a** cycle rather than the SCC, and a node whose own cycle
- * closes onto a node already in `done` never generates a back edge at all — the memo returns without
- * re-examining its out-edges — so it escapes marking entirely. Two overlapping cycles are enough to
+ * closes onto a node already in that implementation's finished memo never generates a back edge at
+ * all — the memo returned without re-examining its out-edges — so it escaped marking entirely. Two
+ * overlapping cycles are enough to
  * show it, and reordering one `items` array flips the verdict: measured, a parent read `true` while
  * the nested panel over that very branch read `false` (#975). An SCC is a property of the *graph*,
  * not of the walk, and the SCCs of the subgraph reachable from any node are exactly the whole
@@ -492,10 +502,14 @@ function analyseMenuGraph(roots: readonly CaeMenuItem[]): CaeMenuGraph {
     stack.push(item);
     onStack.add(item);
     let selfLoop = false;
+    // Read once: the traversal below and the fold further down must see the SAME array.
+    const children = item.items ?? [];
     // Every child is visited, deliberately without short-circuiting on a usable one: stopping early
     // would leave a cycle behind that child undiscovered, and an undiscovered cycle is an unbounded
-    // render rather than a cosmetic miss.
-    for (const child of item.items ?? []) {
+    // render rather than a cosmetic miss. DISABLED children are walked for the same reason and it is
+    // just as load-bearing: `isBranch` ignores `disabled`, so a disabled branch still stamps its
+    // nested `cae-menu` and still renders — skipping it here would hide a cycle running through it.
+    for (const child of children) {
       if (child === item) selfLoop = true;
       if (!index.has(child)) {
         connect(child);
@@ -514,14 +528,16 @@ function analyseMenuGraph(roots: readonly CaeMenuItem[]): CaeMenuGraph {
       if (member === item) break;
     }
     if (members.length > 1 || selfLoop) {
-      // A non-trivial SCC — every member can reach every other, so each one is a cycle break. One
-      // representative carries the dev warning; a line per member would be noise about one defect.
+      // A non-trivial SCC — every member can reach every other, so each one is a cycle break, and
+      // that includes DISABLED members: a disabled row still stamps its nested panel, so leaving one
+      // unmarked leaves the render unbounded. One representative carries the dev warning; a line per
+      // member would be noise about one defect.
       cyclic.add(item);
       for (const member of members) deadEnd.add(member);
-    } else if (item.items?.length) {
+    } else if (children.length) {
       // A single acyclic item. Tarjan pops in reverse topological order, so every child's verdict
       // is already final and the bottom-up question is one pass over them.
-      if (!item.items.some((child) => !child.disabled && !deadEnd.has(child))) deadEnd.add(item);
+      if (!children.some((child) => !child.disabled && !deadEnd.has(child))) deadEnd.add(item);
     }
   };
   for (const root of roots) if (!index.has(root)) connect(root);

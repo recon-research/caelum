@@ -658,6 +658,17 @@ not of the traversal**, or the instances are silently inconsistent with one anot
 proof is not available, fuzz **the property you actually claim** — with the control arm beside it —
 because a green fuzz over the neighbouring property reads exactly like proof of the one you meant.
 
+**And when a mutation survives, a differential must compare every output the function returns.**
+Two survivors in #975's own table were cleared by differential-testing them against the clean
+implementation over the whole fuzz corpus — 0 divergences, so both were written up as benign. The
+comparison read only `deadEnd`. `analyseMenuGraph` also returns `cyclic`, and on that set one of the
+two diverges on **46525** of the same graphs: dropping the root loop's `!index.has(root)` guard
+re-enters a re-listed root, and a self-edge then makes it warn a second time about a cycle already
+reported. Renders identically, which is why nothing but a warning count can see it. A review lens
+found it by constructing the witness while the author's 196k-graph differential was still reporting
+zero — **a differential is only as wide as its comparison**, and "0 divergences" names the fields you
+compared, never the function. Both survivors became KILLs once the missing assertion existed.
+
 **Then walk every child anyway — `usable ||= walk(child)` is a trap.** The moment the traversal
 returns a boolean, the idiomatic accumulator short-circuits, and it stops calling `walk` as soon as
 one child is usable. An *undiscovered* cycle is not a cosmetic miss: it is an unbounded render.
