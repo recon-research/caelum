@@ -83,7 +83,7 @@ failed re-review gets recorded.
 | `input-otp` | adversarial-passed | ☑ | ☑ | — | — | PR #310 · `de78df5d` |
 | `listbox` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #115 · `1e81e3cf` |
 | `menu` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #969 · `c7fde82` |
-| `menubar` | adversarial-passed | ☑ | ☑ | — | — | PR #974 · `c4072c2` |
+| `menubar` | adversarial-passed | ☑ | ☑ | — | — | PR #995 · `8779265` |
 | `multi-select` | adversarial-passed | ☑ | ☑ | — | — | PR #136 · `5dfd7412` |
 | `order-list` | adversarial-passed | ☑ | ☑ | — | — | PR #339 · `cd77e581` |
 | `panel` | adversarial-passed | ☑ | ☑ | ☑ | ☑ | PR #872 · `1bf7619` |
@@ -101,7 +101,7 @@ failed re-review gets recorded.
 | `shared` | exempt | — | — | — | — | PR #37 · `5e53818` |
 | `skeleton` | adversarial-passed | ☑ | ☑ | — | — | PR #670 · `89f2560d` |
 | `slider` | adversarial-passed | ☑ | ☑ | ☑ | — | PR #112 · `7f3ca812` |
-| `split-button` | adversarial-passed | ☑ | ☑ | — | — | PR #974 · `c4072c2` |
+| `split-button` | adversarial-passed | ☑ | ☑ | — | — | PR #995 · `8779265` |
 | `splitter` | adversarial-passed | ☑ | ☑ | — | — | PR #326 · `f76a1b9f` |
 | `stepper` | adversarial-passed | ☑ | ☑ | — | — | PR #42 · `9cc7141` |
 | `switch` | adversarial-passed | ☑ | ☑ | — | — | PR #69 · `f077bb59` |
