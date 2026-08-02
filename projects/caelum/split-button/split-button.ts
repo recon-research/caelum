@@ -47,6 +47,25 @@ import {
  * {@link model} holds nothing the user could reach — empty, all-disabled, or every branch bottoming
  * out in disabled rows ({@link toggleDisabled}, #961). Theming is free via the token bridge (D-04).
  *
+ * **Two shades of disabled, deliberately** (D-859, and the scope correction from #989's review). A
+ * toggle that is dead *because its menu is empty* renders `disabledInteractive` — `aria-disabled`,
+ * focusable, advertising no popup — so it stays discoverable and can never strand focus. A toggle
+ * disabled because the consumer set {@link disabled} on the **whole control** stays *natively*
+ * disabled, matching the primary half. D-859 is scoped to the first case ("a dead trigger — one
+ * whose dropdown has nothing reachable behind it"), and applying it to the second produced a
+ * genuinely bad state: `[disabled]="true"` left the primary out of the tab order while the toggle
+ * stayed in it, so a control the consumer had switched off kept exactly one tab stop — on the half
+ * that does nothing, with the labelled half unreachable. Both halves now leave together.
+ *
+ * **The two-branch template** (D-859). The toggle's dead arm is stamped separately rather than
+ * switched by a binding, because `MatMenuTrigger` host-binds `attr.aria-expanded` to `menuOpen`
+ * **unconditionally** — only `aria-haspopup` is nulled by a null menu — so one button would still
+ * announce as a collapsed disclosure. (#993 asks whether `CaeMenuTrigger` could bind that away and
+ * retire the branch at all three sites.) Prose lives here rather than in the template: template
+ * comments ship in the FESM, JSDoc does not (PATTERNS §15). Unlike `cae-menubar`'s triggers this
+ * toggle is **not** inside a `@for`, so the arm swap is the *only* thing that destroys it — which
+ * makes this the component where the two-branch focus strand is genuinely isolable.
+ *
  * **v1 scope** (#148): shared `variant`, a required `label`, an optional-submit primary, and a
  * data-driven menu. Icons follow the library convention (D-596, #644): a primary {@link icon}
  * glyph before the label, per-item `model[].icon` glyphs rendered by the embedded `cae-menu`,
@@ -69,6 +88,7 @@ import {
       role="group"
       [attr.aria-label]="ariaLabel() || null"
       (focusin)="onFocusIn($event)"
+      (focusout)="onFocusOut($event)"
     >
       <button
         class="cae-split-button__primary"
@@ -90,19 +110,16 @@ import {
         (itemSelect)="itemSelect.emit($event)"
       />
 
-      <!-- D-859 two-branches the toggle on deadness, as cae-button does (PATTERNS §4): a dead
-           toggle is aria-disabled (focusable, so it cannot strand focus) and advertises no popup.
-           One button with a conditional binding will NOT do — MatMenuTrigger host-binds
-           attr.aria-expanded to menuOpen UNCONDITIONALLY (only aria-haspopup is nulled by a null
-           menu), so a dead toggle would still announce as a collapsed disclosure. The arms differ
-           ONLY by caeMenuTriggerFor; the parity spec is the only guard on that. -->
+      <!-- D-859 two-branches the toggle on deadness (PATTERNS §4, and the class doc for why).
+           Deltas between the arms: the two deadness bindings + caeMenuTriggerFor. Nothing else
+           may differ — the parity spec is the only guard. -->
       @if (toggleDisabled()) {
         <button
           class="cae-split-button__toggle"
           type="button"
           [matButton]="variant()"
           [disabled]="true"
-          disabledInteractive
+          [disabledInteractive]="!disabled()"
           [attr.aria-label]="menuAriaLabel() || 'More actions'"
         >
           <!-- The registry's chevron-down (D-596/#644) replaced the hand-drawn duplicate this
@@ -185,7 +202,13 @@ export class CaeSplitButton {
    * The dropdown toggle is always `type="button"` (it only opens the menu).
    */
   readonly type = input<'button' | 'submit' | 'reset'>('button');
-  /** Disable the whole control (both halves; coerced, so bare `disabled` works). */
+  /**
+   * Disable the whole control (both halves; coerced, so bare `disabled` works).
+   *
+   * Both halves go *natively* disabled and leave the tab order together — deliberately **not** the
+   * `aria-disabled` posture D-859 gives a toggle whose menu is merely empty. See the class doc:
+   * D-859 is scoped to a dead dropdown, not to a consumer switching the control off.
+   */
   readonly disabled = input(false, { transform: booleanAttribute });
   /** Accessible name for the icon-only chevron toggle (falls back to `More actions` if cleared). */
   readonly menuAriaLabel = input('More actions');
@@ -233,6 +256,27 @@ export class CaeSplitButton {
     // witness came back null on every capture, so the restore below never armed).
     const target = event.target as HTMLElement | null;
     this.focusWitness = target?.closest<HTMLElement>('.cae-split-button__toggle') ?? null;
+  }
+
+  /**
+   * Drop the witness when focus genuinely **leaves** the toggle, so a later swap cannot mistake a
+   * stale witness for a stranded user (#989 review).
+   *
+   * Both gates in the restore below pass on a sequence they were never meant to admit: focus the
+   * toggle, blur to the page background — `activeElement` is `<body>`, and no `focusin` reaches
+   * this host, because a focus move *to* `<body>` fires at `body` and bubbles upward — then let the
+   * model go empty. The witness is stale but intact, so focus is yanked back to a control the user
+   * had left, announcing "unavailable" out of nowhere.
+   *
+   * `isConnected` is what keeps this from breaking the restore: if a browser fires `focusout` while
+   * removing the focused element, the witness is already disconnected and the clear is skipped.
+   * Only a departure from a *live* toggle counts as leaving.
+   */
+  protected onFocusOut(event: FocusEvent): void {
+    const witness = this.focusWitness;
+    if (!witness || !witness.isConnected) return;
+    if (witness.contains(event.relatedTarget as Node)) return;
+    this.focusWitness = null;
   }
 
   constructor() {
