@@ -636,15 +636,27 @@ missing the node the render is about to descend into. Two symptoms, same cause:
   branch — period-2 infinite descent, at the first change detection, warning at every level while
   the tab freezes.
 
-Fix: break **every** node on the closing path (`path.indexOf(item)` → end) rather than the back-edge
-target alone, which is start-independent. Keep the *warning* set single-node — one line per cycle is
-the useful diagnostic. Because a boundedness claim is exactly what this section already got wrong
-once, it was checked by randomised search rather than by hand: **~190k random cyclic graphs, 0
-non-terminating renders with whole-cycle marking and 61 without it** — the second number being what
-says the search actually exercised the hazard. General form: **any memoised per-instance graph answer
-must be a function of the graph, not of the traversal**, or the instances are silently inconsistent
-with one another. And when a hand proof is not available, fuzz the property and report the
-control arm alongside it.
+Fix: break the whole **strongly-connected component** (Tarjan), not the cycle a walk happened to
+close. Keep the *warning* set at one representative per SCC — one line per cycle is the useful
+diagnostic. Because a boundedness claim is exactly what this section already got wrong once, it was
+checked by randomised search rather than by hand: **~196k random cyclic graphs, 0 non-terminating
+renders with SCC marking and 22 with back-edge-target-only marking** — the second number being what
+says the search actually exercised the hazard.
+
+**The first fix here was itself an instance of the bug (#975).** Marking every node on the DFS
+*closing path* (`path.indexOf(item)` → end) terminates, and it was shipped claiming to be
+start-independent. It is not: the closing path is **a** cycle, not the SCC, and a node whose own
+cycle closes onto a node already in the finished memo never generates a back edge at all — the memo
+returns without re-examining its out-edges — so it escapes marking. Two overlapping cycles are
+enough, and reordering one `items` array flips the verdict. The same fuzz, re-run with the
+cross-level agreement measured rather than only termination: **closing-path marking disagrees across
+levels on 98 of those graphs; SCC marking on 0.** The lesson is not "use Tarjan" — it is that
+"start-independent" was asserted from the shape of the fix rather than measured, and the property it
+needed (*every level reaches the same verdict*) was never the property being fuzzed (*the render
+terminates*). General form: **any memoised per-instance graph answer must be a function of the graph,
+not of the traversal**, or the instances are silently inconsistent with one another. When a hand
+proof is not available, fuzz **the property you actually claim** — with the control arm beside it —
+because a green fuzz over the neighbouring property reads exactly like proof of the one you meant.
 
 **Then walk every child anyway — `usable ||= walk(child)` is a trap.** The moment the traversal
 returns a boolean, the idiomatic accumulator short-circuits, and it stops calling `walk` as soon as

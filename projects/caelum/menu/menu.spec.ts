@@ -6,7 +6,7 @@ import { BidiModule } from '@angular/cdk/bidi';
 import { MatMenuTrigger } from '@angular/material/menu';
 import { CAE_ICON_GLYPHS } from '@recon-research/caelum/icon';
 
-import { CaeMenu, CaeMenuItem, CaeMenuTrigger } from './menu';
+import { CaeMenu, caeMenuHasUsableItems, CaeMenuItem, CaeMenuTrigger } from './menu';
 import { expectNoA11yViolations } from '../testing/a11y';
 
 @Component({
@@ -902,7 +902,9 @@ describe('CaeMenu tiered submenus (#150)', () => {
      * end by the escape-leaf test alone. Reached from `Z` first, the back edge lands on `u`, and
      * `C` looks usable — so `P`, whose only child is `C`, looked like a live branch. `P`'s own
      * nested instance then started from `C`, landed the back edge there, and disabled its only row.
-     * Marking the whole closing path is start-independent, which is what makes the two agree.
+     * Breaking the whole SCC is start-independent, which is what makes the two agree. (Marking the
+     * closing path also passes this arm — one cycle, so path and SCC coincide. The overlapping-cycle
+     * arm below is the one that separates them, #975.)
      */
     it('agrees across levels — a cycle with escape leaves cannot strand a parent', async () => {
       const u = node('u');
@@ -930,6 +932,69 @@ describe('CaeMenu tiered submenus (#150)', () => {
     });
 
     /**
+     * **Two OVERLAPPING cycles — the arm that says the unit of breaking is the SCC, not the cycle
+     * the walk happened to close** (#975). Every arm above has a single cycle, where the DFS closing
+     * path and the strongly-connected component are the same set, so none of them can tell the two
+     * rules apart.
+     *
+     * Here `r ⇄ a` and `r → b → a` overlap. Walking `a` first closes `r ⇄ a` and marks both; `b` is
+     * then reached with `a` already in the finished memo, so the edge `b → a` returns that memo
+     * without re-examining `a`'s out-edges and **never generates a back edge at all**. `b` escapes,
+     * keeps its `Escape` leaf, and looks usable — so `B`, whose only child is `b`, rendered as an
+     * enabled trigger over a panel that `B`'s own nested `cae-menu` then disabled entirely. That is
+     * #880 verbatim, reached through the very rule meant to prevent it.
+     *
+     * Measured on the closing-path implementation: `caeMenuHasUsableItems([r, B])` was `true` while
+     * `caeMenuHasUsableItems(B.items)` was `false`. SCC membership is a property of the graph rather
+     * than of the walk, so the two agree by construction.
+     */
+    const overlappingCycles = (rootFirst: 'a' | 'b') => {
+      const r = node('r');
+      const a = node('a');
+      const b = node('b');
+      a.items = [r] as CaeMenuItem[];
+      b.items = [a, { value: 'esc', label: 'Escape' }] as CaeMenuItem[];
+      // The ORDER is the repro: `a` first closes `r ⇄ a` before `b` is ever entered.
+      r.items = (rootFirst === 'a' ? [a, b] : [b, a]) as CaeMenuItem[];
+      return { b: b as CaeMenuItem, model: [r, { label: 'B', items: [b] }] as CaeMenuItem[] };
+    };
+
+    it('breaks the whole SCC — two overlapping cycles cannot disagree across levels', async () => {
+      const { b, model } = overlappingCycles('a');
+      // The predicate the TRIGGERS consume (#961) must agree with the nested panel's own analysis.
+      expect(caeMenuHasUsableItems(model)).toBe(false);
+      expect(caeMenuHasUsableItems([b])).toBe(false);
+
+      host.items.set(model);
+      await openRoot();
+      // `B` is the row that escaped: an enabled trigger over a panel whose only row is disabled.
+      const bRow = rowNamed(rootPanel(), 'B');
+      expect(bRow.getAttribute('aria-haspopup')).toBeNull();
+      expect(bRow.getAttribute('disabled')).not.toBeNull();
+      expect(rowNamed(rootPanel(), 'r').getAttribute('disabled')).not.toBeNull();
+      // ONE representative per SCC — `r`, `a` and `b` are one defect, not three.
+      expect(warn).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * The same graph with `r`'s children reversed. Under closing-path marking this ordering already
+     * agreed (`false`/`false`) — which is exactly why it belongs here: it pins that the verdict no
+     * longer depends on the order an `items` array happens to be written in, so a fix that merely
+     * special-cased the arm above would still fail this one.
+     */
+    it('reaches the same verdict with the cycle members in the other order', async () => {
+      const { b, model } = overlappingCycles('b');
+      expect(caeMenuHasUsableItems(model)).toBe(false);
+      expect(caeMenuHasUsableItems([b])).toBe(false);
+
+      host.items.set(model);
+      await openRoot();
+      expect(rowNamed(rootPanel(), 'B').getAttribute('aria-haspopup')).toBeNull();
+      expect(rowNamed(rootPanel(), 'B').getAttribute('disabled')).not.toBeNull();
+      expect(warn).toHaveBeenCalledTimes(1);
+    });
+
+    /**
      * **The break point must not MOVE between levels.** Termination here is a property of a
      * *sequence* of independent analyses, not of one: every level re-analyses its own `items()`, so
      * a break that lands on a different node each time can miss the node the render is about to
@@ -938,9 +1003,10 @@ describe('CaeMenu tiered submenus (#150)', () => {
      * and leaves `A` a branch; and that is the first level again. Period-2 infinite descent, at the
      * first change detection, with the dev warning firing at every level while the tab freezes.
      *
-     * So this test does not fail without the fix — it dies. Randomised search over ~190k cyclic
-     * graphs finds 0 non-terminating renders with whole-cycle marking and 61 without it, which is
-     * also what says this arm is not a lucky single case.
+     * So this test does not fail without the fix — it dies. Randomised search over ~196k cyclic
+     * graphs finds 0 non-terminating renders with SCC marking and 22 with back-edge-target-only
+     * marking, which is also what says this arm is not a lucky single case. (Closing-path marking,
+     * #962, is bounded here too — it fails the *agreement* property instead, #975.)
      */
     it('terminates when the break point would otherwise move between levels', async () => {
       const a = node('A');
@@ -1057,6 +1123,31 @@ describe('CaeMenu tiered submenus (#150)', () => {
       const inner = rowNamed(panelOf(advanced), 'Settings');
       expect(inner.getAttribute('aria-haspopup')).toBe('menu');
       expect(inner.getAttribute('disabled')).toBeNull();
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    /**
+     * The other legal-DAG topology: an item that is BOTH a top-level row and a child of an earlier
+     * top-level row — `Settings` offered at the root and again under `Preferences`, the same object.
+     * The sibling-shared arm below does not cover it, because there the shared node is never itself
+     * a root, and the root loop's `!index.has(root)` skip only runs on this shape. Over-marking a
+     * legal DAG is the failure mode a switch to SCC membership risks, so it gets its own arm.
+     *
+     * Not a cycle: `Prefs → Settings` has no path back, so nothing here may be flagged.
+     */
+    it('does NOT flag a root that is ALSO a child of an earlier root', async () => {
+      const settings: CaeMenuItem = { label: 'Settings', items: [{ value: 'x', label: 'X' }] };
+      host.items.set([{ label: 'Prefs', items: [settings] }, settings]);
+      await openRoot();
+
+      const top = rowNamed(rootPanel(), 'Settings');
+      expect(top.getAttribute('aria-haspopup')).toBe('menu');
+      expect(top.getAttribute('disabled')).toBeNull();
+      const prefs = rowNamed(rootPanel(), 'Prefs');
+      expect(prefs.getAttribute('aria-haspopup')).toBe('menu');
+      prefs.click();
+      await settle();
+      expect(rowNamed(panelOf(prefs), 'Settings').getAttribute('disabled')).toBeNull();
       expect(warn).not.toHaveBeenCalled();
     });
 

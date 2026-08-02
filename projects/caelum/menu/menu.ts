@@ -438,71 +438,93 @@ interface CaeMenuGraph {
  * has its own spec.
  *
  * Breaking one node per cycle would be enough to *terminate* — every cycle contains a back edge in
- * any DFS — but it is **not** enough to stay consistent, so the whole cycle breaks. Which node a
- * back edge lands on depends on where the walk started, and this component's recursion means the
- * graph is analysed many times from different roots: a nested `cae-menu` re-runs this over its own
- * `items()`. With one node marked, a parent and its child reach *different* verdicts about the same
- * cycle, and the disagreement renders an enabled trigger over a panel the child has disabled
- * entirely — the #880 trap, reachable whenever the cycle's members also carry ordinary leaves.
- * Marking every node on the closing path is start-independent, so all levels agree. (`cyclic` still
- * holds just the back-edge target: it drives only the dev warning, where one line per cycle is the
- * useful number.) Note this bounds *cycles*, not fan-out — a dense acyclic model still renders every
- * path, which is the pre-existing behaviour a shared subtree relies on.
+ * any DFS — but it is **not** enough to stay consistent. Which node a back edge lands on depends on
+ * where the walk started, and this component's recursion means the graph is analysed many times from
+ * different roots: a nested `cae-menu` re-runs this over its own `items()`. With one node marked, a
+ * parent and its child reach *different* verdicts about the same cycle, and the disagreement renders
+ * an enabled trigger over a panel the child has disabled entirely — the #880 trap, reachable
+ * whenever the cycle's members also carry ordinary leaves.
+ *
+ * So the unit of breaking is the **strongly-connected component** (Tarjan), not whichever cycle a
+ * walk happened to close. Marking the DFS *closing path* was the first attempt at that (#962) and is
+ * not start-independent either: it marks **a** cycle rather than the SCC, and a node whose own cycle
+ * closes onto a node already in `done` never generates a back edge at all — the memo returns without
+ * re-examining its out-edges — so it escapes marking entirely. Two overlapping cycles are enough to
+ * show it, and reordering one `items` array flips the verdict: measured, a parent read `true` while
+ * the nested panel over that very branch read `false` (#975). An SCC is a property of the *graph*,
+ * not of the walk, and the SCCs of the subgraph reachable from any node are exactly the whole
+ * graph's SCCs restricted to it — so **every level agrees by construction**, which is the property
+ * the closing-path rule was reaching for and did not have. (`cyclic` holds one representative per
+ * SCC: it drives only the dev warning, where one line per cycle is the useful number.) Note this
+ * bounds *cycles*, not fan-out — a dense acyclic model still renders every path, which is the
+ * pre-existing behaviour a shared subtree relies on.
  *
  * **Dead ends ride the same traversal because they are the same question asked upwards** (#962).
- * `walk` returns whether the item's own ROW would be focusable — not disabled, and not a dead end —
- * which is exactly what its parent needs in order to decide whether *it* is a dead end. Answering
- * that per row instead would be both wrong (it cannot see past one level) and quadratic on a
- * component whose own #878 measurement is 259 panels for a 4×6 tree; here it is one `O(V+E)` pass
- * per model change **per panel instance**, and the per-row predicates are set lookups. (Because each
- * nested level re-analyses its own subtree, the whole tree costs `O(V·depth)` — ~5900 walks for that
- * 1554-node fixture — which stays far below the view creation it rides along with.)
+ * Tarjan pops each SCC only once every SCC it points at has already popped — reverse topological
+ * order — which is exactly the order a bottom-up fold needs: when a single-node SCC pops, every
+ * child already carries its final verdict, so "could this row open a panel holding anything
+ * focusable" is one `some()` over them. Answering that per row instead would be both wrong (it
+ * cannot see past one level) and quadratic on a component whose own #878 measurement is 259 panels
+ * for a 4×6 tree; here it is one `O(V+E)` pass per model change **per panel instance**, and the
+ * per-row predicates are set lookups. (Because each nested level re-analyses its own subtree, the
+ * whole tree costs `O(V·depth)` — ~5900 walks for that 1554-node fixture — which stays far below the
+ * view creation it rides along with.)
  *
  * A cycle break resolves to "not focusable via this path", so a parent whose only child is a broken
  * row correctly becomes a dead end itself rather than opening a panel of one disabled item.
  */
 function analyseMenuGraph(roots: readonly CaeMenuItem[]): CaeMenuGraph {
-  // `onPath` answers "is this item on the current path" in O(1); `path` is the same set in
-  // traversal ORDER, which is what lets the back edge below name the cycle it just closed.
-  const onPath = new Set<CaeMenuItem>();
-  const path: CaeMenuItem[] = [];
-  const done = new Set<CaeMenuItem>();
+  // Tarjan's SCC. `index` doubles as the visited set; `low` is the lowest index reachable from an
+  // item's subtree; `stack` holds the items of SCCs not yet closed, and `onStack` answers "is this
+  // item in one of those" in O(1) — which is the test that distinguishes a genuine cycle from a
+  // finished subtree re-entered under a second parent (the shared-DAG case, which must NOT break).
+  const index = new Map<CaeMenuItem, number>();
+  const low = new Map<CaeMenuItem, number>();
+  const stack: CaeMenuItem[] = [];
+  const onStack = new Set<CaeMenuItem>();
+  let counter = 0;
   const cyclic = new Set<CaeMenuItem>();
   const deadEnd = new Set<CaeMenuItem>();
-  const walk = (item: CaeMenuItem): boolean => {
-    if (onPath.has(item)) {
-      cyclic.add(item);
-      // Break EVERY node on the cycle, not only the one the back edge happened to land on.
-      // Which node that is depends on where the walk STARTED, and each nested `cae-menu`
-      // re-analyses its own `items()` from scratch — so marking a single node lets a parent
-      // and its own child disagree about the same graph. When they disagree the parent renders
-      // an enabled trigger whose every row the child then disables, which is the #880 focus
-      // trap this rule exists to prevent, reachable whenever the cycle's members carry escape
-      // leaves. Marking the whole cycle is start-independent, so every level agrees.
-      for (let i = path.indexOf(item); i < path.length; i++) deadEnd.add(path[i]);
-      // Unobservable today — the caller is the last `path` entry, which the loop above just
-      // marked, so returning `true` here changes no render. It stays `false` because that is what
-      // the value MEANS; don't read it as a live guard (mutating it survives the suite, by design).
-      return false;
-    }
-    if (!done.has(item)) {
-      onPath.add(item);
-      path.push(item);
-      if (item.items?.length) {
-        // Every child is walked, deliberately without short-circuiting: `usable ||= walk(child)`
-        // stops calling `walk` once one child is usable, so a cycle sitting behind that child is
-        // never discovered — and an undiscovered cycle is an unbounded render, not a cosmetic miss.
-        let usable = false;
-        for (const child of item.items) if (walk(child)) usable = true;
-        if (!usable) deadEnd.add(item);
+  const connect = (item: CaeMenuItem): void => {
+    index.set(item, counter);
+    low.set(item, counter);
+    counter++;
+    stack.push(item);
+    onStack.add(item);
+    let selfLoop = false;
+    // Every child is visited, deliberately without short-circuiting on a usable one: stopping early
+    // would leave a cycle behind that child undiscovered, and an undiscovered cycle is an unbounded
+    // render rather than a cosmetic miss.
+    for (const child of item.items ?? []) {
+      if (child === item) selfLoop = true;
+      if (!index.has(child)) {
+        connect(child);
+        low.set(item, Math.min(low.get(item)!, low.get(child)!));
+      } else if (onStack.has(child)) {
+        low.set(item, Math.min(low.get(item)!, index.get(child)!));
       }
-      onPath.delete(item);
-      path.pop();
-      done.add(item);
     }
-    return !item.disabled && !deadEnd.has(item);
+    if (low.get(item) !== index.get(item)) return;
+    // `item` roots a completed SCC: pop its members off the stack.
+    const members: CaeMenuItem[] = [];
+    for (;;) {
+      const member = stack.pop()!;
+      onStack.delete(member);
+      members.push(member);
+      if (member === item) break;
+    }
+    if (members.length > 1 || selfLoop) {
+      // A non-trivial SCC — every member can reach every other, so each one is a cycle break. One
+      // representative carries the dev warning; a line per member would be noise about one defect.
+      cyclic.add(item);
+      for (const member of members) deadEnd.add(member);
+    } else if (item.items?.length) {
+      // A single acyclic item. Tarjan pops in reverse topological order, so every child's verdict
+      // is already final and the bottom-up question is one pass over them.
+      if (!item.items.some((child) => !child.disabled && !deadEnd.has(child))) deadEnd.add(item);
+    }
   };
-  for (const root of roots) walk(root);
+  for (const root of roots) if (!index.has(root)) connect(root);
   return { cyclic, deadEnd };
 }
 
