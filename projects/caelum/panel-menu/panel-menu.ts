@@ -318,10 +318,14 @@ export class CaePanelMenu {
  * home for a shared helper would be `caelum/shared`, which is type-only by construction — a 64-byte
  * budget, and the reason `cae-button` can name the menu seam without dragging menu code into every
  * button bundle. The alternative, importing from `caelum/menu`, would put `@angular/material/menu`
- * in the dependency graph of every `cae-panel-menu` consumer to reuse fifteen lines. Consolidating
- * the two (a `caelum/menu-model` entry point holding `CaeMenuItem` and its graph utilities) is a
- * public-API question, filed as #968. Note the copies are not identical: `cae-menu` needs dead ends
- * as well, so its version is bottom-up (`analyseMenuGraph`).
+ * in the dependency graph of every `cae-panel-menu` consumer to reuse fifteen lines. That was filed
+ * as the public-API question #968 and answered by **D-858**: the roll-up predicate the *triggers*
+ * need exports from `caelum/menu` (they already import it as a runtime value), while this traversal
+ * stays duplicated here, because the argument above is unchanged. Note the copies are not identical:
+ * `cae-menu` needs dead ends as well, so its version is bottom-up (`analyseMenuGraph`) — and since
+ * #975 it marks strongly-connected components, which this one does not need. One instance renders
+ * the whole tree here (`ngTemplateOutlet`, not a nested component), so there is a single global
+ * analysis and no second level to disagree with it; back-edge-target marking still terminates.
  */
 function findMenuCycles(roots: readonly CaeMenuItem[]): ReadonlySet<CaeMenuItem> {
   const onPath = new Set<CaeMenuItem>();

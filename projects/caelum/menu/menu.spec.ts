@@ -6,7 +6,7 @@ import { BidiModule } from '@angular/cdk/bidi';
 import { MatMenuTrigger } from '@angular/material/menu';
 import { CAE_ICON_GLYPHS } from '@recon-research/caelum/icon';
 
-import { CaeMenu, CaeMenuItem, CaeMenuTrigger } from './menu';
+import { CaeMenu, caeMenuHasUsableItems, CaeMenuItem, CaeMenuTrigger } from './menu';
 import { expectNoA11yViolations } from '../testing/a11y';
 
 @Component({
@@ -655,11 +655,11 @@ describe('CaeMenu tiered submenus (#150)', () => {
       expect(rowsIn(panelOf(group)).map((el) => el.textContent!.trim())).toEqual(['a', 'b']);
     });
 
-    // The length test in `isDeadEnd` is load-bearing precisely because of this case: `[].every()`
-    // is vacuously true, so dropping it would turn every empty-items leaf into a DISABLED one.
+    // The `children.length` test in the dead-end fold is load-bearing precisely because of this
+    // case: `[].some()` is false, so `!false` would turn every empty-items leaf into a DISABLED one.
     // The existing "treats an EMPTY items array as a leaf" spec asserts it still emits; this one
     // asserts the attribute that would flip first, so the two fail for different reasons.
-    it('leaves an EMPTY items array enabled — [].every() must not read as all-disabled', async () => {
+    it('leaves an EMPTY items array enabled — an empty fold must not read as all-disabled', async () => {
       host.items.set([{ value: 'solo', label: 'Solo', items: [] }]);
       await openRoot();
       expect(rowNamed(rootPanel(), 'Solo').getAttribute('disabled')).toBeNull();
@@ -739,8 +739,9 @@ describe('CaeMenu tiered submenus (#150)', () => {
 
     /**
      * The accumulator must be ANY-child-wins, not last-child-wins. The sibling spec above happens
-     * to list its usable child LAST, so `usable = walk(child)` (dropping the accumulation) passes
-     * there; with the order reversed it marks a live branch dead and hides a reachable row.
+     * to list its usable child LAST, so a last-child-wins fold passes there; with the order
+     * reversed it marks a live branch dead and hides a reachable row. (`.some()` is any-wins by
+     * construction, so today this arm guards the SHAPE of the fold rather than a live mutation.)
      */
     it('opens when the usable child comes FIRST — order must not decide it', async () => {
       host.items.set([
@@ -762,7 +763,7 @@ describe('CaeMenu tiered submenus (#150)', () => {
 
     /**
      * A disabled child that is itself a BRANCH still does not count as reachable. Every other
-     * disabled item in this file is a childless leaf, so `walk`'s `!item.disabled` term is
+     * disabled item in this file is a childless leaf, so the fold's `!child.disabled` term is
      * otherwise pinned only for leaves — drop it for branches and `P` becomes a live trigger over
      * a panel holding one disabled row, the #880 trap again.
      */
@@ -867,8 +868,8 @@ describe('CaeMenu tiered submenus (#150)', () => {
 
     /**
      * The traversal must walk EVERY child, never stopping at the first usable one — the arm that
-     * makes `usable ||= walk(child)` (which short-circuits) unshippable, and the reason the loop is
-     * written out longhand.
+     * makes a short-circuiting fold over the children unshippable, and the reason the traversal
+     * visits every child longhand instead of stopping at the first usable one.
      *
      * `A`'s first child `U` is an ordinary usable leaf, so a short-circuiting version returns before
      * ever reaching `B` — and therefore never discovers `B → A`. That is not a cosmetic miss: the
@@ -902,7 +903,9 @@ describe('CaeMenu tiered submenus (#150)', () => {
      * end by the escape-leaf test alone. Reached from `Z` first, the back edge lands on `u`, and
      * `C` looks usable — so `P`, whose only child is `C`, looked like a live branch. `P`'s own
      * nested instance then started from `C`, landed the back edge there, and disabled its only row.
-     * Marking the whole closing path is start-independent, which is what makes the two agree.
+     * Breaking the whole SCC is start-independent, which is what makes the two agree. (Marking the
+     * closing path also passes this arm — one cycle, so path and SCC coincide. The overlapping-cycle
+     * arm below is the one that separates them, #975.)
      */
     it('agrees across levels — a cycle with escape leaves cannot strand a parent', async () => {
       const u = node('u');
@@ -930,6 +933,209 @@ describe('CaeMenu tiered submenus (#150)', () => {
     });
 
     /**
+     * **Two OVERLAPPING cycles — the arm that says the unit of breaking is the SCC, not the cycle
+     * the walk happened to close** (#975). Every arm above has a single cycle, where the DFS closing
+     * path and the strongly-connected component are the same set, so none of them can tell the two
+     * rules apart.
+     *
+     * Here `r ⇄ a` and `r → b → a` overlap. Walking `a` first closes `r ⇄ a` and marks both; `b` is
+     * then reached with `a` already in the finished memo, so the edge `b → a` returns that memo
+     * without re-examining `a`'s out-edges and **never generates a back edge at all**. `b` escapes,
+     * keeps its `Escape` leaf, and looks usable — so `B`, whose only child is `b`, rendered as an
+     * enabled trigger over a panel that `B`'s own nested `cae-menu` then disabled entirely. That is
+     * #880 verbatim, reached through the very rule meant to prevent it.
+     *
+     * Measured on the closing-path implementation: `caeMenuHasUsableItems([r, B])` was `true` while
+     * `caeMenuHasUsableItems(B.items)` was `false`. SCC membership is a property of the graph rather
+     * than of the walk, so the two agree by construction.
+     */
+    const overlappingCycles = (rootFirst: 'a' | 'b') => {
+      const r = node('r');
+      const a = node('a');
+      const b = node('b');
+      a.items = [r] as CaeMenuItem[];
+      b.items = [a, { value: 'esc', label: 'Escape' }] as CaeMenuItem[];
+      // The ORDER is the repro: `a` first closes `r ⇄ a` before `b` is ever entered.
+      r.items = (rootFirst === 'a' ? [a, b] : [b, a]) as CaeMenuItem[];
+      return { b: b as CaeMenuItem, model: [r, { label: 'B', items: [b] }] as CaeMenuItem[] };
+    };
+
+    it('breaks the whole SCC — two overlapping cycles cannot disagree across levels', async () => {
+      const { b, model } = overlappingCycles('a');
+      // The predicate the TRIGGERS consume (#961) must agree with the nested panel's own analysis.
+      expect(caeMenuHasUsableItems(model)).toBe(false);
+      expect(caeMenuHasUsableItems([b])).toBe(false);
+
+      host.items.set(model);
+      await openRoot();
+      // `B` is the row that escaped: an enabled trigger over a panel whose only row is disabled.
+      const bRow = rowNamed(rootPanel(), 'B');
+      expect(bRow.getAttribute('aria-haspopup')).toBeNull();
+      expect(bRow.getAttribute('disabled')).not.toBeNull();
+      expect(rowNamed(rootPanel(), 'r').getAttribute('disabled')).not.toBeNull();
+      // ONE representative per SCC — `r`, `a` and `b` are one defect, not three — and it is the
+      // walk's ENTRY point, the member closest to what the developer actually bound.
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0][0]).toContain('"r" is on a cycle');
+      // The TRUE direction on the same fixture, so this file is not a one-sided oracle for the
+      // export: `b.items` is the cycle member `a` plus an ordinary leaf, so it IS usable.
+      expect(caeMenuHasUsableItems(b.items!)).toBe(true);
+    });
+
+    /**
+     * The exported predicate's own contract, in BOTH directions and in one place. Until #975 this
+     * file asserted it only in the false direction, and its positive controls lived in
+     * `menubar.spec.ts` / `split-button.spec.ts` — files a `--include ../menu/menu.spec.ts`
+     * mutation run never loads, so the whole export was invisible to that judge.
+     *
+     * The all-disabled row is the one with teeth: dropping the `!item.disabled` term leaves every
+     * other case here unchanged, because their survivors are enabled anyway.
+     */
+    it('caeMenuHasUsableItems answers both directions — empty, disabled-only, and usable', () => {
+      expect(caeMenuHasUsableItems([])).toBe(false);
+      expect(caeMenuHasUsableItems([{ value: 'd', label: 'D', disabled: true }])).toBe(false);
+      expect(caeMenuHasUsableItems([{ value: 'u', label: 'U' }])).toBe(true);
+      const a = node('A');
+      a.items = [a as CaeMenuItem];
+      expect(caeMenuHasUsableItems([a as CaeMenuItem])).toBe(false);
+      expect(caeMenuHasUsableItems([a as CaeMenuItem, { value: 'u', label: 'U' }])).toBe(true);
+    });
+
+    /**
+     * **A 3-cycle whose DFS-ENTRY node also carries an escape leaf** — the arm that pins Tarjan's
+     * tree-edge low-link propagation, `low[item] = min(low[item], low[child])`.
+     *
+     * Substituting `index[child]` for `low[child]` there is *the* classic way to write Tarjan wrong,
+     * and it is invisible on every other fixture in this file: a 2-cycle's back edge is direct, and
+     * a 3-cycle with no escape leaf on its entry node gets repaired by the bottom-up fold, which
+     * finds nothing usable and marks the node dead anyway. Here `r` reaches `leafR`, so the fold
+     * would call it live — only a correct low-link keeps `r` inside the SCC.
+     *
+     * Under that mutation `u` pops early as its own component, `r` becomes a singleton, the fold
+     * sees `leafR` and leaves `r` a live branch — an item ON a cycle rendering as a trigger, against
+     * the rule at the top of this file. Measured over the fuzz corpus, the mutation costs 16174
+     * graphs a wrong `deadEnd` and 641 an unbounded render.
+     */
+    it('breaks a 3-cycle whose ENTRY node still carries an escape leaf', async () => {
+      const r = node('r');
+      const u = node('u');
+      const c = node('c');
+      r.items = [u, { value: 'lr', label: 'leafR' }] as CaeMenuItem[];
+      u.items = [c] as CaeMenuItem[];
+      c.items = [r] as CaeMenuItem[];
+      // `r` is an SCC member, so it is a disabled leaf DESPITE reaching a leaf of its own.
+      expect(caeMenuHasUsableItems([r as CaeMenuItem])).toBe(false);
+
+      host.items.set([r as CaeMenuItem]);
+      await openRoot();
+      const row = rowNamed(rootPanel(), 'r');
+      expect(row.getAttribute('aria-haspopup')).toBeNull();
+      expect(row.getAttribute('disabled')).not.toBeNull();
+      expect(warn).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * **A cycle running through a DISABLED branch.** `isBranch` deliberately ignores `disabled` — a
+     * disabled row still stamps its nested `cae-menu`, whose rows Angular creates eagerly — so the
+     * traversal must walk disabled children AND mark disabled SCC members. Both are the kind of
+     * clause a later "laziest code" pass deletes as redundant, since the dead-end fold has its own
+     * `!child.disabled` term; neither was covered, because every other cyclic fixture here is
+     * disabled-free and the only disabled-branch fixture is acyclic.
+     *
+     * Skipping either one makes THIS model render forever: the disabled node is passed over as a
+     * *child* but re-entered as a *root* one level down, so `D1 → E1 → D2 → E2 → D1` descends
+     * without bound. Like the other unbounded arms, it would not fail — it would hang.
+     *
+     * A permission-gated menu over cyclic data is exactly the shape that produces this.
+     */
+    it('breaks a cycle that runs through a DISABLED branch', async () => {
+      const d1 = node('D1');
+      const e1 = node('E1');
+      const d2 = node('D2');
+      const e2 = node('E2');
+      (d1 as CaeMenuItem).disabled = true;
+      (d2 as CaeMenuItem).disabled = true;
+      d1.items = [e1] as CaeMenuItem[];
+      e1.items = [d2, { value: 'le1', label: 'leafE1' }] as CaeMenuItem[];
+      d2.items = [e2] as CaeMenuItem[];
+      e2.items = [d1, { value: 'le2', label: 'leafE2' }] as CaeMenuItem[];
+      host.items.set([d1 as CaeMenuItem, { value: 't', label: 'Top' }]);
+      await openRoot();
+
+      // Reaching here at all is half the assertion. The disabled node is a LEAF, not a branch.
+      const row = rowNamed(rootPanel(), 'D1');
+      expect(row.getAttribute('aria-haspopup')).toBeNull();
+      expect(warn).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * **Two DISJOINT cycles in one model.** Every other arm here yields exactly one non-trivial SCC
+     * per analysis, and each asserts the warning fired 0 or 1 times — so "one representative *per
+     * SCC*" was only half pinned: the suite proved "never more than one" and never "at least one
+     * each". A first-cycle-only guard (`&& cyclic.size === 0`) therefore survived, leaving the
+     * second cycle unmarked and silent — and since each nested level re-analyses with a fresh set,
+     * the parent would call `Y` usable while `Y`'s own panel disabled its only row. That is the
+     * #975 disagreement again, from a different direction.
+     */
+    it('breaks BOTH of two disjoint cycles, and warns once for each', async () => {
+      const [a, b, c, d] = [node('A'), node('B'), node('C'), node('D')];
+      a.items = [b] as CaeMenuItem[];
+      b.items = [a] as CaeMenuItem[];
+      c.items = [d] as CaeMenuItem[];
+      d.items = [c] as CaeMenuItem[];
+      host.items.set([
+        { label: 'X', items: [a as CaeMenuItem] },
+        { label: 'Y', items: [c as CaeMenuItem] },
+      ]);
+      await openRoot();
+
+      for (const parent of ['X', 'Y']) {
+        const row = rowNamed(rootPanel(), parent);
+        expect(row.getAttribute('aria-haspopup')).toBeNull();
+        expect(row.getAttribute('disabled')).not.toBeNull();
+      }
+      expect(warn).toHaveBeenCalledTimes(2);
+    });
+
+    /**
+     * **A re-listed root that carries a self-edge** — the arm that gives the root loop's
+     * `!index.has(root)` guard teeth. Without the guard `R` is walked twice: the second entry finds
+     * an empty stack, so its self-edge makes it a one-member component of its own and it warns a
+     * SECOND time about the cycle `Q` already reported. `deadEnd` cannot see this (a Set only grows,
+     * and both walks agree), which is why the render looks identical and only the warning count
+     * separates them — measured, the guardless variant differs on 46525 of the fuzz corpus's graphs.
+     */
+    it('warns ONCE when a root carrying a self-edge is also reachable from an earlier root', async () => {
+      const r = node('R');
+      const q = node('Q');
+      r.items = [r, q] as CaeMenuItem[];
+      q.items = [r] as CaeMenuItem[];
+      host.items.set([{ label: 'X', items: [q as CaeMenuItem] }, r as CaeMenuItem]);
+      await openRoot();
+
+      expect(rowNamed(rootPanel(), 'R').getAttribute('aria-haspopup')).toBeNull();
+      expect(warn).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * The same graph with `r`'s children reversed. Under closing-path marking this ordering already
+     * agreed (`false`/`false`) — which is exactly why it belongs here: it pins that the verdict no
+     * longer depends on the order an `items` array happens to be written in, so a fix that merely
+     * special-cased the arm above would still fail this one.
+     */
+    it('reaches the same verdict with the cycle members in the other order', async () => {
+      const { b, model } = overlappingCycles('b');
+      expect(caeMenuHasUsableItems(model)).toBe(false);
+      expect(caeMenuHasUsableItems([b])).toBe(false);
+
+      host.items.set(model);
+      await openRoot();
+      expect(rowNamed(rootPanel(), 'B').getAttribute('aria-haspopup')).toBeNull();
+      expect(rowNamed(rootPanel(), 'B').getAttribute('disabled')).not.toBeNull();
+      expect(warn).toHaveBeenCalledTimes(1);
+    });
+
+    /**
      * **The break point must not MOVE between levels.** Termination here is a property of a
      * *sequence* of independent analyses, not of one: every level re-analyses its own `items()`, so
      * a break that lands on a different node each time can miss the node the render is about to
@@ -938,9 +1144,10 @@ describe('CaeMenu tiered submenus (#150)', () => {
      * and leaves `A` a branch; and that is the first level again. Period-2 infinite descent, at the
      * first change detection, with the dev warning firing at every level while the tab freezes.
      *
-     * So this test does not fail without the fix — it dies. Randomised search over ~190k cyclic
-     * graphs finds 0 non-terminating renders with whole-cycle marking and 61 without it, which is
-     * also what says this arm is not a lucky single case.
+     * So this test does not fail without the fix — it dies. Randomised search over ~196k cyclic
+     * graphs finds 0 non-terminating renders with SCC marking and 22 with back-edge-target-only
+     * marking, which is also what says this arm is not a lucky single case. (Closing-path marking,
+     * #962, is bounded here too — it fails the *agreement* property instead, #975.)
      */
     it('terminates when the break point would otherwise move between levels', async () => {
       const a = node('A');
@@ -1006,10 +1213,10 @@ describe('CaeMenu tiered submenus (#150)', () => {
      * Asserting the ROW COUNT, not a duration: a wall-clock budget would be flaky, and the panel
      * count is the quantity that actually exploded.
      *
-     * TWELVE nodes rather than seven, deliberately: this is also the only arm that pins the `done`
-     * memo in `analyseMenuGraph`. Detection still finds the cycle without it, and the render still stops
-     * at one row, so nothing smaller notices its removal — but the traversal itself then walks
-     * every simple path (~10^8 here) and the test dies on timeout instead of passing instantly.
+     * TWELVE nodes rather than seven, deliberately: this is also the only arm that pins the
+     * entered-ever memo (`!index.has(child)` at the recursive call). Detection still finds the cycle
+     * without it and the render still stops at one row, so nothing smaller notices its removal — but
+     * the traversal then re-enters the first cycle without bound and the test dies rather than fails.
      */
     it('does not unroll a dense cyclic graph — every path is not a branch', async () => {
       const nodes = Array.from({ length: 12 }, (_, i) => node(`N${i}`));
@@ -1061,11 +1268,39 @@ describe('CaeMenu tiered submenus (#150)', () => {
     });
 
     /**
+     * The other legal-DAG topology: an item that is BOTH a top-level row and a child of an earlier
+     * top-level row — `Settings` offered at the root and again under `Preferences`, the same object.
+     * The sibling-shared arm below does not cover it, because there the shared node is never itself
+     * a root. Over-marking a legal DAG is the failure mode a switch to SCC membership risks, so it
+     * gets its own arm — this is the no-FALSE-POSITIVE direction. (The root loop's `!index.has(root)`
+     * guard is pinned separately, by the self-edge arm above: deleting it changes only the warning
+     * count, which this arm cannot see.)
+     *
+     * Not a cycle: `Prefs → Settings` has no path back, so nothing here may be flagged.
+     */
+    it('does NOT flag a root that is ALSO a child of an earlier root', async () => {
+      const settings: CaeMenuItem = { label: 'Settings', items: [{ value: 'x', label: 'X' }] };
+      host.items.set([{ label: 'Prefs', items: [settings] }, settings]);
+      await openRoot();
+
+      const top = rowNamed(rootPanel(), 'Settings');
+      expect(top.getAttribute('aria-haspopup')).toBe('menu');
+      expect(top.getAttribute('disabled')).toBeNull();
+      const prefs = rowNamed(rootPanel(), 'Prefs');
+      expect(prefs.getAttribute('aria-haspopup')).toBe('menu');
+      prefs.click();
+      await settle();
+      expect(rowNamed(panelOf(prefs), 'Settings').getAttribute('disabled')).toBeNull();
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    /**
      * A subtree object reused under two SIBLING branches is a legal finite DAG — a shared "Share…"
      * submenu is exactly that — and it must render in full under BOTH parents. This is what stops
-     * `analyseMenuGraph` from conflating "already finished" with "on the current path": a visited-ever
-     * check passes every cycle spec above and kills the second sibling here, which is why both
-     * siblings are opened rather than just the first.
+     * the RENDER from treating a finished subtree as already-spent: it must be re-entered under
+     * each parent, which is why both siblings are opened rather than just the first. (The analysis's
+     * own "finished vs still-open" test, `onStack` rather than `index`, is pinned by the
+     * 'agrees across levels' arm — swapping them there leaves `P` unpopped and renders it a trigger.)
      */
     it('does NOT flag a subtree shared by two sibling branches, under either one', async () => {
       const shared: CaeMenuItem = { label: 'Shared', items: [{ value: 's', label: 'Leaf' }] };
