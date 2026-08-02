@@ -231,8 +231,11 @@ export class CaeMenubar implements AfterViewInit, OnDestroy {
       .withVerticalOrientation(false)
       .withWrap()
       .withHomeAndEnd()
-      .withTypeAhead()
-      .skipPredicate((item) => item.disabled);
+      .withTypeAhead();
+    // No `.skipPredicate(...)`: CDK's ListKeyManager already initialises `_skipPredicateFn` to
+    // `item => item.disabled` (`_list-key-manager-chunk.mjs`), so restating it changed nothing and
+    // could be killed by no test (#979). Dead groups are still skipped — pinned by the roving arms
+    // below, which kill both `skipPredicate(() => false)` and the loss of `withWrap()`.
     this.keyManager.change
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((index) => this.activeIndex.set(index));

@@ -100,9 +100,12 @@ export class CaeButton {
    * hover/focus now reveal the tooltip explaining *why* (the `<p-button pTooltip disabled>` parity
    * case). Opt-in, default off. The action is NOT auto-suppressed — guard it (a `(click)` handler,
    * or the enclosing form's `(ngSubmit)`, as Forge's *Send invite* does) so an interactive-disabled
-   * button can't still fire. A bound `menuTriggerFor` is likewise still openable while
-   * interactive-disabled (its click belongs to `MatMenuTrigger`, not you) — unbind it to block that:
-   * `[menuTriggerFor]="busy ? undefined : menu"` (Book 16 a11y).
+   * button can't still fire. A bound `menuTriggerFor` is the **exception that needs no guard**:
+   * `MatMenuTrigger._openMenu()` returns early when its host carries `aria-disabled`
+   * (`_triggerIsAriaDisabled()` reads the attribute), which is exactly what this mode sets — so the
+   * menu refuses to open by click, by keyboard, and by a programmatic `openMenu()`, and unbinding it
+   * is unnecessary. Measured against the installed `@angular/material` 22.0.3, not assumed (#978);
+   * pinned by a behavioural arm in `button.spec.ts` (`Book 16 §3.3`).
    */
   readonly disabledInteractive = input(false, { transform: booleanAttribute });
   /** Accessible name — set for icon-only or otherwise ambiguously-labelled buttons. */

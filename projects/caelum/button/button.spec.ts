@@ -240,10 +240,10 @@ describe('CaeButton (menu trigger #57)', () => {
     expect(button.disabled).toBe(true);
   });
 
-  it('forwards disabledInteractive on the menu-branch button, keeping it a working trigger (#58 two-branch parity)', async () => {
+  it('forwards disabledInteractive on the menu-branch button, keeping it focusable and labelled (#58 two-branch parity)', async () => {
     // disabledInteractive must be forwarded in the menu branch as well as the plain branch — a
-    // divergence would ship silently. An interactive-disabled button stays focusable, so it can
-    // still open its menu while being announced disabled.
+    // divergence would ship silently. The button stays focusable and keeps advertising its popup;
+    // whether it will actually OPEN is a separate claim, pinned by the arm below (#978).
     const f = TestBed.createComponent(MenuButtonHost);
     f.componentInstance.disabled = true;
     f.componentInstance.disabledInteractive = true;
@@ -254,5 +254,42 @@ describe('CaeButton (menu trigger #57)', () => {
     expect(button.getAttribute('aria-disabled')).toBe('true');
     // The trigger (and its aria-haspopup) still sits on the focusable inner button.
     expect(button.getAttribute('aria-haspopup')).toBe('menu');
+  });
+
+  it('refuses to open the bound menu while interactive-disabled, by click and programmatically (#978)', async () => {
+    // The claim this replaces said the opposite — that an interactive-disabled button's menu "stays
+    // openable, so unbind it to block". It is false: `MatMenuTrigger._openMenu()` early-returns on
+    // `aria-disabled`, which is precisely the attribute this mode sets. Nothing pinned it in either
+    // direction, because every existing arm was attribute-shaped and none asserted an OPEN.
+    const f = TestBed.createComponent(MenuButtonHost);
+    f.componentInstance.disabled = true;
+    f.componentInstance.disabledInteractive = true;
+    f.detectChanges();
+    await f.whenStable();
+
+    const button = f.nativeElement.querySelector('cae-button button') as HTMLButtonElement;
+    const trig = f.debugElement.query(By.directive(MatMenuTrigger)).injector.get(MatMenuTrigger);
+
+    // Assert the guard's INPUTS, so a refusal below cannot be an unbound trigger no-opping for an
+    // unrelated reason — the failure mode that makes an absence-assertion vacuous.
+    expect(trig.menu).toBeTruthy();
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+
+    trig.openMenu();
+    f.detectChanges();
+    await f.whenStable();
+    expect(trig.menuOpen).toBe(false);
+    expect(
+      overlayContainer.getContainerElement().querySelectorAll('.mat-mdc-menu-panel').length,
+    ).toBe(0);
+
+    // The click path belongs to MatMenuTrigger rather than the consumer, and refuses identically.
+    button.click();
+    f.detectChanges();
+    await f.whenStable();
+    expect(trig.menuOpen).toBe(false);
+    expect(
+      overlayContainer.getContainerElement().querySelectorAll('.mat-mdc-menu-panel').length,
+    ).toBe(0);
   });
 });
