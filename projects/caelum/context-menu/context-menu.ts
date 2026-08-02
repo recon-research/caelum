@@ -71,7 +71,7 @@ import { CaeIcon, caeItemIconContext, type CaeItemIconContext } from '@recon-res
             type="button"
             class="cae-context-menu__item"
             [cdkMenuItemDisabled]="item.disabled ?? false"
-            [cdkMenuitemTypeaheadLabel]="item.label"
+            [cdkMenuitemTypeaheadLabel]="typeaheadLabelFor(item)"
             (cdkMenuItemTriggered)="itemSelect.emit(item)"
           >
             @if (iconTemplate(); as tpl) {
@@ -180,8 +180,8 @@ export class CaeContextMenu {
    * Unlike `MatMenuItem` (which strips icon elements before deriving its typeahead label),
    * `CdkMenuItem` reads the item's raw `textContent` — so a template stamping **text** would
    * otherwise poison both typeahead and the accessible name. The item pins
-   * `cdkMenuitemTypeaheadLabel` to `item.label`, which makes that structurally impossible;
-   * keep glyphs decorative regardless, since the accessible name still reads the row.
+   * `cdkMenuitemTypeaheadLabel` to {@link typeaheadLabelFor}, which makes that structurally
+   * impossible; keep glyphs decorative regardless, since the accessible name still reads the row.
    */
   readonly iconTemplate = input<TemplateRef<CaeItemIconContext<CaeMenuItem>> | null>(null);
   /** Emits the chosen item when a menu item is activated (click or keyboard). */
@@ -189,4 +189,21 @@ export class CaeContextMenu {
 
   /** Context builder for {@link iconTemplate} — the single-homed D-596 helper (#649). */
   protected readonly iconContext = caeItemIconContext;
+
+  /**
+   * Typeahead label for a row, normalised so the pin cannot disengage (#979).
+   *
+   * CDK derives it as `typeaheadLabel || textContent.trim() || ''` — a `||`, not a `??`. So an
+   * item with a legal-but-empty `label` would fall straight back to raw `textContent` and re-open
+   * exactly the consumer-template hole {@link iconTemplate} describes: bind `item.label` directly
+   * and `{ value: 'x', label: '' }` becomes typeahead-reachable by whatever text a projected
+   * template happens to stamp.
+   *
+   * A single space keeps the binding truthy so the fallback never runs, and CDK's matcher trims
+   * before comparing (`item.getLabel().toLocaleUpperCase().trim()`), leaving the row unreachable
+   * by typeahead — the right answer for an item that offers nothing to type.
+   */
+  protected typeaheadLabelFor(item: CaeMenuItem): string {
+    return item.label || ' ';
+  }
 }

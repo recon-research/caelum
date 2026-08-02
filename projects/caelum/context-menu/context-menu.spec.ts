@@ -274,4 +274,24 @@ describe('CaeContextMenu per-item icons (D-596, #645)', () => {
     // The raw text really is polluted — proving the assertion above is load-bearing, not vacuous.
     expect(menuItems()[0].textContent).toContain('0:view');
   });
+
+  it('keeps the pin engaged for an EMPTY label, which the arm above cannot reach (#979)', async () => {
+    // `label: ''` is legal (`label` is `string`), and CDK's getLabel() is
+    // `typeaheadLabel || textContent.trim() || ''` — a `||`, not a `??`. Binding `item.label`
+    // straight through therefore DISENGAGED the pin for exactly this item and fell back to raw
+    // textContent, re-opening the hole the arm above closes. The label is normalised so the
+    // fallback can never run; the row is simply unreachable by typeahead instead.
+    fixture.componentInstance.usePoisonTpl.set(true);
+    fixture.componentInstance.items.set([{ value: 'x', label: '' }]);
+    fixture.detectChanges();
+    await open();
+    const label = fixture.debugElement
+      .query(By.directive(CdkMenuItem))
+      .injector.get(CdkMenuItem)
+      .getLabel();
+    // Whitespace-only: CDK's matcher trims before comparing, so no keystroke can prefix-match it.
+    expect(label.trim()).toBe('');
+    // The poison really is stamped, so the assertion above is load-bearing rather than vacuous.
+    expect(menuItems()[0].textContent).toContain('0:x');
+  });
 });

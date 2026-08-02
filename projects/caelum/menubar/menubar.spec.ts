@@ -112,6 +112,10 @@ describe('CaeMenubar', () => {
     menuTriggerAt(0).open();
     await flush();
     expect(menuItems().length).toBeGreaterThan(0);
+    // BOTH roots: the overlay holds the dropdown panel, and the toolbar this test's title names
+    // lives in the component's own tree. Scanning only the container left `role="menubar"` — and
+    // the dead-group DOM #961 introduced — with no axe coverage at all (#979).
+    await expectNoA11yViolations(el);
     await expectNoA11yViolations(overlayContainer.getContainerElement());
   });
 
