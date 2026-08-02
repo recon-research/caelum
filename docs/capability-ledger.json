@@ -1,14 +1,14 @@
 {
-  "note": "Sign-off rows were seeded once (#733) from the review run on the slice that **shipped** each\nentry point — its introducing commit, and that PR body where the commit body is silent (the\nrepo uses both homes). Each row carries a verbatim quote, and since **#809** the gate\n**verifies** it: the cited commit's message must actually contain those words, so the claim is\ncheckable without trusting the seed rather than merely asserted to be. Only whitespace is\nnormalised before comparing (git wraps a body); edited punctuation reads as an edit and fails.\nNew entry points are added by hand; the gate fails until they appear.\n\nThirteen rows (`button`, `card`, `checkbox`, `input`, `menu`, `radio`, `select`, `shared`,\n`stepper`, `tabs`, `textarea`, `tooltip`, `tree`) were re-keyed by **#809** from `f2a7368b` —\nthe entry-point restructure (#28/PR #44), a packaging slice — to the batches that actually\nreviewed them (PR #30, #37, #42). Those reviews predate `projects/caelum/<name>/`, so each row\ndeclares its former home under `paths`; the field is shape-constrained to a path under the\nlibrary ending in that entry point's own name, so it can widen where the gate looks but never\nwhat counts as touching the component.\n\nOne row is not a shipping-slice review: `panel-menu` shipped without one (#774), so its\npointer is the later slice that ran the review it was owed (PR #778). A row's commit is the\ncommit whose message records the review, not necessarily the one that introduced the code.\n\nThe five entry points that had no axe assertion were closed by **#773**: four gained one\n(`breadcrumb-router`, `form-field`, `grid-tanstack`, `tooltip`), and `shared` — which is\ntype-only — became the single exemption. Exemptions are re-derived from source on every run,\nnever granted by the recorded reason; see the module docstring of the generator.\n\n**No row carries `revoked` today.** All three that #809 revoked have EARNED their sign-offs\nback — `popover` (#824), `confirm` (#825) and `rating` (#823) — each by fixing the defect and\ncommissioning its own independent multi-lens review, and each now cites that commit rather\nthan the withdrawn one. The `revoked` field stays in the schema: it is what made \"reviewed and\nfailed\" distinguishable from \"never reviewed\" while the gap was open, and it is how the next\nfailed re-review gets recorded.",
+  "note": "Sign-off rows were seeded once (#733) from the review run on the slice that **shipped** each\nentry point \u2014 its introducing commit, and that PR body where the commit body is silent (the\nrepo uses both homes). Each row carries a verbatim quote, and since **#809** the gate\n**verifies** it: the cited commit's message must actually contain those words, so the claim is\ncheckable without trusting the seed rather than merely asserted to be. Only whitespace is\nnormalised before comparing (git wraps a body); edited punctuation reads as an edit and fails.\nNew entry points are added by hand; the gate fails until they appear.\n\nThirteen rows (`button`, `card`, `checkbox`, `input`, `menu`, `radio`, `select`, `shared`,\n`stepper`, `tabs`, `textarea`, `tooltip`, `tree`) were re-keyed by **#809** from `f2a7368b` \u2014\nthe entry-point restructure (#28/PR #44), a packaging slice \u2014 to the batches that actually\nreviewed them (PR #30, #37, #42). Those reviews predate `projects/caelum/<name>/`, so each row\ndeclares its former home under `paths`; the field is shape-constrained to a path under the\nlibrary ending in that entry point's own name, so it can widen where the gate looks but never\nwhat counts as touching the component.\n\nOne row is not a shipping-slice review: `panel-menu` shipped without one (#774), so its\npointer is the later slice that ran the review it was owed (PR #778). A row's commit is the\ncommit whose message records the review, not necessarily the one that introduced the code.\n\nThe five entry points that had no axe assertion were closed by **#773**: four gained one\n(`breadcrumb-router`, `form-field`, `grid-tanstack`, `tooltip`), and `shared` \u2014 which is\ntype-only \u2014 became the single exemption. Exemptions are re-derived from source on every run,\nnever granted by the recorded reason; see the module docstring of the generator.\n\n**No row carries `revoked` today.** All three that #809 revoked have EARNED their sign-offs\nback \u2014 `popover` (#824), `confirm` (#825) and `rating` (#823) \u2014 each by fixing the defect and\ncommissioning its own independent multi-lens review, and each now cites that commit rather\nthan the withdrawn one. The `revoked` field stays in the schema: it is what made \"reviewed and\nfailed\" distinguishable from \"never reviewed\" while the gap was open, and it is how the next\nfailed re-review gets recorded.",
   "exempt": {
-    "shared": "type-only entry point (#28): every export is a type or interface, so it compiles to no runtime code, ships no component, and renders no DOM — there is nothing for axe to scan. Re-proven each run by scripts/capability_ledger.py, which fails the gate if any file here starts emitting runtime code."
+    "shared": "type-only entry point (#28): every export is a type or interface, so it compiles to no runtime code, ships no component, and renders no DOM \u2014 there is nothing for axe to scan. Re-proven each run by scripts/capability_ledger.py, which fails the gate if any file here starts emitting runtime code."
   },
   "signoff": {
     "accordion": {
       "pr": 81,
       "commit": "10b7ebe9",
       "source": "commit",
-      "quote": "Adversarially reviewed (4-lens ultracode — di/coordination, a11y, api-design, arch-packaging): 0 BLOCKER, 0 MAJOR; MINOR/NIT applied — `multi`→`multiple` alias, a11y roving-gap disclosed in JSDoc (+#7"
+      "quote": "Adversarially reviewed (4-lens ultracode \u2014 di/coordination, a11y, api-design, arch-packaging): 0 BLOCKER, 0 MAJOR; MINOR/NIT applied \u2014 `multi`\u2192`multiple` alias, a11y roving-gap disclosed in JSDoc (+#7"
     },
     "autocomplete": {
       "pr": 910,
@@ -20,19 +20,19 @@
       "pr": 670,
       "commit": "89f2560d",
       "source": "commit",
-      "quote": "Adversarial review (3 lenses) applied — two HIGH fixed: - cae-tag severity label failed WCAG 1"
+      "quote": "Adversarial review (3 lenses) applied \u2014 two HIGH fixed: - cae-tag severity label failed WCAG 1"
     },
     "badge": {
       "pr": 130,
       "commit": "8cb47816",
       "source": "commit",
-      "quote": "Adversarially reviewed (4-lens: a11y / api-design / arch-packaging / parity-projection): 0 BLOCKER/MAJOR (aliasing/projection/wiring verified SOLID), 11 MINOR/NIT applied — count folded into the acces"
+      "quote": "Adversarially reviewed (4-lens: a11y / api-design / arch-packaging / parity-projection): 0 BLOCKER/MAJOR (aliasing/projection/wiring verified SOLID), 11 MINOR/NIT applied \u2014 count folded into the acces"
     },
     "breadcrumb": {
       "pr": 334,
       "commit": "323efe6e",
       "source": "commit",
-      "quote": "2-lens adversarial review (a11y + API) — no BLOCKER; each lens one MAJOR, both fixed: separators are silent aria-hidden <span> glyphs, not CSS ::before content (which Chromium/WebKit expose to the a11"
+      "quote": "2-lens adversarial review (a11y + API) \u2014 no BLOCKER; each lens one MAJOR, both fixed: separators are silent aria-hidden <span> glyphs, not CSS ::before content (which Chromium/WebKit expose to the a11"
     },
     "breadcrumb-router": {
       "pr": 654,
@@ -77,7 +77,7 @@
       "pr": 86,
       "commit": "33f3b2f4",
       "source": "commit",
-      "quote": "Adversarially reviewed (4-lens ultracode — a11y-focus/standalone-correctness/ api-design/arch-packaging): 0 refuted; fixed 1 CONFIRMED BLOCKER + 2 CONFIRMED MAJOR: - BLOCKER: the remove <button matChi"
+      "quote": "Adversarially reviewed (4-lens ultracode \u2014 a11y-focus/standalone-correctness/ api-design/arch-packaging): 0 refuted; fixed 1 CONFIRMED BLOCKER + 2 CONFIRMED MAJOR: - BLOCKER: the remove <button matChi"
     },
     "chip-set": {
       "pr": 203,
@@ -89,13 +89,13 @@
       "pr": 833,
       "commit": "e334c8e2",
       "source": "commit",
-      "quote": "Two-party adversarial review (3 independent read-only lenses: lifecycle/disposal, a11y/focus, test-oracle integrity). Verdict: SOLID-with-gaps — 3 HIGH, 6 MED and 6 LOW found and ALL fixed in this commit; 1 MED filed as #832 (pre-existing, cross-component)."
+      "quote": "Two-party adversarial review (3 independent read-only lenses: lifecycle/disposal, a11y/focus, test-oracle integrity). Verdict: SOLID-with-gaps \u2014 3 HIGH, 6 MED and 6 LOW found and ALL fixed in this commit; 1 MED filed as #832 (pre-existing, cross-component)."
     },
     "context-menu": {
       "pr": 159,
       "commit": "f48cc09b",
       "source": "commit",
-      "quote": "ai/code/session_01VFguz4Q8QdTr9MGxKn8kwj * cae-context-menu: 4-lens review fixes — keyboard-accessible target + focus rings (#157) 4-lens adversarial review found 1 confirmed major (raised by all 3 of"
+      "quote": "ai/code/session_01VFguz4Q8QdTr9MGxKn8kwj * cae-context-menu: 4-lens review fixes \u2014 keyboard-accessible target + focus rings (#157) 4-lens adversarial review found 1 confirmed major (raised by all 3 of"
     },
     "datepicker": {
       "pr": 684,
@@ -107,7 +107,7 @@
       "pr": 103,
       "commit": "b9f225ab",
       "source": "commit",
-      "quote": "Adversarially reviewed (4-lens: api-design / a11y / packaging / test-integrity) — 0 BLOCKER/MAJOR (1 MAJOR refuted), MINOR/NIT applied: CDK ComponentType -> core Type; workspace group aria-labelledby;"
+      "quote": "Adversarially reviewed (4-lens: api-design / a11y / packaging / test-integrity) \u2014 0 BLOCKER/MAJOR (1 MAJOR refuted), MINOR/NIT applied: CDK ComponentType -> core Type; workspace group aria-labelledby;"
     },
     "divider": {
       "pr": 89,
@@ -137,7 +137,7 @@
       "pr": 180,
       "commit": "c8853f92",
       "source": "commit",
-      "quote": "ai/code/session_01VFguz4Q8QdTr9MGxKn8kwj * M2 grid: apply 4-lens review — accessible name, role=table, public export, dev guard (#170) Applied the 4-lens adversarial review of #170 (2 surviving majors"
+      "quote": "ai/code/session_01VFguz4Q8QdTr9MGxKn8kwj * M2 grid: apply 4-lens review \u2014 accessible name, role=table, public export, dev guard (#170) Applied the 4-lens adversarial review of #170 (2 surviving majors"
     },
     "grid-tanstack": {
       "pr": 660,
@@ -155,7 +155,7 @@
       "pr": 295,
       "commit": "2355e53b",
       "source": "commit",
-      "quote": "* cae-image: apply 2-lens review fixes (a11y + API) 2-lens adversarial review (a11y + API/correctness) found no MAJOR; applied the MINORs/NITs: - preview now defaults OFF (p-image parity — a migrating"
+      "quote": "* cae-image: apply 2-lens review fixes (a11y + API) 2-lens adversarial review (a11y + API/correctness) found no MAJOR; applied the MINORs/NITs: - preview now defaults OFF (p-image parity \u2014 a migrating"
     },
     "image-compare": {
       "pr": 319,
@@ -176,7 +176,7 @@
       "pr": 316,
       "commit": "2d0526ee",
       "source": "commit",
-      "quote": "2-lens a11y/API review — no BLOCKER"
+      "quote": "2-lens a11y/API review \u2014 no BLOCKER"
     },
     "input-number": {
       "pr": 307,
@@ -188,7 +188,7 @@
       "pr": 310,
       "commit": "de78df5d",
       "source": "commit",
-      "quote": "2-lens a11y/API adversarial review — a11y: NO MAJOR; API: 2 MAJOR, both the runtime-[length]-change class, closed together: an activeTabStop clamp so the group keeps exactly one tab stop even if lengt"
+      "quote": "2-lens a11y/API adversarial review \u2014 a11y: NO MAJOR; API: 2 MAJOR, both the runtime-[length]-change class, closed together: an activeTabStop clamp so the group keeps exactly one tab stop even if lengt"
     },
     "listbox": {
       "pr": 115,
@@ -203,28 +203,28 @@
       "quote": "Four-lens adversarial review. One HIGH, confirmed by simulation before fixing,\nplus six test gaps the lenses proposed as surviving mutations and that measured\nout as real."
     },
     "menubar": {
-      "pr": 974,
-      "commit": "c4072c2",
+      "pr": 995,
+      "commit": "8779265",
       "source": "commit",
-      "quote": "A three-lens adversarial review of da7a400 found the slice's headline claim\nfalsified through the very component it fixes. Both reproduced before fixing."
+      "quote": "An independent four-lens adversarial review of PR #988 \u2014 a11y posture, focus-restore\ngates, test-oracle integrity, and two-branch parity/minimality. It falsified the\ndecision row's own grounding, and found both the parity spec and the focus gates\npassing for the wrong reasons."
     },
     "multi-select": {
       "pr": 136,
       "commit": "5dfd7412",
       "source": "commit",
-      "quote": "ai/code/session_01VFguz4Q8QdTr9MGxKn8kwj * cae-multi-select: apply 4-lens review — default filter off (a11y), tokens, doc/contract fixes 4-lens adversarial review returned 1 confirmed MAJOR (2/2 skept"
+      "quote": "ai/code/session_01VFguz4Q8QdTr9MGxKn8kwj * cae-multi-select: apply 4-lens review \u2014 default filter off (a11y), tokens, doc/contract fixes 4-lens adversarial review returned 1 confirmed MAJOR (2/2 skept"
     },
     "order-list": {
       "pr": 339,
       "commit": "cd77e581",
       "source": "commit",
-      "quote": "2-lens adversarial review (a11y + API) — both lenses converged on one MAJOR: - move buttons use aria-disabled, NOT native [disabled], so a button reaching a bound stays focusable instead of blurring t"
+      "quote": "2-lens adversarial review (a11y + API) \u2014 both lenses converged on one MAJOR: - move buttons use aria-disabled, NOT native [disabled], so a button reaching a bound stays focusable instead of blurring t"
     },
     "panel": {
       "pr": 872,
       "commit": "1bf7619",
       "source": "commit",
-      "quote": "Two-party adversarial review — 3 independent read-only lenses (correctness/state,\na11y semantics, test-oracle integrity + YAGNI). Verdict: SOLID-with-gaps — 2 HIGH,\n9 MED, 12 LOW."
+      "quote": "Two-party adversarial review \u2014 3 independent read-only lenses (correctness/state,\na11y semantics, test-oracle integrity + YAGNI). Verdict: SOLID-with-gaps \u2014 2 HIGH,\n9 MED, 12 LOW."
     },
     "panel-menu": {
       "pr": 969,
@@ -236,7 +236,7 @@
       "pr": 313,
       "commit": "1793231c",
       "source": "commit",
-      "quote": "2-lens a11y/API review — no BLOCKER; each lens raised one MAJOR (a11y: bare- adjective strength announcement -> context prefix; API: unbuffered IME -> buffer like cae-input), both fixed, plus visible-"
+      "quote": "2-lens a11y/API review \u2014 no BLOCKER; each lens raised one MAJOR (a11y: bare- adjective strength announcement -> context prefix; API: unbuffered IME -> buffer like cae-input), both fixed, plus visible-"
     },
     "pick-list": {
       "pr": 343,
@@ -269,19 +269,19 @@
       "paths": [
         "projects/caelum/src/lib/radio"
       ],
-      "quote": "Adversarially reviewed (4-lens ultracode workflow; 2 MAJOR + 2 MINOR + 2 NIT fixed, each re-tested): radio empty-name collision, tooltip keyboard-inaccessibility (→ #36), select touched-only-on-open, appearance cross-file coupling, radio double-label, missing required marker."
+      "quote": "Adversarially reviewed (4-lens ultracode workflow; 2 MAJOR + 2 MINOR + 2 NIT fixed, each re-tested): radio empty-name collision, tooltip keyboard-inaccessibility (\u2192 #36), select touched-only-on-open, appearance cross-file coupling, radio double-label, missing required marker."
     },
     "rating": {
       "pr": 837,
       "commit": "50a9ced0",
       "source": "commit",
-      "quote": "Two-party adversarial review (3 independent read-only lenses: CVA/state, a11y/WCAG, test-oracle). Verdict: SOLID-with-gaps — 5 HIGH, 11 MED, 16 LOW found; all fixed here or owner-decided, 1 filed as #836."
+      "quote": "Two-party adversarial review (3 independent read-only lenses: CVA/state, a11y/WCAG, test-oracle). Verdict: SOLID-with-gaps \u2014 5 HIGH, 11 MED, 16 LOW found; all fixed here or owner-decided, 1 filed as #836."
     },
     "scroll-panel": {
       "pr": 330,
       "commit": "20d35a8d",
       "source": "commit",
-      "quote": "2-lens adversarial review (a11y + API) applied — fixes shipping here: - MAJOR (a11y): isFocused signal + focus/blur listeners + tabIndex computed keep a focus-holding container at tabindex=-1 when its"
+      "quote": "2-lens adversarial review (a11y + API) applied \u2014 fixes shipping here: - MAJOR (a11y): isFocused signal + focus/blur listeners + tabIndex computed keep a focus-holding container at tabindex=-1 when its"
     },
     "select": {
       "pr": 37,
@@ -290,7 +290,7 @@
       "paths": [
         "projects/caelum/src/lib/select"
       ],
-      "quote": "Adversarially reviewed (4-lens ultracode workflow; 2 MAJOR + 2 MINOR + 2 NIT fixed, each re-tested): radio empty-name collision, tooltip keyboard-inaccessibility (→ #36), select touched-only-on-open, appearance cross-file coupling, radio double-label, missing required marker."
+      "quote": "Adversarially reviewed (4-lens ultracode workflow; 2 MAJOR + 2 MINOR + 2 NIT fixed, each re-tested): radio empty-name collision, tooltip keyboard-inaccessibility (\u2192 #36), select touched-only-on-open, appearance cross-file coupling, radio double-label, missing required marker."
     },
     "select-button": {
       "pr": 74,
@@ -305,13 +305,13 @@
       "paths": [
         "projects/caelum/src/lib/shared"
       ],
-      "quote": "Adversarially reviewed (4-lens ultracode workflow; 2 MAJOR + 2 MINOR + 2 NIT fixed, each re-tested): radio empty-name collision, tooltip keyboard-inaccessibility (→ #36), select touched-only-on-open, appearance cross-file coupling, radio double-label, missing required marker."
+      "quote": "Adversarially reviewed (4-lens ultracode workflow; 2 MAJOR + 2 MINOR + 2 NIT fixed, each re-tested): radio empty-name collision, tooltip keyboard-inaccessibility (\u2192 #36), select touched-only-on-open, appearance cross-file coupling, radio double-label, missing required marker."
     },
     "skeleton": {
       "pr": 670,
       "commit": "89f2560d",
       "source": "commit",
-      "quote": "Adversarial review (3 lenses) applied — two HIGH fixed: - cae-tag severity label failed WCAG 1"
+      "quote": "Adversarial review (3 lenses) applied \u2014 two HIGH fixed: - cae-tag severity label failed WCAG 1"
     },
     "slider": {
       "pr": 112,
@@ -320,10 +320,10 @@
       "quote": "Adversarially reviewed (4-lens): 0 BLOCKER/MAJOR, 0 refuted; core verified against Material 22"
     },
     "split-button": {
-      "pr": 974,
-      "commit": "c4072c2",
+      "pr": 995,
+      "commit": "8779265",
       "source": "commit",
-      "quote": "A three-lens adversarial review of da7a400 found the slice's headline claim\nfalsified through the very component it fixes. Both reproduced before fixing."
+      "quote": "An independent four-lens adversarial review of PR #988 \u2014 a11y posture, focus-restore\ngates, test-oracle integrity, and two-branch parity/minimality. It falsified the\ndecision row's own grounding, and found both the parity spec and the focus gates\npassing for the wrong reasons."
     },
     "splitter": {
       "pr": 326,
@@ -344,19 +344,19 @@
       "pr": 69,
       "commit": "f077bb59",
       "source": "commit",
-      "quote": "ai/code/session_01VFguz4Q8QdTr9MGxKn8kwj * M0: apply #68 cae-switch review — hideIcon passthrough + doc/Forge fixes 4-lens adversarial review (cva-forms/api-design/a11y/arch-packaging): 0 BLOCKER, 1 C"
+      "quote": "ai/code/session_01VFguz4Q8QdTr9MGxKn8kwj * M0: apply #68 cae-switch review \u2014 hideIcon passthrough + doc/Forge fixes 4-lens adversarial review (cva-forms/api-design/a11y/arch-packaging): 0 BLOCKER, 1 C"
     },
     "tab-menu": {
       "pr": 166,
       "commit": "b9fa4395",
       "source": "commit",
-      "quote": "ai/code/session_01VFguz4Q8QdTr9MGxKn8kwj * cae-tab-menu: apply 4-lens review minors (#164) 4-lens adversarial review: 0 surviving majors, 5 minors — all applied"
+      "quote": "ai/code/session_01VFguz4Q8QdTr9MGxKn8kwj * cae-tab-menu: apply 4-lens review minors (#164) 4-lens adversarial review: 0 surviving majors, 5 minors \u2014 all applied"
     },
     "table": {
       "pr": 146,
       "commit": "a389b757",
       "source": "commit",
-      "quote": "ai/code/session_01VFguz4Q8QdTr9MGxKn8kwj * cae-table: apply 4-lens review — a11y empty-state live region, currentColor, dev guards, API hygiene Confirmed MAJORs fixed: - Empty state is now a persisten"
+      "quote": "ai/code/session_01VFguz4Q8QdTr9MGxKn8kwj * cae-table: apply 4-lens review \u2014 a11y empty-state live region, currentColor, dev guards, API hygiene Confirmed MAJORs fixed: - Empty state is now a persisten"
     },
     "tabs": {
       "pr": 37,
@@ -365,13 +365,13 @@
       "paths": [
         "projects/caelum/src/lib/tabs"
       ],
-      "quote": "Adversarially reviewed (4-lens ultracode workflow; 2 MAJOR + 2 MINOR + 2 NIT fixed, each re-tested): radio empty-name collision, tooltip keyboard-inaccessibility (→ #36), select touched-only-on-open, appearance cross-file coupling, radio double-label, missing required marker."
+      "quote": "Adversarially reviewed (4-lens ultracode workflow; 2 MAJOR + 2 MINOR + 2 NIT fixed, each re-tested): radio empty-name collision, tooltip keyboard-inaccessibility (\u2192 #36), select touched-only-on-open, appearance cross-file coupling, radio double-label, missing required marker."
     },
     "tag": {
       "pr": 670,
       "commit": "89f2560d",
       "source": "commit",
-      "quote": "Adversarial review (3 lenses) applied — two HIGH fixed: - cae-tag severity label failed WCAG 1"
+      "quote": "Adversarial review (3 lenses) applied \u2014 two HIGH fixed: - cae-tag severity label failed WCAG 1"
     },
     "textarea": {
       "pr": 37,
@@ -380,19 +380,19 @@
       "paths": [
         "projects/caelum/src/lib/textarea"
       ],
-      "quote": "Adversarially reviewed (4-lens ultracode workflow; 2 MAJOR + 2 MINOR + 2 NIT fixed, each re-tested): radio empty-name collision, tooltip keyboard-inaccessibility (→ #36), select touched-only-on-open, appearance cross-file coupling, radio double-label, missing required marker."
+      "quote": "Adversarially reviewed (4-lens ultracode workflow; 2 MAJOR + 2 MINOR + 2 NIT fixed, each re-tested): radio empty-name collision, tooltip keyboard-inaccessibility (\u2192 #36), select touched-only-on-open, appearance cross-file coupling, radio double-label, missing required marker."
     },
     "timeline": {
       "pr": 670,
       "commit": "89f2560d",
       "source": "commit",
-      "quote": "Adversarial review (3 lenses) applied — two HIGH fixed: - cae-tag severity label failed WCAG 1"
+      "quote": "Adversarial review (3 lenses) applied \u2014 two HIGH fixed: - cae-tag severity label failed WCAG 1"
     },
     "toast": {
       "pr": 98,
       "commit": "48381a59",
       "source": "commit",
-      "quote": "ai/code/session_01VFguz4Q8QdTr9MGxKn8kwj * fix(toast): apply adversarial-review findings (a11y + merge robustness + test coverage) 4-lens review: 3 CONFIRMED MAJOR + 0 refuted + 5 MINOR/NIT — all appl"
+      "quote": "ai/code/session_01VFguz4Q8QdTr9MGxKn8kwj * fix(toast): apply adversarial-review findings (a11y + merge robustness + test coverage) 4-lens review: 3 CONFIRMED MAJOR + 0 refuted + 5 MINOR/NIT \u2014 all appl"
     },
     "toggle-button": {
       "pr": 74,
@@ -404,7 +404,7 @@
       "pr": 130,
       "commit": "8cb47816",
       "source": "commit",
-      "quote": "Adversarially reviewed (4-lens: a11y / api-design / arch-packaging / parity-projection): 0 BLOCKER/MAJOR (aliasing/projection/wiring verified SOLID), 11 MINOR/NIT applied — count folded into the acces"
+      "quote": "Adversarially reviewed (4-lens: a11y / api-design / arch-packaging / parity-projection): 0 BLOCKER/MAJOR (aliasing/projection/wiring verified SOLID), 11 MINOR/NIT applied \u2014 count folded into the acces"
     },
     "tooltip": {
       "pr": 37,
@@ -413,7 +413,7 @@
       "paths": [
         "projects/caelum/src/lib/tooltip"
       ],
-      "quote": "Adversarially reviewed (4-lens ultracode workflow; 2 MAJOR + 2 MINOR + 2 NIT fixed, each re-tested): radio empty-name collision, tooltip keyboard-inaccessibility (→ #36), select touched-only-on-open, appearance cross-file coupling, radio double-label, missing required marker."
+      "quote": "Adversarially reviewed (4-lens ultracode workflow; 2 MAJOR + 2 MINOR + 2 NIT fixed, each re-tested): radio empty-name collision, tooltip keyboard-inaccessibility (\u2192 #36), select touched-only-on-open, appearance cross-file coupling, radio double-label, missing required marker."
     },
     "tree": {
       "pr": 42,
@@ -440,13 +440,13 @@
       "pr": 859,
       "commit": "a577773",
       "source": "commit",
-      "quote": "Two-party adversarial review — 3 independent read-only lenses (correctness/state, a11y/modality, test-oracle integrity). Verdict: SOLID-with-gaps — 9 HIGH, 15 MED, 13 LOW; every HIGH fixed here or ticketed, 4 filed as #855/#856/#857/#858."
+      "quote": "Two-party adversarial review \u2014 3 independent read-only lenses (correctness/state, a11y/modality, test-oracle integrity). Verdict: SOLID-with-gaps \u2014 9 HIGH, 15 MED, 13 LOW; every HIGH fixed here or ticketed, 4 filed as #855/#856/#857/#858."
     },
     "alert": {
       "pr": 867,
       "commit": "2a91731",
       "source": "commit",
-      "quote": "Two-party adversarial review — 3 independent read-only lenses (correctness/state, a11y/live-region semantics, test-oracle integrity). Verdict: SOLID-with-gaps — 5 HIGH, 12 MED, 8 LOW; every HIGH fixed here, 4 deferred as #863/#864/#865/#866."
+      "quote": "Two-party adversarial review \u2014 3 independent read-only lenses (correctness/state, a11y/live-region semantics, test-oracle integrity). Verdict: SOLID-with-gaps \u2014 5 HIGH, 12 MED, 8 LOW; every HIGH fixed here, 4 deferred as #863/#864/#865/#866."
     }
   }
 }
