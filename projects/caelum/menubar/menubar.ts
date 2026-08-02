@@ -147,10 +147,14 @@ export class MenubarTriggerItem implements FocusableOption {
  * every change detection, which is not worth it at menubar scale.
  *
  * **The two-branch template** (D-859). A dead group's button is stamped in its own `@if` arm rather
- * than switched by a binding, because it cannot be one button: `MatMenuTrigger` host-binds
- * `attr.aria-expanded` to `menuOpen` **unconditionally** — only `aria-haspopup` is nulled by a null
- * menu — so a dead trigger would still announce as a collapsed disclosure. (Whether `CaeMenuTrigger`
- * could host-bind that away and retire the branch outright is unmeasured — #993.) Prose lives here
+ * than switched by a binding, because `MatMenuTrigger` host-binds `attr.aria-expanded` to `menuOpen`
+ * **unconditionally** — only `aria-haspopup` is nulled by a null menu — so a trigger left attached
+ * would still announce as a collapsed disclosure. **That does not make it impossible as one button,
+ * which is what this doc asserted until #993 compiled it:** a directive's own `host` binding
+ * out-ranks its `hostDirectives`' binding, so `CaeMenuTrigger` can null both attributes itself. The
+ * branch here is a shipped implementation detail, not a forced one, and collapses under #998. (The
+ * discriminator cannot be the panel — `cae-menu` stamps `<mat-menu>` unconditionally, so a dead
+ * trigger's `menu` is never null; PATTERNS §4 has the routes that do not work.) Prose lives here
  * rather than in the template because template comments are string content of the `template:`
  * literal and ship in the FESM, while JSDoc is free (PATTERNS §15).
  *

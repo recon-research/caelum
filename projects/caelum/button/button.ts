@@ -49,6 +49,11 @@ export type CaeButtonVariant = 'filled' | 'tonal' | 'elevated' | 'outlined' | 't
   // is bound. MatMenuTrigger binds `aria-expanded` unconditionally (`"false"` when closed), so an
   // always-present trigger would announce every plain button as a collapsed disclosure — the
   // opt-in branch keeps plain buttons clean. Keep the two <button>s' shared bindings in sync.
+  // #993 measured the escape route and it does NOT reach this site as-is: a template `[attr.*]`
+  // binding LOSES to a directive's host binding, and this component stamps MatMenuTrigger directly
+  // rather than through a Caelum directive. Collapsing here needs its own composing directive
+  // (hostDirectives, NOT a sibling — sibling precedence measured as `imports`-order dependent).
+  // That is #998; it also pays #992's strand. PATTERNS §4 carries the measurement.
   template: `
     @if (menuTriggerFor()) {
       <button

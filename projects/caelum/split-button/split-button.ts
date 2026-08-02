@@ -59,9 +59,11 @@ import {
  *
  * **The two-branch template** (D-859). The toggle's dead arm is stamped separately rather than
  * switched by a binding, because `MatMenuTrigger` host-binds `attr.aria-expanded` to `menuOpen`
- * **unconditionally** — only `aria-haspopup` is nulled by a null menu — so one button would still
- * announce as a collapsed disclosure. (#993 asks whether `CaeMenuTrigger` could bind that away and
- * retire the branch at all three sites.) Prose lives here rather than in the template: template
+ * **unconditionally** — only `aria-haspopup` is nulled by a null menu — so a trigger left attached
+ * would still announce as a collapsed disclosure. **#993 compiled the question this doc used to beg:
+ * one button IS reachable** — a directive's own `host` binding out-ranks its `hostDirectives`'
+ * binding, so `CaeMenuTrigger` can null both attributes itself. The branch here is a shipped
+ * implementation detail, not a forced one, and collapses under #998. Prose lives here rather than in the template: template
  * comments ship in the FESM, JSDoc does not (PATTERNS §15). Unlike `cae-menubar`'s triggers this
  * toggle is **not** inside a `@for`, so the arm swap is the *only* thing that destroys it — which
  * makes this the component where the two-branch focus strand is genuinely isolable.
