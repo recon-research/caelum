@@ -951,14 +951,24 @@ describe('App', () => {
     expect(bar).not.toBeNull();
 
     // The demo's #961 contrast, asserted rather than merely present: `Admin` carries no `disabled`
-    // flag anywhere on it, yet its trigger is disabled because nothing behind it is reachable —
-    // while `File` stays live. Without this the group could be deleted, or made live, or the rule
+    // flag anywhere on it, yet its trigger is dead because nothing behind it is reachable — while
+    // `File` stays live. Without this the group could be deleted, or made live, or the rule
     // reverted to the empty-only check, and the Forge suite would not notice.
+    //
+    // Read through `aria-disabled`, not the native property: under D-859 a dead trigger is
+    // `aria-disabled` and stays focusable (so it cannot strand focus), and carries no popup — the
+    // native attribute is gone, so `b.disabled` is now false for every trigger on the bar.
     const state = Array.from(bar!.querySelectorAll('button')).map(
-      (b) => [b.textContent!.trim(), b.disabled] as const,
+      (b) => [b.textContent!.trim(), b.getAttribute('aria-disabled') === 'true'] as const,
     );
     expect(state).toContainEqual(['Admin', true]);
     expect(state).toContainEqual(['File', false]);
+    // The rest of the D-859 contract on the live demo, not just the flag.
+    const admin = Array.from(bar!.querySelectorAll('button')).find(
+      (b) => b.textContent!.trim() === 'Admin',
+    )!;
+    expect(admin.hasAttribute('disabled')).toBe(false);
+    expect(admin.hasAttribute('aria-haspopup')).toBe(false);
     const app = fixture.componentInstance;
     expect(app['commandLog']().length).toBe(0);
 

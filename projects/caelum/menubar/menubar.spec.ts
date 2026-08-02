@@ -65,10 +65,31 @@ describe('CaeMenubar', () => {
   // rule itself (`:host { display: none }`, measured in menu.browser.spec.ts at 48px vs 24px), so
   // the local copy was removed rather than kept as a second home for the same fact.
   const triggers = () => Array.from(el.querySelectorAll('button'));
+  // NB (D-859): indexes the LIVE triggers, not the groups — a dead group stamps no CaeMenuTrigger
+  // at all, so with a dead group ahead of it, group N is NOT menuTriggerAt(N). Use it only on
+  // all-live models; anywhere else, drive the bar by keyboard.
   const menuTriggerAt = (i: number): CaeMenuTrigger =>
     fixture.debugElement.queryAll(By.directive(CaeMenuTrigger))[i].injector.get(CaeMenuTrigger);
   const menuItems = (): HTMLElement[] =>
     Array.from(document.querySelectorAll<HTMLElement>('[mat-menu-item]'));
+
+  // D-859: a dead trigger is `aria-disabled` — focusable, so it cannot strand focus — and
+  // advertises NO popup, rendering exactly as a dead row does under D-856. Assert the whole
+  // contract in one place: checking `.disabled` alone would now silently pass for a live trigger,
+  // since no trigger carries the native attribute any more.
+  const expectDead = (button: HTMLButtonElement): void => {
+    expect(button.hasAttribute('disabled')).toBe(false); // native disabled blurs to <body>
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    expect(button.hasAttribute('aria-haspopup')).toBe(false);
+    expect(button.hasAttribute('aria-expanded')).toBe(false);
+  };
+  const expectLive = (button: HTMLButtonElement): void => {
+    expect(button.hasAttribute('disabled')).toBe(false);
+    expect(button.hasAttribute('aria-disabled')).toBe(false);
+    expect(button.getAttribute('aria-haspopup')).toBe('menu');
+  };
+  const isLive = (button: HTMLButtonElement): boolean =>
+    button.getAttribute('aria-disabled') !== 'true';
 
   // Dispatch a keydown carrying a CDK keyCode (KeyboardEvent init has no keyCode field, so define
   // it) on the menubar; it bubbles to the toolbar's (keydown) → FocusKeyManager.
@@ -198,7 +219,7 @@ describe('CaeMenubar', () => {
         { label: 'Empty', items: [] },
       ] satisfies CaeMenubarItem[],
     });
-    expect(triggers()[1].disabled).toBe(true);
+    expectDead(triggers()[1]);
   });
 
   // --- Nothing-reachable groups (#961) -------------------------------------------------------
@@ -215,8 +236,8 @@ describe('CaeMenubar', () => {
         { label: 'Locked', items: [{ value: 'a', label: 'A', disabled: true }] },
       ] satisfies CaeMenubarItem[],
     });
-    expect(triggers()[1].disabled).toBe(true);
-    expect(triggers()[0].disabled).toBe(false); // and it does not over-disable
+    expectDead(triggers()[1]);
+    expectLive(triggers()[0]); // and it does not over-disable
   });
 
   it('treats a TRANSITIVELY dead group as disabled — deadness is not a one-level question (#962)', async () => {
@@ -240,7 +261,7 @@ describe('CaeMenubar', () => {
         },
       ] satisfies CaeMenubarItem[],
     });
-    expect(triggers()[1].disabled).toBe(true);
+    expectDead(triggers()[1]);
   });
 
   it('leaves a group ENABLED when something deep under it is still reachable', async () => {
@@ -267,7 +288,7 @@ describe('CaeMenubar', () => {
         },
       ] satisfies CaeMenubarItem[],
     });
-    expect(triggers()[0].disabled).toBe(false);
+    expectLive(triggers()[0]);
   });
 
   it('treats a group whose only item is a DISABLED BRANCH as disabled', async () => {
@@ -284,24 +305,24 @@ describe('CaeMenubar', () => {
         },
       ] satisfies CaeMenubarItem[],
     });
-    expect(triggers()[1].disabled).toBe(true);
+    expectDead(triggers()[1]);
   });
 
   it('re-evaluates the verdict when the model changes on a LIVE instance', async () => {
     // Every other arm builds a fresh fixture and reads the state once, so a one-shot latch would
     // pass all of them. This is the arm that requires the verdict to be reactive.
     await setup({ model: [{ label: 'File', items: [{ value: 'new', label: 'New' }] }] });
-    expect(triggers()[0].disabled).toBe(false);
+    expectLive(triggers()[0]);
     ref.setInput('model', [
       { label: 'File', items: [{ value: 'new', label: 'New', disabled: true }] },
     ] satisfies CaeMenubarItem[]);
     await flush();
-    expect(triggers()[0].disabled).toBe(true);
+    expectDead(triggers()[0]);
     ref.setInput('model', [
       { label: 'File', items: [{ value: 'new', label: 'New' }] },
     ] satisfies CaeMenubarItem[]);
     await flush();
-    expect(triggers()[0].disabled).toBe(false);
+    expectLive(triggers()[0]);
   });
 
   it('keeps a tab stop when the model arrives AFTER init and group 0 is dead', async () => {
@@ -317,7 +338,7 @@ describe('CaeMenubar', () => {
       { label: 'File', items: [{ value: 'new', label: 'New' }] },
     ] satisfies CaeMenubarItem[]);
     await flush();
-    expect(triggers().filter((b) => !b.disabled && b.tabIndex === 0).length).toBe(1);
+    expect(triggers().filter((b) => isLive(b) && b.tabIndex === 0).length).toBe(1);
     expect(triggers()[1].tabIndex).toBe(0); // and it is the live one
   });
 
@@ -337,7 +358,7 @@ describe('CaeMenubar', () => {
         { label: 'Gated', items: [] },
       ] satisfies CaeMenubarItem[],
     });
-    expect(triggers().every((b) => b.disabled)).toBe(true); // the precondition, asserted
+    triggers().forEach(expectDead); // the precondition, asserted
     keydown(DOWN_ARROW);
     await flush();
     expect(menuItems()).toEqual([]);
@@ -360,41 +381,56 @@ describe('CaeMenubar', () => {
       });
       // The cycle break makes `Loop` a disabled leaf, which leaves its group with nothing
       // reachable — the transitive rule reaching a case the all-disabled arm cannot produce.
-      expect(triggers()[1].disabled).toBe(true);
+      expectDead(triggers()[1]);
     } finally {
       warn.mockRestore();
     }
   });
 
-  it('skips a nothing-reachable group when roving, and Down cannot open it', async () => {
-    // #961's own acceptance bullet: `disabledGroup` feeds BOTH [menubarDisabled] (the key
-    // manager's skipPredicate) and [disabled] (the DOM), so a dead group must be unreachable by
-    // keyboard, not merely greyed. Dead group FIRST, so ngAfterViewInit's "first enabled trigger"
-    // seed is what puts roving on File — and Down then opens File's panel, never Locked's.
-    await setup({
-      model: [
-        { label: 'Locked', items: [{ value: 'a', label: 'A', disabled: true }] },
-        { label: 'File', items: [{ value: 'new', label: 'New' }] },
-        { label: 'View', items: [{ value: 'zoom', label: 'Zoom' }] },
-      ] satisfies CaeMenubarItem[],
-    });
-    expect(triggers()[0].disabled).toBe(true);
-    expect(triggers()[1].tabIndex).toBe(0); // roving seeded past the dead group, not onto it
+  // The two arms below were INVERTED by D-859. Until then `disabledGroup` fed the key manager's
+  // skip predicate, so a dead group was unreachable by keyboard entirely — a user arrowing along
+  // the bar could not learn it existed. It is now roved onto and announces itself unavailable;
+  // only OPENING is refused. The seed still prefers a live group, so nothing lands you on a dead
+  // one without arrowing there yourself.
+
+  const DEAD_FIRST: CaeMenubarItem[] = [
+    { label: 'Locked', items: [{ value: 'a', label: 'A', disabled: true }] },
+    { label: 'File', items: [{ value: 'new', label: 'New' }] },
+    { label: 'View', items: [{ value: 'zoom', label: 'Zoom' }] },
+  ];
+
+  it('seeds roving PAST a dead group, so Down opens the first live one', async () => {
+    // Dead group FIRST, so ngAfterViewInit's "first enabled trigger" seed is what puts roving on
+    // File — and Down then opens File's panel, never Locked's.
+    await setup({ model: DEAD_FIRST });
+    expectDead(triggers()[0]);
+    expect(triggers()[1].tabIndex).toBe(0); // seeded onto the first LIVE group
 
     keydown(DOWN_ARROW);
     await flush();
     expect(menuItems().map((r) => r.textContent!.trim())).toEqual(['New']);
-
-    // And roving from the last trigger wraps PAST the dead one rather than landing on it.
-    keydown(RIGHT_ARROW); // 1 -> 2
-    await flush();
-    keydown(RIGHT_ARROW); // 2 -> wrap, skipping dead 0 -> back to 1
-    await flush();
-    expect(triggers()[1].tabIndex).toBe(0);
-    expect(triggers()[0].tabIndex).toBe(-1);
   });
 
-  it('skips a disabled group when roving', async () => {
+  it('roves ONTO a dead group when wrapping, and still refuses to open it (D-859)', async () => {
+    await setup({ model: DEAD_FIRST });
+    expect(triggers()[1].tabIndex).toBe(0); // the seed, restated as this arm's precondition
+
+    keydown(RIGHT_ARROW); // 1 -> 2
+    await flush();
+    keydown(RIGHT_ARROW); // 2 -> wrap -> 0, the DEAD group (pre-D-859 this returned to 1)
+    await flush();
+    expect(triggers()[0].tabIndex).toBe(0);
+    expect(triggers()[1].tabIndex).toBe(-1);
+
+    // Reachable, but inert: the guard in onKeydown, and no CaeMenuTrigger on the dead branch to
+    // call even if the guard were dropped.
+    keydown(DOWN_ARROW);
+    await flush();
+    expect(menuItems()).toEqual([]);
+    expect(document.activeElement?.getAttribute('role')).not.toBe('menu');
+  });
+
+  it('roves onto an explicitly disabled group too, not only a nothing-reachable one (D-859)', async () => {
     await setup({
       model: [
         { label: 'File', items: [{ value: 'new', label: 'New' }] },
@@ -402,10 +438,99 @@ describe('CaeMenubar', () => {
         { label: 'View', items: [{ value: 'zoom', label: 'Zoom' }] },
       ] satisfies CaeMenubarItem[],
     });
-    keydown(RIGHT_ARROW); // 0 -> (skip disabled 1) -> 2
+    keydown(RIGHT_ARROW); // 0 -> 1, the disabled group (pre-D-859 this skipped straight to 2)
     await flush();
-    expect(triggers()[2].tabIndex).toBe(0);
-    expect(triggers()[1].disabled).toBe(true);
+    expect(triggers()[1].tabIndex).toBe(0);
+    expectDead(triggers()[1]);
+  });
+
+  it('keeps focus on a group whose trigger goes dead — the swap must not strand it (#977/D-859)', async () => {
+    // The async-permissions shape: the bar is already focused when the model resolves and one group
+    // turns out to have nothing behind it.
+    //
+    // #977 predicted this arm would have to be browser-only, because the strand it described came
+    // from a browser blurring a natively-disabled element — which jsdom does not do. D-859 changed
+    // the mechanism: a dead trigger is `aria-disabled`, never natively disabled, so nothing blurs
+    // it. What stranded focus instead is the two-branch template DESTROYING the focused button to
+    // build its replacement, and element removal IS modelled by jsdom. So the claim moved layers
+    // and this belongs in the unit suite after all.
+    await setup({
+      model: [
+        { label: 'File', items: [{ value: 'new', label: 'New' }] },
+        { label: 'Edit', items: [{ value: 'cut', label: 'Cut' }] },
+      ] satisfies CaeMenubarItem[],
+    });
+    const before = triggers()[1];
+    before.focus();
+    expect(document.activeElement).toBe(before);
+
+    ref.setInput('model', [
+      { label: 'File', items: [{ value: 'new', label: 'New' }] },
+      { label: 'Edit', items: [{ value: 'cut', label: 'Cut', disabled: true }] },
+    ] satisfies CaeMenubarItem[]);
+    await flush();
+
+    const after = triggers()[1];
+    // Vacuity guard: the swap must actually have happened, or this arm grades nothing. Without it a
+    // template that kept ONE button would pass while testing no branch swap at all.
+    expect(after).not.toBe(before);
+    expect(before.isConnected).toBe(false);
+    expectDead(after);
+    // …and focus followed the group rather than falling to <body> — WCAG 2.4.3.
+    expect(document.activeElement).toBe(after);
+    expect(after.tabIndex).toBe(0); // roving followed focus, so Tab does not re-enter elsewhere
+  });
+
+  it('does NOT steal focus back when the user left the bar before the swap (#977)', async () => {
+    // The other half of the gate. `activeElement === body` alone cannot tell "our button was
+    // destroyed" from "the user clicked the page background", and restoring in the second case is
+    // a steal. Focus a trigger, leave the bar, then flip the model.
+    await setup({
+      model: [
+        { label: 'File', items: [{ value: 'new', label: 'New' }] },
+        { label: 'Edit', items: [{ value: 'cut', label: 'Cut' }] },
+      ] satisfies CaeMenubarItem[],
+    });
+    const outside = document.createElement('button');
+    document.body.appendChild(outside);
+    try {
+      triggers()[1].focus();
+      outside.focus();
+      expect(document.activeElement).toBe(outside);
+
+      ref.setInput('model', [
+        { label: 'File', items: [{ value: 'new', label: 'New' }] },
+        { label: 'Edit', items: [{ value: 'cut', label: 'Cut', disabled: true }] },
+      ] satisfies CaeMenubarItem[]);
+      await flush();
+
+      expect(document.activeElement).toBe(outside); // still outside; the bar did not grab it back
+    } finally {
+      outside.remove();
+    }
+  });
+
+  it('keeps the two D-859 branches identical apart from the trigger (two-branch parity)', async () => {
+    // The arms are duplicated markup and only caeMenuTriggerFor may differ between them. Every
+    // other arm in this file exercises one arm or the other, never both against each other, so a
+    // dropped class, a lost type="button" or a missing role would ship in silence — the same
+    // hazard cae-button's own two-branch parity arm exists to catch.
+    await setup({
+      model: [
+        { label: 'File', items: [{ value: 'new', label: 'New' }] },
+        { label: 'Locked', items: [] },
+      ] satisfies CaeMenubarItem[],
+    });
+    const [live, dead] = triggers();
+    expect(live.classList).toContain('cae-menubar__item');
+    expect(dead.classList).toContain('cae-menubar__item');
+    expect(dead.type).toBe(live.type); // type="button" — a bare matButton submits (#148)
+    expect(dead.getAttribute('role')).toBe(live.getAttribute('role')); // menuitem, from the directive
+    expect(dead.hasAttribute('tabindex')).toBe(live.hasAttribute('tabindex')); // roving on both
+    expect(dead.textContent!.trim()).toBe('Locked'); // the label still renders in the dead arm
+    // …and the ONE sanctioned difference.
+    expect(live.getAttribute('aria-haspopup')).toBe('menu');
+    expect(dead.hasAttribute('aria-haspopup')).toBe(false);
   });
 
   it('opens a group dropdown and renders one menu item per entry', async () => {

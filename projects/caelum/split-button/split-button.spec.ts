@@ -50,6 +50,23 @@ describe('CaeSplitButton', () => {
   const buttons = () => Array.from(el.querySelectorAll('button'));
   const primary = () => buttons()[0];
   const toggle = () => buttons()[1];
+
+  // D-859: a dead TOGGLE is `aria-disabled` — focusable, so it cannot strand focus — and advertises
+  // no popup, rendering as a dead row does under D-856. Asserted as a whole because `.disabled`
+  // alone would now pass for a live toggle too: no toggle carries the native attribute any more.
+  // The PRIMARY button is untouched — it is a command, not a menu trigger, so it stays natively
+  // disabled and its arms below still read `.disabled`.
+  const expectDeadToggle = (): void => {
+    expect(toggle().hasAttribute('disabled')).toBe(false); // native disabled blurs to <body>
+    expect(toggle().getAttribute('aria-disabled')).toBe('true');
+    expect(toggle().hasAttribute('aria-haspopup')).toBe(false);
+    expect(toggle().hasAttribute('aria-expanded')).toBe(false);
+  };
+  const expectLiveToggle = (): void => {
+    expect(toggle().hasAttribute('disabled')).toBe(false);
+    expect(toggle().hasAttribute('aria-disabled')).toBe(false);
+    expect(toggle().getAttribute('aria-haspopup')).toBe('menu');
+  };
   const trigger = (): CaeMenuTrigger =>
     fixture.debugElement.query(By.directive(CaeMenuTrigger)).injector.get(CaeMenuTrigger);
   const menuItems = (): HTMLElement[] =>
@@ -91,6 +108,64 @@ describe('CaeSplitButton', () => {
     expect(toggle().type).toBe('button');
   });
 
+  it('keeps the two D-859 toggle branches identical apart from the trigger (two-branch parity)', async () => {
+    // Duplicated markup: only caeMenuTriggerFor may differ. Nothing else compares the arms.
+    await setup({ model: [{ value: 'a', label: 'Alpha' }] satisfies CaeMenuItem[] });
+    const liveToggle = toggle();
+    const liveClass = liveToggle.className;
+    const liveLabel = liveToggle.getAttribute('aria-label');
+    const liveChevron = liveToggle.querySelector('.cae-split-button__chevron') !== null;
+    expectLiveToggle();
+
+    ref.setInput('model', [{ value: 'a', label: 'Alpha', disabled: true }] satisfies CaeMenuItem[]);
+    await flush();
+
+    const deadToggle = toggle();
+    expect(deadToggle).not.toBe(liveToggle); // the arms really did swap
+    expect(deadToggle.type).toBe('button');
+    expect(deadToggle.getAttribute('aria-label')).toBe(liveLabel);
+    expect(deadToggle.querySelector('.cae-split-button__chevron') !== null).toBe(liveChevron);
+    expect(deadToggle.classList).toContain('cae-split-button__toggle');
+    expect(liveClass).toContain('cae-split-button__toggle');
+    expectDeadToggle();
+  });
+
+  it('keeps focus on the toggle when it goes dead — the swap must not strand it (#977/D-859)', async () => {
+    // Same shape as cae-menubar's arm: D-859 two-branches the toggle, so going dead DESTROYS the
+    // focused button and builds its replacement. The strand is element removal, not a
+    // natively-disabled blur, which is why jsdom can grade it (#977 predicted browser-only).
+    await setup({ model: [{ value: 'a', label: 'Alpha' }] satisfies CaeMenuItem[] });
+    const before = toggle();
+    before.focus();
+    expect(document.activeElement).toBe(before);
+
+    ref.setInput('model', [{ value: 'a', label: 'Alpha', disabled: true }] satisfies CaeMenuItem[]);
+    await flush();
+
+    const after = toggle();
+    expect(after).not.toBe(before); // vacuity guard: the swap really happened
+    expect(before.isConnected).toBe(false);
+    expectDeadToggle();
+    expect(document.activeElement).toBe(after); // WCAG 2.4.3 — not <body>
+  });
+
+  it('does NOT steal focus back when the user left the control before the swap (#977)', async () => {
+    await setup({ model: [{ value: 'a', label: 'Alpha' }] satisfies CaeMenuItem[] });
+    const outside = document.createElement('button');
+    document.body.appendChild(outside);
+    try {
+      toggle().focus();
+      outside.focus();
+      ref.setInput('model', [
+        { value: 'a', label: 'Alpha', disabled: true },
+      ] satisfies CaeMenuItem[]);
+      await flush();
+      expect(document.activeElement).toBe(outside);
+    } finally {
+      outside.remove();
+    }
+  });
+
   it('lets the primary opt into type=submit while the toggle stays type=button', async () => {
     await setup({ type: 'submit' });
     expect(primary().type).toBe('submit');
@@ -113,12 +188,12 @@ describe('CaeSplitButton', () => {
   it('disables both halves when [disabled]', async () => {
     await setup({ disabled: true });
     expect(primary().disabled).toBe(true);
-    expect(toggle().disabled).toBe(true);
+    expectDeadToggle();
   });
 
   it('disables only the toggle when the model is empty (no dead-end empty menu)', async () => {
     await setup({ model: [] });
-    expect(toggle().disabled).toBe(true);
+    expectDeadToggle();
     expect(primary().disabled).toBe(false);
   });
 
@@ -137,7 +212,7 @@ describe('CaeSplitButton', () => {
         { value: 'draft', label: 'Save as draft', disabled: true },
       ] satisfies CaeMenuItem[],
     });
-    expect(toggle().disabled).toBe(true);
+    expectDeadToggle();
     expect(primary().disabled).toBe(false);
   });
 
@@ -153,7 +228,7 @@ describe('CaeSplitButton', () => {
         },
       ] satisfies CaeMenuItem[],
     });
-    expect(toggle().disabled).toBe(true);
+    expectDeadToggle();
   });
 
   it('leaves the toggle ENABLED when something deep in the model is reachable', async () => {
@@ -175,7 +250,7 @@ describe('CaeSplitButton', () => {
         },
       ] satisfies CaeMenuItem[],
     });
-    expect(toggle().disabled).toBe(false);
+    expectLiveToggle();
   });
 
   it('disables the toggle when the only item is a DISABLED BRANCH', async () => {
@@ -187,20 +262,20 @@ describe('CaeSplitButton', () => {
         { label: 'Locked', disabled: true, items: [{ value: 'a', label: 'A' }] },
       ] satisfies CaeMenuItem[],
     });
-    expect(toggle().disabled).toBe(true);
+    expectDeadToggle();
   });
 
   it('re-evaluates the verdict when the model changes on a LIVE instance', async () => {
     // Every other arm builds a fresh fixture and reads the state once, so a one-shot latch would
     // pass all of them. This is the arm that requires the verdict to be reactive.
     await setup({ model: [{ value: 'a', label: 'A' }] satisfies CaeMenuItem[] });
-    expect(toggle().disabled).toBe(false);
+    expectLiveToggle();
     ref.setInput('model', [{ value: 'a', label: 'A', disabled: true }] satisfies CaeMenuItem[]);
     await flush();
-    expect(toggle().disabled).toBe(true);
+    expectDeadToggle();
     ref.setInput('model', [{ value: 'a', label: 'A' }] satisfies CaeMenuItem[]);
     await flush();
-    expect(toggle().disabled).toBe(false);
+    expectLiveToggle();
   });
 
   it('disables the toggle when the model is cyclic — not a finite graph (#877)', async () => {
@@ -214,7 +289,7 @@ describe('CaeSplitButton', () => {
       await setup({ model: [loop as CaeMenuItem] });
       // The cycle break makes `Loop` a disabled leaf, leaving the model with nothing reachable —
       // a dead end the all-disabled arm cannot produce, since no item here is marked disabled.
-      expect(toggle().disabled).toBe(true);
+      expectDeadToggle();
     } finally {
       warn.mockRestore();
     }
