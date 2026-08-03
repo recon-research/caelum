@@ -2,7 +2,9 @@ import {
   booleanAttribute,
   ChangeDetectionStrategy,
   Component,
+  Directive,
   effect,
+  inject,
   input,
   signal,
 } from '@angular/core';
@@ -13,6 +15,60 @@ import type { CaeMenuPanelHost, CaeTooltipPosition } from '@recon-research/caelu
 
 /** Appearance variants Caelum surfaces — 1:1 with Material's `matButton`. */
 export type CaeButtonVariant = 'filled' | 'tonal' | 'elevated' | 'outlined' | 'text';
+
+/**
+ * The internal seam that lets `cae-button` render **one** `<button>` instead of two arms (#992).
+ * Composes `MatMenuTrigger` as a *host directive* and re-binds the one ARIA attribute that would
+ * otherwise announce every plain button as a collapsed disclosure. Exported only so Angular accepts
+ * it in {@link CaeButton}'s `imports`; deliberately kept out of `public-api.ts` (a consumer binds
+ * `cae-button`'s `menuTriggerFor` input and never names a Material type — D-01/D-02).
+ *
+ * **Why `hostDirectives` and not a sibling directive.** A directive's own `host` block is applied
+ * *after* its `hostDirectives`', so this binding out-ranks the composed `MatMenuTrigger`'s for the
+ * same attribute — an ordering the framework constructs from the host-directive index block. The
+ * two cheaper-looking routes both fail here: a template `[attr.aria-expanded]` binding **loses** to
+ * a directive's host binding, and a *sibling* directive wins only by `tView.directiveRegistry`
+ * order, which flips when the `imports` array is reordered. Measured on a throwaway branch, not
+ * assumed (#993; `docs/PATTERNS.md` §4 carries the table).
+ *
+ * **This is deliberately smaller than `caeMenuTriggerFor`, and the asymmetry is the finding.** That
+ * one overrides *two* attributes, guards `open()`/`toggle()`, and closes an open panel when it goes
+ * dead. None of those are needed here, because there deadness is a separate input and `trigger.menu`
+ * is *never* null (`cae-menu` stamps its `<mat-menu>` unconditionally, #993/D-859), whereas here the
+ * panel **is** the discriminator. Each was written first and then measured away:
+ * - `aria-haspopup` — Material's own `menu ? "menu" : null` already yields the right value in both
+ *   states. Note *why* an override is not merely redundant: these bindings write through per-slot
+ *   change detection, so a duplicate only wins on ticks where **its own** value changed, and never
+ *   restores what the 3p's later write removed. Copying the menu family's host block over here
+ *   would be a silent regression, not a simplification.
+ * - `aria-controls` (`menuOpen ? menu?.panelId : null`) can never fire on a trigger that cannot open.
+ * - closing an open panel on unbind — `MatMenuTriggerBase`'s `_menu` setter already calls
+ *   `_destroyMenu()` when set to null (`menu.mjs`, the `else` branch). The menu family cannot reach
+ *   that path, which is exactly why it must close by hand.
+ *
+ * Each removal was confirmed by mutation, not by reading: deleting the guard changed no assertion.
+ * The behaviours are still pinned by `button.spec.ts` — they are Material's to provide now, so the
+ * arms are what would catch a Material change taking them away.
+ *
+ * The static `mat-mdc-menu-trigger` class now lands on every `cae-button` — Material ships no rules
+ * for it (it is an integration hook, not a style hook), and nothing in this repo selects on it.
+ */
+@Directive({
+  selector: '[caeButtonMenuTriggerFor]',
+  // The panel arrives through the composed trigger's own input, re-exposed under a Caelum name.
+  // Re-exposing it as `matMenuTriggerFor` would work identically and read as a Material binding in
+  // the template — an invitation to "tidy up" by adding MatMenuTrigger to the component's
+  // `imports`, which would make it a SIBLING and hand precedence to `imports` order (#993).
+  hostDirectives: [
+    { directive: MatMenuTrigger, inputs: ['matMenuTriggerFor: caeButtonMenuTriggerFor'] },
+  ],
+  host: {
+    '[attr.aria-expanded]': 'trigger.menu ? trigger.menuOpen : null',
+  },
+})
+export class CaeButtonMenuTrigger {
+  protected readonly trigger = inject(MatMenuTrigger);
+}
 
 /**
  * `cae-button` — the Direct (1:1) wrapper over Material's `matButton`
@@ -39,50 +95,35 @@ export type CaeButtonVariant = 'filled' | 'tonal' | 'elevated' | 'outlined' | 't
  * `<button>`** — the natural `<p-menu>` + `<p-button>` → `<cae-menu>` + `<cae-button
  * [menuTriggerFor]>` swap. Bind a `cae-menu` instance directly; the button never names a Material
  * type (it reads the panel through the {@link CaeMenuPanelHost} seam). With no menu bound the
- * trigger is not applied at all (a plain button carries no spurious `aria-expanded`).
+ * trigger is attached but **silent** — no `aria-haspopup`, no `aria-expanded`, no `aria-controls`,
+ * and nothing to open — so a plain button is announced as a plain button
+ * ({@link CaeButtonMenuTrigger}, #992).
  */
 @Component({
   selector: 'cae-button',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MatButtonModule, MatTooltipModule, MatMenuTrigger],
-  // Two branches, identical but for `matMenuTriggerFor`: the trigger is applied ONLY when a menu
-  // is bound. MatMenuTrigger binds `aria-expanded` unconditionally (`"false"` when closed), so an
-  // always-present trigger would announce every plain button as a collapsed disclosure — the
-  // opt-in branch keeps plain buttons clean. Keep the two <button>s' shared bindings in sync.
-  // #993 measured the escape route and it does NOT reach this site as-is: a template `[attr.*]`
-  // binding LOSES to a directive's host binding, and this component stamps MatMenuTrigger directly
-  // rather than through a Caelum directive. Collapsing here needs its own composing directive
-  // (hostDirectives, NOT a sibling — sibling precedence measured as `imports`-order dependent).
-  // That is #998; it also pays #992's strand. PATTERNS §4 carries the measurement.
+  imports: [MatButtonModule, MatTooltipModule, CaeButtonMenuTrigger],
+  // ONE button. The trigger is always attached and announces nothing until a menu is bound — see
+  // CaeButtonMenuTrigger for why that needs a composing directive rather than a template binding.
+  // This was two arms, identical but for `matMenuTriggerFor`, because Material binds `aria-expanded`
+  // unconditionally (`"false"` when closed) and every plain button would have read as a collapsed
+  // disclosure. The arms were also an element swap: flipping `menuTriggerFor` live→unbound destroyed
+  // the focused <button> and built its replacement in the other arm, stranding focus on <body>
+  // (WCAG 2.4.3, #992). One element cannot be swapped, so the strand goes with the branch.
   template: `
-    @if (menuTriggerFor()) {
-      <button
-        [matButton]="variant()"
-        [type]="type()"
-        [disabled]="disabled()"
-        [disabledInteractive]="disabledInteractive()"
-        [matTooltip]="tooltip()"
-        [matTooltipPosition]="tooltipPosition()"
-        [matTooltipDisabled]="!tooltip()"
-        [attr.aria-label]="ariaLabel() || null"
-        [matMenuTriggerFor]="menuPanel()"
-      >
-        <ng-content />
-      </button>
-    } @else {
-      <button
-        [matButton]="variant()"
-        [type]="type()"
-        [disabled]="disabled()"
-        [disabledInteractive]="disabledInteractive()"
-        [matTooltip]="tooltip()"
-        [matTooltipPosition]="tooltipPosition()"
-        [matTooltipDisabled]="!tooltip()"
-        [attr.aria-label]="ariaLabel() || null"
-      >
-        <ng-content />
-      </button>
-    }
+    <button
+      [matButton]="variant()"
+      [type]="type()"
+      [disabled]="disabled()"
+      [disabledInteractive]="disabledInteractive()"
+      [matTooltip]="tooltip()"
+      [matTooltipPosition]="tooltipPosition()"
+      [matTooltipDisabled]="!tooltip()"
+      [attr.aria-label]="ariaLabel() || null"
+      [caeButtonMenuTriggerFor]="menuPanel()"
+    >
+      <ng-content />
+    </button>
   `,
   styles: `
     :host {
