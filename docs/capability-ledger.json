@@ -41,13 +41,13 @@
       "quote": "Adversarial review found four real defects, all fixed and mutation-tested: - The decision had to move to the BUBBLED host click"
     },
     "button": {
-      "pr": 30,
-      "commit": "148b026",
+      "pr": 1006,
+      "commit": "b84e969",
       "source": "commit",
       "paths": [
         "projects/caelum/src/lib/button"
       ],
-      "quote": "Adversarially reviewed (4-lens ultracode workflow: cva-forms/api-design/a11y/ arch-consistency); 0 BLOCKER, 2 MAJOR + 4 MINOR fixed and re-tested."
+      "quote": "The review found the slice's own headline attribute ungraded, and two more\nsurvivors, each confirmed by RUNNING the proposed mutation rather than reading it:"
     },
     "card": {
       "pr": 30,
