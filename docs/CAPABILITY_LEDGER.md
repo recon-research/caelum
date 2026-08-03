@@ -57,7 +57,7 @@ failed re-review gets recorded.
 | `badge` | adversarial-passed | ☑ | ☑ | — | — | PR #130 · `8cb47816` |
 | `breadcrumb` | adversarial-passed | ☑ | ☑ | — | — | PR #334 · `323efe6e` |
 | `breadcrumb-router` | adversarial-passed | ☑ | ☑ | — | — | PR #654 · `6592b4ba` |
-| `button` | adversarial-passed | ☑ | ☑ | ☑ | ☑ | PR #30 · `148b026` |
+| `button` | adversarial-passed | ☑ | ☑ | ☑ | ☑ | PR #1006 · `b84e969` |
 | `card` | adversarial-passed | ☑ | ☑ | — | ☑ | PR #30 · `148b026` |
 | `carousel` | adversarial-passed | ☑ | ☑ | — | — | PR #277 · `42277770` |
 | `checkbox` | adversarial-passed | ☑ | ☑ | — | ☑ | PR #30 · `148b026` |
