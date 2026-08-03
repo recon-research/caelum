@@ -19,39 +19,44 @@ export type CaeButtonVariant = 'filled' | 'tonal' | 'elevated' | 'outlined' | 't
 /**
  * The internal seam that lets `cae-button` render **one** `<button>` instead of two arms (#992).
  * Composes `MatMenuTrigger` as a *host directive* and re-binds the one ARIA attribute that would
- * otherwise announce every plain button as a collapsed disclosure. Exported only so Angular accepts
- * it in {@link CaeButton}'s `imports`; deliberately kept out of `public-api.ts` (a consumer binds
- * `cae-button`'s `menuTriggerFor` input and never names a Material type — D-01/D-02).
+ * otherwise announce every plain button as a collapsed disclosure. **Not exported** — a same-file
+ * reference satisfies {@link CaeButton}'s `imports`, so the seam cannot reach `public-api.ts` by
+ * construction rather than by a convention someone has to remember (a consumer binds `cae-button`'s
+ * `menuTriggerFor` and never names a Material type — D-01/D-02). Measured, because the sibling
+ * comment in `menubar/public-api.ts` asserts the opposite: `ng build caelum` exits 0 without it.
  *
  * **Why `hostDirectives` and not a sibling directive.** A directive's own `host` block is applied
  * *after* its `hostDirectives`', so this binding out-ranks the composed `MatMenuTrigger`'s for the
- * same attribute — an ordering the framework constructs from the host-directive index block. The
- * two cheaper-looking routes both fail here: a template `[attr.aria-expanded]` binding **loses** to
- * a directive's host binding, and a *sibling* directive wins only by `tView.directiveRegistry`
- * order, which flips when the `imports` array is reordered. Measured on a throwaway branch, not
- * assumed (#993; `docs/PATTERNS.md` §4 carries the table).
+ * same attribute — an ordering the framework constructs from the host-directive index block. Both
+ * cheaper-looking routes fail: a template `[attr.aria-expanded]` binding **loses** to a host
+ * binding, and a *sibling* directive wins only by `tView.directiveRegistry` order, which flips when
+ * `imports` is reordered. The table, the control arms and the reproduction on this component live
+ * in `docs/PATTERNS.md` §4 (#993/#992) — single-homed there, not restated here.
  *
- * **This is deliberately smaller than `caeMenuTriggerFor`, and the asymmetry is the finding.** That
- * one overrides *two* attributes, guards `open()`/`toggle()`, and closes an open panel when it goes
- * dead. None of those are needed here, because there deadness is a separate input and `trigger.menu`
- * is *never* null (`cae-menu` stamps its `<mat-menu>` unconditionally, #993/D-859), whereas here the
- * panel **is** the discriminator. Each was written first and then measured away:
- * - `aria-haspopup` — Material's own `menu ? "menu" : null` already yields the right value in both
- *   states. Note *why* an override is not merely redundant: these bindings write through per-slot
- *   change detection, so a duplicate only wins on ticks where **its own** value changed, and never
- *   restores what the 3p's later write removed. Copying the menu family's host block over here
- *   would be a silent regression, not a simplification.
- * - `aria-controls` (`menuOpen ? menu?.panelId : null`) can never fire on a trigger that cannot open.
- * - closing an open panel on unbind — `MatMenuTriggerBase`'s `_menu` setter already calls
- *   `_destroyMenu()` when set to null (`menu.mjs`, the `else` branch). The menu family cannot reach
- *   that path, which is exactly why it must close by hand.
+ * **Deliberately smaller than `caeMenuTriggerFor`.** That one overrides *two* attributes, guards
+ * `open()`/`toggle()`, and closes an open panel when it goes dead; three of those were written
+ * here, mutation-tested **inert**, and deleted. The structural reason is that its discriminator is
+ * a separate deadness input while `trigger.menu` is never null, whereas here the panel is the
+ * discriminator — but note exactly what that discriminates: **bound vs unbound, not dead vs live.**
+ * A `cae-menu` whose rows are all disabled resolves a panel perfectly well, so this seam has no
+ * D-859 posture at all (#1002 — pre-existing, and true under the two-arm template too).
  *
- * Each removal was confirmed by mutation, not by reading: deleting the guard changed no assertion.
- * The behaviours are still pinned by `button.spec.ts` — they are Material's to provide now, so the
- * arms are what would catch a Material change taking them away.
+ * Two corrections from the review of this slice, both worth keeping because each is a way the
+ * reasoning above goes wrong if compressed:
+ * - The per-slot change-detection hazard runs in **one** direction. A duplicate override whose
+ *   value moves in lockstep with the 3p's is merely redundant. It becomes a *silent regression*
+ *   only where the two expressions can diverge — copying **this** block into the menu family, whose
+ *   deadness term makes its slot hold still while Material's moves. `docs/PATTERNS.md` §4 is the
+ *   single home of that rule; an earlier draft of this comment stated it backwards.
+ * - `_destroyMenu()` on the null-unbind path is **not** `closeMenu()`. It detaches synchronously
+ *   with no exit animation, never emits the panel's own `closed`, and skips the
+ *   `PANELS_TO_TRIGGERS` cleanup. Equivalent for ARIA and focus restoration — which is all this
+ *   seam relies on — and no longer equivalent the day `cae-menu` grows a `(closed)` output.
  *
- * The static `mat-mdc-menu-trigger` class now lands on every `cae-button` — Material ships no rules
- * for it (it is an integration hook, not a style hook), and nothing in this repo selects on it.
+ * The static `mat-mdc-menu-trigger` class now lands on every `cae-button`. Material ships no CSS
+ * for it and nothing in this repo selects on it — but it is `MatMenuHarness.hostSelector`, so a
+ * *consumer's* `getAllHarnesses(MatMenuHarness)` now matches every `cae-button`, not just the ones
+ * with a menu (#1003).
  */
 @Directive({
   selector: '[caeButtonMenuTriggerFor]',
@@ -66,7 +71,7 @@ export type CaeButtonVariant = 'filled' | 'tonal' | 'elevated' | 'outlined' | 't
     '[attr.aria-expanded]': 'trigger.menu ? trigger.menuOpen : null',
   },
 })
-export class CaeButtonMenuTrigger {
+class CaeButtonMenuTrigger {
   protected readonly trigger = inject(MatMenuTrigger);
 }
 

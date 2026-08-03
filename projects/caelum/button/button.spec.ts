@@ -119,6 +119,21 @@ describe('CaeButton', () => {
     // Reached the host ⇒ not stopPropagation'd; not defaultPrevented ⇒ a submit still submits.
     expect(seen).toBeDefined();
     expect(seen?.defaultPrevented).toBe(false);
+
+    // The other two legs, which the comment above names and an earlier draft of this arm did not
+    // exercise. `mousedown` is the one that matters most and is the least visible here: a
+    // preventDefault on it suppresses the browser's focus-on-click, so every button in the library
+    // would become clickable-but-not-focusable — the WCAG 2.4.7 mirror of the strand #992 removed.
+    // jsdom can grade the flag but not the consequence (its `click()` never focuses), so
+    // button.browser.spec.ts owns the focus half.
+    for (const type of ['mousedown', 'keydown'] as const) {
+      const event =
+        type === 'keydown'
+          ? new KeyboardEvent(type, { bubbles: true, cancelable: true, key: 'Enter', keyCode: 13 })
+          : new MouseEvent(type, { bubbles: true, cancelable: true });
+      button.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(false);
+    }
   });
 
   it('natively disables the button by default so it is inert (#58)', () => {
@@ -229,8 +244,14 @@ describe('CaeButton (menu trigger #57)', () => {
     expect(matTrigger().menu).toBe(caeMenu().getMenuPanel());
   });
 
-  it('marks the inner button as a menu trigger (aria-haspopup) once the panel resolves', () => {
+  it('marks the inner button as a menu trigger (aria-haspopup + closed aria-expanded)', () => {
     expect(innerButton().getAttribute('aria-haspopup')).toBe('menu');
+    // Bound-and-closed is the RESTING state of every menu-bearing cae-button, and it is the one
+    // state the composer alone produces: Material's own slot settles on `false` during the first
+    // CD (panel still null) and then stops writing, because per-slot change detection only writes
+    // when that slot's own value moved. So `aria-expanded="false"` here comes from the host block
+    // this slice added, not from Material — and nothing graded it until the #992 review.
+    expect(innerButton().getAttribute('aria-expanded')).toBe('false');
   });
 
   it('opens the bound menu from the inner button (renders one item per data item)', async () => {
@@ -238,9 +259,19 @@ describe('CaeButton (menu trigger #57)', () => {
     fixture.detectChanges();
     await fixture.whenStable();
     expect(matTrigger().menuOpen).toBe(true);
-    const items = Array.from(document.querySelectorAll<HTMLElement>('[mat-menu-item]'));
+    expect(innerButton().getAttribute('aria-expanded')).toBe('true');
+    // Resolve the panel THROUGH aria-controls rather than querying the document: it scopes the
+    // item assertions to this trigger's own panel (a closed Material panel lingers), and it makes
+    // the idref a live oracle. Material owns that binding now — an absence-assertion on a
+    // menu-less button cannot tell "correctly absent" from "never emitted at all".
+    const panelId = innerButton().getAttribute('aria-controls');
+    expect(panelId).toBeTruthy();
+    const panel = document.getElementById(panelId!);
+    expect(panel).not.toBeNull();
+    const items = Array.from(panel!.querySelectorAll<HTMLElement>('[mat-menu-item]'));
     expect(items.length).toBe(2);
     expect(items[0].textContent).toContain('Alpha');
+    await expectNoA11yViolations(overlayContainer.getContainerElement());
   });
 
   it('carries every binding on the one button the component renders (#992)', () => {
@@ -283,6 +314,18 @@ describe('CaeButton (menu trigger #57)', () => {
     // ...and the survivor is now announced as an ordinary button.
     expect(after.hasAttribute('aria-haspopup')).toBe(false);
     expect(after.hasAttribute('aria-expanded')).toBe(false);
+
+    // And back. `[menuTriggerFor]="canManage() ? m : undefined"` resolves unbound→live at least as
+    // often as the reverse (a permission or feature flag arriving after first render), and the
+    // return leg re-enters Material state the unbind path left behind — it skips the
+    // PANELS_TO_TRIGGERS cleanup, because `_menu` is already null when `_destroyMenu` reads it.
+    fixture.componentInstance.hasMenu.set(true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(innerButton()).toBe(before);
+    expect(before.getAttribute('aria-haspopup')).toBe('menu');
+    expect(before.getAttribute('aria-expanded')).toBe('false');
+    expect(matTrigger().menu).toBe(caeMenu().getMenuPanel());
   });
 
   it('closes an open menu when the binding is removed (the state two arms could not reach, #992)', async () => {
@@ -304,6 +347,14 @@ describe('CaeButton (menu trigger #57)', () => {
     // deleted; this arm is what would catch Material dropping that branch.
     expect(matTrigger().menuOpen).toBe(false);
     expect(innerButton().hasAttribute('aria-expanded')).toBe(false);
+    // Grade the ARTIFACT, not just the flag. `_setIsMenuOpen(false)` runs on every path out of
+    // `_destroyMenu` past its early return, so both assertions above stay green if Material ever
+    // stops detaching here — and the failure this arm exists to catch is a panel still on screen
+    // above a trigger reporting no aria-expanded. Detach is synchronous only because `_menu` is
+    // already null when `_destroyMenu` reads it, which sends it down the non-animated branch.
+    expect(
+      overlayContainer.getContainerElement().querySelectorAll('.mat-mdc-menu-panel').length,
+    ).toBe(0);
   });
 
   it('forwards the disabled state to the button when a menu is bound', async () => {
