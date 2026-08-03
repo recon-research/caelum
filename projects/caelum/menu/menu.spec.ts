@@ -1400,3 +1400,115 @@ describe('CaeMenu submenu traversal in RTL (#150)', () => {
 function matTriggerOf(fixture: ComponentFixture<unknown>): MatMenuTrigger {
   return fixture.debugElement.query(By.directive(MatMenuTrigger)).injector.get(MatMenuTrigger);
 }
+
+@Component({
+  imports: [CaeMenu, CaeMenuTrigger],
+  template: `
+    <cae-menu #actions [items]="items" />
+    <button type="button" [caeMenuTriggerFor]="actions" [caeMenuTriggerDisabled]="dead()">
+      Actions
+    </button>
+  `,
+})
+class DeadTriggerHost {
+  items: CaeMenuItem[] = [{ value: 'dup', label: 'Duplicate' }];
+  dead = signal(false);
+}
+
+/**
+ * `caeMenuTriggerDisabled` (#998, D-859) — the seam that let the two-branch templates collapse.
+ *
+ * Tested here rather than only through a consumer because this is the one place the whole contract
+ * is reachable. At `cae-menubar` a deadness change necessarily arrives as a NEW group object, so
+ * the `@for` re-creates the row and destruction closes the panel — the directive's own close never
+ * runs there, and an arm written against that component would grade Angular's view teardown while
+ * claiming to grade this.
+ */
+describe('CaeMenuTrigger deadness (#998)', () => {
+  let fixture: ComponentFixture<DeadTriggerHost>;
+  let overlayContainer: OverlayContainer;
+  const button = () => fixture.debugElement.query(By.css('button')).nativeElement as HTMLElement;
+  const caeTrigger = () =>
+    fixture.debugElement.query(By.directive(CaeMenuTrigger)).injector.get(CaeMenuTrigger);
+  async function flush(): Promise<void> {
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+  }
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({ imports: [DeadTriggerHost] }).compileComponents();
+    overlayContainer = TestBed.inject(OverlayContainer);
+    fixture = TestBed.createComponent(DeadTriggerHost);
+    await flush();
+  });
+
+  afterEach(() => overlayContainer?.ngOnDestroy());
+
+  it('drops BOTH aria-haspopup and aria-expanded while dead, and restores them live', async () => {
+    // The measurement #993 turned into a mechanism: this directive's own host bindings out-rank the
+    // composed MatMenuTrigger's for these two attributes. Material nulls `aria-haspopup` for a null
+    // menu but binds `aria-expanded` to `menuOpen` unconditionally, so before #998 there was no way
+    // to drop both from one element — which is the entire reason three components carried duplicate
+    // template arms.
+    expect(button().getAttribute('aria-haspopup')).toBe('menu');
+    expect(button().getAttribute('aria-expanded')).toBe('false');
+
+    fixture.componentInstance.dead.set(true);
+    await flush();
+
+    expect(button().hasAttribute('aria-haspopup')).toBe(false);
+    expect(button().hasAttribute('aria-expanded')).toBe(false);
+
+    fixture.componentInstance.dead.set(false);
+    await flush();
+
+    // …and back, on the SAME element — the property the collapse depends on.
+    expect(button().getAttribute('aria-haspopup')).toBe('menu');
+    expect(button().getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('refuses to open while dead, without consulting the DOM', async () => {
+    // Deliberately NOT leaning on Material's `_triggerIsAriaDisabled` refusal: that reads an
+    // attribute the CONSUMER supplies, so it holds only while every call site remembers
+    // `disabledInteractive`. This host sets no such attribute, so a passing assertion here can only
+    // come from the directive's own guard. D-859's rejected option 3 was exactly the shape where
+    // the library owes a hand-written guard at every point a Material refusal reads the DOM.
+    fixture.componentInstance.dead.set(true);
+    await flush();
+    expect(button().hasAttribute('aria-disabled')).toBe(false); // guard: Material's check is disarmed
+
+    caeTrigger().open();
+    await flush();
+    expect(matTriggerOf(fixture).menuOpen).toBe(false);
+
+    caeTrigger().toggle();
+    await flush();
+    expect(matTriggerOf(fixture).menuOpen).toBe(false);
+  });
+
+  it('closes an already-open panel when it goes dead', async () => {
+    // The state a two-branch template could not reach: the arms were separate elements, so going
+    // dead destroyed the open trigger and Material's teardown closed the overlay with it. One
+    // element survives, so without this the panel stays open above a trigger that now reports no
+    // `aria-expanded` at all — a worse a11y state than the one D-859 set out to fix.
+    caeTrigger().open();
+    await flush();
+    expect(matTriggerOf(fixture).menuOpen).toBe(true); // guard: it really opened
+
+    fixture.componentInstance.dead.set(true);
+    await flush();
+
+    expect(matTriggerOf(fixture).menuOpen).toBe(false);
+    expect(button().hasAttribute('aria-expanded')).toBe(false);
+  });
+
+  it('still opens normally when not dead', async () => {
+    // The live path must be byte-identical to Material's — an over-eager guard that refused
+    // everything would pass all three arms above.
+    caeTrigger().open();
+    await flush();
+    expect(matTriggerOf(fixture).menuOpen).toBe(true);
+    expect(button().getAttribute('aria-expanded')).toBe('true');
+  });
+});

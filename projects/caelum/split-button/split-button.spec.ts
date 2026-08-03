@@ -2,6 +2,7 @@ import { Component, ComponentRef, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { OverlayContainer } from '@angular/cdk/overlay';
+import { MatMenuTrigger } from '@angular/material/menu';
 import { CAE_ICON_GLYPHS } from '@recon-research/caelum/icon';
 import { CaeMenuTrigger, type CaeMenuItem } from '@recon-research/caelum/menu';
 
@@ -143,18 +144,21 @@ describe('CaeSplitButton', () => {
     expect(toggle().type).toBe('button');
   });
 
-  it('keeps the two D-859 toggle branches identical apart from the trigger (two-branch parity)', async () => {
-    // Duplicated markup: nothing else compares the arms.
+  it('renders dead and live from ONE element, changing only the sanctioned attributes (#998)', async () => {
+    // The successor to the two-branch parity arm, and it grades a strictly stronger property.
     //
-    // Compare MECHANICALLY. This arm used to name five properties, and it demonstrably failed at
-    // the job (#989 review): two independent reviewers landed on the same surviving mutation —
-    // change the dead arm's `[matButton]="variant()"` to a bare `matButton` and an OUTLINED
-    // split-button renders a filled chevron welded to an outlined primary, with every assertion
-    // green. The reason is visible in the old code: `liveClass` was captured and then only
-    // `toContain`-checked against ITSELF, never compared with the dead arm. A whitelist grades what
-    // someone thought to list; a set comparison cannot be blindsided by a later one-armed edit.
+    // That arm existed because D-859 duplicated this markup and nothing else compared the copies —
+    // and it demonstrably failed at the job until #989 rewrote it to compare SETS: two independent
+    // reviewers landed on the same surviving mutation (a bare `matButton` on the dead arm, rendering
+    // a filled chevron welded to an outlined primary) because the spec captured the live arm's
+    // classes and then `toContain`-checked them against ITSELF.
     //
-    // Run it on a NON-DEFAULT variant and label, so a hardcoded literal in the dead arm fails too.
+    // #998 removed the duplication instead. Drift between arms is now impossible by construction,
+    // so what needs guarding is the construction: ONE node whose bindings flip. Keep the mechanical
+    // set comparison anyway — it is what fails if someone re-introduces a branch, and it is the only
+    // thing that would.
+    //
+    // Non-default variant and label, so a hardcoded literal cannot pass by matching the default.
     await setup({
       model: [{ value: 'a', label: 'Alpha' }] satisfies CaeMenuItem[],
       variant: 'outlined',
@@ -172,83 +176,58 @@ describe('CaeSplitButton', () => {
     await flush();
 
     const deadToggle = toggle();
-    expect(deadToggle).not.toBe(liveToggle); // vacuity guard: the arms really did swap
+    // THE claim of the collapse: same node, not a rebuilt one. If a branch ever comes back this is
+    // the assertion that fails, and it fails before any of the parity comparisons below.
+    expect(deadToggle).toBe(liveToggle);
     expect(attrNames(deadToggle)).toEqual(liveAttrs);
     expect(classSet(deadToggle)).toEqual(liveClasses);
     expect(classSet(deadToggle)).toContain('cae-split-button__toggle'); // …and not empty on both
-    // The class-set equality above is what pins the variant — `matButton` expresses appearance
-    // purely as classes, so the two arms cannot render different variants and still match. Say so
-    // explicitly, since this is the exact divergence two independent reviewers proposed as a
-    // survivor: `appearance()` itself is not reused here because its filter deliberately keeps the
-    // disabled-state classes that legitimately differ between the arms.
+    // `appearance()` is not reused for the variant check: its filter deliberately keeps the
+    // disabled-state classes, which legitimately differ across the flip.
     expect(liveAppearance).toContain('outlined'); // guard: the fixture really is on a non-default
     expect(classSet(deadToggle).join(' ')).toContain('outlined');
-    expect(deadToggle.getAttribute('aria-label')).toBe(liveLabel); // …and so does the name
+    expect(deadToggle.getAttribute('aria-label')).toBe(liveLabel);
     expect(liveLabel).toBe('More save options'); // guard: liveLabel is not the default literal
-    // The chevron is a projected child, not an attribute — compare its identity-bearing bits too.
-    const deadChevron = deadToggle.querySelector('.cae-split-button__chevron');
-    expect(deadChevron).not.toBeNull();
-    expect(deadChevron!.getAttribute('aria-hidden')).toBe(liveChevron!.getAttribute('aria-hidden'));
+    expect(deadToggle.querySelector('.cae-split-button__chevron')).toBe(liveChevron);
     expectDeadToggle();
   });
 
-  it('does NOT steal focus back when the user blurred to the page background first (#989 review)', async () => {
-    // The hard half of the anti-steal gate, which the shipped arm never exercised: it parked focus
-    // on an outside BUTTON, so `activeElement !== body` and the second gate did all the work. When
-    // the user's own blur lands on <body>, both gates pass and the toggle grabs focus back —
-    // announcing "unavailable" at someone who had already left.
+  it('keeps focus on the toggle across a live↔dead flip, in both directions (#998, was #977)', async () => {
+    // What #977's focus machinery used to buy, now free. The two-branch destroyed the focused
+    // button and rebuilt it in the other arm, stranding focus on <body> (WCAG 2.4.3) — so the
+    // component carried a witness, `focusin`/`focusout` bookkeeping and a deferred restore. One
+    // element cannot be destroyed by its own bindings changing, so all of it is gone.
+    //
+    // Assert the SURVIVAL, not the absence of the machinery: "no restore ran" would also be true
+    // if the toggle vanished and nothing put focus back, which is the bug the machinery existed to
+    // prevent. Both directions, because the old arms only ever captured a witness while live and so
+    // graded one of them.
     await setup({ model: [{ value: 'a', label: 'Alpha' }] satisfies CaeMenuItem[] });
-    const before = toggle();
-    before.focus();
-    expect(document.activeElement).toBe(before);
-    before.blur();
-    expect(document.activeElement).toBe(document.body);
-
-    ref.setInput('model', [] satisfies CaeMenuItem[]);
-    await flush();
-
-    expect(before.isConnected).toBe(false); // the swap really happened…
-    expect(document.activeElement).toBe(document.body); // …and focus stayed where the user left it
-  });
-
-  it('restores focus on the dead→LIVE swap too, not just live→dead (#989 review)', async () => {
-    // Both shipped focus arms capture the witness while the toggle is live, so only one direction
-    // was ever graded — yet the contract is stated as "flips live↔dead". An async model arriving
-    // late (empty → populated) is the ordinary shape of the untested direction.
-    await setup({ model: [] satisfies CaeMenuItem[] });
-    const before = toggle();
-    expectDeadToggle();
-    before.focus();
-    expect(document.activeElement).toBe(before);
-
-    ref.setInput('model', [{ value: 'a', label: 'Alpha' }] satisfies CaeMenuItem[]);
-    await flush();
-
-    expect(before.isConnected).toBe(false); // vacuity guard
-    expect(document.activeElement).toBe(toggle());
-    expectLiveToggle();
-  });
-
-  it('keeps focus on the toggle when it goes dead — the swap must not strand it (#977/D-859)', async () => {
-    // Same shape as cae-menubar's arm: D-859 two-branches the toggle, so going dead DESTROYS the
-    // focused button and builds its replacement. The strand is element removal, not a
-    // natively-disabled blur, which is why jsdom can grade it (#977 predicted browser-only).
-    await setup({ model: [{ value: 'a', label: 'Alpha' }] satisfies CaeMenuItem[] });
-    const before = toggle();
-    before.focus();
-    expect(document.activeElement).toBe(before);
+    const live = toggle();
+    live.focus();
+    expect(document.activeElement).toBe(live);
 
     ref.setInput('model', [{ value: 'a', label: 'Alpha', disabled: true }] satisfies CaeMenuItem[]);
     await flush();
 
-    const after = toggle();
-    expect(after).not.toBe(before); // vacuity guard: the swap really happened
-    expect(before.isConnected).toBe(false);
-    expectDeadToggle();
-    expect(document.activeElement).toBe(after); // WCAG 2.4.3 — not <body>
+    expect(toggle()).toBe(live);
+    expect(live.isConnected).toBe(true);
+    expectDeadToggle(); // aria-disabled, not native — so it can still hold focus
+    expect(document.activeElement).toBe(live);
+
+    // …and back. A model arriving late (empty → populated) is the ordinary shape of this direction.
+    ref.setInput('model', [{ value: 'a', label: 'Alpha' }] satisfies CaeMenuItem[]);
+    await flush();
+
+    expect(toggle()).toBe(live);
+    expectLiveToggle();
+    expect(document.activeElement).toBe(live);
   });
 
-  it('does NOT steal focus back when the user left the control before the swap (#977)', async () => {
+  it('does NOT pull focus back to the toggle when the user is elsewhere (#977)', async () => {
+    // Cheap now — with no restore there is nothing to steal with — and kept precisely for that
+    // reason: it is what fails if a future slice re-introduces a restore without its anti-steal
+    // gates. Both departures the #989 review separated: to another control, and to the background.
     await setup({ model: [{ value: 'a', label: 'Alpha' }] satisfies CaeMenuItem[] });
     const outside = document.createElement('button');
     document.body.appendChild(outside);
@@ -260,9 +239,45 @@ describe('CaeSplitButton', () => {
       ] satisfies CaeMenuItem[]);
       await flush();
       expect(document.activeElement).toBe(outside);
+
+      ref.setInput('model', [{ value: 'a', label: 'Alpha' }] satisfies CaeMenuItem[]);
+      await flush();
+      toggle().focus();
+      toggle().blur();
+      expect(document.activeElement).toBe(document.body);
+      ref.setInput('model', [] satisfies CaeMenuItem[]);
+      await flush();
+      expect(document.activeElement).toBe(document.body);
     } finally {
       outside.remove();
     }
+  });
+
+  it('closes an OPEN menu when the toggle goes dead, rather than leaving an orphan panel (#998)', async () => {
+    // The one state the two-branch could not reach, so nothing graded it before: the arms were
+    // separate elements, so going dead destroyed the open trigger and Material's teardown closed
+    // the overlay with it. One element survives the flip — without the directive's own close, the
+    // panel would stay open above a toggle reporting no `aria-expanded` at all.
+    await setup({ model: [{ value: 'a', label: 'Alpha' }] satisfies CaeMenuItem[] });
+    // Oracle is the trigger's own `menuOpen`, not a DOM query: a closed Material panel LINGERS in
+    // the overlay container, and `aria-expanded` cannot serve either — the dead binding nulls it
+    // whether or not the panel actually closed, which is exactly the masking this arm must see past.
+    const matTrigger = fixture.debugElement
+      .query(By.directive(CaeMenuTrigger))
+      .injector.get(MatMenuTrigger);
+    trigger().open();
+    await flush();
+    expect(matTrigger.menuOpen).toBe(true); // guard: it really opened
+    expect(toggle().getAttribute('aria-expanded')).toBe('true');
+
+    ref.setInput('model', [{ value: 'a', label: 'Alpha', disabled: true }] satisfies CaeMenuItem[]);
+    await flush();
+
+    expect(matTrigger.menuOpen).toBe(false);
+    // Deliberately NOT asserting the overlay pane is gone: measured here, `.cdk-overlay-pane`
+    // survives the close (1, not 0), because Material disposes it on its own schedule. That is the
+    // 3p's teardown timing, not this fix — grading it would make the arm fail on a Material bump.
+    expectDeadToggle();
   });
 
   it('lets the primary opt into type=submit while the toggle stays type=button', async () => {

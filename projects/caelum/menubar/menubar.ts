@@ -66,14 +66,18 @@ export interface CaeMenubarItem {
 export class MenubarTriggerItem implements FocusableOption {
   private readonly el = inject<ElementRef<HTMLElement>>(ElementRef);
   /**
-   * The menu trigger on **this** button, or `null` when the group is dead — D-859 two-branches the
-   * template, so a dead trigger carries no `CaeMenuTrigger` at all.
+   * The menu trigger on **this** button. Non-null on every group since #998 collapsed D-859's
+   * two-branch template — dead groups keep the trigger and it nulls its own ARIA — so this no
+   * longer doubles as a deadness test. Ask {@link menubarDisabled}; the trigger itself also
+   * refuses to open while dead, so a stale call is inert rather than wrong.
    *
    * Resolved by DI from the same element rather than by a parallel `ViewChildren` index, which is
-   * what this used to be. A `QueryList<CaeMenuTrigger>` now holds only the **live** triggers, so
-   * `menuTriggers.get(activeIndex)` would name the wrong group the moment any *earlier* group went
-   * dead — and `undefined` for the last one, silently doing nothing on Down. Reading it off the
-   * roving item's own host makes the two physically incapable of disagreeing.
+   * what this used to be. That mattered acutely under the two-branch, where a
+   * `QueryList<CaeMenuTrigger>` held only the **live** triggers, so `menuTriggers.get(activeIndex)`
+   * named the wrong group the moment any *earlier* group went dead — and `undefined` for the last
+   * one, silently doing nothing on Down. The collapse makes the two lists the same length again,
+   * but keep the DI: it makes them physically incapable of disagreeing rather than incidentally
+   * equal, which is the property that survives the next template edit.
    */
   readonly menuTrigger = inject(CaeMenuTrigger, { optional: true, self: true });
   /** Mirrors the group's effective disabled state — dead groups are still announced, not skipped. */
@@ -146,27 +150,25 @@ export class MenubarTriggerItem implements FocusableOption {
  * Replace the group (or the array) rather than mutating it; the alternative is a deep compare on
  * every change detection, which is not worth it at menubar scale.
  *
- * **The two-branch template** (D-859). A dead group's button is stamped in its own `@if` arm rather
- * than switched by a binding, because `MatMenuTrigger` host-binds `attr.aria-expanded` to `menuOpen`
- * **unconditionally** — only `aria-haspopup` is nulled by a null menu — so a trigger left attached
- * would still announce as a collapsed disclosure. **That does not make it impossible as one button,
- * which is what this doc asserted until #993 compiled it:** a directive's own `host` binding
- * out-ranks its `hostDirectives`' binding, so `CaeMenuTrigger` can null both attributes itself. The
- * branch here is a shipped implementation detail, not a forced one, and collapses under #998. (The
- * discriminator cannot be the panel — `cae-menu` stamps `<mat-menu>` unconditionally, so a dead
- * trigger's `menu` is never null; PATTERNS §4 has the routes that do not work.) Prose lives here
- * rather than in the template because template comments are string content of the `template:`
- * literal and ship in the FESM, while JSDoc is free (PATTERNS §15).
+ * **One button per group, not two arms** (#998). A dead group used to be stamped in its own `@if`
+ * arm, because `MatMenuTrigger` host-binds `attr.aria-expanded` to `menuOpen` **unconditionally** —
+ * only `aria-haspopup` is nulled by a null menu — so a trigger left attached announced as a
+ * collapsed disclosure over a panel that could never open. #993 measured the escape: a directive's
+ * own `host` binding out-ranks its `hostDirectives`', so `CaeMenuTrigger` nulls both attributes
+ * itself ({@link CaeMenuTrigger.caeMenuTriggerDisabled}). The discriminator cannot be the panel — `cae-menu`
+ * stamps `<mat-menu>` unconditionally, so a dead trigger's `menu` is never null; PATTERNS §4 has
+ * that and the two routes that do not work. Prose lives here rather than in the template because
+ * template comments are string content of the `template:` literal and ship in the FESM, while
+ * JSDoc is free (PATTERNS §15).
  *
- * The cost is that the arms are **separate elements**, so a group flipping live↔dead destroys the
- * focused `<button>`. Note carefully what that does *not* mean here: because groups track by object
- * identity, a deadness change necessarily arrives as a **new group object**, which re-creates that
- * `@for` row anyway. So on this component the destruction is view re-creation, reachable on *any*
- * model replacement, and the `@if` swap is not independently observable — the branch does not add a
- * failure mode, it shares one the identity contract already had. (`cae-split-button`'s toggle is not
- * inside a `@for`, so there the branch swap *is* the mechanism; PATTERNS §4 states both.) That is
- * why the focus machinery below keys off destruction rather than off deadness, and why it must also
- * survive a model that **shrinks or reorders** — the cases a pure live↔dead reading would miss.
+ * **The focus machinery below stayed, and that asymmetry is the point.** `cae-split-button` deleted
+ * its equivalent in the same slice, because its toggle is not inside a `@for` and the arm swap was
+ * the only thing that destroyed it. Here it never was: groups track by object identity, so a
+ * deadness change necessarily arrives as a **new group object**, which re-creates that `@for` row
+ * regardless of any branch. The destruction is view re-creation, reachable on *any* model
+ * replacement, and removing the `@if` removes none of it. That is also why the machinery keys off
+ * destruction rather than off deadness, and why it must survive a model that **shrinks or
+ * reorders** — the cases a pure live↔dead reading would miss.
  *
  * **v1 scope** (#153): one level of dropdown (the common File▸/Edit▸ admin case). Follow-ups —
  * rich items (router links/commands, #150),
@@ -197,36 +199,22 @@ export class MenubarTriggerItem implements FocusableOption {
           [iconTemplate]="iconTemplate()"
           (itemSelect)="itemSelect.emit($event)"
         />
-        <!-- D-859 two-branches on deadness (PATTERNS §4, and the class doc above for why).
-             Deltas between the arms: the three deadness bindings + caeMenuTriggerFor. Nothing
-             else may differ — the parity spec is the only guard. -->
-        @if (disabledGroup(group)) {
-          <button
-            matButton
-            type="button"
-            caeMenubarItem
-            class="cae-menubar__item"
-            [menubarDisabled]="true"
-            [disabled]="true"
-            disabledInteractive
-            [tabindex]="$index === activeIndex() ? 0 : -1"
-          >
-            {{ group.label }}
-          </button>
-        } @else {
-          <button
-            matButton
-            type="button"
-            caeMenubarItem
-            class="cae-menubar__item"
-            [menubarDisabled]="false"
-            [disabled]="false"
-            [tabindex]="$index === activeIndex() ? 0 : -1"
-            [caeMenuTriggerFor]="groupMenu"
-          >
-            {{ group.label }}
-          </button>
-        }
+        <!-- ONE button: the trigger stays attached and nulls its own ARIA when dead (#998, D-859). -->
+        @let dead = disabledGroup(group);
+        <button
+          matButton
+          type="button"
+          caeMenubarItem
+          class="cae-menubar__item"
+          [menubarDisabled]="dead"
+          [disabled]="dead"
+          [disabledInteractive]="dead"
+          [tabindex]="$index === activeIndex() ? 0 : -1"
+          [caeMenuTriggerFor]="groupMenu"
+          [caeMenuTriggerDisabled]="dead"
+        >
+          {{ group.label }}
+        </button>
       }
     </mat-toolbar>
   `,
@@ -473,12 +461,13 @@ export class CaeMenubar implements AfterViewInit, OnDestroy {
     // Intercept before the key manager so they open rather than move focus along the bar.
     if (event.keyCode === DOWN_ARROW || event.keyCode === UP_ARROW) {
       event.preventDefault();
-      // Refuse to open a dead group — now belt AND braces. Under D-859 a dead trigger carries no
-      // `CaeMenuTrigger` at all (nothing to call) and is `aria-disabled`, which is the one thing
-      // `MatMenuTrigger._openMenu` actually refuses on (`_triggerIsAriaDisabled` reads the
-      // attribute; native `disabled` does not set it, which is why this guard had to be written by
-      // hand for #961 in the first place). The explicit check stays: it is the only one that does
-      // not depend on the template branching correctly.
+      // Refuse to open a dead group — belt AND braces, and the belt changed in #998. A dead group
+      // now KEEPS its `CaeMenuTrigger` (the two-branch is gone), so "nothing to call" is no longer
+      // one of the layers; what replaced it is the directive's own `disabled` guard, which refuses
+      // without consulting the DOM. The remaining third layer is Material's `_triggerIsAriaDisabled`
+      // reading the `aria-disabled` attribute — note native `disabled` does NOT set it, which is why
+      // this guard had to be written by hand for #961 in the first place. The explicit check stays:
+      // it is the only one that reads the model rather than the rendered result.
       const group = this.model()[this.activeIndex()];
       if (group && !this.disabledGroup(group)) {
         this.triggers.get(this.activeIndex())?.menuTrigger?.open();
