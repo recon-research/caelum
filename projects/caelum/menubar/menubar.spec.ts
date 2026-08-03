@@ -523,15 +523,22 @@ describe('CaeMenubar', () => {
     }
   });
 
-  it('keeps the two D-859 branches identical apart from the deadness deltas (two-branch parity)', async () => {
-    // The arms are duplicated markup and nothing else in this file compares them, so a dropped
-    // class, a lost type="button" or a missing role would ship in silence.
+  it('renders a dead and a live group identically apart from the deadness deltas (#998)', async () => {
+    // Was the two-branch parity arm. #998 collapsed the arms into one button, so this no longer
+    // guards duplicated markup — it guards that ONE template renders both postures consistently,
+    // and it is what fails if a branch is ever re-introduced.
     //
-    // Compare MECHANICALLY rather than by whitelist. This arm used to name five properties, and a
-    // property whitelist grades only what someone thought to list — it is blind to anything a later
-    // edit ADDS to one arm only, and the sibling component's equivalent arm let a real
-    // `[matButton]="variant()"` → `matButton` divergence survive for exactly that reason (#989
-    // review). Set comparison has no such blind spot.
+    // Two deltas retired with the branch, and retiring them makes this arm STRICTER, which is the
+    // point: `disabledinteractive` was the dead arm's static attribute (it is a property binding
+    // now, so it reaches the DOM on neither side), and `mat-mdc-menu-trigger` used to be present
+    // only on the live arm. Both buttons carry the trigger now — asserted explicitly below, since
+    // that is the collapse's central claim and a class-set equality alone would also be satisfied
+    // by neither having it.
+    //
+    // Compare MECHANICALLY rather than by whitelist. A property whitelist grades only what someone
+    // thought to list — it is blind to anything a later edit ADDS to one side, and the sibling
+    // component's equivalent arm let a real `[matButton]="variant()"` → `matButton` divergence
+    // survive for exactly that reason (#989 review).
     await setup({
       model: [
         { label: 'File', items: [{ value: 'new', label: 'New' }] },
@@ -545,7 +552,6 @@ describe('CaeMenubar', () => {
     const ATTR_DELTA = new Set([
       'class',
       'disabled',
-      'disabledinteractive', // the dead arm's static attribute — one of D-859's deadness bindings
       'aria-disabled',
       'aria-haspopup',
       'aria-expanded',
@@ -560,14 +566,17 @@ describe('CaeMenubar', () => {
     // …and the class SET, modulo the classes Material itself adds for each posture. This is the
     // assertion that pins appearance: `matButton`'s variant is expressed purely as classes, so a
     // dead arm rendering a different variant fails here.
-    const MAT_DELTA =
-      /^(mat-mdc-button-disabled|mat-mdc-button-disabled-interactive|mat-mdc-menu-trigger)$/;
+    const MAT_DELTA = /^(mat-mdc-button-disabled|mat-mdc-button-disabled-interactive)$/;
     const classes = (b: HTMLButtonElement) =>
       Array.from(b.classList)
         .filter((c) => !MAT_DELTA.test(c))
         .sort();
     expect(classes(dead)).toEqual(classes(live));
     expect(classes(dead)).toContain('cae-menubar__item'); // …and the set is not empty on both sides
+    // The collapse's claim, stated positively: the dead group KEEPS its trigger and nulls the ARIA
+    // itself, rather than being a second element that never had one.
+    expect(classes(dead)).toContain('mat-mdc-menu-trigger');
+    expect(classes(live)).toContain('mat-mdc-menu-trigger');
     expect(dead.textContent!.trim()).toBe('Locked'); // the label still renders in the dead arm
     // …and the sanctioned differences themselves.
     expectLive(live);

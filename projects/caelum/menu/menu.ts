@@ -1,4 +1,5 @@
 import {
+  booleanAttribute,
   ChangeDetectionStrategy,
   Component,
   computed,
@@ -587,13 +588,43 @@ export function caeMenuHasUsableItems(items: readonly CaeMenuItem[]): boolean {
   selector: '[caeMenuTriggerFor]',
   exportAs: 'caeMenuTrigger',
   hostDirectives: [MatMenuTrigger],
+  // A dead trigger advertises no popup (D-859), on ONE element. These out-rank the composed
+  // `MatMenuTrigger`'s own bindings for the same two attributes because a directive's `host` block
+  // is applied AFTER its `hostDirectives`' — measured, not assumed (#993; the routes that do not
+  // work are in PATTERNS §4). `aria-controls` needs no arm here: Material binds it to
+  // `menuOpen ? panelId : null`, and {@link disabled} keeps a dead trigger closed.
+  host: {
+    '[attr.aria-haspopup]': 'caeMenuTriggerDisabled() ? null : trigger.menu ? "menu" : null',
+    '[attr.aria-expanded]': 'caeMenuTriggerDisabled() ? null : trigger.menuOpen',
+  },
 })
 export class CaeMenuTrigger {
-  private readonly trigger = inject(MatMenuTrigger);
+  protected readonly trigger = inject(MatMenuTrigger);
   /** The `cae-menu` this host opens. */
   readonly caeMenuTriggerFor = input.required<CaeMenu>();
+  /**
+   * Mark the trigger **dead**: it drops `aria-haspopup`/`aria-expanded` and refuses to open
+   * (D-859). Note this is *deadness*, not the panel's existence — the discriminator cannot be the
+   * panel, because `cae-menu` stamps its `<mat-menu>` unconditionally, so `getMenuPanel()` always
+   * resolves and a trigger's `menu` is never null at a real site (#993).
+   *
+   * The host stays focusable and should be `aria-disabled` (Material's `disabledInteractive`), so
+   * a keyboard user still meets the control and hears it announced unavailable rather than finding
+   * it silently absent — the same reason `cae-menubar` roves onto dead groups.
+   */
+  readonly caeMenuTriggerDisabled = input(false, { transform: booleanAttribute });
 
   constructor() {
+    // Going dead must also CLOSE an open panel. Without this the collapse of D-859's two-branch
+    // (#998) would introduce a state the two-arm template could not reach: the arms were separate
+    // elements, so a live→dead flip destroyed the open trigger and Material's teardown closed the
+    // overlay with it. One element survives the flip, which would otherwise leave a visible panel
+    // whose trigger reports no `aria-expanded` at all. Reads `menuOpen` untracked on purpose — the
+    // deadness flip is the only thing that should drive this.
+    effect(() => {
+      if (this.caeMenuTriggerDisabled() && this.trigger.menuOpen) this.trigger.closeMenu();
+    });
+
     // Keep the composed MatMenuTrigger pointed at the cae-menu's panel. Reads it through the
     // public `getMenuPanel` seam; re-runs if the bound cae-menu changes OR when its panel
     // resolves (so element order and lazy/conditional menus are handled). `?? null` covers the
@@ -603,12 +634,22 @@ export class CaeMenuTrigger {
     });
   }
 
-  /** Toggle the menu open/closed (PrimeNG `menu.toggle()` parity). */
+  /**
+   * Toggle the menu open/closed (PrimeNG `menu.toggle()` parity). Refuses while
+   * {@link disabled}.
+   *
+   * The guard is this directive's own, deliberately, rather than leaning on Material refusing an
+   * `aria-disabled` host: that refusal reads an *attribute the consumer supplies*, so it holds only
+   * as long as every call site remembers `disabledInteractive`. D-859's rejected option 3 was
+   * exactly the shape where the library owes a hand-written guard at every such point.
+   */
   toggle(): void {
+    if (this.caeMenuTriggerDisabled()) return;
     this.trigger.toggleMenu();
   }
-  /** Open the menu. */
+  /** Open the menu. Refuses while {@link disabled} — see {@link toggle}. */
   open(): void {
+    if (this.caeMenuTriggerDisabled()) return;
     this.trigger.openMenu();
   }
   /** Close the menu. */

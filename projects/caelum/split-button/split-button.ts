@@ -1,13 +1,8 @@
 import {
-  afterNextRender,
   booleanAttribute,
   ChangeDetectionStrategy,
   Component,
   computed,
-  effect,
-  ElementRef,
-  inject,
-  Injector,
   input,
   output,
   type TemplateRef,
@@ -57,16 +52,23 @@ import {
  * stayed in it, so a control the consumer had switched off kept exactly one tab stop — on the half
  * that does nothing, with the labelled half unreachable. Both halves now leave together.
  *
- * **The two-branch template** (D-859). The toggle's dead arm is stamped separately rather than
- * switched by a binding, because `MatMenuTrigger` host-binds `attr.aria-expanded` to `menuOpen`
- * **unconditionally** — only `aria-haspopup` is nulled by a null menu — so a trigger left attached
- * would still announce as a collapsed disclosure. **#993 compiled the question this doc used to beg:
- * one button IS reachable** — a directive's own `host` binding out-ranks its `hostDirectives`'
- * binding, so `CaeMenuTrigger` can null both attributes itself. The branch here is a shipped
- * implementation detail, not a forced one, and collapses under #998. Prose lives here rather than in the template: template
- * comments ship in the FESM, JSDoc does not (PATTERNS §15). Unlike `cae-menubar`'s triggers this
- * toggle is **not** inside a `@for`, so the arm swap is the *only* thing that destroys it — which
- * makes this the component where the two-branch focus strand is genuinely isolable.
+ * **One toggle, not two arms** (#998). This used to two-branch on deadness, because
+ * `MatMenuTrigger` host-binds `attr.aria-expanded` to `menuOpen` **unconditionally** — only
+ * `aria-haspopup` is nulled by a null menu — so a trigger left attached announced as a collapsed
+ * disclosure over a panel that could never open. #993 measured the escape: a directive's own `host`
+ * binding out-ranks its `hostDirectives`', so `CaeMenuTrigger` nulls both attributes itself
+ * ({@link CaeMenuTrigger.caeMenuTriggerDisabled}) and the toggle is one element whose bindings flip.
+ *
+ * **That deleted a whole focus mechanism, and the reason is worth keeping.** The arms were separate
+ * elements, so going dead *destroyed* the focused `<button>` and focus fell to `<body>` — the strand
+ * D-859 set out to fix, arriving by a different route (#977). This component was where that was
+ * genuinely isolable: unlike `cae-menubar`'s triggers the toggle is **not** inside a `@for`, so the
+ * arm swap was the *only* thing that destroyed it. Remove the swap and nothing does, so the witness,
+ * the `focusin`/`focusout` bookkeeping and the deferred restore all went with it — pinned by a spec
+ * asserting the element **survives** the flip as the same node rather than by their absence. The
+ * inverse holds at `cae-menubar`, which keeps its machinery: there the destruction is `@for` view
+ * re-creation on any model replacement, which the collapse does not touch. Prose lives here rather
+ * than in the template: template comments ship in the FESM, JSDoc does not (PATTERNS §15).
  *
  * **v1 scope** (#148): shared `variant`, a required `label`, an optional-submit primary, and a
  * data-driven menu. Icons follow the library convention (D-596, #644): a primary {@link icon}
@@ -85,13 +87,7 @@ import {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [MatButtonModule, CaeMenu, CaeMenuTrigger, CaeIcon],
   template: `
-    <div
-      class="cae-split-button"
-      role="group"
-      [attr.aria-label]="ariaLabel() || null"
-      (focusin)="onFocusIn($event)"
-      (focusout)="onFocusOut($event)"
-    >
+    <div class="cae-split-button" role="group" [attr.aria-label]="ariaLabel() || null">
       <button
         class="cae-split-button__primary"
         [matButton]="variant()"
@@ -112,35 +108,23 @@ import {
         (itemSelect)="itemSelect.emit($event)"
       />
 
-      <!-- D-859 two-branches the toggle on deadness (PATTERNS §4, and the class doc for why).
-           Deltas between the arms: the two deadness bindings + caeMenuTriggerFor. Nothing else
-           may differ — the parity spec is the only guard. -->
-      @if (toggleDisabled()) {
-        <button
-          class="cae-split-button__toggle"
-          type="button"
-          [matButton]="variant()"
-          [disabled]="true"
-          [disabledInteractive]="!disabled()"
-          [attr.aria-label]="menuAriaLabel() || 'More actions'"
-        >
-          <!-- The registry's chevron-down (D-596/#644) replaced the hand-drawn duplicate this
-               component carried since #148; aria-hidden on the host keeps the whole decorative
-               wrapper out of the a11y tree (the toggle is named by menuAriaLabel). -->
-          <cae-icon class="cae-split-button__chevron" name="chevron-down" aria-hidden="true" />
-        </button>
-      } @else {
-        <button
-          class="cae-split-button__toggle"
-          type="button"
-          [matButton]="variant()"
-          [disabled]="false"
-          [attr.aria-label]="menuAriaLabel() || 'More actions'"
-          [caeMenuTriggerFor]="menu"
-        >
-          <cae-icon class="cae-split-button__chevron" name="chevron-down" aria-hidden="true" />
-        </button>
-      }
+      <!-- ONE toggle: the trigger stays attached and nulls its own ARIA when dead (#998, D-859).
+           Two shades of disabled, deliberately — see the class doc. -->
+      <button
+        class="cae-split-button__toggle"
+        type="button"
+        [matButton]="variant()"
+        [disabled]="toggleDisabled()"
+        [disabledInteractive]="toggleDisabled() && !disabled()"
+        [attr.aria-label]="menuAriaLabel() || 'More actions'"
+        [caeMenuTriggerFor]="menu"
+        [caeMenuTriggerDisabled]="toggleDisabled()"
+      >
+        <!-- The registry's chevron-down (D-596/#644) replaced the hand-drawn duplicate this
+             component carried since #148; aria-hidden on the host keeps the whole decorative
+             wrapper out of the a11y tree (the toggle is named by menuAriaLabel). -->
+        <cae-icon class="cae-split-button__chevron" name="chevron-down" aria-hidden="true" />
+      </button>
     </div>
   `,
   styles: `
@@ -241,76 +225,4 @@ export class CaeSplitButton {
   protected readonly toggleDisabled = computed(
     () => this.disabled() || !caeMenuHasUsableItems(this.model()),
   );
-
-  /** The toggle element that last held focus, captured on the way IN (see the effect below). */
-  private focusWitness: HTMLElement | null = null;
-  private readonly injector = inject(Injector);
-  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
-
-  /** The rendered toggle, whichever of D-859's two arms produced it. */
-  private toggleElement(): HTMLElement | null {
-    return this.host.nativeElement.querySelector<HTMLElement>('.cae-split-button__toggle');
-  }
-
-  protected onFocusIn(event: FocusEvent): void {
-    // Read the toggle off the EVENT rather than a viewChild: `#toggleBtn` sits inside an @if, and
-    // a view query for it did not resolve here in time to witness the focus (measured — the
-    // witness came back null on every capture, so the restore below never armed).
-    const target = event.target as HTMLElement | null;
-    this.focusWitness = target?.closest<HTMLElement>('.cae-split-button__toggle') ?? null;
-  }
-
-  /**
-   * Drop the witness when focus genuinely **leaves** the toggle, so a later swap cannot mistake a
-   * stale witness for a stranded user (#989 review).
-   *
-   * Both gates in the restore below pass on a sequence they were never meant to admit: focus the
-   * toggle, blur to the page background — `activeElement` is `<body>`, and no `focusin` reaches
-   * this host, because a focus move *to* `<body>` fires at `body` and bubbles upward — then let the
-   * model go empty. The witness is stale but intact, so focus is yanked back to a control the user
-   * had left, announcing "unavailable" out of nowhere.
-   *
-   * `isConnected` is what keeps this from breaking the restore: if a browser fires `focusout` while
-   * removing the focused element, the witness is already disconnected and the clear is skipped.
-   * Only a departure from a *live* toggle counts as leaving.
-   */
-  protected onFocusOut(event: FocusEvent): void {
-    const witness = this.focusWitness;
-    if (!witness || !witness.isConnected) return;
-    if (witness.contains(event.relatedTarget as Node)) return;
-    this.focusWitness = null;
-  }
-
-  constructor() {
-    /**
-     * Keep focus on the toggle when it flips live↔dead (#977).
-     *
-     * D-859's two-branch template is what makes this necessary: the toggle going dead **destroys**
-     * the focused `<button>` and builds its replacement in the other arm, so focus falls to
-     * `<body>` — the strand D-859 set out to fix, arriving by a different route. Focus stays on the
-     * toggle (now `aria-disabled`, hence still focusable) rather than jumping to the primary
-     * button: a silent jump would put the user on a *different command*, which is worse than
-     * landing somewhere announced unavailable.
-     *
-     * Keyed on {@link toggleDisabled} — the flip that swaps the arms — and deferred one render,
-     * because until the view updates the DOM still holds the OLD button. Gated on the witness
-     * being genuinely **disconnected**, not on `activeElement` alone: that cannot tell "our button
-     * was destroyed" from "the user clicked the page background", and restoring in the second case
-     * is a focus steal. Both gates are mutation-pinned, in both directions.
-     */
-    effect(() => {
-      this.toggleDisabled(); // the dependency: this flip is what swaps the arms
-      const witness = this.focusWitness;
-      if (!witness) return;
-      // The element is still the OLD one until the view updates, so the check has to wait a render.
-      afterNextRender(
-        () => {
-          if (witness.isConnected) return;
-          if (document.activeElement !== document.body) return;
-          this.toggleElement()?.focus();
-        },
-        { injector: this.injector },
-      );
-    });
-  }
 }
