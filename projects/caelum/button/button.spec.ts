@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { OverlayContainer } from '@angular/cdk/overlay';
@@ -90,14 +90,50 @@ describe('CaeButton', () => {
     expect(button.getAttribute('aria-describedby')).toBeTruthy();
   });
 
-  it('applies no menu trigger and no aria-expanded when no menu is bound (#57)', () => {
+  it('attaches the trigger to every button but announces nothing without a menu (#57, #992)', () => {
     fixture.detectChanges();
-    // The opt-in trigger branch is not rendered, so a plain button carries no MatMenuTrigger —
-    // and thus no spurious aria-expanded (which MatMenuTrigger would stamp as "false", making
-    // every plain button announce as a collapsed disclosure).
-    expect(fixture.debugElement.query(By.directive(MatMenuTrigger))).toBeNull();
+    // Since #992 there is ONE button and the trigger is ALWAYS attached, so the silence has to be
+    // produced rather than inherited from an absent directive — assert the trigger's presence first
+    // or every assertion below passes for the wrong reason. Material stamps all three of these
+    // unconditionally; left alone, `aria-expanded="false"` announces every plain button in the
+    // library as a collapsed disclosure.
+    expect(fixture.debugElement.query(By.directive(MatMenuTrigger))).not.toBeNull();
     const button = fixture.nativeElement.querySelector('button') as HTMLButtonElement;
     expect(button.hasAttribute('aria-expanded')).toBe(false);
+    expect(button.hasAttribute('aria-haspopup')).toBe(false);
+    expect(button.hasAttribute('aria-controls')).toBe(false);
+  });
+
+  it('leaves a menu-less button fully clickable — the attached trigger swallows nothing (#992)', () => {
+    fixture.detectChanges();
+    // MatMenuTrigger's click/mousedown/keydown listeners now ride EVERY cae-button. On the
+    // non-submenu path it neither preventDefaults nor stopPropagates (it calls `toggleMenu()`,
+    // which early-returns on a null menu), so `type="submit"` still submits its form and a
+    // consumer's own listener still sees the event. Guard the claim's input: an unattached
+    // trigger would pass this vacuously.
+    expect(fixture.debugElement.query(By.directive(MatMenuTrigger))).not.toBeNull();
+    const button = fixture.nativeElement.querySelector('button') as HTMLButtonElement;
+    let seen: MouseEvent | undefined;
+    fixture.nativeElement.addEventListener('click', (e: MouseEvent) => (seen = e));
+    button.click();
+    // Reached the host ⇒ not stopPropagation'd; not defaultPrevented ⇒ a submit still submits.
+    expect(seen).toBeDefined();
+    expect(seen?.defaultPrevented).toBe(false);
+
+    // The other two legs, which the comment above names and an earlier draft of this arm did not
+    // exercise. `mousedown` is the one that matters most and is the least visible here: a
+    // preventDefault on it suppresses the browser's focus-on-click, so every button in the library
+    // would become clickable-but-not-focusable — the WCAG 2.4.7 mirror of the strand #992 removed.
+    // jsdom can grade the flag but not the consequence (its `click()` never focuses), so
+    // button.browser.spec.ts owns the focus half.
+    for (const type of ['mousedown', 'keydown'] as const) {
+      const event =
+        type === 'keydown'
+          ? new KeyboardEvent(type, { bubbles: true, cancelable: true, key: 'Enter', keyCode: 13 })
+          : new MouseEvent(type, { bubbles: true, cancelable: true });
+      button.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(false);
+    }
   });
 
   it('natively disables the button by default so it is inert (#58)', () => {
@@ -150,7 +186,7 @@ describe('CaeButton', () => {
   template: `
     <cae-menu #m [items]="items" />
     <cae-button
-      [menuTriggerFor]="m"
+      [menuTriggerFor]="hasMenu() ? m : undefined"
       [tooltip]="tip"
       [disabled]="disabled"
       [disabledInteractive]="disabledInteractive"
@@ -168,6 +204,13 @@ class MenuButtonHost {
   tip = 'Workspace actions';
   disabled = false;
   disabledInteractive = false;
+  /**
+   * A live→unbound flip. `menuTriggerFor` has no default, so `undefined` is an ordinary consumer
+   * expression (`[menuTriggerFor]="canManage() ? actionsMenu : undefined"`) — the shape that used
+   * to swap one template arm for the other. A signal, not a plain field: under zoneless a
+   * post-render field mutation does not push to a child's signal input.
+   */
+  readonly hasMenu = signal(true);
 }
 
 describe('CaeButton (menu trigger #57)', () => {
@@ -201,8 +244,14 @@ describe('CaeButton (menu trigger #57)', () => {
     expect(matTrigger().menu).toBe(caeMenu().getMenuPanel());
   });
 
-  it('marks the inner button as a menu trigger (aria-haspopup) once the panel resolves', () => {
+  it('marks the inner button as a menu trigger (aria-haspopup + closed aria-expanded)', () => {
     expect(innerButton().getAttribute('aria-haspopup')).toBe('menu');
+    // Bound-and-closed is the RESTING state of every menu-bearing cae-button, and it is the one
+    // state the composer alone produces: Material's own slot settles on `false` during the first
+    // CD (panel still null) and then stops writing, because per-slot change detection only writes
+    // when that slot's own value moved. So `aria-expanded="false"` here comes from the host block
+    // this slice added, not from Material — and nothing graded it until the #992 review.
+    expect(innerButton().getAttribute('aria-expanded')).toBe('false');
   });
 
   it('opens the bound menu from the inner button (renders one item per data item)', async () => {
@@ -210,18 +259,31 @@ describe('CaeButton (menu trigger #57)', () => {
     fixture.detectChanges();
     await fixture.whenStable();
     expect(matTrigger().menuOpen).toBe(true);
-    const items = Array.from(document.querySelectorAll<HTMLElement>('[mat-menu-item]'));
+    expect(innerButton().getAttribute('aria-expanded')).toBe('true');
+    // Resolve the panel THROUGH aria-controls rather than querying the document: it scopes the
+    // item assertions to this trigger's own panel (a closed Material panel lingers), and it makes
+    // the idref a live oracle. Material owns that binding now — an absence-assertion on a
+    // menu-less button cannot tell "correctly absent" from "never emitted at all".
+    const panelId = innerButton().getAttribute('aria-controls');
+    expect(panelId).toBeTruthy();
+    const panel = document.getElementById(panelId!);
+    expect(panel).not.toBeNull();
+    const items = Array.from(panel!.querySelectorAll<HTMLElement>('[mat-menu-item]'));
     expect(items.length).toBe(2);
     expect(items[0].textContent).toContain('Alpha');
+    await expectNoA11yViolations(overlayContainer.getContainerElement());
   });
 
-  it('keeps the shared bindings (tooltip + variant + aria-label) on the inner button in the menu branch (two-branch parity)', () => {
+  it('carries every binding on the one button the component renders (#992)', () => {
     const button = innerButton();
     const tip = fixture.debugElement.query(By.directive(MatTooltip));
     const trig = fixture.debugElement.query(By.directive(MatMenuTrigger));
     const matBtn = fixture.debugElement.query(By.directive(MatButton)).injector.get(MatButton);
-    // The menu branch must carry the SAME bindings as the plain branch — a divergence would ship
-    // silently, since this parity check is the only cross-branch guard.
+    // This used to be a cross-branch parity guard — the only thing keeping two hand-duplicated
+    // <button>s in sync. There is one now, so the duplication it policed cannot recur; what it
+    // still buys is that the trigger and the tooltip land on the SAME element as the variant and
+    // the accessible name, i.e. on the real focusable control.
+    expect(fixture.nativeElement.querySelectorAll('cae-button button').length).toBe(1);
     expect(tip.nativeElement).toBe(button);
     expect(trig.nativeElement).toBe(button);
     expect(tip.injector.get(MatTooltip).message).toBe('Workspace actions');
@@ -229,7 +291,73 @@ describe('CaeButton (menu trigger #57)', () => {
     expect(button.getAttribute('aria-label')).toBe('Workspace actions');
   });
 
-  it('forwards the disabled state on the menu-branch button too (two-branch parity)', async () => {
+  it('renders ONE button across a live→unbound flip, so focus is never stranded (#992)', async () => {
+    const before = innerButton();
+    // Guard the flip's INPUT: without this the same-node assertion below passes for a fixture in
+    // which nothing changed at all.
+    expect(before.getAttribute('aria-haspopup')).toBe('menu');
+    before.focus();
+    expect(document.activeElement).toBe(before);
+
+    fixture.componentInstance.hasMenu.set(false);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const after = innerButton();
+    // The SAME node. Two arms were an element swap: the flip destroyed the focused <button> and
+    // built its replacement in the other branch, dropping focus to <body> (WCAG 2.4.3). That is
+    // why cae-split-button once needed ~150 lines of focus witness/restore for this exact shape —
+    // deleting the branch deletes the strand, so nothing here has to be paid for.
+    expect(after).toBe(before);
+    expect(before.isConnected).toBe(true);
+    expect(document.activeElement).toBe(before);
+    // ...and the survivor is now announced as an ordinary button.
+    expect(after.hasAttribute('aria-haspopup')).toBe(false);
+    expect(after.hasAttribute('aria-expanded')).toBe(false);
+
+    // And back. `[menuTriggerFor]="canManage() ? m : undefined"` resolves unbound→live at least as
+    // often as the reverse (a permission or feature flag arriving after first render), and the
+    // return leg re-enters Material state the unbind path left behind — it skips the
+    // PANELS_TO_TRIGGERS cleanup, because `_menu` is already null when `_destroyMenu` reads it.
+    fixture.componentInstance.hasMenu.set(true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(innerButton()).toBe(before);
+    expect(before.getAttribute('aria-haspopup')).toBe('menu');
+    expect(before.getAttribute('aria-expanded')).toBe('false');
+    expect(matTrigger().menu).toBe(caeMenu().getMenuPanel());
+  });
+
+  it('closes an open menu when the binding is removed (the state two arms could not reach, #992)', async () => {
+    matTrigger().openMenu();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(matTrigger().menuOpen).toBe(true);
+    expect(innerButton().getAttribute('aria-expanded')).toBe('true');
+
+    fixture.componentInstance.hasMenu.set(false);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    // With two arms this came free — the flip destroyed the open trigger and Material's
+    // ngOnDestroy disposed its overlay. One surviving element does NOT get that, so this arm
+    // exists to prove the state is still reachable-and-handled. The handling turned out to be
+    // Material's own: `MatMenuTriggerBase`'s `_menu` setter calls `_destroyMenu()` on null. An
+    // explicit `closeMenu()` was written here first and mutation-tested as inert, so it was
+    // deleted; this arm is what would catch Material dropping that branch.
+    expect(matTrigger().menuOpen).toBe(false);
+    expect(innerButton().hasAttribute('aria-expanded')).toBe(false);
+    // Grade the ARTIFACT, not just the flag. `_setIsMenuOpen(false)` runs on every path out of
+    // `_destroyMenu` past its early return, so both assertions above stay green if Material ever
+    // stops detaching here — and the failure this arm exists to catch is a panel still on screen
+    // above a trigger reporting no aria-expanded. Detach is synchronous only because `_menu` is
+    // already null when `_destroyMenu` reads it, which sends it down the non-animated branch.
+    expect(
+      overlayContainer.getContainerElement().querySelectorAll('.mat-mdc-menu-panel').length,
+    ).toBe(0);
+  });
+
+  it('forwards the disabled state to the button when a menu is bound', async () => {
     // Set before the first CD so it binds at initial render (a plain-field mutation after render
     // does not propagate under zoneless).
     const f = TestBed.createComponent(MenuButtonHost);
@@ -240,10 +368,9 @@ describe('CaeButton (menu trigger #57)', () => {
     expect(button.disabled).toBe(true);
   });
 
-  it('forwards disabledInteractive on the menu-branch button, keeping it focusable and labelled (#58 two-branch parity)', async () => {
-    // disabledInteractive must be forwarded in the menu branch as well as the plain branch — a
-    // divergence would ship silently. The button stays focusable and keeps advertising its popup;
-    // whether it will actually OPEN is a separate claim, pinned by the arm below (#978).
+  it('forwards disabledInteractive with a menu bound, keeping it focusable and labelled (#58)', async () => {
+    // The button stays focusable and keeps advertising its popup; whether it will actually OPEN is
+    // a separate claim, pinned by the arm below (#978).
     const f = TestBed.createComponent(MenuButtonHost);
     f.componentInstance.disabled = true;
     f.componentInstance.disabledInteractive = true;
