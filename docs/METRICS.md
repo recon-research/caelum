@@ -11,12 +11,12 @@ The few metrics that each change a decision when they cross a threshold -- not a
 | Metric | Value | Target | What it means |
 |---|---|---|---|
 | Throughput | 23.3/wk | trend only | Merged PRs per week. A trend line, not a target -- a sudden drop flags a blocker. |
-| Defect escape rate | 21% | &lt; 15% · alarm &gt; 25% | `bug`s filed / slices merged. Measures gate + review effectiveness; each escape should leave a guard (retrospective, #31). |
+| Defect escape rate | 22% | &lt; 15% · alarm &gt; 25% | `bug`s filed / slices merged. Measures gate + review effectiveness; each escape should leave a guard (retrospective, #31). |
 | Rework rate | 16% | &lt; 20% · alarm &gt; 30% | Merged PRs that are themselves fixes. High = slices too big or review too shallow. |
 | Decision latency | 1 d | &le; objection window · alarm &gt; 5 d | Median days a `decision` issue stays open. Measures the human-in-loop bottleneck. |
 | Preflight&harr;CI divergence | 3% | ~0% · alarm &gt; 15% | Fraction of PR CI runs that went red. A faithful preflight keeps this ~0; a climb means preflight was skipped or isn't mirroring CI. |
 
-*Sample this window: 300 PR(s) merged, 64 `bug`(s) filed, 400 PR CI run(s), 35 decision(s) closed. Small samples are noisy -- treat single-digit windows as directional, not controlled.*
+*Sample this window: 300 PR(s) merged, 66 `bug`(s) filed, 400 PR CI run(s), 35 decision(s) closed. Small samples are noisy -- treat single-digit windows as directional, not controlled.*
 
 ## Per-slice cost & pace (#255)
 
@@ -24,14 +24,14 @@ Receipts (`cost:` PR comments, posted at merge by `ship_pr` via `scripts/slice_t
 
 | Type | n | med wall | med usd | med tok-out | med Δlines | med agents | med CI runs |
 |---|---|---|---|---|---|---|---|
-| docs | 28 | 1m | $5.31 (n=3) | 40.5k (n=3) | 13 | 0 (n=3) | 1 (n=3) |
-| fix | 7 | 52m | $16.34 | 119.9k | 525 | 0 | 1 |
+| docs | 28 | 1m | $5.31 (n=3) | 40.5k (n=3) | 10 | 0 (n=3) | 1 (n=3) |
+| fix | 6 | 53m | $22.13 | 204.8k | 592 | 2 | 2 |
 | m5 menu family | 4 | 41m | $25.28 | 175.8k | 616 | 2 | 1 |
-| (other) | 1 | 43m | $20.39 | 252.2k | 496 | 3 | 1 |
+| (other) | 2 | 49m | $27.28 | 265.5k | 450 | 3 | 1 |
 
-Merge-order trend (oldest→newest): usd `▁···▄···▃····▆···▆···█··▇·▄··▂·▁▄··▇█·▂▃` · tok-out `▁···▂···▂····▅···▅···█··▄·▄··▁·▁▂··▄▅·▁▂` · wall-h `▂▁▁▁▅▁▁▁▃▁▁▁▁▅▁▁▁▆▁▁▁█▁▁▆▁▄▁▁▂▁▁▄▁▁▅▅▁▂▄` · Δlines `▁▁▁▁▇▁▁▁▅▁▁▁▁█▁▁▁▆▁▁▁▇▁▁▇▁▅▁▁▂▁▁▆▁▁▆▂▁▁▇`
+Merge-order trend (oldest→newest): usd `·▄···▃····▆···▆···█··▇·▄··▂·▁▄··▇█·▂▃·▇·` · tok-out `·▂···▂····▅···▅···█··▄·▄··▁·▁▂··▄▅·▁▂·▄·` · wall-h `▁▅▁▁▁▃▁▁▁▁▅▁▁▁▆▁▁▁█▁▁▆▁▄▁▁▂▁▁▄▁▁▅▅▁▂▄▁▆▁` · Δlines `▁▇▁▁▁▅▁▁▁▁█▁▁▁▆▁▁▁▇▁▁▇▁▅▁▁▂▁▁▆▁▁▆▂▁▁▇▁▅▁`
 
-Drift check (newer-half / older-half medians): usd 1.10 · tok-out 1.37 · wall 10.73 · churn 28.43 · fan-out inf · 19 checkpoint row(s) (receipt-less by design, #269: wall is the pr-open->merge fallback and churn a doc touch, #624) excluded from wall+churn -- alarm at >=2.0 on cost/wall while BOTH churn and fan-out stay <1.5.
+Drift check (newer-half / older-half medians): usd 0.65 · tok-out 0.57 · wall 10.73 · churn 23.62 · fan-out 0.38 · 19 checkpoint row(s) (receipt-less by design, #269: wall is the pr-open->merge fallback and churn a doc touch, #624) excluded from wall+churn -- alarm at >=2.0 on cost/wall while BOTH churn and fan-out stay <1.5.
 
 :warning: **Receipt-less merges since receipts began** -- #947 (branch `docs/946-checkpoint`), #948 (branch `docs/946-metrics`), #949 (branch `docs/946-stamp`), #950 (branch `docs/944-841-decisions`), #956 (branch `docs/953-checkpoint`), #957 (branch `docs/953-stamp`), #958 (branch `docs/951-decision`) carry no `cost:` comment. Either a session drove gh below `ship_pr` (steps 0/7 skipped, checkpoint at risk too), or a checkpoint merged from a branch outside `CHECKPOINT_PREFIXES` (convention drift) -- the printed branch says which. Route to a retrospective -- the guard is skill-layer, not a backfilled receipt.
 
@@ -39,6 +39,6 @@ Review pickup (PR open→merge): median 1m over 40 merge(s) · halves 1m → 1m 
 
 Fleet-mode review: n/a -- no overlapping writer identities in scope (solo mode; the adversarial_review cadence governs review here).
 
-Fastest-growing docs (net lines this window): `docs/PATTERNS.md` +731 · `docs/MIGRATION.md` +380 · `.claude/skills/EVALS.md` +294 · `.claude/skills/design_review/references/house-style.md` +275 · `docs/AUTOMATION.md` +155 *(a process doc growing with no matching slices is the journaling smell -- eyeball it)*
+Fastest-growing docs (net lines this window): `docs/PATTERNS.md` +736 · `docs/MIGRATION.md` +380 · `.claude/skills/EVALS.md` +294 · `.claude/skills/design_review/references/house-style.md` +275 · `docs/AUTOMATION.md` +155 *(a process doc growing with no matching slices is the journaling smell -- eyeball it)*
 
 *Local telemetry (skill usage, session cost, compactions, guard hits, preflight duration) is machine-local and deliberately NOT committed -- it lives in `.claude/metrics/LOCAL.md` on the machine that produced it (#589). Everything above is `gh`-derived, so every machine regenerates it identically.*
